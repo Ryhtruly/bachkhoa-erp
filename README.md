@@ -16,7 +16,7 @@ Dự án được xây dựng với kiến trúc API hiện đại, giao diện 
 4. Copy file cấu hình: `cp .env.example .env` và điền cấu hình Database (PostgreSQL) của bạn vào file `.env`.
 5. Chạy server:
    ```bash
-   uvicorn src.index:app --reload --port 8000
+   uvicorn src.index:app --reload --port 8080
    ```
    *(Khi chạy lệnh này, hệ thống sẽ tự động tạo bảng trong Database)*
 

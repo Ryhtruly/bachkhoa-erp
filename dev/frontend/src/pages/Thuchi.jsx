@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Receipt } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
+import { DataTable, Badge } from '../components/ui';
 
 export default function Thuchi() {
   const [transactions, setTransactions] = useState([]);
@@ -19,19 +20,19 @@ export default function Thuchi() {
   const fetchData = async () => {
     try {
       const [resConfig, resHoso, resHopdong, resThuchi] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/config'),
-        fetch('http://127.0.0.1:8000/api/hoso'),
-        fetch('http://127.0.0.1:8000/api/hopdong'),
-        fetch('http://127.0.0.1:8000/api/thuchi')
+        fetch('http://127.0.0.1:8080/api/config'),
+        fetch('http://127.0.0.1:8080/api/hoso'),
+        fetch('http://127.0.0.1:8080/api/hopdong'),
+        fetch('http://127.0.0.1:8080/api/thuchi')
       ]);
 
       if (resConfig.ok) setConfig(await resConfig.json());
-      
+
       if (resHoso.ok) {
         const data = await resHoso.json();
         setHosoList(Array.isArray(data) ? data : data.data || []);
       }
-      
+
       if (resHopdong.ok) {
         const data = await resHopdong.json();
         setContracts(Array.isArray(data) ? data : data.data || []);
@@ -48,9 +49,7 @@ export default function Thuchi() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   const handleCreateThuchi = async (e) => {
     e.preventDefault();
@@ -67,7 +66,7 @@ export default function Thuchi() {
         Loại_Thu_Chi: formData.Loại_Thu_Chi.includes('Thu') ? 'Thu' : 'Chi'
       };
 
-      const res = await fetch('http://127.0.0.1:8000/api/thuchi', {
+      const res = await fetch('http://127.0.0.1:8080/api/thuchi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -90,9 +89,73 @@ export default function Thuchi() {
     try { return new Intl.NumberFormat('vi-VN').format(Number(amount) || 0) + '₫'; } catch { return amount; }
   };
 
+  const columns = [
+    {
+      key: 'Ngày',
+      label: 'Ngày',
+      width: 110,
+      render: (val, row) => (
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+          {val || row['Date']}
+        </span>
+      )
+    },
+    {
+      key: 'Số phiếu',
+      label: 'Số phiếu',
+      width: 120,
+      render: (val, row) => (
+        <strong style={{ fontFamily: 'var(--font-mono)' }}>{val || row['Mã phiếu']}</strong>
+      )
+    },
+    {
+      key: 'Mã hồ sơ',
+      label: 'Mã HS',
+      width: 110,
+      render: (val) => <span style={{ fontFamily: 'var(--font-mono)' }}>{val || '—'}</span>
+    },
+    {
+      key: 'Diễn giải',
+      label: 'Diễn giải',
+      render: (val, row) => val || row['Ghi chú']
+    },
+    {
+      key: 'Loại',
+      label: 'Loại',
+      width: 80,
+      align: 'center',
+      render: (val, row) => {
+        const type = val || (row['Thu (+)'] > 0 ? 'Thu' : 'Chi');
+        return <Badge variant={type === 'Thu' ? 'success' : 'danger'}>{type}</Badge>;
+      }
+    },
+    {
+      key: 'Số tiền',
+      label: 'Số tiền',
+      width: 130,
+      align: 'right',
+      render: (_, row) => {
+        const type = row['Loại'] || (row['Thu (+)'] > 0 ? 'Thu' : 'Chi');
+        const amount = type === 'Thu' ? row['Thu (+)'] : row['Chi (-)'];
+        return (
+          <span className={type === 'Thu' ? 'text-success' : 'text-danger'} style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+            {type === 'Thu' ? '+' : '−'}{formatVND(amount)}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'Hình thức',
+      label: 'Hình thức',
+      width: 110,
+      align: 'center'
+    }
+  ];
+
   return (
     <section className="tab-pane active" id="tab-thuchi">
       <div className="split-view">
+        {/* Form lập phiếu */}
         <div className="card" style={{ padding: '24px' }}>
           <h3><PlusCircle size={20} /> Lập phiếu thu / chi</h3>
           <div className="sub">Ghi nhận giao dịch và liên kết với hồ sơ / hợp đồng.</div>
@@ -155,54 +218,22 @@ export default function Thuchi() {
             </button>
           </form>
         </div>
-        
-        <div className="card" style={{ padding: '24px', overflowX: 'auto' }}>
-          <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Receipt size={16} color="var(--purple-400)" />
-              Nhật ký quỹ
-            </h3>
-          </div>
-          <div className="table-wrap">
-            <table style={{ minWidth: '700px' }}>
-              <thead>
-                <tr>
-                  <th>Ngày</th>
-                  <th>Số phiếu</th>
-                  <th>Mã HS</th>
-                  <th>Diễn giải</th>
-                  <th>Loại</th>
-                  <th>Số tiền</th>
-                  <th>Hình thức</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Đang tải...</td></tr>
-                ) : transactions.length === 0 ? (
-                  <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Chưa có giao dịch</td></tr>
-                ) : (
-                  transactions.map((t, i) => {
-                    const type = t['Loại'] || (t['Thu (+)'] > 0 ? 'Thu' : 'Chi');
-                    const amount = type === 'Thu' ? t['Thu (+)'] : t['Chi (-)'];
-                    return (
-                      <tr key={i}>
-                        <td style={{ fontFamily: 'var(--font-mono)' }}>{t['Ngày'] || t['Date']}</td>
-                        <td><strong style={{ fontFamily: 'var(--font-mono)' }}>{t['Số phiếu'] || t['Mã phiếu']}</strong></td>
-                        <td style={{ fontFamily: 'var(--font-mono)' }}>{t['Mã hồ sơ'] || '—'}</td>
-                        <td>{t['Diễn giải'] || t['Ghi chú']}</td>
-                        <td><span className={`badge ${type === 'Thu' ? 'badge-success' : 'badge-danger'}`}>{type}</span></td>
-                        <td className={type === 'Thu' ? 'text-success' : 'text-danger'} style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                          {type === 'Thu' ? '+' : '−'}{formatVND(amount)}
-                        </td>
-                        <td>{t['Hình thức']}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+
+        {/* Nhật ký quỹ */}
+        <div className="card" style={{ padding: '24px', overflow: 'hidden' }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Receipt size={16} color="var(--purple-400)" />
+            Nhật ký quỹ
+          </h3>
+          <DataTable
+            columns={columns}
+            data={transactions}
+            loading={loading}
+            rowKey="Số phiếu"
+            emptyText="Chưa có giao dịch nào"
+            pageSize={10}
+            compact
+          />
         </div>
       </div>
     </section>
