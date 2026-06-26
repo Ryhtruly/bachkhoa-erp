@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Sidebar from './components/Sidebar';
-import TopHeader from './components/TopHeader';
+import Sidebar from './components/ui/Sidebar';
+import TopHeader from './components/ui/TopHeader';
 import Dashboard from './pages/Dashboard';
 import CRM from './pages/CRM';
 import Hoso from './pages/Hoso';
@@ -38,7 +38,7 @@ function App() {
         return <Wiki />;
       // Other tabs will be added here
       default:
-        return <div className="tab-pane active"><h2 style={{padding:'24px'}}>Tính năng đang được chuyển đổi...</h2></div>;
+        return <div className="tab-pane active"><h2 style={{ padding: '24px' }}>Tính năng đang được chuyển đổi...</h2></div>;
     }
   };
 
