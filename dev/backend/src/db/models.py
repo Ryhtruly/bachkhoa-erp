@@ -110,16 +110,28 @@ class ProjectTask(Base):
 
 class CashflowTransaction(Base):
     __tablename__ = "cashflow_transactions"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String, primary_key=True)
     project_id = Column(String, ForeignKey("projects_tasks.id"), nullable=True)
     contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
-    type = Column(String, nullable=True) # Thu / Chi
-    amount = Column(Numeric, nullable=True)
-    category = Column(String, nullable=True)
-    payer_payee = Column(String, nullable=True)
-    payment_method = Column(String, nullable=True)
+    loai = Column(String, nullable=True) # Thu / Chi
+    so_tien = Column(Numeric, nullable=True)
+    hang_muc = Column(String, nullable=True)
+    nguoi_nhan_nop = Column(String, nullable=True)
+    hinh_thuc = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+    ngay = Column(Date, nullable=True)
+    so_chung_tu = Column(String, nullable=True)
+    dien_giai = Column(Text, nullable=True)
+    du_an_phong_ban = Column(String, nullable=True)
+    so_du_sau_gd = Column(Numeric, nullable=True)
+    so_du_tien_mat = Column(Numeric, nullable=True)
+    so_du_ck = Column(Numeric, nullable=True)
+    chung_tu = Column(Text, nullable=True)
+    ghi_chu = Column(Text, nullable=True)
+    nguoi_lap = Column(String, nullable=True)
+    nguoi_duyet = Column(String, nullable=True)
+    trang_thai = Column(String, nullable=True)
 
 class Receivable(Base):
     __tablename__ = "receivables"

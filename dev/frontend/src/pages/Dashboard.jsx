@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Files, Loader, AlertTriangle, DollarSign } from 'lucide-react';
+import { Files, Loader, AlertTriangle, DollarSign, Clock } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsGrid, StatCard } from '../components/ui';
 
@@ -34,8 +34,8 @@ export default function Dashboard() {
     const fetchDashboard = async () => {
       try {
         const [resSummary, resCharts] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/dashboard/summary'),
-          fetch('http://127.0.0.1:8000/api/dashboard/charts')
+          fetch('http://127.0.0.1:8080/api/dashboard/summary'),
+          fetch('http://127.0.0.1:8080/api/dashboard/charts')
         ]);
         if (resSummary.ok) {
           const data = await resSummary.json();

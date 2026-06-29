@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import extract
 from sqlalchemy.orm import Session
 from datetime import datetime
 from schemas.models import HopdongCreateSchema, ContractGenerateSchema
@@ -10,9 +11,20 @@ from core import doc_generator
 router = APIRouter(prefix="/api/hopdong", tags=["Hợp Đồng"])
 
 @router.get("/")
-def list_hopdong(db: Session = Depends(get_db)):
+def list_hopdong(month: str = Query(None), db: Session = Depends(get_db)):
     try:
-        contracts = db.query(Contract).order_by(Contract.created_at.desc()).all()
+        query = db.query(Contract)
+        if month:
+            try:
+                y, m = map(int, month.split('-'))
+                query = query.filter(
+                    extract('year', Contract.created_at) == y,
+                    extract('month', Contract.created_at) == m
+                )
+            except ValueError:
+                pass
+                
+        contracts = query.order_by(Contract.created_at.desc()).all()
         result = []
         for c in contracts:
             customer = db.query(Customer).filter(Customer.id == c.customer_id).first() if c.customer_id else None

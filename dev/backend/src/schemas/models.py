@@ -36,14 +36,25 @@ class ContractGenerateSchema(BaseModel):
     Sale_nguồn: str
 
 class ThuchiCreateSchema(BaseModel):
+    """Legacy schema — kept for backward compat"""
     Loại_Thu_Chi: str
-    Mã_hồ_sơ: Optional[str] = "None"
-    Mã_hợp_đồng: Optional[str] = "None"
+    Mã_hồ_sơ: Optional[str] = ""
+    Mã_hợp_đồng: Optional[str] = ""
     Diễn_giải: str
     Phòng_ban: str
     Người_nhận_Nộp: str
     Hình_thức: str
     Số_tiền: float
+
+class CashflowCreateSchema(BaseModel):
+    """Schema chuẩn — khớp DB model cashflow_transactions"""
+    type: str                           # "Thu" | "Chi"
+    amount: float
+    category: str                       # Diễn giải / Danh mục
+    payer_payee: str                    # Người nộp / nhận
+    payment_method: str                 # "Tiền mặt" | "Chuyển khoản"
+    contract_id: Optional[str] = None  # FK → contracts.id
+    project_id: Optional[str] = None   # FK → projects_tasks.id
 
 class StatusUpdateSchema(BaseModel):
     Mã_hồ_sơ: str

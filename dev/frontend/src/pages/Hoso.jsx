@@ -8,12 +8,16 @@ export default function Hoso() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterValues, setFilterValues] = useState({ status: 'All', warning: 'All' });
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [sort, setSort] = useState('desc');
 
   const fetchData = async () => {
     try {
+      setLoading(true);
+      const params = month ? `?month=${month}` : '';
       const [hosoRes, statsRes] = await Promise.all([
-        fetch('http://127.0.0.1:8080/api/hoso/'),
-        fetch('http://127.0.0.1:8080/api/hoso/stats')
+        fetch(`http://127.0.0.1:8080/api/hoso/${params}`),
+        fetch(`http://127.0.0.1:8080/api/hoso/stats${params}`)
       ]);
       if (hosoRes.ok) {
         const data = await hosoRes.json();
@@ -30,7 +34,7 @@ export default function Hoso() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [month]);
 
   const handleStatusChange = async (id, newStatus) => {
     try {
@@ -47,18 +51,20 @@ export default function Hoso() {
 
   const filteredList = hosoList.filter(h => {
     const matchSearch = (h['Tên khách hàng'] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (h['Mã hồ sơ'] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (h['SĐT'] || '').includes(searchTerm);
+      (h['Mã hồ sơ'] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (h['SĐT'] || '').includes(searchTerm);
     const matchStatus = filterValues.status === 'All' || h['Trạng thái'] === filterValues.status;
     const matchWarning = filterValues.warning === 'All' || h['Cảnh báo'] === filterValues.warning;
     return matchSearch && matchStatus && matchWarning;
   });
+  
+  const sortedList = sort === 'asc' ? [...filteredList].reverse() : filteredList;
 
   const columns = [
     {
       key: 'Mã hồ sơ',
-      label: 'MÃ HS & ƯU TIÊN',
-      width: 160,
+      label: 'MÃ HỒ SƠ',
+      width: 300,
       render: (val, row) => (
         <div>
           <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>{val}</div>
@@ -75,7 +81,7 @@ export default function Hoso() {
       label: 'KHÁCH HÀNG',
       render: (val, row) => (
         <div>
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>{val}</div>
+          <div style={{ fontWeight: 500, color: 'var(--text-primary)', marginBottom: '4px' }}>{val}</div>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{row['SĐT']}</div>
         </div>
       )
@@ -99,7 +105,7 @@ export default function Hoso() {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
             <User size={14} color="var(--text-secondary)" />
-            <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{val}</span>
+            <span style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{val}</span>
           </div>
           {row['Hỗ trợ'] && (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', paddingLeft: '22px' }}>
@@ -218,18 +224,24 @@ export default function Hoso() {
         ]}
         values={filterValues}
         onFilterChange={(key, value) => setFilterValues(prev => ({ ...prev, [key]: value }))}
-        onReset={() => { setSearchTerm(''); setFilterValues({ status: 'All', warning: 'All' }); }}
+        onReset={() => { setSearchTerm(''); setFilterValues({ status: 'All', warning: 'All' }); setMonth(new Date().toISOString().slice(0, 7)); setSort('desc'); }}
+        month={month}
+        onMonthChange={setMonth}
+        sort={sort}
+        onSortChange={setSort}
         actions={
-          <button className="btn btn-primary" style={{ height: '38px' }}>
-            <Plus size={16} /> Tạo Hồ Sơ Mới
-          </button>
+          <>
+            <button className="btn btn-primary" style={{ height: '38px', marginLeft: 8 }}>
+              <Plus size={16} /> Tạo Hồ Sơ Mới
+            </button>
+          </>
         }
       />
 
       {/* Data Table */}
       <DataTable
         columns={columns}
-        data={filteredList}
+        data={sortedList}
         loading={loading}
         rowKey="Mã hồ sơ"
         emptyText="Không có hồ sơ nào phù hợp"

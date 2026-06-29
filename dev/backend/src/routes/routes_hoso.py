@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import func, extract
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from src.db.database import get_db
@@ -10,14 +11,25 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/api/hoso", tags=["Hồ Sơ"])
 
 @router.get("/stats")
-def get_hoso_stats(db: Session = Depends(get_db)):
-    total = db.query(ProjectTask).count()
-    completed = db.query(ProjectTask).filter(ProjectTask.status == "Hoàn thành").count()
-    in_progress = db.query(ProjectTask).filter(ProjectTask.status != "Hoàn thành").count()
+def get_hoso_stats(month: str = Query(None), db: Session = Depends(get_db)):
+    query = db.query(ProjectTask)
+    if month:
+        try:
+            y, m = map(int, month.split('-'))
+            query = query.filter(
+                extract('year', ProjectTask.created_at) == y,
+                extract('month', ProjectTask.created_at) == m
+            )
+        except ValueError:
+            pass
+
+    total = query.count()
+    completed = query.filter(ProjectTask.status == "Hoàn thành").count()
+    in_progress = query.filter(ProjectTask.status != "Hoàn thành").count()
     
     # Tính số hồ sơ trễ hạn
     today = date.today()
-    overdue = db.query(ProjectTask).filter(
+    overdue = query.filter(
         ProjectTask.status != "Hoàn thành",
         ProjectTask.deadline < today
     ).count()
@@ -33,9 +45,20 @@ def get_hoso_stats(db: Session = Depends(get_db)):
     }
 
 @router.get("/")
-def list_hoso(db: Session = Depends(get_db)):
+def list_hoso(month: str = Query(None), db: Session = Depends(get_db)):
     try:
-        tasks = db.query(ProjectTask).order_by(ProjectTask.created_at.desc()).all()
+        query = db.query(ProjectTask)
+        if month:
+            try:
+                y, m = map(int, month.split('-'))
+                query = query.filter(
+                    extract('year', ProjectTask.created_at) == y,
+                    extract('month', ProjectTask.created_at) == m
+                )
+            except ValueError:
+                pass
+                
+        tasks = query.order_by(ProjectTask.created_at.desc()).all()
         result = []
         today = date.today()
         

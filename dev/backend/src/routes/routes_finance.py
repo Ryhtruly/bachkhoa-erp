@@ -1,0 +1,808 @@
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import func, extract, or_
+from pydantic import BaseModel
+from typing import Optional
+from src.db.database import get_db
+from src.db.models import (
+    CashflowTransaction, Contract, Customer, Receivable,
+    ProjectTask, Employee, KpiPayroll
+)
+from datetime import datetime, date
+import uuid
+
+router = APIRouter(prefix="/api/finance", tags=["Finance ERP"])
+
+
+# ══════════════════════════════════════════════════════════════
+# Pydantic Schemas
+# ══════════════════════════════════════════════════════════════
+
+class CashflowIn(BaseModel):
+    type: str                           # "Thu" | "Chi"
+    amount: float
+    category: str                       # Dropdown: Hạng mục + Diễn giải
+    payer_payee: str
+    payment_method: str                 # "Tiền mặt" | "Chuyển khoản"
+    contract_id: Optional[str] = None
+    project_id: Optional[str] = None
+    # Các trường kế toán nâng cao
+    nguoi_lap: Optional[str] = None
+    nguoi_duyet: Optional[str] = None
+    trang_thai: Optional[str] = None
+    dien_giai: Optional[str] = None
+    du_an_phong_ban: Optional[str] = None
+
+class AdvanceCreateIn(BaseModel):
+    project_id: Optional[str] = None
+    amount: float
+    payer_payee: str
+    note: Optional[str] = ""
+    payment_method: str = "Tiền mặt"
+
+class AdvanceClearIn(BaseModel):
+    advance_id: str          # ID phiếu tạm ứng gốc
+    actual_amount: float     # Số tiền thực chi từ hóa đơn
+    note: Optional[str] = ""
+
+class WageCreateIn(BaseModel):
+    project_id: str
+    amount: float
+    payer_payee: str
+    note: Optional[str] = ""
+    payment_method: str = "Tiền mặt"
+
+
+# ══════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════
+
+def _row(t: CashflowTransaction, db: Session = None) -> dict:
+    """Serialize 1 giao dịch."""
+    contract_label = t.contract_id or ""
+    project_label = t.project_id or ""
+
+    if db is not None:
+        if t.contract_id:
+            c = db.query(Contract).filter(Contract.id == t.contract_id).first()
+            if c:
+                cust = db.query(Customer).filter(Customer.id == c.customer_id).first()
+                cust_name = cust.full_name if cust else ""
+                contract_label = f"{t.contract_id}" + (f" — {cust_name}" if cust_name else "")
+        if t.project_id:
+            p = db.query(ProjectTask).filter(ProjectTask.id == t.project_id).first()
+            if p and p.task_name:
+                project_label = f"{t.project_id} — {p.task_name}"
+
+    return {
+        "id": t.id,
+        "type": t.loai,
+        "Ngày": t.ngay.strftime("%d/%m/%y") if t.ngay else (t.created_at.strftime("%d/%m/%y") if t.created_at else ""),
+        "Hạng mục": t.hang_muc or "Khác",
+        "Diễn giải": t.dien_giai or "",
+        "Danh mục": f"{t.hang_muc}: {t.dien_giai}" if t.hang_muc and t.dien_giai else (t.hang_muc or t.dien_giai or ""),
+        "Đối tác": t.nguoi_nhan_nop or "",
+        "Hình thức": t.hinh_thuc or "",
+        "Dự án": project_label,
+        "Hợp đồng": contract_label,
+        "amount": float(t.so_tien or 0),
+        "contract_id": t.contract_id,
+        "project_id": t.project_id,
+        "so_du_sau_gd": float(t.so_du_sau_gd or 0),
+        "so_du_tien_mat": float(t.so_du_tien_mat or 0),
+        "so_du_ck": float(t.so_du_ck or 0),
+        "trang_thai": t.trang_thai or ""
+    }
+
+
+def _row_bulk(rows, db: Session) -> list:
+    """Serialize nhiều giao dịch 1 lần, tránh N+1 query."""
+    contract_ids = {r.contract_id for r in rows if r.contract_id}
+    project_ids = {r.project_id for r in rows if r.project_id}
+
+    contracts = {
+        c.id: c for c in db.query(Contract).filter(Contract.id.in_(contract_ids)).all()
+    } if contract_ids else {}
+    customer_ids = {c.customer_id for c in contracts.values() if c.customer_id}
+    customers = {
+        cu.id: cu for cu in db.query(Customer).filter(Customer.id.in_(customer_ids)).all()
+    } if customer_ids else {}
+    projects = {
+        p.id: p for p in db.query(ProjectTask).filter(ProjectTask.id.in_(project_ids)).all()
+    } if project_ids else {}
+
+    result = []
+    for t in rows:
+        contract_label = t.contract_id or ""
+        project_label = t.project_id or ""
+        if t.contract_id and t.contract_id in contracts:
+            c = contracts[t.contract_id]
+            cust = customers.get(c.customer_id)
+            cust_name = cust.full_name if cust else ""
+            contract_label = f"{t.contract_id}" + (f" — {cust_name}" if cust_name else "")
+        if t.project_id and t.project_id in projects:
+            p = projects[t.project_id]
+            if p.task_name:
+                project_label = f"{t.project_id} — {p.task_name}"
+
+        result.append({
+            "id": t.id,
+            "type": t.loai,
+            "Ngày": t.ngay.strftime("%d/%m/%y") if t.ngay else (t.created_at.strftime("%d/%m/%y") if t.created_at else ""),
+            "Hạng mục": t.hang_muc or "Khác",
+            "Diễn giải": t.dien_giai or "",
+            "Danh mục": f"{t.hang_muc}: {t.dien_giai}" if t.hang_muc and t.dien_giai else (t.hang_muc or t.dien_giai or ""),
+            "Đối tác": t.nguoi_nhan_nop or "",
+            "Hình thức": t.hinh_thuc or "",
+            "Dự án": project_label,
+            "Hợp đồng": contract_label,
+            "amount": float(t.so_tien or 0),
+            "contract_id": t.contract_id,
+            "project_id": t.project_id,
+            "so_du_sau_gd": float(t.so_du_sau_gd or 0),
+            "so_du_tien_mat": float(t.so_du_tien_mat or 0),
+            "so_du_ck": float(t.so_du_ck or 0),
+            "trang_thai": t.trang_thai or ""
+        })
+    return result
+
+
+def _voucher_id(type_val: str, db: Session) -> str:
+    prefix = "PT" if type_val == "Thu" else "PC"
+    now = datetime.now()
+    month_str = now.strftime("%m")
+    year_str = now.strftime("%Y")
+    
+    pattern = f"{prefix}-{month_str}/{year_str}-%"
+    count = db.query(func.count(CashflowTransaction.id)).filter(
+        CashflowTransaction.id.like(pattern)
+    ).scalar() or 0
+    
+    serial = count + 1
+    return f"{prefix}-{month_str}/{year_str}-{serial:03d}"
+
+
+def _validate_contract(db: Session, contract_id: str):
+    if not contract_id:
+        return
+    exists = db.query(Contract.id).filter(Contract.id == contract_id).first()
+    if not exists:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Mã Hợp Đồng '{contract_id}' không tồn tại."
+        )
+
+
+def _validate_project(db: Session, project_id: str):
+    if not project_id:
+        return
+    exists = db.query(ProjectTask.id).filter(ProjectTask.id == project_id).first()
+    if not exists:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Mã Hồ Sơ '{project_id}' không tồn tại."
+        )
+
+
+def _check_cash(db: Session, amount: float):
+    thu = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Thu",
+        CashflowTransaction.hinh_thuc == "Tiền mặt"
+    ).scalar() or 0)
+    chi = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.hinh_thuc == "Tiền mặt"
+    ).scalar() or 0)
+    balance = thu - chi
+    if balance < amount:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Âm quỹ tiền mặt! Số dư: {balance:,.0f}₫ < {amount:,.0f}₫ cần chi"
+        )
+
+
+def _calculate_balances(db: Session, type_val: str, amount: float, method: str):
+    thu_tm = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Thu",
+        CashflowTransaction.hinh_thuc == "Tiền mặt"
+    ).scalar() or 0)
+    chi_tm = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.hinh_thuc == "Tiền mặt"
+    ).scalar() or 0)
+    
+    thu_ck = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Thu",
+        CashflowTransaction.hinh_thuc == "Chuyển khoản"
+    ).scalar() or 0)
+    chi_ck = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.hinh_thuc == "Chuyển khoản"
+    ).scalar() or 0)
+    
+    bal_tm = thu_tm - chi_tm
+    bal_ck = thu_ck - chi_ck
+    
+    if method == "Tiền mặt":
+        if type_val == "Thu":
+            bal_tm += amount
+        else:
+            bal_tm -= amount
+    else:
+        if type_val == "Thu":
+            bal_ck += amount
+        else:
+            bal_ck -= amount
+            
+    return bal_tm, bal_ck, bal_tm + bal_ck
+
+
+def _sync_receivables(db: Session, contract_id: str, amount: float):
+    rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
+    if rec:
+        rec.paid_amount = float(rec.paid_amount or 0) + amount
+        rec.remaining_amount = max(0.0, float(rec.remaining_amount or 0) - amount)
+    else:
+        c = db.query(Contract).filter(Contract.id == contract_id).first()
+        total = float(c.total_value or 0) if c else 0.0
+        db.add(Receivable(
+            contract_id=contract_id,
+            paid_amount=amount,
+            remaining_amount=max(0.0, total - amount),
+        ))
+
+
+def _parse_category(cat_val: str):
+    if ": " in cat_val:
+        parts = cat_val.split(": ", 1)
+        return parts[0], parts[1]
+    return "Khác", cat_val
+
+
+# ══════════════════════════════════════════════════════════════
+# 1. DÒNG TIỀN — Cashflow
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/next-voucher-id")
+def get_next_voucher_id(type: str = "Thu", db: Session = Depends(get_db)):
+    return {"next_id": _voucher_id(type, db)}
+
+@router.get("/cashflow")
+def list_cashflow(
+    month: str = Query(None),
+    type: str = Query(None),
+    payment_method: str = Query(None),
+    project_id: str = Query(None),
+    contract_id: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    q = db.query(CashflowTransaction)
+    if month:
+        try:
+            y, m = month.split("-")
+            q = q.filter(
+                extract("year", CashflowTransaction.created_at) == int(y),
+                extract("month", CashflowTransaction.created_at) == int(m)
+            )
+        except Exception:
+            pass
+    if type and type not in ("All", ""):
+        q = q.filter(CashflowTransaction.loai == type)
+    if payment_method and payment_method not in ("All", ""):
+        q = q.filter(CashflowTransaction.hinh_thuc == payment_method)
+    if project_id:
+        q = q.filter(CashflowTransaction.project_id == project_id)
+    if contract_id:
+        q = q.filter(CashflowTransaction.contract_id == contract_id)
+    rows = q.order_by(CashflowTransaction.created_at.desc()).all()
+    return _row_bulk(rows, db)
+
+
+@router.get("/cashflow/by-contract/{contract_id}")
+def cashflow_by_contract(contract_id: str, db: Session = Depends(get_db)):
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy Hợp Đồng '{contract_id}'")
+
+    rows = db.query(CashflowTransaction).filter(
+        CashflowTransaction.contract_id == contract_id
+    ).order_by(CashflowTransaction.created_at.desc()).all()
+
+    thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
+    chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+    customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
+
+    return {
+        "contract_id": contract_id,
+        "customer_name": customer.full_name if customer else "",
+        "total_value": float(contract.total_value or 0),
+        "tong_thu": thu,
+        "tong_chi": chi,
+        "transactions": _row_bulk(rows, db),
+    }
+
+
+@router.get("/cashflow/by-project/{project_id}")
+def cashflow_by_project(project_id: str, db: Session = Depends(get_db)):
+    project = db.query(ProjectTask).filter(ProjectTask.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy Hồ Sơ '{project_id}'")
+
+    rows = db.query(CashflowTransaction).filter(
+        CashflowTransaction.project_id == project_id
+    ).order_by(CashflowTransaction.created_at.desc()).all()
+
+    thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
+    chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+
+    return {
+        "project_id": project_id,
+        "task_name": project.task_name or "",
+        "contract_id": project.contract_id or "",
+        "tong_thu": thu,
+        "tong_chi": chi,
+        "transactions": _row_bulk(rows, db),
+    }
+
+
+@router.get("/cashflow/cash")
+def cashflow_cash(db: Session = Depends(get_db)):
+    rows = db.query(CashflowTransaction).filter(
+        CashflowTransaction.hinh_thuc == "Tiền mặt"
+    ).order_by(CashflowTransaction.created_at.desc()).all()
+    thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
+    chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+    return {"balance": thu - chi, "tong_thu": thu, "tong_chi": chi, "transactions": _row_bulk(rows, db)}
+
+
+@router.get("/cashflow/bank")
+def cashflow_bank(db: Session = Depends(get_db)):
+    rows = db.query(CashflowTransaction).filter(
+        CashflowTransaction.hinh_thuc == "Chuyển khoản"
+    ).order_by(CashflowTransaction.created_at.desc()).all()
+    thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
+    chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+    return {"balance": thu - chi, "tong_thu": thu, "tong_chi": chi, "transactions": _row_bulk(rows, db)}
+
+
+@router.post("/cashflow/create")
+def create_cashflow(payload: CashflowIn, db: Session = Depends(get_db)):
+    try:
+        _validate_contract(db, payload.contract_id)
+        _validate_project(db, payload.project_id)
+
+        if payload.type == "Chi" and payload.payment_method == "Tiền mặt":
+            _check_cash(db, payload.amount)
+
+        new_id = _voucher_id(payload.type, db)
+        bal_tm, bal_ck, bal_sau = _calculate_balances(db, payload.type, payload.amount, payload.payment_method)
+        if payload.dien_giai:
+            hang_muc = payload.category
+            dien_giai = payload.dien_giai
+        else:
+            hang_muc, dien_giai = _parse_category(payload.category)
+
+        # Get project label for du_an_phong_ban
+        proj_label = ""
+        if payload.project_id:
+            p = db.query(ProjectTask).filter(ProjectTask.id == payload.project_id).first()
+            if p: proj_label = f"{p.id} — {p.task_name or ''}"
+
+        tc = CashflowTransaction(
+            id=new_id,
+            project_id=payload.project_id or None,
+            contract_id=payload.contract_id or None,
+            loai=payload.type,
+            so_tien=payload.amount,
+            hang_muc=hang_muc,
+            nguoi_nhan_nop=payload.payer_payee,
+            hinh_thuc=payload.payment_method,
+            ngay=date.today(),
+            so_chung_tu=new_id,
+            dien_giai=dien_giai,
+            du_an_phong_ban=payload.du_an_phong_ban or proj_label,
+            so_du_sau_gd=bal_sau,
+            so_du_tien_mat=bal_tm,
+            so_du_ck=bal_ck,
+            nguoi_lap=payload.nguoi_lap or "Lê Văn Dựng",
+            nguoi_duyet=payload.nguoi_duyet or "Lê Văn Dựng",
+            trang_thai=payload.trang_thai or "Hoàn thành"
+        )
+        db.add(tc)
+        if payload.type == "Thu" and payload.contract_id:
+            _sync_receivables(db, payload.contract_id, payload.amount)
+        db.commit()
+        return {"status": "success", "id": tc.id, "type": payload.type}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════
+# 2. CHỨNG TỪ & CÔNG NỢ
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/contracts")
+def list_contracts(db: Session = Depends(get_db)):
+    rows = db.query(Contract, Customer.full_name, Customer.phone).outerjoin(
+        Customer, Contract.customer_id == Customer.id
+    ).order_by(Contract.created_at.desc()).all()
+    result = []
+    for contract, cust_name, cust_phone in rows:
+        paid = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+            CashflowTransaction.contract_id == contract.id,
+            CashflowTransaction.loai == "Thu"
+        ).scalar() or 0)
+        total = float(contract.total_value or 0)
+        result.append({
+            "id": contract.id,
+            "customer_name": cust_name or "",
+            "phone": cust_phone or "",
+            "service_type": contract.service_type or "",
+            "total_value": total,
+            "paid_amount": paid,
+            "remaining": max(0.0, total - paid),
+            "date_signed": str(contract.date_signed) if contract.date_signed else "",
+            "file_link": contract.file_link or "",
+        })
+    return result
+
+
+@router.get("/receivables")
+def list_receivables(db: Session = Depends(get_db)):
+    today = date.today()
+    rows = db.query(Receivable).order_by(Receivable.due_date.asc().nullslast()).all()
+    result = []
+    for r in rows:
+        remaining = float(r.remaining_amount or 0)
+        overdue = bool(r.due_date and r.due_date < today and remaining > 0)
+        result.append({
+            "id": r.id,
+            "contract_id": r.contract_id or "",
+            "paid_amount": float(r.paid_amount or 0),
+            "remaining_amount": remaining,
+            "due_date": str(r.due_date) if r.due_date else "",
+            "overdue": overdue,
+            "created_at": r.created_at.strftime("%d/%m/%y") if r.created_at else "",
+        })
+    return result
+
+
+@router.get("/payables")
+def list_payables(db: Session = Depends(get_db)):
+    rows = db.query(CashflowTransaction).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.hinh_thuc == "Chuyển khoản",
+        CashflowTransaction.contract_id.is_(None)
+    ).order_by(CashflowTransaction.created_at.desc()).all()
+    total = sum(float(r.so_tien or 0) for r in rows)
+    return {"total_payable": total, "transactions": _row_bulk(rows, db)}
+
+
+# ══════════════════════════════════════════════════════════════
+# 3. TẠM ỨNG
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/advance")
+def list_advance(db: Session = Depends(get_db)):
+    rows = db.query(CashflowTransaction).filter(
+        CashflowTransaction.loai == "Chi",
+        or_(CashflowTransaction.hang_muc.ilike("%tạm ứng%"),
+            CashflowTransaction.dien_giai.ilike("%tạm ứng%"))
+    ).order_by(CashflowTransaction.created_at.desc()).all()
+    return _row_bulk(rows, db)
+
+
+@router.post("/advance/create")
+def create_advance(payload: AdvanceCreateIn, db: Session = Depends(get_db)):
+    try:
+        if payload.payment_method == "Tiền mặt":
+            _check_cash(db, payload.amount)
+
+        new_id = _voucher_id("Chi", db)
+        bal_tm, bal_ck, bal_sau = _calculate_balances(db, "Chi", payload.amount, payload.payment_method)
+
+        proj_label = ""
+        if payload.project_id:
+            p = db.query(ProjectTask).filter(ProjectTask.id == payload.project_id).first()
+            if p: proj_label = f"{p.id} — {p.task_name or ''}"
+
+        tc = CashflowTransaction(
+            id=new_id,
+            project_id=payload.project_id or None,
+            loai="Chi",
+            so_tien=payload.amount,
+            hang_muc="Chi phí tạm ứng",
+            nguoi_nhan_nop=payload.payer_payee,
+            hinh_thuc=payload.payment_method,
+            ngay=date.today(),
+            so_chung_tu=new_id,
+            dien_giai=f"Tạm ứng: {payload.note or 'Chi công trường'}",
+            du_an_phong_ban=proj_label,
+            so_du_sau_gd=bal_sau,
+            so_du_tien_mat=bal_tm,
+            so_du_ck=bal_ck,
+            trang_thai="Hoàn thành"
+        )
+        db.add(tc)
+        db.commit()
+        return {"status": "success", "id": tc.id, "category": tc.hang_muc}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/advance/clear")
+def clear_advance(payload: AdvanceClearIn, db: Session = Depends(get_db)):
+    try:
+        advance = db.query(CashflowTransaction).filter(
+            CashflowTransaction.id == payload.advance_id
+        ).first()
+        if not advance:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phiếu tạm ứng")
+
+        adv_amt = float(advance.so_tien or 0)
+        actual = payload.actual_amount
+        diff = adv_amt - actual
+        auto_vouchers = []
+
+        if abs(diff) > 0:
+            vtype = "Thu" if diff > 0 else "Chi"
+            note_prefix = "Hoàn ứng thừa" if diff > 0 else "Bù ứng thiếu"
+            new_id = _voucher_id(vtype, db)
+            bal_tm, bal_ck, bal_sau = _calculate_balances(db, vtype, abs(diff), "Tiền mặt")
+
+            tc = CashflowTransaction(
+                id=new_id,
+                project_id=advance.project_id,
+                loai=vtype,
+                so_tien=abs(diff),
+                hang_muc="Quyết toán hoàn ứng",
+                nguoi_nhan_nop=advance.nguoi_nhan_nop,
+                hinh_thuc="Tiền mặt",
+                ngay=date.today(),
+                so_chung_tu=new_id,
+                dien_giai=f"{note_prefix}: {payload.note or ''} (gốc: {payload.advance_id})",
+                du_an_phong_ban=advance.du_an_phong_ban,
+                so_du_sau_gd=bal_sau,
+                so_du_tien_mat=bal_tm,
+                so_du_ck=bal_ck,
+                trang_thai="Hoàn thành"
+            )
+            db.add(tc)
+            auto_vouchers.append({"id": tc.id, "type": vtype, "amount": abs(diff)})
+
+        db.commit()
+        return {
+            "status": "success", "advance_amount": adv_amt,
+            "actual_amount": actual, "difference": diff,
+            "auto_vouchers": auto_vouchers
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════
+# 4. NHÂN SỰ & LƯƠNG
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/payroll")
+def list_payroll(month: str = Query(None), db: Session = Depends(get_db)):
+    employees = db.query(Employee).filter(Employee.is_active == True).all()
+    result = []
+    for emp in employees:
+        q = db.query(KpiPayroll).filter(KpiPayroll.employee_id == emp.id)
+        if month:
+            q = q.filter(KpiPayroll.month == month)
+        kpi = q.order_by(KpiPayroll.created_at.desc()).first()
+        result.append({
+            "id": emp.id, "full_name": emp.full_name or "",
+            "department": emp.department or "",
+            "base_salary": float(emp.base_salary or 0),
+            "kpi_score": float(kpi.kpi_score or 0) if kpi else 0,
+            "bonus": float(kpi.bonus or 0) if kpi else 0,
+            "total_salary": float(kpi.total_salary or 0) if kpi else float(emp.base_salary or 0),
+            "month": kpi.month if kpi else (month or ""),
+            "tasks_completed": kpi.tasks_completed if kpi else 0,
+        })
+    return result
+
+
+@router.get("/payroll/workers")
+def list_worker_wages(project_id: str = Query(None), db: Session = Depends(get_db)):
+    q = db.query(CashflowTransaction).filter(
+        CashflowTransaction.loai == "Chi",
+        or_(CashflowTransaction.hang_muc.ilike("%lương khoán%"),
+            CashflowTransaction.dien_giai.ilike("%lương khoán%"))
+    )
+    if project_id:
+        q = q.filter(CashflowTransaction.project_id == project_id)
+    rows = q.order_by(CashflowTransaction.created_at.desc()).all()
+    total = sum(float(r.so_tien or 0) for r in rows)
+    return {"total_wages": total, "transactions": _row_bulk(rows, db)}
+
+
+@router.get("/payroll/workers/records")
+def get_worker_wage_records(month: str = Query(None), db: Session = Depends(get_db)):
+    q = db.query(CashflowTransaction).filter(
+        CashflowTransaction.loai == "Chi",
+        or_(CashflowTransaction.hang_muc.ilike("%lương khoán%"),
+            CashflowTransaction.dien_giai.ilike("%lương khoán%"))
+    )
+    if month:
+        try:
+            y, m = month.split("-")
+            q = q.filter(
+                extract("year", CashflowTransaction.created_at) == int(y),
+                extract("month", CashflowTransaction.created_at) == int(m)
+            )
+        except Exception:
+            pass
+    
+    rows = q.order_by(CashflowTransaction.created_at.desc()).all()
+    details = []
+    for r in rows:
+        note = (r.dien_giai or "").replace("Lương khoán:", "").strip()
+        details.append({
+            "Nhân sự": r.nguoi_nhan_nop or "Tổ thợ",
+            "Mã hồ sơ": r.project_id or "Chưa gắn",
+            "Công đoạn khoán": note or "Nghiệm thu công việc",
+            "Số tiền khoán": float(r.so_tien or 0),
+            "Phụ cấp": 0.0,
+            "Thưởng/Phạt": 0.0,
+            "Tổng nhận": float(r.so_tien or 0),
+            "Ngày chốt": r.ngay.strftime("%d/%m/%y") if r.ngay else (r.created_at.strftime("%d/%m/%y") if r.created_at else "")
+        })
+    return details
+
+
+@router.post("/payroll/workers/create")
+def create_worker_wage(payload: WageCreateIn, db: Session = Depends(get_db)):
+    try:
+        if payload.payment_method == "Tiền mặt":
+            _check_cash(db, payload.amount)
+
+        new_id = _voucher_id("Chi", db)
+        bal_tm, bal_ck, bal_sau = _calculate_balances(db, "Chi", payload.amount, payload.payment_method)
+
+        proj_label = ""
+        if payload.project_id:
+            p = db.query(ProjectTask).filter(ProjectTask.id == payload.project_id).first()
+            if p: proj_label = f"{p.id} — {p.task_name or ''}"
+
+        tc = CashflowTransaction(
+            id=new_id,
+            project_id=payload.project_id,
+            loai="Chi",
+            so_tien=payload.amount,
+            hang_muc="Lương khoán tổ thợ",
+            nguoi_nhan_nop=payload.payer_payee,
+            hinh_thuc=payload.payment_method,
+            ngay=date.today(),
+            so_chung_tu=new_id,
+            dien_giai=f"Lương khoán: {payload.note or payload.payer_payee}",
+            du_an_phong_ban=proj_label,
+            so_du_sau_gd=bal_sau,
+            so_du_tien_mat=bal_tm,
+            so_du_ck=bal_ck,
+            trang_thai="Hoàn thành"
+        )
+        db.add(tc)
+        db.commit()
+        return {"status": "success", "id": tc.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════
+# 5. BÁO CÁO & LỢI NHUẬN
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/summary")
+def get_summary(db: Session = Depends(get_db)):
+    def _s(type_val, method=None, cat=None):
+        q = db.query(func.sum(CashflowTransaction.so_tien)).filter(
+            CashflowTransaction.loai == type_val)
+        if method:
+            q = q.filter(CashflowTransaction.hinh_thuc == method)
+        if cat:
+            q = q.filter(or_(CashflowTransaction.hang_muc.ilike(f"%{cat}%"),
+                             CashflowTransaction.dien_giai.ilike(f"%{cat}%")))
+        return float(q.scalar() or 0)
+
+    tien_mat = (
+        _s("Thu", "Tiền mặt") - _s("Chi", "Tiền mặt")
+    )
+    ngan_hang = _s("Thu", "Chuyển khoản") - _s("Chi", "Chuyển khoản")
+    tam_ung_net = _s("Chi", cat="tạm ứng") - _s("Thu", cat="hoàn ứng")
+
+    # Monthly trend
+    monthly_raw = db.query(
+        extract("year", CashflowTransaction.created_at).label("yr"),
+        extract("month", CashflowTransaction.created_at).label("mo"),
+        CashflowTransaction.loai,
+        func.sum(CashflowTransaction.so_tien).label("total")
+    ).group_by("yr", "mo", CashflowTransaction.loai).order_by("yr", "mo").all()
+
+    mm: dict = {}
+    for r in monthly_raw:
+        if not r.yr: continue
+        k = f"{int(r.yr):04d}-{int(r.mo):02d}"
+        if k not in mm: mm[k] = {"month": k, "thu": 0, "chi": 0}
+        mm[k]["thu" if r.loai == "Thu" else "chi"] = float(r.total)
+    monthly = sorted(mm.values(), key=lambda x: x["month"])[-12:]
+
+    # Profit by contract
+    thu_by_c = db.query(
+        CashflowTransaction.contract_id,
+        func.sum(CashflowTransaction.so_tien).label("t")
+    ).filter(CashflowTransaction.loai == "Thu",
+             CashflowTransaction.contract_id.isnot(None)
+    ).group_by(CashflowTransaction.contract_id).all()
+
+    chi_by_p = db.query(
+        CashflowTransaction.project_id,
+        func.sum(CashflowTransaction.so_tien).label("t")
+    ).filter(CashflowTransaction.loai == "Chi",
+             CashflowTransaction.project_id.isnot(None)
+    ).group_by(CashflowTransaction.project_id).all()
+
+    pc_map = {p.id: p.contract_id for p in
+              db.query(ProjectTask).filter(ProjectTask.contract_id.isnot(None)).all()}
+    thu_map = {r.contract_id: float(r.t) for r in thu_by_c}
+    chi_map: dict = {}
+    for r in chi_by_p:
+        cid = pc_map.get(r.project_id)
+        if cid:
+            chi_map[cid] = chi_map.get(cid, 0) + float(r.t)
+
+    # Lương khoán gắn project → quy về contract
+    luong_by_p = db.query(
+        CashflowTransaction.project_id,
+        func.sum(CashflowTransaction.so_tien).label("t")
+    ).filter(CashflowTransaction.loai == "Chi",
+             or_(CashflowTransaction.hang_muc.ilike("%lương khoán%"),
+                 CashflowTransaction.dien_giai.ilike("%lương khoán%")),
+             CashflowTransaction.project_id.isnot(None)
+    ).group_by(CashflowTransaction.project_id).all()
+    luong_map: dict = {}
+    for r in luong_by_p:
+        cid = pc_map.get(r.project_id)
+        if cid:
+            luong_map[cid] = luong_map.get(cid, 0) + float(r.t)
+
+    profit_list = [
+        {
+            "contract_id": cid, "thu": thu,
+            "chi": chi_map.get(cid, 0),
+            "luong_khoan": luong_map.get(cid, 0),
+            "profit": thu - chi_map.get(cid, 0) - luong_map.get(cid, 0)
+        }
+        for cid, thu in thu_map.items()
+    ]
+    profit_list.sort(key=lambda x: x["profit"], reverse=True)
+
+    return {
+        "tien_mat": tien_mat,
+        "ngan_hang": ngan_hang,
+        "tam_ung_net": tam_ung_net,
+        "monthly": monthly,
+        "profit_by_contract": profit_list[:20]
+    }
+
+
+@router.get("/projects")
+def list_projects(db: Session = Depends(get_db)):
+    rows = db.query(ProjectTask).order_by(ProjectTask.created_at.desc()).limit(300).all()
+    return [{"id": p.id, "label": f"{p.id} — {p.task_name or p.contract_id or ''}".strip(" —")}
+            for p in rows]
