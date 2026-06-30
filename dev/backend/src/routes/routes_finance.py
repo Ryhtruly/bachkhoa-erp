@@ -4,9 +4,14 @@ from sqlalchemy import func, extract, or_
 from pydantic import BaseModel
 from typing import Optional
 from src.db.database import get_db
+from src.crud.crud_finance import (
+    _row, crud_get_cashflow_detail, crud_create_cashflow, 
+    crud_update_cashflow, _row_bulk, _voucher_id, 
+    _calculate_balances, _sync_receivables, get_setting_value
+)
 from src.db.models import (
     CashflowTransaction, Contract, Customer, Receivable,
-    ProjectTask, Employee, KpiPayroll
+    ProjectTask, Employee, KpiPayroll, FinanceSetting
 )
 from datetime import datetime, date
 import uuid
@@ -30,8 +35,19 @@ class CashflowIn(BaseModel):
     nguoi_lap: Optional[str] = None
     nguoi_duyet: Optional[str] = None
     trang_thai: Optional[str] = None
-    dien_giai: Optional[str] = None
-    du_an_phong_ban: Optional[str] = None
+    ngay: Optional[str] = None
+    scope: Optional[str] = "Công ty"
+
+class CashflowUpdateIn(BaseModel):
+    hang_muc: str
+    nguoi_nhan_nop: str
+    hinh_thuc: str
+    so_tien: float
+    ngay: Optional[str] = None
+    dien_giai: Optional[str] = ""
+    ghi_chu: Optional[str] = ""
+    contract_id: Optional[str] = None
+    scope: Optional[str] = "Công ty"
 
 class AdvanceCreateIn(BaseModel):
     project_id: Optional[str] = None
@@ -51,6 +67,12 @@ class WageCreateIn(BaseModel):
     payer_payee: str
     note: Optional[str] = ""
     payment_method: str = "Tiền mặt"
+
+class FinanceSettingsIn(BaseModel):
+    initial_cash_balance: float = 0.0
+    initial_bank_balance: float = 0.0
+    initial_total_income: float = 0.0
+    initial_total_expenditure: float = 0.0
 
 
 # ══════════════════════════════════════════════════════════════
@@ -220,8 +242,11 @@ def _calculate_balances(db: Session, type_val: str, amount: float, method: str):
         CashflowTransaction.hinh_thuc == "Chuyển khoản"
     ).scalar() or 0)
     
-    bal_tm = thu_tm - chi_tm
-    bal_ck = thu_ck - chi_ck
+    initial_cash = get_setting_value(db, "initial_cash_balance")
+    initial_bank = get_setting_value(db, "initial_bank_balance")
+    
+    bal_tm = initial_cash + thu_tm - chi_tm
+    bal_ck = initial_bank + thu_ck - chi_ck
     
     if method == "Tiền mặt":
         if type_val == "Thu":
@@ -274,6 +299,7 @@ def list_cashflow(
     payment_method: str = Query(None),
     project_id: str = Query(None),
     contract_id: str = Query(None),
+    scope: str = Query(None),
     db: Session = Depends(get_db)
 ):
     q = db.query(CashflowTransaction)
@@ -281,8 +307,8 @@ def list_cashflow(
         try:
             y, m = month.split("-")
             q = q.filter(
-                extract("year", CashflowTransaction.created_at) == int(y),
-                extract("month", CashflowTransaction.created_at) == int(m)
+                extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(y),
+                extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(m)
             )
         except Exception:
             pass
@@ -294,6 +320,8 @@ def list_cashflow(
         q = q.filter(CashflowTransaction.project_id == project_id)
     if contract_id:
         q = q.filter(CashflowTransaction.contract_id == contract_id)
+    if scope and scope != "All":
+        q = q.filter(CashflowTransaction.scope == scope)
     rows = q.order_by(CashflowTransaction.created_at.desc()).all()
     return _row_bulk(rows, db)
 
@@ -346,78 +374,138 @@ def cashflow_by_project(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/cashflow/cash")
-def cashflow_cash(db: Session = Depends(get_db)):
-    rows = db.query(CashflowTransaction).filter(
+def cashflow_cash(
+    month: str = Query(None),
+    type: str = Query(None),
+    payment_method: str = Query(None),
+    project_id: str = Query(None),
+    contract_id: str = Query(None),
+    scope: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    initial_cash = get_setting_value(db, "initial_cash_balance")
+    initial_income = get_setting_value(db, "initial_total_income")
+    initial_expense = get_setting_value(db, "initial_total_expenditure")
+
+    # 1. Compute overall balance (unfiltered)
+    overall_thu = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Thu",
         CashflowTransaction.hinh_thuc == "Tiền mặt"
-    ).order_by(CashflowTransaction.created_at.desc()).all()
-    thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
-    chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
-    return {"balance": thu - chi, "tong_thu": thu, "tong_chi": chi, "transactions": _row_bulk(rows, db)}
+    ).scalar() or 0)
+    overall_chi = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.hinh_thuc == "Tiền mặt"
+    ).scalar() or 0)
+    current_balance = initial_cash + overall_thu - overall_chi
+
+    # 2. Query filtered transactions
+    q = db.query(CashflowTransaction).filter(CashflowTransaction.hinh_thuc == "Tiền mặt")
+    if month:
+        try:
+            y, m = month.split("-")
+            q = q.filter(
+                extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(y),
+                extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(m)
+            )
+        except Exception:
+            pass
+    if type and type not in ("All", ""):
+        q = q.filter(CashflowTransaction.loai == type)
+    if payment_method and payment_method not in ("All", ""):
+        q = q.filter(CashflowTransaction.hinh_thuc == payment_method)
+    if project_id:
+        q = q.filter(CashflowTransaction.project_id == project_id)
+    if contract_id:
+        q = q.filter(CashflowTransaction.contract_id == contract_id)
+    if scope and scope != "All":
+        q = q.filter(CashflowTransaction.scope == scope)
+
+    rows = q.order_by(CashflowTransaction.created_at.desc()).all()
+
+    # 3. Calculate filtered totals
+    filtered_thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
+    filtered_chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+
+    return {
+        "balance": current_balance,
+        "tong_thu": initial_income + filtered_thu,
+        "tong_chi": initial_expense + filtered_chi,
+        "transactions": _row_bulk(rows, db)
+    }
 
 
 @router.get("/cashflow/bank")
-def cashflow_bank(db: Session = Depends(get_db)):
-    rows = db.query(CashflowTransaction).filter(
+def cashflow_bank(
+    month: str = Query(None),
+    type: str = Query(None),
+    payment_method: str = Query(None),
+    project_id: str = Query(None),
+    contract_id: str = Query(None),
+    scope: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    initial_bank = get_setting_value(db, "initial_bank_balance")
+    initial_income = get_setting_value(db, "initial_total_income")
+    initial_expense = get_setting_value(db, "initial_total_expenditure")
+
+    # 1. Compute overall balance (unfiltered)
+    overall_thu = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Thu",
         CashflowTransaction.hinh_thuc == "Chuyển khoản"
-    ).order_by(CashflowTransaction.created_at.desc()).all()
-    thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
-    chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
-    return {"balance": thu - chi, "tong_thu": thu, "tong_chi": chi, "transactions": _row_bulk(rows, db)}
+    ).scalar() or 0)
+    overall_chi = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.hinh_thuc == "Chuyển khoản"
+    ).scalar() or 0)
+    current_balance = initial_bank + overall_thu - overall_chi
+
+    # 2. Query filtered transactions
+    q = db.query(CashflowTransaction).filter(CashflowTransaction.hinh_thuc == "Chuyển khoản")
+    if month:
+        try:
+            y, m = month.split("-")
+            q = q.filter(
+                extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(y),
+                extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(m)
+            )
+        except Exception:
+            pass
+    if type and type not in ("All", ""):
+        q = q.filter(CashflowTransaction.loai == type)
+    if payment_method and payment_method not in ("All", ""):
+        q = q.filter(CashflowTransaction.hinh_thuc == payment_method)
+    if project_id:
+        q = q.filter(CashflowTransaction.project_id == project_id)
+    if contract_id:
+        q = q.filter(CashflowTransaction.contract_id == contract_id)
+    if scope and scope != "All":
+        q = q.filter(CashflowTransaction.scope == scope)
+
+    rows = q.order_by(CashflowTransaction.created_at.desc()).all()
+
+    # 3. Calculate filtered totals
+    filtered_thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
+    filtered_chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+
+    return {
+        "balance": current_balance,
+        "tong_thu": initial_income + filtered_thu,
+        "tong_chi": initial_expense + filtered_chi,
+        "transactions": _row_bulk(rows, db)
+    }
 
 
 @router.post("/cashflow/create")
 def create_cashflow(payload: CashflowIn, db: Session = Depends(get_db)):
-    try:
-        _validate_contract(db, payload.contract_id)
-        _validate_project(db, payload.project_id)
+    return crud_create_cashflow(db, payload)
 
-        if payload.type == "Chi" and payload.payment_method == "Tiền mặt":
-            _check_cash(db, payload.amount)
+@router.get("/cashflow/{transaction_id:path}")
+def get_cashflow_detail(transaction_id: str, db: Session = Depends(get_db)):
+    return crud_get_cashflow_detail(db, transaction_id)
 
-        new_id = _voucher_id(payload.type, db)
-        bal_tm, bal_ck, bal_sau = _calculate_balances(db, payload.type, payload.amount, payload.payment_method)
-        if payload.dien_giai:
-            hang_muc = payload.category
-            dien_giai = payload.dien_giai
-        else:
-            hang_muc, dien_giai = _parse_category(payload.category)
-
-        # Get project label for du_an_phong_ban
-        proj_label = ""
-        if payload.project_id:
-            p = db.query(ProjectTask).filter(ProjectTask.id == payload.project_id).first()
-            if p: proj_label = f"{p.id} — {p.task_name or ''}"
-
-        tc = CashflowTransaction(
-            id=new_id,
-            project_id=payload.project_id or None,
-            contract_id=payload.contract_id or None,
-            loai=payload.type,
-            so_tien=payload.amount,
-            hang_muc=hang_muc,
-            nguoi_nhan_nop=payload.payer_payee,
-            hinh_thuc=payload.payment_method,
-            ngay=date.today(),
-            so_chung_tu=new_id,
-            dien_giai=dien_giai,
-            du_an_phong_ban=payload.du_an_phong_ban or proj_label,
-            so_du_sau_gd=bal_sau,
-            so_du_tien_mat=bal_tm,
-            so_du_ck=bal_ck,
-            nguoi_lap=payload.nguoi_lap or "Lê Văn Dựng",
-            nguoi_duyet=payload.nguoi_duyet or "Lê Văn Dựng",
-            trang_thai=payload.trang_thai or "Hoàn thành"
-        )
-        db.add(tc)
-        if payload.type == "Thu" and payload.contract_id:
-            _sync_receivables(db, payload.contract_id, payload.amount)
-        db.commit()
-        return {"status": "success", "id": tc.id, "type": payload.type}
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+@router.put("/cashflow/{transaction_id:path}")
+def update_cashflow(transaction_id: str, payload: CashflowUpdateIn, db: Session = Depends(get_db)):
+    return crud_update_cashflow(db, transaction_id, payload)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -710,9 +798,14 @@ def create_worker_wage(payload: WageCreateIn, db: Session = Depends(get_db)):
 
 @router.get("/summary")
 def get_summary(db: Session = Depends(get_db)):
+    initial_cash = get_setting_value(db, "initial_cash_balance")
+    initial_bank = get_setting_value(db, "initial_bank_balance")
+
     def _s(type_val, method=None, cat=None):
         q = db.query(func.sum(CashflowTransaction.so_tien)).filter(
-            CashflowTransaction.loai == type_val)
+            CashflowTransaction.loai == type_val,
+            CashflowTransaction.scope == "Công ty"
+        )
         if method:
             q = q.filter(CashflowTransaction.hinh_thuc == method)
         if cat:
@@ -721,18 +814,18 @@ def get_summary(db: Session = Depends(get_db)):
         return float(q.scalar() or 0)
 
     tien_mat = (
-        _s("Thu", "Tiền mặt") - _s("Chi", "Tiền mặt")
+        initial_cash + _s("Thu", "Tiền mặt") - _s("Chi", "Tiền mặt")
     )
-    ngan_hang = _s("Thu", "Chuyển khoản") - _s("Chi", "Chuyển khoản")
+    ngan_hang = initial_bank + _s("Thu", "Chuyển khoản") - _s("Chi", "Chuyển khoản")
     tam_ung_net = _s("Chi", cat="tạm ứng") - _s("Thu", cat="hoàn ứng")
 
     # Monthly trend
     monthly_raw = db.query(
-        extract("year", CashflowTransaction.created_at).label("yr"),
-        extract("month", CashflowTransaction.created_at).label("mo"),
+        extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))).label("yr"),
+        extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))).label("mo"),
         CashflowTransaction.loai,
         func.sum(CashflowTransaction.so_tien).label("total")
-    ).group_by("yr", "mo", CashflowTransaction.loai).order_by("yr", "mo").all()
+    ).filter(CashflowTransaction.scope == "Công ty").group_by("yr", "mo", CashflowTransaction.loai).order_by("yr", "mo").all()
 
     mm: dict = {}
     for r in monthly_raw:
@@ -747,24 +840,26 @@ def get_summary(db: Session = Depends(get_db)):
         CashflowTransaction.contract_id,
         func.sum(CashflowTransaction.so_tien).label("t")
     ).filter(CashflowTransaction.loai == "Thu",
-             CashflowTransaction.contract_id.isnot(None)
+             CashflowTransaction.contract_id.isnot(None),
+             CashflowTransaction.scope == "Công ty"
     ).group_by(CashflowTransaction.contract_id).all()
 
     chi_by_p = db.query(
         CashflowTransaction.project_id,
         func.sum(CashflowTransaction.so_tien).label("t")
     ).filter(CashflowTransaction.loai == "Chi",
-             CashflowTransaction.project_id.isnot(None)
+             CashflowTransaction.project_id.isnot(None),
+             CashflowTransaction.scope == "Công ty"
     ).group_by(CashflowTransaction.project_id).all()
 
     pc_map = {p.id: p.contract_id for p in
               db.query(ProjectTask).filter(ProjectTask.contract_id.isnot(None)).all()}
-    thu_map = {r.contract_id: float(r.t) for r in thu_by_c}
+    thu_map = {r.contract_id: float(r[1]) for r in thu_by_c}
     chi_map: dict = {}
     for r in chi_by_p:
         cid = pc_map.get(r.project_id)
         if cid:
-            chi_map[cid] = chi_map.get(cid, 0) + float(r.t)
+            chi_map[cid] = chi_map.get(cid, 0) + float(r[1])
 
     # Lương khoán gắn project → quy về contract
     luong_by_p = db.query(
@@ -779,7 +874,7 @@ def get_summary(db: Session = Depends(get_db)):
     for r in luong_by_p:
         cid = pc_map.get(r.project_id)
         if cid:
-            luong_map[cid] = luong_map.get(cid, 0) + float(r.t)
+            luong_map[cid] = luong_map.get(cid, 0) + float(r[1])
 
     profit_list = [
         {
@@ -806,3 +901,34 @@ def list_projects(db: Session = Depends(get_db)):
     rows = db.query(ProjectTask).order_by(ProjectTask.created_at.desc()).limit(300).all()
     return [{"id": p.id, "label": f"{p.id} — {p.task_name or p.contract_id or ''}".strip(" —")}
             for p in rows]
+
+
+@router.get("/settings")
+def get_finance_settings(db: Session = Depends(get_db)):
+    return {
+        "initial_cash_balance": get_setting_value(db, "initial_cash_balance"),
+        "initial_bank_balance": get_setting_value(db, "initial_bank_balance"),
+        "initial_total_income": get_setting_value(db, "initial_total_income"),
+        "initial_total_expenditure": get_setting_value(db, "initial_total_expenditure")
+    }
+
+@router.post("/settings")
+def save_finance_settings(payload: FinanceSettingsIn, db: Session = Depends(get_db)):
+    try:
+        keys_and_values = {
+            "initial_cash_balance": payload.initial_cash_balance,
+            "initial_bank_balance": payload.initial_bank_balance,
+            "initial_total_income": payload.initial_total_income,
+            "initial_total_expenditure": payload.initial_total_expenditure
+        }
+        for k, v in keys_and_values.items():
+            setting = db.query(FinanceSetting).filter(FinanceSetting.key == k).first()
+            if setting:
+                setting.value = v
+            else:
+                db.add(FinanceSetting(key=k, value=v))
+        db.commit()
+        return {"status": "success", "message": "Cấu hình số dư đầu kỳ đã được cập nhật thành công"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

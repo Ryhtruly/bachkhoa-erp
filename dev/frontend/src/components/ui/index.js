@@ -8,3 +8,4 @@ export { default as StatCard, StatsGrid } from './StatCard';
 export { default as Modal, FormRow, FormGrid } from './Modal';
 export { default as Card, SectionHeader, EmptyState, Divider } from './Card';
 export { Badge, StatusBadge, WarningBadge, Tag } from './Badge';
+export { Dropdown } from './Dropdown';

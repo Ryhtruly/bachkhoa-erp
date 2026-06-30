@@ -16,13 +16,8 @@ export default function Sidebar({ activeTab, setActiveTab }) {
 
   return (
     <aside className="sidebar">
-      <div className="brand" style={{ padding: '22px 16px 28px 16px', gap: '8px' }}>
-        <div className="brand-logo" style={{ width: '65px', height: '65px', background: 'transparent', boxShadow: 'none', flexShrink: 0 }}>
-          <img src="/src/assets/logo.png" alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        </div>
-        <div className="brand-text" style={{ display: 'flex', alignItems: 'center' }}>
-          <img src="/src/assets/TieuDe.png" alt="Title" style={{ height: '62px', maxWidth: '150px', objectFit: 'contain' }} />
-        </div>
+      <div className="brand">
+        <img src="/src/assets/logo.png" alt="Logo" className="brand-img" />
       </div>
       <nav className="nav">
         <div className="nav-label">Điều hướng</div>

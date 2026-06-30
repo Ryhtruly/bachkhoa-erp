@@ -19,6 +19,10 @@ from src.routes.routes_crm import router as crm_router
 from src.routes.routes_kpi import router as kpi_router
 from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
+from src.db.database import engine, Base
+from src.db.models import *
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="OpenClaw ERP - Bach Khoa")
 

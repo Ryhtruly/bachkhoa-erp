@@ -132,6 +132,7 @@ class CashflowTransaction(Base):
     nguoi_lap = Column(String, nullable=True)
     nguoi_duyet = Column(String, nullable=True)
     trang_thai = Column(String, nullable=True)
+    scope = Column(String, default="Công ty")
 
 class Receivable(Base):
     __tablename__ = "receivables"
@@ -167,3 +168,9 @@ class KpiPayroll(Base):
     total_salary = Column(Numeric, default=0)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+class FinanceSetting(Base):
+    __tablename__ = "finance_settings"
+    key = Column(String, primary_key=True)
+    value = Column(Numeric, default=0.0)
+
