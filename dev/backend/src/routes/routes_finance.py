@@ -6,7 +6,7 @@ from typing import Optional
 from src.db.database import get_db
 from src.crud.crud_finance import (
     _row, crud_get_cashflow_detail, crud_create_cashflow, 
-    crud_update_cashflow, _row_bulk, _voucher_id, 
+    crud_update_cashflow, crud_void_cashflow, _row_bulk, _voucher_id, 
     _calculate_balances, _sync_receivables, get_setting_value,
     get_running_balance
 )
@@ -50,6 +50,10 @@ class CashflowUpdateIn(BaseModel):
     ghi_chu: Optional[str] = ""
     contract_id: Optional[str] = None
     scope: Optional[str] = "Công ty"
+
+class CashflowVoidIn(BaseModel):
+    reason: str
+    actor_id: str = "Lê Văn Dựng"
 
 class AdvanceCreateIn(BaseModel):
     project_id: Optional[str] = None
@@ -479,6 +483,11 @@ def get_cashflow_detail(transaction_id: str, db: Session = Depends(get_db)):
 @router.put("/cashflow/{transaction_id:path}")
 def update_cashflow(transaction_id: str, payload: CashflowUpdateIn, db: Session = Depends(get_db)):
     return crud_update_cashflow(db, transaction_id, payload)
+
+@router.post("/cashflow/{transaction_id:path}/void")
+def void_cashflow(transaction_id: str, payload: CashflowVoidIn, db: Session = Depends(get_db)):
+    return crud_void_cashflow(db, transaction_id, payload.reason, payload.actor_id)
+
 
 
 # ══════════════════════════════════════════════════════════════

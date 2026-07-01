@@ -213,6 +213,15 @@ def _calculate_balances(db: Session, type_val: str, amount: float, method: str):
     return bal_tm, bal_ck, bal_tm + bal_ck
 
 
+def _check_closed_period(db: Session, target_date: date):
+    from src.db.models import FundOpeningBalance
+    latest_snap = db.query(FundOpeningBalance).order_by(FundOpeningBalance.ngay_ap_dung.desc()).first()
+    if latest_snap and latest_snap.ngay_ap_dung:
+        snap_date = latest_snap.ngay_ap_dung.date() if isinstance(latest_snap.ngay_ap_dung, datetime) else latest_snap.ngay_ap_dung
+        if target_date <= snap_date:
+            raise HTTPException(status_code=400, detail="Dữ liệu thuộc kỳ kế toán đã chốt, không thể thêm/sửa/hủy.")
+
+
 def _sync_receivables(db: Session, contract_id: str, amount: float):
     rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
     if rec:
@@ -221,10 +230,12 @@ def _sync_receivables(db: Session, contract_id: str, amount: float):
     else:
         c = db.query(Contract).filter(Contract.id == contract_id).first()
         total = float(c.total_value or 0) if c else 0.0
+        due_date_val = c.date_signed + datetime.timedelta(days=30) if c and c.date_signed else None
         db.add(Receivable(
             contract_id=contract_id,
             paid_amount=amount,
             remaining_amount=max(0.0, total - amount),
+            due_date=due_date_val
         ))
 
 
@@ -283,7 +294,10 @@ def crud_create_cashflow(db: Session, payload):
             if len(parts) == 2:
                 hang_muc, dien_giai = parts
 
-        # 1. Check sensitive category (thụ lý bản vẽ)
+        # 1. Check closed period
+        _check_closed_period(db, parsed_date)
+
+        # 2. Check sensitive category (thụ lý bản vẽ)
         if "thụ lý bản vẽ" in hang_muc.lower():
             if not payload.contract_id and not payload.project_id:
                 raise HTTPException(
@@ -291,11 +305,11 @@ def crud_create_cashflow(db: Session, payload):
                     detail="Hạng mục Chi thụ lý bản vẽ bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án."
                 )
 
-        # 2. Check cash balance for "Chi" and "Tiền mặt"
+        # 3. Check cash balance for "Chi" and "Tiền mặt"
         if payload.type == "Chi" and payload.payment_method == "Tiền mặt":
             _check_cash(db, payload.amount)
 
-        # 3. Customer lookup and autofill contract/project
+        # 4. Customer lookup and autofill contract/project
         contract_id = payload.contract_id or None
         project_id = payload.project_id or None
         if not contract_id and payload.payer_payee:
@@ -303,12 +317,30 @@ def crud_create_cashflow(db: Session, payload):
             if cust:
                 c = db.query(Contract).filter(Contract.customer_id == cust.id).order_by(Contract.created_at.desc()).first()
                 if c:
-                    contract_id = c.id
-                    p = db.query(ProjectTask).filter(ProjectTask.contract_id == c.id).order_by(ProjectTask.created_at.desc()).first()
-                    if p:
-                        project_id = p.id
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Phát hiện đối tác '{payload.payer_payee}' có Hợp đồng. Vui lòng chọn rõ Hợp đồng, không để trống."
+                    )
 
-        # 4. Project vs Non-project classification of project_id
+        # 5. Check Receivables threshold
+        if payload.type == "Thu" and contract_id:
+            rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
+            if rec:
+                if payload.amount > float(rec.remaining_amount or 0):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Số tiền thu ({payload.amount:,.0f}₫) vượt quá công nợ còn lại ({float(rec.remaining_amount or 0):,.0f}₫)"
+                    )
+            else:
+                c = db.query(Contract).filter(Contract.id == contract_id).first()
+                total = float(c.total_value or 0) if c else 0.0
+                if payload.amount > total:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Số tiền thu ({payload.amount:,.0f}₫) vượt quá giá trị hợp đồng ({total:,.0f}₫)"
+                    )
+
+        # 6. Project vs Non-project classification of project_id
         is_operational = False
         op_keywords = ["văn phòng phẩm", "tiếp khách", "điện nước", "bảo hiểm", "công tác phí", "shipper", "vận hành", "quản lý"]
         for kw in op_keywords:
@@ -393,78 +425,154 @@ def crud_create_cashflow(db: Session, payload):
         raise HTTPException(status_code=500, detail=str(e))
 
 def crud_update_cashflow(db: Session, transaction_id: str, payload):
-    t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Không tìm thấy phiếu thu/chi này")
-    
-    if t.trang_thai in ["Hoàn thành", "Đã duyệt"]:
-        if hasattr(payload, 'contract_id') and payload.contract_id is not None:
-            if t.contract_id != payload.contract_id:
-                if t.loai == "Thu":
-                    if t.contract_id: _sync_receivables(db, t.contract_id, -float(t.so_tien))
-                    if payload.contract_id: _sync_receivables(db, payload.contract_id, float(t.so_tien))
-                t.contract_id = payload.contract_id
-                db.commit()
-                return {"status": "success", "message": "Đã cập nhật hợp đồng"}
-            return {"status": "success", "message": "Không thay đổi gì"}
-        raise HTTPException(status_code=400, detail="Phiếu đã hoàn thành, không thể sửa số tiền/thông tin khác")
+    try:
+        t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phiếu thu/chi này")
 
-    # 1. Validate sensitive category
-    if "thụ lý bản vẽ" in payload.hang_muc.lower():
-        if not payload.contract_id and not t.project_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Hạng mục Chi thụ lý bản vẽ bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án."
-            )
+        parsed_date = t.ngay
+        if payload.ngay:
+            try:
+                parsed_date = datetime.strptime(payload.ngay, "%Y-%m-%d").date()
+            except ValueError:
+                pass
 
-    old_amount = float(t.so_tien)
-    new_amount = float(payload.so_tien)
-    amount_diff = new_amount - old_amount
-    
-    # 2. Check cash balance
-    if t.loai == "Chi" and payload.hinh_thuc == "Tiền mặt":
-        _check_cash(db, new_amount, exclude_transaction_id=t.id)
+        _check_closed_period(db, t.ngay or date.today())
+        if parsed_date and parsed_date != t.ngay:
+            _check_closed_period(db, parsed_date)
+        
+        if t.trang_thai in ["Hoàn thành", "Đã duyệt"]:
+            if hasattr(payload, 'contract_id') and payload.contract_id is not None:
+                if t.contract_id != payload.contract_id:
+                    if t.loai == "Thu":
+                        if t.contract_id: _sync_receivables(db, t.contract_id, -float(t.so_tien))
+                        if payload.contract_id: _sync_receivables(db, payload.contract_id, float(t.so_tien))
+                    t.contract_id = payload.contract_id
+                    db.commit()
+                    return {"status": "success", "message": "Đã cập nhật hợp đồng"}
+                return {"status": "success", "message": "Không thay đổi gì"}
+            raise HTTPException(status_code=400, detail="Phiếu đã hoàn thành, không thể sửa số tiền/thông tin khác")
 
-    if amount_diff != 0:
-        _calculate_balances(db, t.loai, amount_diff, payload.hinh_thuc)
-        if t.loai == "Thu" and t.contract_id:
-            _sync_receivables(db, t.contract_id, amount_diff)
+        # 1. Validate sensitive category
+        if "thụ lý bản vẽ" in payload.hang_muc.lower():
+            if not payload.contract_id and not t.project_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Hạng mục Chi thụ lý bản vẽ bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án."
+                )
 
-    t.hang_muc = payload.hang_muc
-    t.nguoi_nhan_nop = payload.nguoi_nhan_nop
-    t.hinh_thuc = payload.hinh_thuc
-    t.so_tien = new_amount
-    t.dien_giai = payload.dien_giai
-    t.contract_id = payload.contract_id or None
-    if payload.scope:
-        t.scope = payload.scope
-    if payload.ngay:
-        try:
-            t.ngay = datetime.strptime(payload.ngay, "%Y-%m-%d").date()
-        except ValueError:
-            pass
+        old_amount = float(t.so_tien)
+        new_amount = float(payload.so_tien)
+        amount_diff = new_amount - old_amount
+        
+        # 2. Check cash balance
+        if t.loai == "Chi" and payload.hinh_thuc == "Tiền mặt":
+            _check_cash(db, new_amount, exclude_transaction_id=t.id)
 
-    # Create audit log
-    from src.db.models import AuditLog, User
-    actor_id_val = t.nguoi_lap or "Lê Văn Dựng"
-    actor_exists = db.query(User.id).filter(User.id == actor_id_val).first()
-    actor_id_val = actor_id_val if actor_exists else None
+        if amount_diff != 0:
+            _calculate_balances(db, t.loai, amount_diff, payload.hinh_thuc)
+            if t.loai == "Thu" and t.contract_id:
+                _sync_receivables(db, t.contract_id, amount_diff)
 
-    db.add(AuditLog(
-        actor_id=actor_id_val,
-        action="UPDATE",
-        object_type="CashflowTransaction",
-        payload_json={
-            "id": t.id,
-            "old": {
-                "amount": old_amount
-            },
-            "new": {
-                "amount": new_amount,
-                "Diễn giải": payload.dien_giai
+        t.hang_muc = payload.hang_muc
+        t.nguoi_nhan_nop = payload.nguoi_nhan_nop
+        t.hinh_thuc = payload.hinh_thuc
+        t.so_tien = new_amount
+        t.dien_giai = payload.dien_giai
+        t.contract_id = payload.contract_id or None
+        if payload.scope:
+            t.scope = payload.scope
+        t.ngay = parsed_date
+
+        # Create audit log
+        from src.db.models import AuditLog, User
+        actor_id_val = t.nguoi_lap or "Lê Văn Dựng"
+        actor_exists = db.query(User.id).filter(User.id == actor_id_val).first()
+        actor_id_val = actor_id_val if actor_exists else None
+
+        db.add(AuditLog(
+            actor_id=actor_id_val,
+            action="UPDATE",
+            object_type="CashflowTransaction",
+            payload_json={
+                "id": t.id,
+                "old": {
+                    "amount": old_amount
+                },
+                "new": {
+                    "amount": new_amount,
+                    "Diễn giải": payload.dien_giai
+                }
             }
-        }
-    ))
+        ))
 
-    db.commit()
-    return {"status": "success"}
+        db.commit()
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+def crud_void_cashflow(db: Session, transaction_id: str, reason: str, actor_id: str):
+    try:
+        t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
+        
+        if t.trang_thai == "Đã hủy":
+            raise HTTPException(status_code=400, detail="Phiếu này đã bị hủy trước đó.")
+        
+        _check_closed_period(db, t.ngay or date.today())
+        
+        t.trang_thai = "Đã hủy"
+        t.voided_reason = reason
+        t.voided_at = datetime.now()
+        
+        # 1. Sync Receivables backward if it was Thu
+        if t.loai == "Thu" and t.contract_id:
+            _sync_receivables(db, t.contract_id, -float(t.so_tien))
+        
+        # 2. Reverse Entry to correct Running Balance without deleting
+        reverse_type = "Chi" if t.loai == "Thu" else "Thu"
+        rev_id = _voucher_id(reverse_type, db)
+        bal_tm, bal_ck, bal_sau = _calculate_balances(db, reverse_type, float(t.so_tien), t.hinh_thuc)
+        
+        reverse_tc = CashflowTransaction(
+            id=rev_id,
+            project_id=t.project_id,
+            contract_id=t.contract_id,
+            loai=reverse_type,
+            so_tien=t.so_tien,
+            hang_muc="Hoàn tác (Hủy phiếu)",
+            nguoi_nhan_nop=t.nguoi_nhan_nop,
+            hinh_thuc=t.hinh_thuc,
+            ngay=date.today(),
+            so_chung_tu=rev_id,
+            dien_giai=f"Hủy tự động cho phiếu gốc: {t.id} - Lý do: {reason}",
+            du_an_phong_ban=t.du_an_phong_ban,
+            so_du_sau_gd=bal_sau,
+            so_du_tien_mat=bal_tm,
+            so_du_ck=bal_ck,
+            nguoi_lap=actor_id,
+            trang_thai="Hoàn thành",
+            scope=t.scope
+        )
+        db.add(reverse_tc)
+        
+        from src.db.models import AuditLog
+        db.add(AuditLog(
+            actor_id=actor_id,
+            action="VOID",
+            object_type="CashflowTransaction",
+            payload_json={"id": t.id, "reason": reason}
+        ))
+        
+        db.commit()
+        return {"status": "success", "message": "Đã hủy và tạo reverse entry thành công."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+

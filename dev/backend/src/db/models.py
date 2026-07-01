@@ -133,6 +133,8 @@ class CashflowTransaction(Base):
     nguoi_duyet = Column(String, nullable=True)
     trang_thai = Column(String, nullable=True)
     scope = Column(String, default="Công ty")
+    voided_reason = Column(String, nullable=True)
+    voided_at = Column(DateTime(timezone=True), nullable=True)
 
 class Receivable(Base):
     __tablename__ = "receivables"
