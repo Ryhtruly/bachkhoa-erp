@@ -172,10 +172,38 @@ const docSoTiengViet = (number) => {
 
 // Shared: CashflowModal (dùng cho phiếu Thu/Chi)
 // ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+const CATEGORY_AUTO_MAPPING = {
+  "Văn phòng phẩm": {
+    phong_ban: "Phòng Kỹ Thuật",
+    doi_tac: "Hằng",
+    nguoi_lap: "Hằng",
+    nguoi_duyet: "Giám đốc"
+  },
+  "In ấn - Photocopy": {
+    phong_ban: "Phòng Pháp Lý",
+    doi_tac: "Nguyễn Thị A",
+    nguoi_lap: "Nguyễn Thị A",
+    nguoi_duyet: "Giám đốc"
+  },
+  "Chi quầy tiếp nhận": {
+    phong_ban: "Phòng Marketing",
+    doi_tac: "Nhân viên Marketing",
+    nguoi_lap: "Nhân viên Marketing",
+    nguoi_duyet: "Giám đốc"
+  },
+  "Chi thụ lý bản vẽ": {
+    phong_ban: "Phòng Kỹ Thuật",
+    doi_tac: "Lê Văn Dựng",
+    nguoi_lap: "Lê Văn Dựng",
+    nguoi_duyet: "Giám đốc"
+  }
+};
+
 function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
   const [type, setType] = useState(defaultType);
   const [amtDisplay, setAmtDisplay] = useState('');
-  const [form, setForm] = useState({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '' });
+  const [form, setForm] = useState({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', du_an_phong_ban: '', nguoi_lap: '', nguoi_duyet: '' });
   const [hangMuc, setHangMuc] = useState('Sinh hoạt gia đình');
   const [customHangMuc, setCustomHangMuc] = useState('');
   const [dienGiai, setDienGiai] = useState('');
@@ -189,7 +217,7 @@ function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
     if (open) {
       setType(defaultType);
       setAmtDisplay('');
-      setForm({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '' });
+      setForm({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', du_an_phong_ban: '', nguoi_lap: '', nguoi_duyet: '' });
       setHangMuc('Sinh hoạt gia đình');
       setCustomHangMuc('');
       setDienGiai('');
@@ -212,6 +240,12 @@ function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
 
     const finalCategory = (hangMuc === 'Khác' ? (customHangMuc.trim() || 'Khác') : hangMuc) + ': ' + dienGiai.trim();
 
+    // Validation constraint for "Chi thụ lý bản vẽ"
+    if (hangMuc === 'Chi thụ lý bản vẽ' && !form.contract_id && !form.project_id) {
+      setError("Hạng mục 'Chi thụ lý bản vẽ' bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án!");
+      return;
+    }
+
     setSubmitting(true); setError('');
     try {
       const res = await fetch(`${API}/api/finance/cashflow/create`, {
@@ -222,7 +256,10 @@ function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
           ...form,
           category: finalCategory,
           contract_id: form.contract_id || null,
-          project_id: form.project_id || null
+          project_id: form.project_id || null,
+          du_an_phong_ban: form.du_an_phong_ban || null,
+          nguoi_lap: form.nguoi_lap || null,
+          nguoi_duyet: form.nguoi_duyet || null
         })
       });
       if (res.ok) {
@@ -298,11 +335,23 @@ function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
           <FormRow label="Hạng mục" required>
             <Dropdown
               value={hangMuc}
-              onChange={(val) => setHangMuc(val)}
+              onChange={(val) => {
+                setHangMuc(val);
+                const mapping = CATEGORY_AUTO_MAPPING[val];
+                if (mapping) {
+                  setForm(prev => ({
+                    ...prev,
+                    payer_payee: mapping.doi_tac,
+                    du_an_phong_ban: mapping.phong_ban,
+                    nguoi_lap: mapping.nguoi_lap,
+                    nguoi_duyet: mapping.nguoi_duyet
+                  }));
+                }
+              }}
               options={[
                 { value: "Sinh hoạt gia đình", label: "🏠 Sinh hoạt gia đình" },
                 { value: "Chi bảo vệ", label: "🛡️ Chi bảo vệ" },
-                { value: "Chi thụ lý bản vẽ", label: "📐 Chi thụ lý bản vẽ" },
+                { value: "Chi thụ lý bản vẽ", label: "📐 Chi thụ lý bản vẽ (Yêu cầu HS/DA)" },
                 { value: "Viết hồ sơ", label: "✍️ Viết hồ sơ" },
                 { value: "Bản vẽ cấp giấy", label: "📄 Bản vẽ cấp giấy" },
                 { value: "Văn phòng phẩm", label: "✏️ Văn phòng phẩm" },
@@ -343,10 +392,10 @@ function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
               onChange={e => setDienGiai(e.target.value)}
               placeholder="Nhập chi tiết diễn giải giao dịch..." />
           </FormRow>
-          <FormRow label="Hợp đồng liên kết">
+          <FormRow label="Hợp đồng liên kết" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.project_id}>
             <input type="text" className="form-control" placeholder="Nhập ID hợp đồng..." value={form.contract_id || ''} onChange={e => setForm({ ...form, contract_id: e.target.value })} />
           </FormRow>
-          <FormRow label="Hồ sơ / Dự án">
+          <FormRow label="Hồ sơ / Dự án" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.contract_id}>
             <input type="text" className="form-control" placeholder="Nhập ID hồ sơ..." value={form.project_id || ''} onChange={e => setForm({ ...form, project_id: e.target.value })} />
           </FormRow>
         </FormGrid>
@@ -649,7 +698,20 @@ const CF_COLS = [
   { key: 'contract_id', label: '', width: 32, align: 'center', render: v => v ? <Link size={14} color="#eb4a23" title="Đã gắn hồ sơ" style={{ marginTop: 4 }} /> : null },
   { key: 'Ngày', label: 'Ngày', width: 95, render: v => <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.83rem' }}>{v}</span> },
   { key: 'id', label: 'Mã phiếu', width: 160, render: v => <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>{v}</strong> },
-  { key: 'Hạng mục', label: 'Hạng mục', width: 300 },
+  {
+    key: 'Hạng mục', label: 'Hạng mục', width: 300,
+    render: (v) => {
+      const isSensitive = v === 'Chi thụ lý bản vẽ' || (v && v.startsWith('Chi thụ lý bản vẽ:'));
+      return (
+        <span style={{
+          fontWeight: isSensitive ? 'bold' : 'normal',
+          color: isSensitive ? '#dc2626' : 'inherit'
+        }}>
+          {v}
+        </span>
+      );
+    }
+  },
   { key: 'Diễn giải', label: 'Diễn giải' },
   { key: 'Đối tác', label: 'Đối tác', width: 200 },
   {
@@ -870,7 +932,7 @@ function ContractsScreen() {
     <div>
       <div className="finance-screen-header">
         <div>
-          <div className="finance-screen-title">📜 Hợp Đồng & Hóa Đơn</div>
+          <div className="finance-screen-title"> Hợp Đồng & Hóa Đơn</div>
           <div className="finance-screen-sub">Danh sách {data.length} hợp đồng — Xây dựng & Bất động sản</div>
         </div>
       </div>
@@ -938,7 +1000,7 @@ function PayablesScreen() {
     <div>
       <div className="finance-screen-header">
         <div>
-          <div className="finance-screen-title">📤 Công Nợ Phải Trả</div>
+          <div className="finance-screen-title">Công Nợ Phải Trả</div>
           <div className="finance-screen-sub">Chi chuyển khoản không gắn hợp đồng — Nhà cung cấp / Nhà thầu phụ</div>
         </div>
         <div className="balance-card" style={{ padding: '12px 20px' }}>
@@ -960,11 +1022,28 @@ function AdvanceRequestScreen() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [projects, setProjects] = useState([]);
-  const [form, setForm] = useState({ project_id: '', amount: '', payer_payee: '', note: '', payment_method: 'Tiền mặt' });
+  const [form, setForm] = useState({
+    project_id: '',
+    contract_id: '',
+    amount: '',
+    payer_payee: '',
+    note: '',
+    payment_method: 'Tiền mặt',
+    du_an_phong_ban: '',
+    nguoi_lap: 'Lê Văn Dựng',
+    ke_toan: 'Nguyễn Thị A',
+    nguoi_duyet: 'Lê Văn Dựng',
+    trang_thai: 'Hoàn thành'
+  });
   const [amtDisplay, setAmtDisplay] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { addToast } = useToast();
+
+  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState({ payment_method: 'All', trang_thai: 'All' });
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [sort, setSort] = useState('desc');
 
   const load = async () => {
     setLoading(true);
@@ -986,10 +1065,21 @@ function AdvanceRequestScreen() {
     try {
       const res = await fetch(`${API}/api/finance/advance/create`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, amount, project_id: form.project_id || null })
+        body: JSON.stringify({
+          project_id: form.project_id || null,
+          contract_id: form.contract_id || null,
+          amount,
+          payer_payee: form.payer_payee,
+          note: form.note,
+          payment_method: form.payment_method,
+          nguoi_lap: form.nguoi_lap,
+          nguoi_duyet: form.nguoi_duyet,
+          trang_thai: form.trang_thai,
+          du_an_phong_ban: form.du_an_phong_ban || null
+        })
       });
       if (res.ok) {
-        addToast('✅ Đã tạo phiếu tạm ứng', 'success');
+        addToast(' Đã tạo phiếu tạm ứng', 'success');
         setModal(false); load();
       } else {
         const err = await res.json();
@@ -999,45 +1089,209 @@ function AdvanceRequestScreen() {
     finally { setSubmitting(false); }
   };
 
+  const filtered = data.filter(t => {
+    if (search) {
+      const q = search.toLowerCase();
+      const matchSearch =
+        (t.id || '').toLowerCase().includes(q) ||
+        (t['Đối tác'] || t.nguoi_nhan_nop || '').toLowerCase().includes(q) ||
+        (t.dien_giai || '').toLowerCase().includes(q) ||
+        (t.hang_muc || '').toLowerCase().includes(q);
+      if (!matchSearch) return false;
+    }
+    if (filters.payment_method !== 'All') {
+      if (t['Hình thức'] !== filters.payment_method && t.hinh_thuc !== filters.payment_method) return false;
+    }
+    if (filters.trang_thai !== 'All') {
+      if (t.trang_thai !== filters.trang_thai) return false;
+    }
+    if (month) {
+      const tDate = t.ngay || (t.created_at ? t.created_at.slice(0, 10) : '');
+      if (!tDate.startsWith(month)) return false;
+    }
+    return true;
+  });
+
+  const sortedFiltered = [...filtered].sort((a, b) => {
+    const dateA = a.ngay || a.created_at || '';
+    const dateB = b.ngay || b.created_at || '';
+    if (dateA !== dateB) {
+      return sort === 'desc' ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+    }
+    return sort === 'desc' ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
+  });
+
   return (
     <div>
       <div className="finance-screen-header">
         <div>
-          <div className="finance-screen-title">⏳ Đề Xuất Tạm Ứng</div>
+          <div className="finance-screen-title"> Đề Xuất Tạm Ứng</div>
           <div className="finance-screen-sub">Ứng tiền mặt cho kỹ sư/chỉ huy trưởng trước khi ra công trường</div>
         </div>
-        <button className="btn btn-primary" onClick={() => { setModal(true); setAmtDisplay(''); setForm({ project_id: '', payer_payee: '', note: '', payment_method: 'Tiền mặt' }); setError(''); }}
+        <button className="btn btn-primary" onClick={() => { setModal(true); setAmtDisplay(''); setForm({ project_id: '', contract_id: '', payer_payee: '', note: '', payment_method: 'Tiền mặt', du_an_phong_ban: '', nguoi_lap: 'Lê Văn Dựng', ke_toan: 'Nguyễn Thị A', nguoi_duyet: 'Lê Văn Dựng', trang_thai: 'Hoàn thành' }); setError(''); }}
           style={{ height: 36, display: 'flex', alignItems: 'center', gap: 6 }}>
           <PlusCircle size={15} /> Đề Xuất Tạm Ứng
         </button>
       </div>
-      <DataTable columns={CF_COLS} data={data} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng" pageSize={15} />
 
-      <Modal open={modal} onClose={() => setModal(false)} size="sm" title="⏳ Đề Xuất Tạm Ứng">
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Tìm số phiếu, đối tác, dự án..."
+        filters={[
+          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 160, options: [{ value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] },
+          { key: 'trang_thai', label: 'Trạng thái', type: 'select', width: 140, options: [{ value: 'Hoàn thành', label: 'Hoàn thành' }, { value: 'Chờ duyệt', label: 'Chờ duyệt' }] }
+        ]}
+        values={filters}
+        onFilterChange={(k, v) => setFilters(p => ({ ...p, [k]: v }))}
+        onReset={() => { setSearch(''); setFilters({ payment_method: 'All', trang_thai: 'All' }); setMonth(() => new Date().toISOString().slice(0, 7)); setSort('desc'); }}
+        month={month}
+        onMonthChange={setMonth}
+        sort={sort}
+        onSortChange={setSort}
+      />
+
+      {sortedFiltered.length > 0 && (
+        <div className="summary-strip">
+          <span style={{ color: 'var(--text-tertiary)' }}>{sortedFiltered.length} đề xuất</span>
+          <span style={{ color: '#ef4444', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+            Tổng tạm ứng: −{fmt(sortedFiltered.reduce((s, t) => s + (t.amount || t.so_tien || 0), 0))}
+          </span>
+        </div>
+      )}
+
+      <DataTable columns={CF_COLS} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng" pageSize={15} />
+
+      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="⏳ Đề Xuất Tạm Ứng">
         <form onSubmit={handleSubmit}>
-          <FormGrid cols={1}>
-            <FormRow label="Số tiền tạm ứng" required>
-              <input required className="form-control" value={amtDisplay} onChange={e => setAmtDisplay(fmtAmt(e.target.value))}
-                type="text" inputMode="numeric" placeholder="0₫"
-                style={{ fontWeight: 700, fontSize: '1.2rem', textAlign: 'right', color: '#ef4444' }} />
-            </FormRow>
-            <FormRow label="Người nhận tạm ứng" required>
-              <input required className="form-control" value={form.payer_payee} onChange={e => setForm({ ...form, payer_payee: e.target.value })} placeholder="Tên kỹ sư / chỉ huy trưởng..." />
-            </FormRow>
-            <FormRow label="Hồ sơ / Công trình">
-              <input type="text" className="form-control" placeholder="Nhập ID dự án..." value={form.project_id || ''} onChange={e => setForm({ ...form, project_id: e.target.value })} />
-            </FormRow>
-            <FormRow label="Mục đích tạm ứng">
-              <input className="form-control" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="VD: Mua xi măng, sắt thép..." />
-            </FormRow>
-            <FormRow label="Hình thức">
-              <select className="form-control" value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}>
-                <option value="Tiền mặt">💵 Tiền mặt</option>
-                <option value="Chuyển khoản">🏦 Chuyển khoản</option>
-              </select>
-            </FormRow>
-          </FormGrid>
-          {error && <div style={{ marginTop: 12, color: '#ef4444', fontSize: '0.88rem' }}>⚠️ {error}</div>}
+          <table className="excel-grid-table">
+            <tbody>
+              <tr>
+                <td colSpan={2} style={{ width: '40%', textAlign: 'center', padding: '15px 10px', verticalAlign: 'middle', fontWeight: 'bold' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <img src="/src/assets/logo.png" alt="LOGO" style={{ height: 42, objectFit: 'contain' }} />
+                    <span style={{ fontSize: '0.75rem', letterSpacing: 0.5, opacity: 0.8 }}>BÁCH KHOA ERP</span>
+                  </div>
+                </td>
+                <td colSpan={2} style={{ width: '60%', textAlign: 'center', padding: '15px 10px' }}>
+                  <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, letterSpacing: 1, color: '#f59e0b' }}>
+                    PHIẾU TẠM ỨNG
+                  </h2>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: '0.82rem', color: '#444' }}>
+                    <span>Ngày in: {new Date().toLocaleDateString('vi-VN')}</span>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ fontWeight: 'bold', width: '15%' }}>Số CT</td>
+                <td style={{ width: '35%' }}>
+                  <input type="text" readOnly placeholder="Hệ thống tự tạo..." style={{ fontWeight: 'bold', fontFamily: 'monospace' }} />
+                </td>
+                <td style={{ fontWeight: 'bold', width: '15%' }}>Ngày</td>
+                <td style={{ width: '35%' }}>
+                  <input type="text" value={form.ngay || new Date().toLocaleDateString('vi-VN')} onChange={e => setForm({ ...form, ngay: e.target.value })} style={{ fontFamily: 'monospace' }} required />
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ fontWeight: 'bold' }}>Diễn giải</td>
+                <td>
+                  <input type="text" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="VD: Tạm ứng đi đường, mua vật tư..." required />
+                </td>
+                <td style={{ fontWeight: 'bold' }}>Hạng mục</td>
+                <td>
+                  <input type="text" readOnly value="Chi phí tạm ứng" style={{ fontWeight: 'bold' }} />
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ fontWeight: 'bold' }}>Người nhận</td>
+                <td>
+                  <input type="text" value={form.payer_payee} onChange={e => setForm({ ...form, payer_payee: e.target.value })} placeholder="Nhập tên người nhận..." required />
+                </td>
+                <td style={{ fontWeight: 'bold' }}>Hình thức</td>
+                <td>
+                  <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}>
+                    <option value="Tiền mặt"> Tiền mặt</option>
+                    <option value="Chuyển khoản"> Chuyển khoản</option>
+                  </select>
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ fontWeight: 'bold' }}>Phòng ban</td>
+                <td>
+                  <input type="text" value={form.du_an_phong_ban} onChange={e => setForm({ ...form, du_an_phong_ban: e.target.value })} placeholder="Phòng Kỹ Thuật, Phòng Công Trường..." />
+                </td>
+                <td style={{ fontWeight: 'bold' }}>Số tiền</td>
+                <td>
+                  <input
+                    type="text"
+                    value={amtDisplay}
+                    onChange={e => setAmtDisplay(fmtAmt(e.target.value))}
+                    placeholder="0"
+                    style={{ fontWeight: 'bold', textAlign: 'right', color: '#f59e0b', fontSize: '1.1rem' }}
+                    required
+                  />
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ fontWeight: 'bold' }}>Trạng thái</td>
+                <td>
+                  <input type="text" value={form.trang_thai} onChange={e => setForm({ ...form, trang_thai: e.target.value })} placeholder="Hoàn thành, Chờ duyệt..." />
+                </td>
+                <td style={{ fontWeight: 'bold' }}>Mã dự án / HĐ</td>
+                <td>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input type="text" placeholder="Dự án..." value={form.project_id || ''} onChange={e => setForm({ ...form, project_id: e.target.value })} style={{ fontSize: '0.82rem', width: '50%' }} />
+                    <input type="text" placeholder="HĐ..." value={form.contract_id || ''} onChange={e => setForm({ ...form, contract_id: e.target.value })} style={{ fontSize: '0.82rem', width: '50%' }} />
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td colSpan={4} style={{ padding: '12px 10px', fontSize: '0.98rem', borderBottom: '2px solid #000' }}>
+                  <strong>Số tiền (bằng chữ):</strong> <span style={{ fontStyle: 'italic', textDecoration: 'underline' }}>{docSoTiengViet(parseAmt(amtDisplay))}</span>
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ height: 130, padding: '10px 5px' }}>
+                  <div className="signature-title">Người lập</div>
+                  <div className="signature-sub">(Ký, ghi rõ họ tên)</div>
+                  <div className="signature-input">
+                    <input type="text" value={form.nguoi_lap} onChange={e => setForm({ ...form, nguoi_lap: e.target.value })} style={{ fontSize: '0.85rem' }} />
+                  </div>
+                </td>
+                <td style={{ height: 130, padding: '10px 5px' }}>
+                  <div className="signature-title">Kế toán</div>
+                  <div className="signature-sub">(Ký, ghi rõ họ tên)</div>
+                  <div className="signature-input">
+                    <input type="text" value={form.ke_toan} onChange={e => setForm({ ...form, ke_toan: e.target.value })} style={{ fontSize: '0.85rem' }} />
+                  </div>
+                </td>
+                <td style={{ height: 130, padding: '10px 5px' }}>
+                  <div className="signature-title">Người duyệt</div>
+                  <div className="signature-sub">(Ký, ghi rõ họ tên)</div>
+                  <div className="signature-input">
+                    <input type="text" value={form.nguoi_duyet} onChange={e => setForm({ ...form, nguoi_duyet: e.target.value })} style={{ fontSize: '0.85rem' }} />
+                  </div>
+                </td>
+                <td style={{ height: 130, padding: '10px 5px' }}>
+                  <div className="signature-title">Người nhận</div>
+                  <div className="signature-sub">(Ký, ghi rõ họ tên)</div>
+                  <div className="signature-input">
+                    <input type="text" readOnly value={form.payer_payee} style={{ fontSize: '0.85rem', color: '#555' }} />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          {error && <div style={{ marginTop: 12, color: '#ef4444', fontSize: '0.88rem' }}>{error}</div>}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-default)' }}>
             <button type="button" className="btn btn-secondary" onClick={() => setModal(false)}>Hủy</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? '⏳...' : 'Tạo Phiếu Tạm Ứng'}</button>
@@ -1063,6 +1317,11 @@ function AdvanceClearScreen() {
   const [error, setError] = useState('');
   const { addToast } = useToast();
 
+  const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState({ payment_method: 'All' });
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [sort, setSort] = useState('desc');
+
   const load = async () => {
     setLoading(true);
     const r = await fetch(`${API}/api/finance/advance`);
@@ -1086,7 +1345,7 @@ function AdvanceClearScreen() {
       if (res.ok) {
         const d = await res.json();
         setResult(d);
-        addToast('✅ Quyết toán thành công — phiếu bù đã tạo tự động', 'success');
+        addToast(' Quyết toán thành công — phiếu bù đã tạo tự động', 'success');
         load();
       } else {
         const err = await res.json();
@@ -1106,7 +1365,7 @@ function AdvanceClearScreen() {
     <div>
       <div className="finance-screen-header">
         <div>
-          <div className="finance-screen-title">✅ Quyết Toán Hoàn Ứng</div>
+          <div className="finance-screen-title"> Quyết Toán Hoàn Ứng</div>
           <div className="finance-screen-sub">Đối chiếu hóa đơn thực tế vs tạm ứng — Hệ thống tự tạo phiếu bù</div>
         </div>
       </div>
@@ -1546,9 +1805,11 @@ function AnalyticsScreen({ mode = 'dashboard' }) {
 // ════════════════════════════════════════════════════════════════════════════
 function PrintVoucherScreen() {
   const [mode, setMode] = useState('print'); // 'print' | 'create'
-  const [txType, setTxType] = useState('Chi'); // 'Thu' | 'Chi'
+  const [txType, setTxType] = useState('Chi'); // 'Thu' | 'Chi' | 'Tạm ứng' | 'Hoàn ứng'
   const [transactions, setTransactions] = useState([]);
   const [selectedId, setSelectedId] = useState('');
+  const [activeAdvances, setActiveAdvances] = useState([]);
+  const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
 
   const defaultNguoiLap = 'Lê Văn Dựng';
   const defaultKeToan = 'Nguyễn Thị A';
@@ -1584,6 +1845,13 @@ function PrintVoucherScreen() {
     } catch (e) { }
   };
 
+  const fetchActiveAdvances = async () => {
+    try {
+      const res = await fetch(`${API}/api/finance/advance`);
+      if (res.ok) setActiveAdvances(await res.json());
+    } catch (e) { }
+  };
+
   const fetchContractsAndProjects = async () => {
     try {
       const rC = await fetch(`${API}/api/finance/contracts`);
@@ -1596,6 +1864,7 @@ function PrintVoucherScreen() {
   useEffect(() => {
     fetchTransactions();
     fetchContractsAndProjects();
+    fetchActiveAdvances();
   }, []);
 
   const fetchNextVoucherId = async (type) => {
@@ -1615,7 +1884,28 @@ function PrintVoucherScreen() {
 
   useEffect(() => {
     if (mode === 'create') {
-      fetchNextVoucherId(txType);
+      if (txType === 'Thu' || txType === 'Chi') {
+        fetchNextVoucherId(txType);
+      } else {
+        // Tạm ứng is Chi, Hoàn ứng is Thu/Chi but we don't display ID since it's auto-generated at endpoints
+        setForm(prev => ({
+          ...prev,
+          id: '',
+          ngay: new Date().toLocaleDateString('vi-VN')
+        }));
+      }
+
+      setForm(prev => ({
+        ...prev,
+        hang_muc: txType === 'Tạm ứng' ? 'Chi phí tạm ứng' : (txType === 'Hoàn ứng' ? 'Quyết toán hoàn ứng' : 'Sinh hoạt gia đình'),
+        hinh_thuc: txType === 'Hoàn ứng' ? 'Tạm ứng' : (txType === 'Tạm ứng' ? 'Tiền mặt' : 'Chuyển khoản'),
+        dien_giai: '',
+        nguoi_nhan_nop: '',
+        amount: '',
+        project_id: '',
+        contract_id: ''
+      }));
+      setSelectedAdvanceId('');
     }
   }, [mode, txType]);
 
@@ -1662,32 +1952,69 @@ function PrintVoucherScreen() {
       return;
     }
 
+    // Validation check for sensitive category: "Chi thụ lý bản vẽ"
+    if (form.hang_muc === 'Chi thụ lý bản vẽ' && !form.contract_id && !form.project_id) {
+      addToast("Hạng mục 'Chi thụ lý bản vẽ' bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án!", 'warning');
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/finance/cashflow/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: txType,
-          amount: Number(form.amount),
-          category: form.hang_muc,
-          payer_payee: form.nguoi_nhan_nop,
-          payment_method: form.hinh_thuc,
-          contract_id: form.contract_id || null,
-          project_id: form.project_id || null,
-          nguoi_lap: form.nguoi_lap,
-          nguoi_duyet: form.nguoi_duyet,
-          trang_thai: form.trang_thai,
-          dien_giai: form.dien_giai,
-          du_an_phong_ban: form.du_an_phong_ban
-        })
-      });
+      let res;
+      if (txType === 'Tạm ứng') {
+        res = await fetch(`${API}/api/finance/advance/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_id: form.project_id || null,
+            amount: Number(form.amount),
+            payer_payee: form.nguoi_nhan_nop,
+            note: form.dien_giai,
+            payment_method: form.hinh_thuc
+          })
+        });
+      } else if (txType === 'Hoàn ứng') {
+        if (!selectedAdvanceId) {
+          addToast('Vui lòng chọn chứng từ tạm ứng cần quyết toán', 'warning');
+          setLoading(false);
+          return;
+        }
+        res = await fetch(`${API}/api/finance/advance/clear`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            advance_id: selectedAdvanceId,
+            actual_amount: Number(form.amount),
+            note: form.dien_giai
+          })
+        });
+      } else {
+        res = await fetch(`${API}/api/finance/cashflow/create`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: txType,
+            amount: Number(form.amount),
+            category: form.hang_muc,
+            payer_payee: form.nguoi_nhan_nop,
+            payment_method: form.hinh_thuc,
+            contract_id: form.contract_id || null,
+            project_id: form.project_id || null,
+            nguoi_lap: form.nguoi_lap,
+            nguoi_duyet: form.nguoi_duyet,
+            trang_thai: form.trang_thai,
+            dien_giai: form.dien_giai,
+            du_an_phong_ban: form.du_an_phong_ban
+          })
+        });
+      }
 
       if (res.ok) {
         const saved = await res.json();
         addToast('Lưu phiếu thành công!', 'success');
         await fetchTransactions();
-        setSelectedId(saved.id);
+        await fetchActiveAdvances();
+        setSelectedId(saved.id || (saved.auto_vouchers && saved.auto_vouchers[0] ? saved.auto_vouchers[0].id : ''));
         setMode('print');
       } else {
         const err = await res.json();
@@ -1700,8 +2027,43 @@ function PrintVoucherScreen() {
     }
   };
 
-  const isThu = mode === 'create' ? txType === 'Thu' : form.id.startsWith('PT');
-  const accentColor = isThu ? '#10b981' : '#ef4444';
+  const getVoucherInfo = () => {
+    if (mode === 'create') {
+      if (txType === 'Thu') {
+        return { isThu: true, isTamUng: false, isHoanUng: false, title: 'PHIẾU THU', labelPerson: 'Người nộp', labelSignPerson: 'Người nộp', color: '#10b981' };
+      } else if (txType === 'Chi') {
+        return { isThu: false, isTamUng: false, isHoanUng: false, title: 'PHIẾU CHI', labelPerson: 'Người nhận', labelSignPerson: 'Người nhận', color: '#ef4444' };
+      } else if (txType === 'Tạm ứng') {
+        return { isThu: false, isTamUng: true, isHoanUng: false, title: 'PHIẾU TẠM ỨNG', labelPerson: 'Người nhận', labelSignPerson: 'Người nhận', color: '#f59e0b' };
+      } else {
+        return { isThu: false, isTamUng: false, isHoanUng: true, title: 'PHIẾU HOÀN ỨNG', labelPerson: 'Người nộp', labelSignPerson: 'Người nộp', color: '#6366f1' };
+      }
+    }
+
+    const isThu = form.id.startsWith('PT');
+    const hangMucLower = (form.hang_muc || '').toLowerCase();
+    const dienGiaiLower = (form.dien_giai || '').toLowerCase();
+
+    // Check if it is a Hoàn ứng sheet
+    if (hangMucLower.includes('hoàn ứng') || hangMucLower.includes('chi thực tế từ tạm ứng') || dienGiaiLower.includes('hoàn ứng') || dienGiaiLower.includes('chi thực tế từ tạm ứng')) {
+      return { isThu, isTamUng: false, isHoanUng: true, title: 'PHIẾU HOÀN ỨNG', labelPerson: 'Người nộp', labelSignPerson: 'Người nộp', color: '#6366f1' };
+    }
+
+    // Check if it is a Tạm ứng sheet
+    if (hangMucLower.includes('tạm ứng') || dienGiaiLower.includes('tạm ứng')) {
+      return { isThu: false, isTamUng: true, isHoanUng: false, title: 'PHIẾU TẠM ỨNG', labelPerson: 'Người nhận', labelSignPerson: 'Người nhận', color: '#f59e0b' };
+    }
+
+    // Default Phiếu Thu / Phiếu Chi
+    if (isThu) {
+      return { isThu: true, isTamUng: false, isHoanUng: false, title: 'PHIẾU THU', labelPerson: 'Người nộp', labelSignPerson: 'Người nộp', color: '#10b981' };
+    } else {
+      return { isThu: false, isTamUng: false, isHoanUng: false, title: 'PHIẾU CHI', labelPerson: 'Người nhận', labelSignPerson: 'Người nhận', color: '#ef4444' };
+    }
+  };
+
+  const voucherInfo = getVoucherInfo();
+  const accentColor = voucherInfo.color;
 
   return (
     <div style={{ padding: 24 }} className="voucher-print-screen">
@@ -1780,15 +2142,15 @@ function PrintVoucherScreen() {
 
       <div className="flex no-print" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>🖨️ Chứng từ Kế toán (Thu / Chi)</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Xem, in hoặc lập phiếu theo biểu mẫu kế toán chính thức</p>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>🖨️ Chứng từ Kế toán</h3>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Xem, in hoặc lập phiếu Thu, Chi, Tạm ứng, Hoàn ứng theo biểu mẫu</p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button className={`btn ${mode === 'print' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('print')}>
-            📄 Xem & In Phiếu
+            Xem & In Phiếu
           </button>
-          <button className={`btn ${mode === 'create' ? 'btn-primary' : 'btn-outline'}`} onClick={() => { setMode('create'); setForm(prev => ({ ...prev, amount: '', dien_giai: '', nguoi_nhan_nop: '', du_an_phong_ban: '', contract_id: '', project_id: '' })); }}>
-            ➕ Lập Phiếu Mới
+          <button className={`btn ${mode === 'create' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('create')}>
+            Lập Phiếu Mới
           </button>
         </div>
       </div>
@@ -1800,7 +2162,7 @@ function PrintVoucherScreen() {
             <select className="form-control" value={selectedId} onChange={e => setSelectedId(e.target.value)} style={{ marginBottom: 16 }}>
               <option value="">— Chọn chứng từ —</option>
               {transactions.map(t => (
-                <option key={t.id} value={t.id}>{t.id} ({t.type === 'Thu' ? 'Thu' : 'Chi'} - {t.amount.toLocaleString('vi-VN')}₫)</option>
+                <option key={t.id} value={t.id}>{t.id} ({t.type === 'Thu' ? 'Thu' : 'Chi'} - {t['Hạng mục'] || 'Khác'} - {t.amount.toLocaleString('vi-VN')}₫)</option>
               ))}
             </select>
 
@@ -1813,15 +2175,44 @@ function PrintVoucherScreen() {
         <div className="card printable-card" style={{ padding: '30px 40px', background: '#fff', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
           <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #eee', paddingBottom: 12 }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: accentColor }}>
-              {isThu ? '● CHẾ ĐỘ PHIẾU THU (CÓ TIỀN VÀO)' : '● CHẾ ĐỘ PHIẾU CHI (XUẤT TIỀN RA)'}
+              {voucherInfo.isTamUng ? '● CHẾ ĐỘ PHIẾU TẠM ỨNG' : (voucherInfo.isHoanUng ? '● CHẾ ĐỘ PHIẾU HOÀN ỨNG' : (voucherInfo.isThu ? '● CHẾ ĐỘ PHIẾU THU (CÓ TIỀN VÀO)' : '● CHẾ ĐỘ PHIẾU CHI (XUẤT TIỀN RA)'))}
             </span>
             {mode === 'create' && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Chọn Loại:</span>
-                <select className="form-control" value={txType} onChange={e => setTxType(e.target.value)} style={{ width: 120, height: 32, padding: '0 8px' }}>
-                  <option value="Chi">Phiếu Chi</option>
-                  <option value="Thu">Phiếu Thu</option>
-                </select>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Chọn Loại:</span>
+                  <select className="form-control" value={txType} onChange={e => setTxType(e.target.value)} style={{ width: 140, height: 32, padding: '0 8px' }}>
+                    <option value="Chi">Phiếu Chi</option>
+                    <option value="Thu">Phiếu Thu</option>
+                    <option value="Tạm ứng">Phiếu Tạm Ứng</option>
+                    <option value="Hoàn ứng">Phiếu Hoàn Ứng</option>
+                  </select>
+                </div>
+                {txType === 'Hoàn ứng' && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 16 }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Chọn Phiếu Tạm Ứng:</span>
+                    <select className="form-control" value={selectedAdvanceId} onChange={e => {
+                      setSelectedAdvanceId(e.target.value);
+                      const adv = activeAdvances.find(a => a.id === e.target.value);
+                      if (adv) {
+                        setForm(prev => ({
+                          ...prev,
+                          nguoi_nhan_nop: adv['Đối tác'] || '',
+                          du_an_phong_ban: adv['Dự án'] || '',
+                          project_id: adv.project_id || '',
+                          contract_id: adv.contract_id || '',
+                          dien_giai: `Quyết toán cho phiếu tạm ứng ${adv.id}`,
+                          amount: ''
+                        }));
+                      }
+                    }} style={{ width: 240, height: 32, padding: '0 8px' }}>
+                      <option value="">— Chọn phiếu tạm ứng —</option>
+                      {activeAdvances.map(a => (
+                        <option key={a.id} value={a.id}>{a.id} ({a['Đối tác']} - {a.amount.toLocaleString('vi-VN')}₫)</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1838,11 +2229,21 @@ function PrintVoucherScreen() {
                   </td>
                   <td colSpan={2} style={{ width: '60%', textAlign: 'center', padding: '15px 10px' }}>
                     <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, letterSpacing: 1, color: accentColor }}>
-                      {isThu ? 'PHIẾU THU' : 'PHIẾU CHI'}
+                      {voucherInfo.title}
                     </h2>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: '0.82rem', color: '#444' }}>
-                      <span>Ngày in: {new Date().toLocaleDateString('vi-VN')}</span>
-                      <span>Giờ: {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 8, fontSize: '0.82rem', color: '#444' }}>
+                      <div>Ngày in: {new Date().toLocaleDateString('vi-VN')}</div>
+                      {mode === 'print' && (
+                        <div className="flex items-center gap-1 no-print" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                          <span>Chọn Số chứng từ:</span>
+                          <select className="form-control" value={selectedId} onChange={e => setSelectedId(e.target.value)} style={{ width: 200, height: 28, padding: '0 4px', fontSize: '0.78rem' }}>
+                            <option value="">— Chọn chứng từ —</option>
+                            {transactions.map(t => (
+                              <option key={t.id} value={t.id}>{t.id} ({t.type === 'Thu' ? 'Thu' : 'Chi'} - {t.amount.toLocaleString('vi-VN')}₫)</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1865,46 +2266,65 @@ function PrintVoucherScreen() {
                   </td>
                   <td style={{ fontWeight: 'bold' }}>Hạng mục</td>
                   <td>
-                    <select value={form.hang_muc} onChange={e => setForm({ ...form, hang_muc: e.target.value })} required>
-                      <option value="Sinh hoạt gia đình">🏠 Sinh hoạt gia đình</option>
-                      <option value="Chi bảo vệ">🛡️ Chi bảo vệ</option>
-                      <option value="Chi thụ lý bản vẽ">📐 Chi thụ lý bản vẽ</option>
-                      <option value="Viết hồ sơ">✍️ Viết hồ sơ</option>
-                      <option value="Bản vẽ cấp giấy">📄 Bản vẽ cấp giấy</option>
-                      <option value="Văn phòng phẩm">✏️ Văn phòng phẩm</option>
-                      <option value="In ấn - Photocopy">🖨️ In ấn - Photocopy</option>
-                      <option value="Chi quầy tiếp nhận">🛎️ Chi quầy tiếp nhận</option>
-                      <option value="Ăn uống">🍲 Ăn uống</option>
-                      <option value="Đi lại - Xăng xe - Gửi xe">🚗 Đi lại - Xăng xe - Gửi xe</option>
-                      <option value="Công tác phí">✈️ Công tác phí</option>
-                      <option value="Chuyển phát - Bưu chính-Grab">📦 Chuyển phát - Bưu chính-Grab</option>
-                      <option value="Điện - Nước - Internet">⚡ Điện - Nước - Internet</option>
-                      <option value="Sửa chữa nhỏ">🔧 Sửa chữa nhỏ</option>
-                      <option value="Bảo trì thiết bị">🖥️ Bảo trì thiết bị</option>
-                      <option value="Vệ sinh - Rác thải">🧹 Vệ sinh - Rác thải</option>
-                      <option value="Lấy sổ">📘 Lấy sổ</option>
-                      <option value="Lấy bản vẽ">📐 Lấy bản vẽ</option>
-                      <option value="Lấy trích lục">📜 Lấy trích lục</option>
-                      <option value="Công chứng hồ sơ">✒️ Công chứng hồ sơ</option>
-                      <option value="Quầy nước- cà phê">☕ Quầy nước- cà phê</option>
-                      <option value="Bổ sung quỹ">💰 Bổ sung quỹ</option>
-                      <option value="Đóng thuế">🏦 Đóng thuế</option>
-                      <option value="Hỗ trợ sự kiện - Marketing">📣 Hỗ trợ sự kiện - Marketing</option>
-                      <option value="Khác">💡 Khác</option>
+                    <select value={form.hang_muc} onChange={e => {
+                      const val = e.target.value;
+                      const mapping = CATEGORY_AUTO_MAPPING[val];
+                      if (mapping) {
+                        setForm(prev => ({
+                          ...prev,
+                          hang_muc: val,
+                          nguoi_nhan_nop: mapping.doi_tac,
+                          du_an_phong_ban: mapping.phong_ban,
+                          nguoi_lap: mapping.nguoi_lap,
+                          nguoi_duyet: mapping.nguoi_duyet
+                        }));
+                      } else {
+                        setForm(prev => ({ ...prev, hang_muc: val }));
+                      }
+                    }} required>
+                      <option value="Sinh hoạt gia đình"> Sinh hoạt gia đình</option>
+                      <option value="Chi bảo vệ"> Chi bảo vệ</option>
+                      <option value="Chi thụ lý bản vẽ"> Chi thụ lý bản vẽ</option>
+                      <option value="Viết hồ sơ"> Viết hồ sơ</option>
+                      <option value="Bản vẽ cấp giấy"> Bản vẽ cấp giấy</option>
+                      <option value="Văn phòng phẩm"> Văn phòng phẩm</option>
+                      <option value="In ấn - Photocopy"> In ấn - Photocopy</option>
+                      <option value="Chi quầy tiếp nhận"> Chi quầy tiếp nhận</option>
+                      <option value="Ăn uống"> Ăn uống</option>
+                      <option value="Đi lại - Xăng xe - Gửi xe"> Đi lại - Xăng xe - Gửi xe</option>
+                      <option value="Công tác phí"> Công tác phí</option>
+                      <option value="Chuyển phát - Bưu chính-Grab"> Chuyển phát - Bưu chính-Grab</option>
+                      <option value="Điện - Nước - Internet"> Điện - Nước - Internet</option>
+                      <option value="Sửa chữa nhỏ"> Sửa chữa nhỏ</option>
+                      <option value="Bảo trì thiết bị"> Bảo trì thiết bị</option>
+                      <option value="Vệ sinh - Rác thải"> Vệ sinh - Rác thải</option>
+                      <option value="Lấy sổ"> Lấy sổ</option>
+                      <option value="Lấy bản vẽ"> Lấy bản vẽ</option>
+                      <option value="Lấy trích lục"> Lấy trích lục</option>
+                      <option value="Công chứng hồ sơ"> Công chứng hồ sơ</option>
+                      <option value="Quầy nước- cà phê"> Quầy nước- cà phê</option>
+                      <option value="Bổ sung quỹ"> Bổ sung quỹ</option>
+                      <option value="Đóng thuế"> Đóng thuế</option>
+                      <option value="Hỗ trợ sự kiện - Marketing"> Hỗ trợ sự kiện - Marketing</option>
+                      <option value="Chi phí tạm ứng"> Chi phí tạm ứng</option>
+                      <option value="Chi thực tế từ tạm ứng"> Chi thực tế từ tạm ứng</option>
+                      <option value="Quyết toán hoàn ứng"> Quyết toán hoàn ứng</option>
+                      <option value="Khác"> Khác</option>
                     </select>
                   </td>
                 </tr>
 
                 <tr>
-                  <td style={{ fontWeight: 'bold' }}>{isThu ? 'Người nộp' : 'Người nhận'}</td>
+                  <td style={{ fontWeight: 'bold' }}>{voucherInfo.labelPerson}</td>
                   <td>
-                    <input type="text" value={form.nguoi_nhan_nop} onChange={e => setForm({ ...form, nguoi_nhan_nop: e.target.value })} placeholder={isThu ? 'Họ tên người nộp tiền...' : 'Họ tên người nhận tiền...'} required />
+                    <input type="text" value={form.nguoi_nhan_nop} onChange={e => setForm({ ...form, nguoi_nhan_nop: e.target.value })} placeholder={`Họ tên ${voucherInfo.labelPerson.toLowerCase()}...`} required />
                   </td>
                   <td style={{ fontWeight: 'bold' }}>Hình thức</td>
                   <td>
                     <select value={form.hinh_thuc} onChange={e => setForm({ ...form, hinh_thuc: e.target.value })}>
-                      <option value="Chuyển khoản">🏦 Chuyển khoản</option>
-                      <option value="Tiền mặt">💵 Tiền mặt</option>
+                      <option value="Chuyển khoản"> Chuyển khoản</option>
+                      <option value="Tiền mặt"> Tiền mặt</option>
+                      <option value="Tạm ứng"> Tạm ứng</option>
                     </select>
                   </td>
                 </tr>
@@ -1970,7 +2390,7 @@ function PrintVoucherScreen() {
                     </div>
                   </td>
                   <td style={{ height: 130, padding: '10px 5px' }}>
-                    <div className="signature-title">{isThu ? 'Người nộp' : 'Người nhận'}</div>
+                    <div className="signature-title">{voucherInfo.labelSignPerson}</div>
                     <div className="signature-sub">(Ký, ghi rõ họ tên)</div>
                     <div className="signature-input">
                       <input type="text" readOnly value={form.nguoi_nhan_nop} style={{ fontSize: '0.85rem', color: '#555' }} />
@@ -1997,165 +2417,252 @@ function PrintVoucherScreen() {
 // ════════════════════════════════════════════════════════════════════════════
 // SettingsScreen - Cấu hình số dư & thu chi lũy kế đầu kỳ
 // ════════════════════════════════════════════════════════════════════════════
+const getLocalISOTime = (d = new Date()) => {
+  const tzoffset = d.getTimezoneOffset() * 60000;
+  const localISOTime = (new Date(d.getTime() - tzoffset)).toISOString().slice(0, 16);
+  return localISOTime;
+};
+
 function SettingsScreen() {
-  const [form, setForm] = useState({
-    initial_cash_balance: '',
-    initial_bank_balance: '',
-    initial_total_income: '',
-    initial_total_expenditure: ''
-  });
-  const [loading, setLoading] = useState(true);
+  const [hinhThuc, setHinhThuc] = useState('Tiền mặt');
+  const [ngayChot, setNgayChot] = useState(getLocalISOTime());
+  const [soDuHeThong, setSoDuHeThong] = useState(0);
+  const [soDuThucTe, setSoDuThucTe] = useState('');
+  const [ghiChu, setGhiChu] = useState('');
+  const [nguoiChot, setNguoiChot] = useState('Lê Văn Dựng');
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
 
+  const fetchSystemBalance = useCallback(async () => {
+    setLoading(true);
+    try {
+      const isoString = new Date(ngayChot).toISOString();
+      const res = await fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent(hinhThuc)}&ngay_chot=${encodeURIComponent(isoString)}`);
+      if (res.ok) {
+        const d = await res.json();
+        setSoDuHeThong(d.so_du_he_thong || 0);
+      } else {
+        addToast('❌ Không thể tính toán số dư hệ thống', 'error');
+      }
+    } catch {
+      addToast('❌ Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [hinhThuc, ngayChot, addToast]);
+
   useEffect(() => {
-    fetch(`${API}/api/finance/settings`)
-      .then(r => r.json())
-      .then(d => {
-        setForm({
-          initial_cash_balance: String(d.initial_cash_balance || 0),
-          initial_bank_balance: String(d.initial_bank_balance || 0),
-          initial_total_income: String(d.initial_total_income || 0),
-          initial_total_expenditure: String(d.initial_total_expenditure || 0)
-        });
-        setLoading(false);
-      })
-      .catch(() => {
-        addToast('❌ Không thể tải cấu hình số dư', 'error');
-        setLoading(false);
-      });
-  }, [addToast]);
+    fetchSystemBalance();
+  }, [fetchSystemBalance]);
+
+  const valThucTe = Number(soDuThucTe) || 0;
+  const chenhLech = valThucTe - soDuHeThong;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (soDuThucTe === '') {
+      addToast('⚠️ Vui lòng nhập số dư thực tế đếm tay!', 'warning');
+      return;
+    }
+    if (chenhLech !== 0 && !ghiChu.trim()) {
+      addToast('⚠️ Bắt buộc phải nhập giải trình lý do chênh lệch!', 'warning');
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
-        initial_cash_balance: Number(form.initial_cash_balance) || 0,
-        initial_bank_balance: Number(form.initial_bank_balance) || 0,
-        initial_total_income: Number(form.initial_total_income) || 0,
-        initial_total_expenditure: Number(form.initial_total_expenditure) || 0
+        hinh_thuc: hinhThuc,
+        so_tien_thuc_te: valThucTe,
+        ngay_chot: new Date(ngayChot).toISOString(),
+        ghi_chu: ghiChu,
+        nguoi_chot: nguoiChot
       };
-      const res = await fetch(`${API}/api/finance/settings`, {
+
+      const res = await fetch(`${API}/api/finance/fund-balances/close`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+
       if (res.ok) {
-        addToast('✅ Cập nhật số dư đầu kỳ thành công!', 'success');
+        addToast('✅ Xác nhận chốt quỹ và tạo điểm số dư mới thành công!', 'success');
+        setSoDuThucTe('');
+        setGhiChu('');
+        fetchSystemBalance();
       } else {
-        addToast('❌ Lỗi cập nhật số dư đầu kỳ', 'error');
+        const err = await res.json();
+        addToast(err.detail || '❌ Lỗi chốt quỹ', 'error');
       }
     } catch {
-      addToast('❌ Lỗi kết nối server', 'error');
+      addToast('❌ Lỗi kết nối máy chủ', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleInputChange = (field, value) => {
-    const numeric = value.replace(/[^\d-]/g, '');
-    setForm(prev => ({ ...prev, [field]: numeric }));
-  };
-
-  if (loading) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải cấu hình số dư...</div>;
-  }
-
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto', padding: '24px 0' }}>
+    <div style={{ maxWidth: 700, margin: '0 auto', padding: '24px 0' }}>
       <div className="card glass-card" style={{ padding: 32, borderRadius: 16 }}>
-        <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Settings size={20} color="var(--primary)" /> Thiết Lập Số Dư Đầu Kỳ & Thu Chi Lũy Kế
+        <h3 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--primary)' }}>
+          <Settings size={22} color="var(--primary)" /> BIÊN BẢN CHỐT QUỸ & ĐỐI CHIẾU TÀI CHÍNH
         </h3>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Cấu hình số dư ban đầu và thu chi lũy kế. Các giá trị này sẽ được cộng dồn trực tiếp vào tổng số dư hiện tại và báo cáo thu chi.
+          Kiểm kê và đối chiếu số dư thực tế đếm tay/app ngân hàng với số dư sổ sách hệ thống để làm mốc số dư đầu kỳ mới.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* 1. Khối Thiết Lập (Filter Bar) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, background: 'rgba(99,102,241,0.03)', padding: 16, borderRadius: 12, border: '1px solid var(--border-default)' }}>
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                💵 Quỹ tiền mặt đầu kỳ
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                Hình thức quỹ
               </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="form-control"
-                  style={{ fontWeight: 700, paddingRight: 32 }}
-                  value={form.initial_cash_balance ? Number(form.initial_cash_balance).toLocaleString('vi-VN') : ''}
-                  onChange={e => handleInputChange('initial_cash_balance', e.target.value)}
-                  placeholder="0"
-                />
-                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.5, fontWeight: 600 }}>₫</span>
-              </div>
+              <Dropdown
+                value={hinhThuc}
+                onChange={(val) => {
+                  setHinhThuc(val);
+                  setSoDuThucTe('');
+                }}
+                options={[
+                  { value: 'Tiền mặt', label: '💵 Tiền mặt (Két sắt)' },
+                  { value: 'Chuyển khoản', label: '🏦 Chuyển khoản (Ngân hàng)' }
+                ]}
+              />
             </div>
-
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                🏦 Quỹ tài khoản đầu kỳ
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                Mốc thời gian chốt
               </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="form-control"
-                  style={{ fontWeight: 700, paddingRight: 32 }}
-                  value={form.initial_bank_balance ? Number(form.initial_bank_balance).toLocaleString('vi-VN') : ''}
-                  onChange={e => handleInputChange('initial_bank_balance', e.target.value)}
-                  placeholder="0"
-                />
-                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.5, fontWeight: 600 }}>₫</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                📈 Tổng thu lũy kế đầu kỳ
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="form-control"
-                  style={{ fontWeight: 700, paddingRight: 32, color: '#10b981' }}
-                  value={form.initial_total_income ? Number(form.initial_total_income).toLocaleString('vi-VN') : ''}
-                  onChange={e => handleInputChange('initial_total_income', e.target.value)}
-                  placeholder="0"
-                />
-                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.5, fontWeight: 600, color: '#10b981' }}>₫</span>
-              </div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
-                📉 Tổng chi lũy kế đầu kỳ
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="form-control"
-                  style={{ fontWeight: 700, paddingRight: 32, color: '#ef4444' }}
-                  value={form.initial_total_expenditure ? Number(form.initial_total_expenditure).toLocaleString('vi-VN') : ''}
-                  onChange={e => handleInputChange('initial_total_expenditure', e.target.value)}
-                  placeholder="0"
-                />
-                <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', opacity: 0.5, fontWeight: 600, color: '#ef4444' }}>₫</span>
-              </div>
+              <input
+                type="datetime-local"
+                className="form-control"
+                value={ngayChot}
+                onChange={(e) => {
+                  setNgayChot(e.target.value);
+                  setSoDuThucTe('');
+                }}
+                required
+              />
             </div>
           </div>
 
-          <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)', borderRadius: 8, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            💡 <strong>Lưu ý:</strong> Khi bạn thay đổi số dư và doanh thu/chi phí đầu kỳ, các chỉ số số dư hiện tại trên các màn hình báo cáo, thống kê và quỹ tiền mặt sẽ được tự động cập nhật ngay lập tức.
+          {/* 2. Khối Số Liệu Đối Chiếu (Comparison Grid) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            {/* Thẻ Số dư hệ thống */}
+            <div style={{ padding: 18, background: 'var(--bg-default)', borderRadius: 12, border: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>SỐ DƯ HỆ THỐNG</span>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                {loading ? '⏳ Đang tính...' : `${soDuHeThong.toLocaleString('vi-VN')}₫`}
+              </span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Tính từ mốc chốt gần nhất</span>
+            </div>
+
+            {/* Ô nhập Số dư thực tế */}
+            <div style={{ padding: 18, background: 'var(--bg-default)', borderRadius: 12, border: '1px solid var(--border-default)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 700 }}>SỐ DƯ THỰC TẾ *</span>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ fontWeight: 800, fontSize: '1.1rem', paddingRight: 24, height: 32, border: '1px solid var(--primary)', textAlign: 'right' }}
+                  value={soDuThucTe}
+                  onChange={(e) => {
+                    const clean = e.target.value.replace(/[^\d]/g, '');
+                    setSoDuThucTe(clean);
+                  }}
+                  placeholder="Nhập số tiền..."
+                  required
+                />
+                <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>₫</span>
+              </div>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Đếm két hoặc app ngân hàng</span>
+            </div>
+
+            {/* Thẻ Chênh lệch */}
+            <div style={{
+              padding: 18,
+              background: 'var(--bg-default)',
+              borderRadius: 12,
+              border: '1px solid var(--border-default)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6
+            }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>CHÊNH LỆCH</span>
+              <span style={{
+                fontSize: '1.25rem',
+                fontWeight: 800,
+                fontFamily: 'monospace',
+                color: chenhLech === 0 ? '#10b981' : (chenhLech < 0 ? '#ef4444' : '#3b82f6')
+              }}>
+                {chenhLech === 0 ? '±0₫' : (chenhLech > 0 ? `+${chenhLech.toLocaleString('vi-VN')}₫` : `-${Math.abs(chenhLech).toLocaleString('vi-VN')}₫`)}
+              </span>
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: chenhLech === 0 ? '#10b981' : (chenhLech < 0 ? '#ef4444' : '#3b82f6')
+              }}>
+                {chenhLech === 0 ? 'Khớp quỹ hoàn toàn' : (chenhLech < 0 ? 'Thiếu tiền (Tự sinh PC)' : 'Thừa tiền (Tự sinh PT)')}
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Khối Hoàn Tất (Action Bar) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                Người chốt quỹ
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                value={nguoiChot}
+                onChange={(e) => setNguoiChot(e.target.value)}
+                placeholder="Nhập tên người thực hiện chốt..."
+                required
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                Lý do chênh lệch / Ghi chú {chenhLech !== 0 && '*'}
+              </label>
+              <textarea
+                className="form-control"
+                style={{ height: 75, resize: 'none', fontSize: '0.85rem' }}
+                value={ghiChu}
+                onChange={(e) => setGhiChu(e.target.value)}
+                placeholder={chenhLech !== 0 ? "Bắt buộc giải trình lý do thừa/thiếu tiền..." : "Nhập ghi chú kiểm kê (nếu có)..."}
+                required={chenhLech !== 0}
+              />
+            </div>
           </div>
 
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={saving}
-            style={{ width: '100%', height: 42, fontWeight: 700, background: 'var(--primary)', color: '#fff', fontSize: '0.92rem', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', border: 'none', transition: 'all 0.2s' }}
+            disabled={saving || loading}
+            style={{
+              width: '100%',
+              height: 44,
+              fontWeight: 800,
+              background: 'var(--primary)',
+              color: '#fff',
+              fontSize: '0.95rem',
+              borderRadius: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              border: 'none',
+              transition: 'all 0.2s',
+              opacity: (saving || loading) ? 0.6 : 1
+            }}
           >
-            {saving ? '⏳ Đang lưu cấu hình...' : '💾 Lưu Cấu Hình Số Dư'}
+            {saving ? ' Đang ghi nhận điểm chốt quỹ...' : ' Xác Nhận Chốt Quỹ & Tạo Điểm Số Dư Mới'}
           </button>
         </form>
       </div>
@@ -2171,7 +2678,8 @@ const THUCHI_TABS = [
   { id: 'cashflow-cash', label: 'Quỹ Tiền Mặt', icon: <Banknote size={16} /> },
   { id: 'cashflow-bank', label: 'Quỹ Chuyển Khoản', icon: <Building2 size={16} /> },
   { id: 'cashflow-print', label: 'Chứng Từ Thu/Chi', icon: <FileText size={16} /> },
-  { id: 'advance-request', label: 'Chi Phí Tạm Ứng', icon: <PlusCircle size={16} /> },
+  { id: 'advance-request', label: 'Đề Xuất Tạm Ứng', icon: <PlusCircle size={16} /> },
+  { id: 'advance-clear', label: 'Quyết Toán Hoàn Ứng', icon: <RotateCcw size={16} /> },
   { id: 'cashflow-settings', label: 'Thiết Lập Số Dư', icon: <Settings size={16} /> }
 ];
 
@@ -2185,6 +2693,7 @@ export default function Finance() {
       case 'cashflow-bank': return <CashflowScreen mode="bank" />;
       case 'cashflow-print': return <PrintVoucherScreen />;
       case 'advance-request': return <AdvanceRequestScreen />;
+      case 'advance-clear': return <AdvanceClearScreen />;
       case 'cashflow-settings': return <SettingsScreen />;
       default: return <CashflowScreen mode="all" />;
     }

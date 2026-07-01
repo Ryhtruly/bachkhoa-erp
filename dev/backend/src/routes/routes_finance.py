@@ -7,11 +7,12 @@ from src.db.database import get_db
 from src.crud.crud_finance import (
     _row, crud_get_cashflow_detail, crud_create_cashflow, 
     crud_update_cashflow, _row_bulk, _voucher_id, 
-    _calculate_balances, _sync_receivables, get_setting_value
+    _calculate_balances, _sync_receivables, get_setting_value,
+    get_running_balance
 )
 from src.db.models import (
     CashflowTransaction, Contract, Customer, Receivable,
-    ProjectTask, Employee, KpiPayroll, FinanceSetting
+    ProjectTask, Employee, KpiPayroll, FinanceSetting, FundOpeningBalance
 )
 from datetime import datetime, date
 import uuid
@@ -60,6 +61,14 @@ class AdvanceClearIn(BaseModel):
     advance_id: str          # ID phiếu tạm ứng gốc
     actual_amount: float     # Số tiền thực chi từ hóa đơn
     note: Optional[str] = ""
+
+
+class FundCloseIn(BaseModel):
+    hinh_thuc: str            # "Tiền mặt" | "Chuyển khoản"
+    so_tien_thuc_te: float
+    ngay_chot: str            # ISO string or YYYY-MM-DD HH:MM:SS
+    ghi_chu: Optional[str] = ""
+    nguoi_chot: Optional[str] = ""
 
 class WageCreateIn(BaseModel):
     project_id: str
@@ -169,19 +178,19 @@ def _row_bulk(rows, db: Session) -> list:
     return result
 
 
-def _voucher_id(type_val: str, db: Session) -> str:
+def _voucher_id(type_val: str, db: Session, target_date: date = None) -> str:
     prefix = "PT" if type_val == "Thu" else "PC"
-    now = datetime.now()
+    now = target_date or datetime.now().date()
     month_str = now.strftime("%m")
     year_str = now.strftime("%Y")
     
-    pattern = f"{prefix}-{month_str}/{year_str}-%"
-    count = db.query(func.count(CashflowTransaction.id)).filter(
-        CashflowTransaction.id.like(pattern)
-    ).scalar() or 0
-    
-    serial = count + 1
-    return f"{prefix}-{month_str}/{year_str}-{serial:03d}"
+    serial = 1
+    while True:
+        proposed_id = f"{prefix}-{month_str}/{year_str}-{serial:03d}"
+        exists = db.query(CashflowTransaction.id).filter(CashflowTransaction.id == proposed_id).first()
+        if not exists:
+            return proposed_id
+        serial += 1
 
 
 def _validate_contract(db: Session, contract_id: str):
@@ -578,7 +587,8 @@ def list_advance(db: Session = Depends(get_db)):
     rows = db.query(CashflowTransaction).filter(
         CashflowTransaction.loai == "Chi",
         or_(CashflowTransaction.hang_muc.ilike("%tạm ứng%"),
-            CashflowTransaction.dien_giai.ilike("%tạm ứng%"))
+            CashflowTransaction.dien_giai.ilike("%tạm ứng%")),
+        CashflowTransaction.trang_thai != "Đã quyết toán"
     ).order_by(CashflowTransaction.created_at.desc()).all()
     return _row_bulk(rows, db)
 
@@ -633,11 +643,43 @@ def clear_advance(payload: AdvanceClearIn, db: Session = Depends(get_db)):
         if not advance:
             raise HTTPException(status_code=404, detail="Không tìm thấy phiếu tạm ứng")
 
+        if advance.trang_thai == "Đã quyết toán":
+            raise HTTPException(status_code=400, detail="Phiếu tạm ứng này đã được quyết toán.")
+
         adv_amt = float(advance.so_tien or 0)
         actual = payload.actual_amount
-        diff = adv_amt - actual
+        diff = adv_amt - actual  # positive: return to register, negative: company pays employee
         auto_vouchers = []
 
+        # 1. Mark original advance as resolved
+        advance.trang_thai = "Đã quyết toán"
+
+        # 2. Create the actual expenditure transaction (Chi, hinh_thuc="Tạm ứng")
+        exp_id = _voucher_id("Chi", db)
+        bal_tm, bal_ck, bal_sau = _calculate_balances(db, "Chi", 0.0, "Tạm ứng")
+        
+        actual_exp = CashflowTransaction(
+            id=exp_id,
+            project_id=advance.project_id,
+            contract_id=advance.contract_id,
+            loai="Chi",
+            so_tien=actual,
+            hang_muc="Chi thực tế từ tạm ứng",
+            nguoi_nhan_nop=advance.nguoi_nhan_nop,
+            hinh_thuc="Tạm ứng",
+            ngay=date.today(),
+            so_chung_tu=exp_id,
+            dien_giai=f"Quyết toán chi thực tế: {payload.note or ''} (gốc: {payload.advance_id})",
+            du_an_phong_ban=advance.du_an_phong_ban,
+            so_du_sau_gd=bal_sau,
+            so_du_tien_mat=bal_tm,
+            so_du_ck=bal_ck,
+            trang_thai="Hoàn thành"
+        )
+        db.add(actual_exp)
+        auto_vouchers.append({"id": exp_id, "type": "Chi", "amount": actual, "purpose": "Chi thực tế"})
+
+        # 3. Create the return or overspent transaction
         if abs(diff) > 0:
             vtype = "Thu" if diff > 0 else "Chi"
             note_prefix = "Hoàn ứng thừa" if diff > 0 else "Bù ứng thiếu"
@@ -817,7 +859,14 @@ def get_summary(db: Session = Depends(get_db)):
         initial_cash + _s("Thu", "Tiền mặt") - _s("Chi", "Tiền mặt")
     )
     ngan_hang = initial_bank + _s("Thu", "Chuyển khoản") - _s("Chi", "Chuyển khoản")
-    tam_ung_net = _s("Chi", cat="tạm ứng") - _s("Thu", cat="hoàn ứng")
+    tam_ung_net = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+        CashflowTransaction.loai == "Chi",
+        or_(CashflowTransaction.hang_muc.ilike("%tạm ứng%"),
+            CashflowTransaction.dien_giai.ilike("%tạm ứng%")),
+        CashflowTransaction.hang_muc != "Chi thực tế từ tạm ứng",
+        CashflowTransaction.trang_thai != "Đã quyết toán",
+        CashflowTransaction.scope == "Công ty"
+    ).scalar() or 0)
 
     # Monthly trend
     monthly_raw = db.query(
@@ -929,6 +978,86 @@ def save_finance_settings(payload: FinanceSettingsIn, db: Session = Depends(get_
                 db.add(FinanceSetting(key=k, value=v))
         db.commit()
         return {"status": "success", "message": "Cấu hình số dư đầu kỳ đã được cập nhật thành công"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/fund-balances/calculate")
+def calculate_system_balance(
+    hinh_thuc: str = Query(..., description="'Tiền mặt' hoặc 'Chuyển khoản'"),
+    ngay_chot: str = Query(..., description="Mốc thời gian chốt (ISO string)"),
+    db: Session = Depends(get_db)
+):
+    try:
+        dt_chot = datetime.fromisoformat(ngay_chot.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            dt_chot = datetime.strptime(ngay_chot, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
+
+    bal = get_running_balance(db, hinh_thuc, up_to_datetime=dt_chot)
+    return {"status": "success", "so_du_he_thong": bal}
+
+
+@router.post("/fund-balances/close")
+def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
+    try:
+        try:
+            dt_chot = datetime.fromisoformat(payload.ngay_chot.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                dt_chot = datetime.strptime(payload.ngay_chot, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
+
+        so_du_he_thong = get_running_balance(db, payload.hinh_thuc, up_to_datetime=dt_chot)
+        chênh_lệch = payload.so_tien_thuc_te - so_du_he_thong
+
+        nguoi_chot = payload.nguoi_chot or "Kế toán"
+        fob = FundOpeningBalance(
+            hinh_thuc=payload.hinh_thuc,
+            so_tien_dau_ky=payload.so_tien_thuc_te,
+            ngay_ap_dung=dt_chot,
+            nguoi_chot=nguoi_chot,
+            ghi_chu=payload.ghi_chu
+        )
+        db.add(fob)
+        db.flush()
+
+        if chênh_lệch != 0:
+            loai = "Thu" if chênh_lệch > 0 else "Chi"
+            hang_muc = "Thu chênh lệch kiểm kê quỹ" if chênh_lệch > 0 else "Chi chênh lệch kiểm kê quỹ"
+            new_id = _voucher_id(loai, db, dt_chot.date())
+            
+            bal_tm, bal_ck, bal_sau = _calculate_balances(db, loai, abs(chênh_lệch), payload.hinh_thuc)
+            
+            tc = CashflowTransaction(
+                id=new_id,
+                loai=loai,
+                so_tien=abs(chênh_lệch),
+                hang_muc=hang_muc,
+                nguoi_nhan_nop=nguoi_chot,
+                hinh_thuc=payload.hinh_thuc,
+                ngay=dt_chot.date(),
+                created_at=dt_chot,
+                so_chung_tu=new_id,
+                dien_giai=f"{hang_muc}: {payload.ghi_chu or ''}",
+                so_du_sau_gd=bal_sau,
+                so_du_tien_mat=bal_tm,
+                so_du_ck=bal_ck,
+                trang_thai="Hoàn thành",
+                scope="Công ty",
+                nguoi_lap=nguoi_chot,
+                nguoi_duyet=nguoi_chot
+            )
+            db.add(tc)
+
+        db.commit()
+        return {"status": "success", "message": "Chốt quỹ thành công!"}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

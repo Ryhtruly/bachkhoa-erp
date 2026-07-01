@@ -174,3 +174,14 @@ class FinanceSetting(Base):
     key = Column(String, primary_key=True)
     value = Column(Numeric, default=0.0)
 
+
+class FundOpeningBalance(Base):
+    __tablename__ = "fund_opening_balances"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    hinh_thuc = Column(String(50), nullable=False) # 'Tiền mặt' hoặc 'Chuyển khoản'
+    so_tien_dau_ky = Column(Numeric(15, 2), nullable=False)
+    ngay_ap_dung = Column(DateTime(timezone=True), nullable=False)
+    nguoi_chot = Column(String(100), nullable=True)
+    ghi_chu = Column(Text, nullable=True)
+
