@@ -16,7 +16,7 @@ def get_setting_value(db: Session, key: str, default: float = 0.0) -> float:
 
 
 def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[datetime] = None) -> float:
-    # 1. Find the latest closing snapshot before or at up_to_datetime
+    # 1. Tìm mốc chốt chặn (Snapshot) mới nhất trước hoặc bằng thời gian cần xem
     from src.db.models import FundOpeningBalance
     
     q_snap = db.query(FundOpeningBalance).filter(FundOpeningBalance.hinh_thuc == hinh_thuc)
@@ -28,11 +28,12 @@ def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[da
         start_bal = float(latest_snap.so_tien_dau_ky)
         start_time = latest_snap.ngay_ap_dung
     else:
+        # Nếu chưa từng có mốc chốt nào, lấy cấu hình ban đầu hệ thống
         key = "initial_cash_balance" if hinh_thuc == "Tiền mặt" else "initial_bank_balance"
         start_bal = get_setting_value(db, key, 0.0)
         start_time = None
 
-    # 2. Sum transactions after start_time up to up_to_datetime
+    # 2. Tính tổng Thu / Chi phát sinh SAU mốc chốt sổ này
     q_thu = db.query(func.sum(CashflowTransaction.so_tien)).filter(
         CashflowTransaction.loai == "Thu",
         CashflowTransaction.hinh_thuc == hinh_thuc,
@@ -45,19 +46,20 @@ def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[da
         CashflowTransaction.scope == "Công ty"
     )
     
+    # 2. Tính tổng Thu / Chi phát sinh SAU mốc chốt sổ này
     if start_time:
-        q_thu = q_thu.filter(CashflowTransaction.created_at > start_time)
-        q_chi = q_chi.filter(CashflowTransaction.created_at > start_time)
+        q_thu = q_thu.filter(CashflowTransaction.ngay > start_time.date())
+        q_chi = q_chi.filter(CashflowTransaction.ngay > start_time.date())
         
     if up_to_datetime:
-        q_thu = q_thu.filter(CashflowTransaction.created_at <= up_to_datetime)
-        q_chi = q_chi.filter(CashflowTransaction.created_at <= up_to_datetime)
+        q_thu = q_thu.filter(CashflowTransaction.ngay <= up_to_datetime.date())
+        q_chi = q_chi.filter(CashflowTransaction.ngay <= up_to_datetime.date())
         
     thu_sum = float(q_thu.scalar() or 0.0)
     chi_sum = float(q_chi.scalar() or 0.0)
     
+    # 3. Trả về kết quả
     return start_bal + thu_sum - chi_sum
-
 
 # ══════════════════════════════════════════════════════════════
 # Helpers

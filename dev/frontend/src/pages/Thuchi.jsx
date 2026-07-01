@@ -16,13 +16,7 @@ const API = 'http://127.0.0.1:8080';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) + '₫';
-const fmtShort = (v) => {
-  const n = Number(v) || 0;
-  if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(1)}B₫`;
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(0)}M₫`;
-  if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(0)}K₫`;
-  return fmt(n);
-};
+const fmtShort = (v) => fmt(v);
 const fmtAmt = (v) => v ? Number(v.replace(/[^\d]/g, '')).toLocaleString('vi-VN') : '';
 const parseAmt = (v) => parseFloat(String(v).replace(/[^\d]/g, '')) || 0;
 
@@ -770,7 +764,7 @@ function CashflowScreen({ mode = 'all' }) {
     }
   }, [mode]);
 
-  const load = useCallback(async () => {
+ const load = useCallback(async () => {
     setLoading(true);
     try {
       const p = new URLSearchParams();
@@ -779,22 +773,76 @@ function CashflowScreen({ mode = 'all' }) {
       if (filters.payment_method !== 'All') p.set('payment_method', filters.payment_method);
       if (reconcileId) p.set(reconcileMode === 'contract' ? 'contract_id' : 'project_id', reconcileId);
 
+      // Mốc thời gian thực để tính số dư hiện tại
+      const bayGio = new Date().toISOString(); 
+
       if (mode === 'cash') {
-        const r = await fetch(`${API}/api/finance/cashflow/cash?${p}`);
-        const d = await r.json();
-        setBalance(d);
+        // 🔥 Gọi song song: 1 cái lấy danh sách trans theo bộ lọc, 1 cái bốc số dư realtime từ DB
+        const [resData, resBal] = await Promise.all([
+          fetch(`${API}/api/finance/cashflow/cash?${p}`),
+          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+        ]);
+        
+        const d = await resData.json();
+        const b = await resBal.json();
+        
+        // Cập nhật: Danh sách trans giữ nguyên, nhưng số dư lấy từ hàm calculate chuẩn
+        setBalance({
+          ...d,
+          balance: b.so_du_he_thong || 0,
+          tien_mat: b.so_du_he_thong || 0
+        });
         setData(d.transactions || []);
+
       } else if (mode === 'bank') {
-        const r = await fetch(`${API}/api/finance/cashflow/bank?${p}`);
-        const d = await r.json();
-        setBalance(d);
+        const [resData, resBal] = await Promise.all([
+          fetch(`${API}/api/finance/cashflow/bank?${p}`),
+          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+        ]);
+        
+        const d = await resData.json();
+        const b = await resBal.json();
+        
+        setBalance({
+          ...d,
+          balance: b.so_du_he_thong || 0,
+          ngan_hang: b.so_du_he_thong || 0
+        });
         setData(d.transactions || []);
+
       } else {
-        const r = await fetch(`${API}/api/finance/cashflow?${p}`);
-        setData(await r.json());
+        // Màn hình 'all' (Tổng cả 2 quỹ)
+        const [resData, resBalTM, resBalCK] = await Promise.all([
+          fetch(`${API}/api/finance/cashflow?${p}`),
+          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`),
+          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+        ]);
+        
+        const transactionsList = await resData.json();
+        const bTM = await resBalTM.json();
+        const bCK = await resBalCK.json();
+        
+        const tm = bTM.so_du_he_thong || 0;
+        const ck = bCK.so_du_he_thong || 0;
+
+        // 🔥 SỬA TẠI ĐÂY: Tính trực tiếp từ dữ liệu vừa nhận về để tránh crash render
+        const inlineThu = transactionsList.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
+        const inlineChi = transactionsList.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
+        
+        setBalance({
+          tien_mat: tm,
+          ngan_hang: ck,
+          balance: tm + ck,
+          tong_thu: inlineThu, 
+          tong_chi: inlineChi
+        });
+        setData(transactionsList);
       }
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+    } catch (e) { 
+      console.error(e); 
+    } finally { 
+      setLoading(false); 
+    }
   }, [mode, filters, month, reconcileMode, reconcileId]);
 
   useEffect(() => { load(); }, [load]);
@@ -2220,23 +2268,7 @@ function PrintVoucherScreen() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: mode === 'print' ? '280px 1fr' : '1fr', gap: 20 }}>
-        {mode === 'print' && (
-          <div className="card no-print" style={{ padding: 16, height: 'fit-content' }}>
-            <label style={{ fontSize: '0.82rem', fontWeight: 600, display: 'block', marginBottom: 8 }}>Chọn số chứng từ</label>
-            <select className="form-control" value={selectedId} onChange={e => setSelectedId(e.target.value)} style={{ marginBottom: 16 }}>
-              <option value="">— Chọn chứng từ —</option>
-              {transactions.map(t => (
-                <option key={t.id} value={t.id}>{t.id} ({t.type === 'Thu' ? 'Thu' : 'Chi'} - {t['Hạng mục'] || 'Khác'} - {t.amount.toLocaleString('vi-VN')}₫)</option>
-              ))}
-            </select>
-
-            <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedId} style={{ width: '100%', gap: 8 }}>
-              🖨️ In Phiếu này (Ctrl+P)
-            </button>
-          </div>
-        )}
-
+      <div>
         <div className="card printable-card" style={{ padding: '30px 40px', background: '#fff', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
           <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid #eee', paddingBottom: 12 }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 600, color: accentColor }}>
@@ -2300,13 +2332,7 @@ function PrintVoucherScreen() {
                       <div>Ngày in: {new Date().toLocaleDateString('vi-VN')}</div>
                       {mode === 'print' && (
                         <div className="flex items-center gap-1 no-print" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                          <span>Chọn Số chứng từ:</span>
-                          <select className="form-control" value={selectedId} onChange={e => setSelectedId(e.target.value)} style={{ width: 200, height: 28, padding: '0 4px', fontSize: '0.78rem' }}>
-                            <option value="">— Chọn chứng từ —</option>
-                            {transactions.map(t => (
-                              <option key={t.id} value={t.id}>{t.id} ({t.type === 'Thu' ? 'Thu' : 'Chi'} - {t.amount.toLocaleString('vi-VN')}₫)</option>
-                            ))}
-                          </select>
+      
                         </div>
                       )}
                     </div>
@@ -2489,13 +2515,16 @@ const getLocalISOTime = (d = new Date()) => {
   const tzoffset = d.getTimezoneOffset() * 60000;
   return (new Date(d.getTime() - tzoffset)).toISOString().slice(0, 16);
 };
-
 function SettingsScreen() {
-  const [hinhThuc, setHinhThuc] = useState('Tiền mặt');
   const [ngayChot, setNgayChot] = useState(getLocalISOTime());
-  const [soDuHeThong, setSoDuHeThong] = useState(1918000); // Set cứng test giống ảnh của Mimi
-  const [soDuThucTe, setSoDuThucTe] = useState('');
-  const [ghiChu, setGhiChu] = useState('');
+  const [soDuHeThongTM, setSoDuHeThongTM] = useState(0);
+  const [soDuThucTeTM, setSoDuThucTeTM] = useState('');
+  const [ghiChuTM, setGhiChuTM] = useState('');
+
+  const [soDuHeThongCK, setSoDuHeThongCK] = useState(0);
+  const [soDuThucTeCK, setSoDuThucTeCK] = useState('');
+  const [ghiChuCK, setGhiChuCK] = useState('');
+
   const [nguoiChot, setNguoiChot] = useState('Lê Văn Dựng');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2505,152 +2534,282 @@ function SettingsScreen() {
     setLoading(true);
     try {
       const isoString = new Date(ngayChot).toISOString();
-      const res = await fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent(hinhThuc)}&ngay_chot=${encodeURIComponent(isoString)}`);
-      if (res.ok) {
-        const d = await res.json();
-        setSoDuHeThong(d.so_du_he_thong || 0);
+      const [resTM, resCK] = await Promise.all([
+        fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(isoString)}`),
+        fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(isoString)}`)
+      ]);
+      if (resTM.ok && resCK.ok) {
+        const dTM = await resTM.json();
+        const dCK = await resCK.json();
+        setSoDuHeThongTM(dTM.so_du_he_thong || 0);
+        setSoDuHeThongCK(dCK.so_du_he_thong || 0);
+      } else {
+        addToast('❌ Không thể tính toán số dư từ hệ thống', 'error');
       }
     } catch {
       console.log("Lỗi kết nối API");
     } finally {
       setLoading(false);
     }
-  }, [hinhThuc, ngayChot]);
+  }, [ngayChot, addToast]);
 
   useEffect(() => {
     fetchSystemBalance();
   }, [fetchSystemBalance]);
 
-  const valThucTe = Number(soDuThucTe) || 0;
-  const chenhLech = valThucTe - soDuHeThong;
+  const valThucTeTM = soDuThucTeTM === '' ? 0 : Number(soDuThucTeTM);
+  const chenhLechTM = soDuThucTeTM === '' ? 0 : valThucTeTM - soDuHeThongTM;
+
+  const valThucTeCK = soDuThucTeCK === '' ? 0 : Number(soDuThucTeCK);
+  const chenhLechCK = soDuThucTeCK === '' ? 0 : valThucTeCK - soDuHeThongCK;
 
   const formatInputDisplay = (val) => {
-    if (!val) return '';
+    if (val === '') return '';
     return Number(val).toLocaleString('vi-VN');
   };
 
-  const getChenhLechMeta = () => {
-    if (chenhLech === 0) return { color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', msg: 'Khớp quỹ hoàn toàn' };
-    if (chenhLech < 0) return { color: '#ef4444', bg: '#fef2f2', border: '#fecaca', msg: 'Thiếu (Tự sinh PC)' };
-    return { color: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', msg: 'Thừa (Tự sinh PT)' };
+  const getChenhLechMeta = (cl, hasInput) => {
+    if (!hasInput) return { color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', msg: 'Chưa nhập số thực tế' };
+    if (cl === 0) return { color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', msg: 'Khớp quỹ hoàn toàn' };
+    if (cl < 0) return { color: '#ef4444', bg: '#fef2f2', border: '#fecaca', msg: 'Thiếu (Tự sinh PC)' };
+    return { color: '#ef4444', bg: '#eff6ff', border: '#bfdbfe', msg: 'Thừa (Tự sinh PT)' };
   };
 
-  const clMeta = getChenhLechMeta();
+  const clMetaTM = getChenhLechMeta(chenhLechTM, soDuThucTeTM !== '');
+  const clMetaCK = getChenhLechMeta(chenhLechCK, soDuThucTeCK !== '');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (soDuThucTeTM === '' && soDuThucTeCK === '') {
+      addToast('⚠️ Vui lòng nhập ít nhất một số dư thực tế để chốt quỹ!', 'warning');
+      return;
+    }
+    if (soDuThucTeTM !== '' && chenhLechTM !== 0 && !ghiChuTM.trim()) {
+      addToast('⚠️ Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Tiền Mặt!', 'warning');
+      return;
+    }
+    if (soDuThucTeCK !== '' && chenhLechCK !== 0 && !ghiChuCK.trim()) {
+      addToast('⚠️ Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Chuyển Khoản!', 'warning');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const promises = [];
+      const isoString = new Date(ngayChot).toISOString();
+
+      if (soDuThucTeTM !== '') {
+        promises.push(
+          fetch(`${API}/api/finance/fund-balances/close`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hinh_thuc: 'Tiền mặt',
+              so_tien_thuc_te: valThucTeTM,
+              ngay_chot: isoString,
+              ghi_chu: ghiChuTM,
+              nguoi_chot: nguoiChot
+            })
+          })
+        );
+      }
+
+      if (soDuThucTeCK !== '') {
+        promises.push(
+          fetch(`${API}/api/finance/fund-balances/close`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              hinh_thuc: 'Chuyển khoản',
+              so_tien_thuc_te: valThucTeCK,
+              ngay_chot: isoString,
+              ghi_chu: ghiChuCK,
+              nguoi_chot: nguoiChot
+            })
+          })
+        );
+      }
+
+      const results = await Promise.all(promises);
+      const allOk = results.every(res => res.ok);
+
+      if (allOk) {
+        addToast('✅ Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
+        setSoDuThucTeTM('');
+        setGhiChuTM('');
+        setSoDuThucTeCK('');
+        setGhiChuCK('');
+        fetchSystemBalance();
+      } else {
+        addToast(' Lỗi hệ thống khi chốt quỹ', 'error');
+      }
+    } catch {
+      addToast(' Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div style={{ maxWidth: 840, margin: '0 auto', padding: '40px 16px', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '20px 16px', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{
         background: '#ffffff',
         borderRadius: 24,
-        padding: '40px',
+        padding: '32px',
         boxShadow: '0 4px 40px rgba(0, 0, 0, 0.03)',
         border: '1px solid #f1f5f9'
       }}>
 
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, letterSpacing: '-0.02em' }}>
-            <Settings size={26} color="#4f46e5" /> BIÊN BẢN CHỐT QUỸ & ĐỐI CHIẾU TÀI CHÍNH
+            <Settings size={26} color="#ef4444" /> BIÊN BẢN CHỐT QUỸ & ĐỐI CHIẾU TÀI CHÍNH
           </h3>
           <p style={{ fontSize: '0.9rem', color: '#64748b', maxWidth: 620, margin: '0 auto', lineHeight: 1.6 }}>
             Kiểm kê và đối chiếu số dư thực tế đếm tay hoặc ứng dụng ngân hàng với sổ sách hệ thống để thiết lập mốc số dư đầu kỳ mới cho từng quỹ riêng biệt.
           </p>
         </div>
 
-        <form onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
           {/* Khối 1: Cấu hình Thiết Lập */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#f8fafc', padding: 24, borderRadius: 16, border: '1px solid #e2e8f0' }}>
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hình thức quỹ</label>
-              <Dropdown
-                value={hinhThuc}
-                onChange={(val) => { setHinhThuc(val); setSoDuThucTe(''); }}
-                options={[
-                  { value: 'Tiền mặt', label: '💵 Tiền mặt (Két sắt)' },
-                  { value: 'Chuyển khoản', label: '🏦 Chuyển khoản (Ngân hàng)' }
-                ]}
-              />
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
             <div>
               <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mốc thời gian chốt</label>
               <input
                 type="datetime-local"
                 style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
                 value={ngayChot}
-                onChange={(e) => { setNgayChot(e.target.value); setSoDuThucTe(''); }}
+                onChange={(e) => { 
+                  setNgayChot(e.target.value); 
+                  setSoDuThucTeTM(''); 
+                  setSoDuThucTeCK(''); 
+                  setTimeout(() => fetchSystemBalance(), 0);
+                }}
                 required
               />
             </div>
-          </div>
-
-          {/* Khối 2: Grid Số Liệu Đối Chiếu */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
-
-            {/* Hệ thống */}
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 120 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
-              <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', margin: '12px 0' }}>
-                {loading ? '⏳...' : `${soDuHeThong.toLocaleString('vi-VN')}₫`}
-              </span>
-              <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>Tính từ mốc chốt gần nhất</span>
-            </div>
-
-            {/* Thực tế */}
-            <div style={{ background: '#ffffff', border: '2px solid #4f46e5', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 120, boxShadow: '0 10px 20px rgba(79, 70, 229, 0.04)' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#4f46e5', letterSpacing: '0.05em' }}>SỐ DƯ THỰC TẾ *</span>
-              <div style={{ position: 'relative', width: '100%', margin: '10px 0', display: 'flex', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  style={{ width: '100%', fontWeight: 800, fontSize: '1.5rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
-                  value={formatInputDisplay(soDuThucTe)}
-                  onChange={(e) => setSoDuThucTe(e.target.value.replace(/[^\d]/g, ''))}
-                  placeholder="0"
-                  required
-                />
-                <span style={{ position: 'absolute', right: 2, fontSize: '1.2rem', fontWeight: 800, color: '#4f46e5' }}>₫</span>
-              </div>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic' }}>Đếm tay hoặc xem app bank</span>
-            </div>
-
-            {/* Chênh lệch */}
-            <div style={{ background: clMeta.bg, border: `1px solid ${clMeta.border}`, borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: 120 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
-              <span style={{ fontSize: '1.6rem', fontWeight: 800, fontFamily: 'monospace', color: clMeta.color, margin: '12px 0' }}>
-                {chenhLech === 0 ? '±0₫' : (chenhLech > 0 ? `+${chenhLech.toLocaleString('vi-VN')}₫` : `-${Math.abs(chenhLech).toLocaleString('vi-VN')}₫`)}
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: clMeta.color, fontSize: '0.75rem', fontWeight: 700 }}>
-                {chenhLech === 0 ? <Check size={14} /> : <AlertCircle size={14} />}
-                <span>{clMeta.msg}</span>
-              </div>
-            </div>
-
-          </div>
-
-          {/* Khối 3: Thông tin nhân sự & Giải trình */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Personnel / Người thực hiện chốt</label>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người thực hiện chốt</label>
               <input
                 type="text"
-                style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }}
+                style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
                 value={nguoiChot}
                 onChange={(e) => setNguoiChot(e.target.value)}
                 required
               />
             </div>
-            <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Lý do chênh lệch / Ghi chú kiểm kê {chenhLech !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
-              </label>
-              <textarea
-                style={{ width: '100%', height: 90, padding: '12px 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', resize: 'none', lineHeight: 1.5, boxSizing: 'border-box' }}
-                value={ghiChu}
-                onChange={(e) => setGhiChu(e.target.value)}
-                placeholder={chenhLech !== 0 ? "Bắt buộc giải trình chi tiết lý do thừa/thiếu quỹ tiền phục vụ tự động tạo phiếu bù..." : "Nhập ghi chú kiểm kê tài sản..."}
-                required={chenhLech !== 0}
-              />
+          </div>
+
+          {/* Khối 2: Hai Cột Quỹ song song */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+
+            {/* Quỹ Tiền Mặt */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 24, background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                💵 QUỸ TIỀN MẶT (KÉT SẮT)
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
+                    {loading ? '⏳...' : `${soDuHeThongTM.toLocaleString('vi-VN')}₫`}
+                  </div>
+                </div>
+
+                <div style={{ border: '2px solid #ef4444', borderRadius: 12, padding: 16 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', letterSpacing: '0.05em' }}>SỐ DƯ THỰC TẾ *</span>
+                  <div style={{ position: 'relative', width: '100%', marginTop: 8, display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      style={{ width: '100%', fontWeight: 800, fontSize: '1.3rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
+                      value={formatInputDisplay(soDuThucTeTM)}
+                      onChange={(e) => setSoDuThucTeTM(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="0"
+                    />
+                    <span style={{ position: 'absolute', right: 2, fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>₫</span>
+                  </div>
+                </div>
+
+                <div style={{ background: clMetaTM.bg, border: `1px solid ${clMetaTM.border}`, borderRadius: 12, padding: 16 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: clMetaTM.color, margin: '6px 0' }}>
+                    {soDuThucTeTM === '' ? '—' : (chenhLechTM === 0 ? '±0₫' : (chenhLechTM > 0 ? `+${chenhLechTM.toLocaleString('vi-VN')}₫` : `-${Math.abs(chenhLechTM).toLocaleString('vi-VN')}₫`))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: clMetaTM.color, fontSize: '0.75rem', fontWeight: 700 }}>
+                    {soDuThucTeTM !== '' && (chenhLechTM === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
+                    <span>{clMetaTM.msg}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
+                    Giải trình chênh lệch {soDuThucTeTM !== '' && chenhLechTM !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
+                  </label>
+                  <textarea
+                    style={{ width: '100%', height: 60, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.88rem', outline: 'none', resize: 'none', lineHeight: 1.4, boxSizing: 'border-box' }}
+                    value={ghiChuTM}
+                    onChange={(e) => setGhiChuTM(e.target.value)}
+                    placeholder={soDuThucTeTM !== '' && chenhLechTM !== 0 ? "Bắt buộc nhập lý do chênh lệch tiền mặt..." : "Ghi chú kiểm kê két sắt..."}
+                    required={soDuThucTeTM !== '' && chenhLechTM !== 0}
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* Quỹ Chuyển Khoản */}
+            <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 24, background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+                🏦 QUỸ CHUYỂN KHOẢN (NGÂN HÀNG)
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
+                    {loading ? '⏳...' : `${soDuHeThongCK.toLocaleString('vi-VN')}₫`}
+                  </div>
+                </div>
+
+                <div style={{ border: '2px solid #ef4444', borderRadius: 12, padding: 16 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', letterSpacing: '0.05em' }}>SỐ DƯ THỰC TẾ *</span>
+                  <div style={{ position: 'relative', width: '100%', marginTop: 8, display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      style={{ width: '100%', fontWeight: 800, fontSize: '1.3rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
+                      value={formatInputDisplay(soDuThucTeCK)}
+                      onChange={(e) => setSoDuThucTeCK(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="0"
+                    />
+                    <span style={{ position: 'absolute', right: 2, fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>₫</span>
+                  </div>
+                </div>
+
+                <div style={{ background: clMetaCK.bg, border: `1px solid ${clMetaCK.border}`, borderRadius: 12, padding: 16 }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: clMetaCK.color, margin: '6px 0' }}>
+                    {soDuThucTeCK === '' ? '—' : (chenhLechCK === 0 ? '±0₫' : (chenhLechCK > 0 ? `+${chenhLechCK.toLocaleString('vi-VN')}₫` : `-${Math.abs(chenhLechCK).toLocaleString('vi-VN')}₫`))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: clMetaCK.color, fontSize: '0.75rem', fontWeight: 700 }}>
+                    {soDuThucTeCK !== '' && (chenhLechCK === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
+                    <span>{clMetaCK.msg}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
+                    Giải trình chênh lệch {soDuThucTeCK !== '' && chenhLechCK !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
+                  </label>
+                  <textarea
+                    style={{ width: '100%', height: 60, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.88rem', outline: 'none', resize: 'none', lineHeight: 1.4, boxSizing: 'border-box' }}
+                    value={ghiChuCK}
+                    onChange={(e) => setGhiChuCK(e.target.value)}
+                    placeholder={soDuThucTeCK !== '' && chenhLechCK !== 0 ? "Bắt buộc nhập lý do chênh lệch chuyển khoản..." : "Ghi chú kiểm kê app bank..."}
+                    required={soDuThucTeCK !== '' && chenhLechCK !== 0}
+                  />
+                </div>
+              </div>
+            </div>
+
           </div>
 
           {/* Submit Button */}
@@ -2661,7 +2820,7 @@ function SettingsScreen() {
               width: '100%',
               height: 48,
               fontWeight: 700,
-              background: (saving || loading) ? '#94a3b8' : '#4f46e5',
+              background: (saving || loading) ? '#94a3b8' : '#ef4444',
               color: '#ffffff',
               fontSize: '1rem',
               borderRadius: 14,
@@ -2675,7 +2834,7 @@ function SettingsScreen() {
               marginTop: 8
             }}
           >
-            {saving ? '⏳ Đang lưu mốc chốt...' : 'Xác Nhận Chốt Quỹ & Thiết Lập Đầu Kỳ Mới'}
+            {saving ? ' Đang lưu mốc chốt...' : 'Xác Nhận Chốt Quỹ & Thiết Lập Đầu Kỳ Mới'}
           </button>
 
         </form>
@@ -2683,10 +2842,294 @@ function SettingsScreen() {
     </div>
   );
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Monthly Dashboard Component
+// ════════════════════════════════════════════════════════════════════════════
+function MonthlyDashboardScreen() {
+  const [selectedMonth, setSelectedMonth] = useState('2026-07');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const { addToast } = useToast();
+
+  const fetchDashboardData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/finance/monthly-dashboard?month=${selectedMonth}`);
+      if (res.ok) {
+        const d = await res.json();
+        setData(d);
+      } else {
+        addToast('❌ Không thể tải dữ liệu báo cáo tháng', 'error');
+      }
+    } catch (e) {
+      console.error(e);
+      addToast('❌ Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedMonth, addToast]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  if (loading && !data) {
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải báo cáo...</div>;
+  }
+
+  const d = data || {
+    month: 7,
+    year: 2026,
+    tong_thu: 0,
+    tong_chi: 0,
+    chenh_lech: 0,
+    categories: [],
+    departments: []
+  };
+
+  const chartCategoriesData = d.categories.filter(c => c.thu > 0 || c.chi > 0);
+  const chartDepartmentsData = d.departments.filter(dept => dept.thu > 0 || dept.chi > 0);
+
+  return (
+    <div style={{ padding: '16px 0', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Selector Header */}
+      <div style={{
+        background: '#ffffff',
+        borderRadius: 16,
+        padding: '20px 24px',
+        border: '1px solid #e2e8f0',
+        marginBottom: 24,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 16
+      }}>
+        <div>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+            📊 BẢNG ĐIỀU KHIỂN THU - CHI (THEO THÁNG)
+          </h2>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0 0' }}>
+            Báo cáo tổng hợp doanh số thu chi theo Hạng mục và Phòng ban
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>Chọn tháng:</span>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={{
+                height: 38,
+                padding: '0 12px',
+                borderRadius: 8,
+                border: '1px solid #cbd5e1',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                outline: 'none',
+                color: '#1e293b'
+              }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 12, background: '#f1f5f9', padding: '6px 12px', borderRadius: 8, fontSize: '0.85rem' }}>
+            <div><span style={{ color: '#64748b' }}>Tháng:</span> <strong style={{ color: '#0f172a' }}>{d.month}</strong></div>
+            <div style={{ width: 1, background: '#cbd5e1' }}></div>
+            <div><span style={{ color: '#64748b' }}>Năm:</span> <strong style={{ color: '#0f172a' }}>{d.year}</strong></div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div style={{ background: '#ffffff', borderRadius: 16, padding: '20px 24px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(16,185,129,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
+            💰
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tổng Thu</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', marginTop: 4 }}>
+              {fmt(d.tong_thu)}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: 16, padding: '20px 24px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
+            💸
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tổng Chi</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace', marginTop: 4 }}>
+              {fmt(d.tong_chi)}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: d.chenh_lech >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 16, padding: '20px 24px', border: `1px solid ${d.chenh_lech >= 0 ? '#bbf7d0' : '#fecaca'}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: d.chenh_lech >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
+            ⚖️
+          </div>
+          <div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Chênh Lệch</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: d.chenh_lech >= 0 ? '#10b981' : '#ef4444', fontFamily: 'monospace', marginTop: 4 }}>
+              {d.chenh_lech >= 0 ? '+' : ''}{fmt(d.chenh_lech)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '450px 1fr', gap: 24, alignItems: 'start' }}>
+        
+        {/* Left Columns */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Table 1: Theo Hạng Mục */}
+          <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20 }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
+              📁 Theo Hạng Mục
+            </h3>
+            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#475569', textAlign: 'left', fontWeight: 700 }}>
+                    <th style={{ padding: '8px 12px', borderRadius: '6px 0 0 6px' }}>Hạng mục</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Thu</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', borderRadius: '0 6px 6px 0' }}>Chi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.categories.map((cat, idx) => (
+                    <tr key={idx} style={{ 
+                      borderBottom: '1px solid #f1f5f9',
+                      background: (cat.thu > 0 || cat.chi > 0) ? '#f0fdf4' : 'transparent',
+                      fontWeight: (cat.thu > 0 || cat.chi > 0) ? 600 : 400
+                    }}>
+                      <td style={{ padding: '10px 12px', color: '#1e293b' }}>{cat.name}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', color: cat.thu > 0 ? '#10b981' : '#94a3b8' }}>
+                        {cat.thu > 0 ? fmt(cat.thu) : '0'}
+                      </td>
+                      <td style={{ padding: '10px 12px', textAlign: 'right', color: cat.chi > 0 ? '#ef4444' : '#94a3b8' }}>
+                        {cat.chi > 0 ? fmt(cat.chi) : '0'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Table 2: Theo Phòng Ban */}
+          <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20 }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
+              🏢 Theo Phòng Ban / Dự Án
+            </h3>
+            <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#475569', textAlign: 'left', fontWeight: 700 }}>
+                    <th style={{ padding: '8px 12px', borderRadius: '6px 0 0 6px' }}>Phòng ban / Dự án</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Thu</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', borderRadius: '0 6px 6px 0' }}>Chi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.departments.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontStyle: 'italic' }}>
+                        Không có phát sinh phòng ban
+                      </td>
+                    </tr>
+                  ) : (
+                    d.departments.map((dept, idx) => (
+                      <tr key={idx} style={{ 
+                        borderBottom: '1px solid #f1f5f9',
+                        background: (dept.thu > 0 || dept.chi > 0) ? '#f0fdf4' : 'transparent',
+                        fontWeight: (dept.thu > 0 || dept.chi > 0) ? 600 : 400
+                      }}>
+                        <td style={{ padding: '10px 12px', color: '#1e293b' }}>{dept.name}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: dept.thu > 0 ? '#10b981' : '#94a3b8' }}>
+                          {dept.thu > 0 ? fmt(dept.thu) : '0'}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: dept.chi > 0 ? '#ef4444' : '#94a3b8' }}>
+                          {dept.chi > 0 ? fmt(dept.chi) : '0'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Charts */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Chart 1: Hạng mục */}
+          <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20 }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0' }}>
+              📊 Thu / Chi theo Hạng mục phát sinh
+            </h3>
+            {chartCategoriesData.length === 0 ? (
+              <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                Không có dữ liệu phát sinh trong tháng để hiển thị biểu đồ
+              </div>
+            ) : (
+              <div style={{ width: '100%', height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartCategoriesData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                    <YAxis tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} tick={{ fontSize: 10 }} stroke="#94a3b8" />
+                    <Tooltip formatter={(value) => [fmt(value), '']} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="thu" name="Thu" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="chi" name="Chi" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          {/* Chart 2: Phòng ban */}
+          <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20 }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0' }}>
+              📊 Phân bổ Thu / Chi theo Phòng ban
+            </h3>
+            {chartDepartmentsData.length === 0 ? (
+              <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                Không có dữ liệu phát sinh theo phòng ban
+              </div>
+            ) : (
+              <div style={{ width: '100%', height: 220 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartDepartmentsData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 9 }} stroke="#94a3b8" />
+                    <YAxis tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} tick={{ fontSize: 10 }} stroke="#94a3b8" />
+                    <Tooltip formatter={(value) => [fmt(value), '']} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="thu" name="Thu" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="chi" name="Chi" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Main Finance Component
 // ════════════════════════════════════════════════════════════════════════════
 const THUCHI_TABS = [
+  { id: 'monthly-dashboard', label: 'Báo Cáo Tháng', icon: <BarChart2 size={16} /> },
   { id: 'cashflow-all', label: 'Nhật Ký Thu Chi', icon: <Receipt size={16} /> },
   { id: 'cashflow-cash', label: 'Quỹ Tiền Mặt', icon: <Banknote size={16} /> },
   { id: 'cashflow-bank', label: 'Quỹ Chuyển Khoản', icon: <Building2 size={16} /> },
@@ -2697,10 +3140,11 @@ const THUCHI_TABS = [
 ];
 
 export default function Finance() {
-  const [activeMenu, setActiveMenu] = useState('cashflow-all');
+  const [activeMenu, setActiveMenu] = useState('monthly-dashboard');
 
   const renderContent = () => {
     switch (activeMenu) {
+      case 'monthly-dashboard': return <MonthlyDashboardScreen />;
       case 'cashflow-all': return <CashflowScreen mode="all" />;
       case 'cashflow-cash': return <CashflowScreen mode="cash" />;
       case 'cashflow-bank': return <CashflowScreen mode="bank" />;
@@ -2708,7 +3152,7 @@ export default function Finance() {
       case 'advance-request': return <AdvanceRequestScreen />;
       case 'advance-clear': return <AdvanceClearScreen />;
       case 'cashflow-settings': return <SettingsScreen />;
-      default: return <CashflowScreen mode="all" />;
+      default: return <MonthlyDashboardScreen />;
     }
   };
 

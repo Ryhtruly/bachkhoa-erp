@@ -16,6 +16,7 @@ from src.db.models import (
 )
 from datetime import datetime, date
 import uuid
+from datetime import datetime, timezone, timedelta
 
 router = APIRouter(prefix="/api/finance", tags=["Finance ERP"])
 
@@ -233,36 +234,15 @@ def _check_cash(db: Session, amount: float):
 
 
 def _calculate_balances(db: Session, type_val: str, amount: float, method: str):
-    thu_tm = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Thu",
-        CashflowTransaction.hinh_thuc == "Tiền mặt"
-    ).scalar() or 0)
-    chi_tm = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Chi",
-        CashflowTransaction.hinh_thuc == "Tiền mặt"
-    ).scalar() or 0)
-    
-    thu_ck = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Thu",
-        CashflowTransaction.hinh_thuc == "Chuyển khoản"
-    ).scalar() or 0)
-    chi_ck = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Chi",
-        CashflowTransaction.hinh_thuc == "Chuyển khoản"
-    ).scalar() or 0)
-    
-    initial_cash = get_setting_value(db, "initial_cash_balance")
-    initial_bank = get_setting_value(db, "initial_bank_balance")
-    
-    bal_tm = initial_cash + thu_tm - chi_tm
-    bal_ck = initial_bank + thu_ck - chi_ck
+    bal_tm = get_running_balance(db, "Tiền mặt")
+    bal_ck = get_running_balance(db, "Chuyển khoản")
     
     if method == "Tiền mặt":
         if type_val == "Thu":
             bal_tm += amount
         else:
             bal_tm -= amount
-    else:
+    elif method == "Chuyển khoản":
         if type_val == "Thu":
             bal_ck += amount
         else:
@@ -397,15 +377,7 @@ def cashflow_cash(
     initial_expense = get_setting_value(db, "initial_total_expenditure")
 
     # 1. Compute overall balance (unfiltered)
-    overall_thu = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Thu",
-        CashflowTransaction.hinh_thuc == "Tiền mặt"
-    ).scalar() or 0)
-    overall_chi = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Chi",
-        CashflowTransaction.hinh_thuc == "Tiền mặt"
-    ).scalar() or 0)
-    current_balance = initial_cash + overall_thu - overall_chi
+    current_balance = get_running_balance(db, "Tiền mặt")
 
     # 2. Query filtered transactions
     q = db.query(CashflowTransaction).filter(CashflowTransaction.hinh_thuc == "Tiền mặt")
@@ -458,15 +430,7 @@ def cashflow_bank(
     initial_expense = get_setting_value(db, "initial_total_expenditure")
 
     # 1. Compute overall balance (unfiltered)
-    overall_thu = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Thu",
-        CashflowTransaction.hinh_thuc == "Chuyển khoản"
-    ).scalar() or 0)
-    overall_chi = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-        CashflowTransaction.loai == "Chi",
-        CashflowTransaction.hinh_thuc == "Chuyển khoản"
-    ).scalar() or 0)
-    current_balance = initial_bank + overall_thu - overall_chi
+    current_balance = get_running_balance(db, "Chuyển khoản")
 
     # 2. Query filtered transactions
     q = db.query(CashflowTransaction).filter(CashflowTransaction.hinh_thuc == "Chuyển khoản")
@@ -855,10 +819,8 @@ def get_summary(db: Session = Depends(get_db)):
                              CashflowTransaction.dien_giai.ilike(f"%{cat}%")))
         return float(q.scalar() or 0)
 
-    tien_mat = (
-        initial_cash + _s("Thu", "Tiền mặt") - _s("Chi", "Tiền mặt")
-    )
-    ngan_hang = initial_bank + _s("Thu", "Chuyển khoản") - _s("Chi", "Chuyển khoản")
+    tien_mat = get_running_balance(db, "Tiền mặt")
+    ngan_hang = get_running_balance(db, "Chuyển khoản")
     tam_ung_net = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
         CashflowTransaction.loai == "Chi",
         or_(CashflowTransaction.hang_muc.ilike("%tạm ứng%"),
@@ -991,6 +953,8 @@ def calculate_system_balance(
 ):
     try:
         dt_chot = datetime.fromisoformat(ngay_chot.replace("Z", "+00:00"))
+        tz_vietnam = timezone(timedelta(hours=7))
+        dt_chot = dt_chot.astimezone(tz_vietnam)
     except ValueError:
         try:
             dt_chot = datetime.strptime(ngay_chot, "%Y-%m-%d %H:%M:%S")
@@ -1004,18 +968,25 @@ def calculate_system_balance(
 @router.post("/fund-balances/close")
 def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
     try:
+        # 1. Parse thời gian và ép chuẩn về múi giờ Việt Nam (+07:00)
         try:
-            dt_chot = datetime.fromisoformat(payload.ngay_chot.replace("Z", "+00:00"))
+            dt_utc = datetime.fromisoformat(payload.ngay_chot.replace("Z", "+00:00"))
+            tz_vietnam = timezone(timedelta(hours=7))
+            dt_chot = dt_utc.astimezone(tz_vietnam)
         except ValueError:
             try:
                 dt_chot = datetime.strptime(payload.ngay_chot, "%Y-%m-%d %H:%M:%S")
+                dt_chot = dt_chot.replace(tzinfo=timezone(timedelta(hours=7)))
             except ValueError:
                 raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
 
+        # 2. Tính toán số dư hệ thống trước khi chốt
         so_du_he_thong = get_running_balance(db, payload.hinh_thuc, up_to_datetime=dt_chot)
         chênh_lệch = payload.so_tien_thuc_te - so_du_he_thong
 
         nguoi_chot = payload.nguoi_chot or "Kế toán"
+        
+        # 3. Thêm mốc chốt chặn mới
         fob = FundOpeningBalance(
             hinh_thuc=payload.hinh_thuc,
             so_tien_dau_ky=payload.so_tien_thuc_te,
@@ -1026,12 +997,16 @@ def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
         db.add(fob)
         db.flush()
 
+        # 4. Tạo phiếu bù trừ nếu có chênh lệch
         if chênh_lệch != 0:
             loai = "Thu" if chênh_lệch > 0 else "Chi"
             hang_muc = "Thu chênh lệch kiểm kê quỹ" if chênh_lệch > 0 else "Chi chênh lệch kiểm kê quỹ"
             new_id = _voucher_id(loai, db, dt_chot.date())
             
             bal_tm, bal_ck, bal_sau = _calculate_balances(db, loai, abs(chênh_lệch), payload.hinh_thuc)
+            
+            # 🔥 SỬA CHÍ TRÚC: Lùi thời gian tạo phiếu 1 giây để nó thuộc về kỳ cũ, không bị quét vào kỳ mới
+            thoi_gian_phieu = dt_chot - timedelta(seconds=1)
             
             tc = CashflowTransaction(
                 id=new_id,
@@ -1041,7 +1016,7 @@ def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
                 nguoi_nhan_nop=nguoi_chot,
                 hinh_thuc=payload.hinh_thuc,
                 ngay=dt_chot.date(),
-                created_at=dt_chot,
+                created_at=thoi_gian_phieu, # Ghi nhận vào giây cuối cùng của kỳ trước
                 so_chung_tu=new_id,
                 dien_giai=f"{hang_muc}: {payload.ghi_chu or ''}",
                 so_du_sau_gd=bal_sau,
@@ -1061,3 +1036,100 @@ def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/monthly-dashboard")
+def get_monthly_dashboard(month: str = Query(..., description="Format: YYYY-MM"), db: Session = Depends(get_db)):
+    try:
+        y_str, m_str = month.split("-")
+        year = int(y_str)
+        m_num = int(m_str)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Tháng không hợp lệ. Format phải là YYYY-MM")
+
+    # Filter transactions in this month
+    txs = db.query(CashflowTransaction).filter(
+        extract("year", CashflowTransaction.ngay) == year,
+        extract("month", CashflowTransaction.ngay) == m_num,
+        CashflowTransaction.scope == "Công ty"
+    ).all()
+
+    # Calculate overall totals
+    tong_thu = sum(float(t.so_tien or 0.0) for t in txs if t.loai == "Thu")
+    tong_chi = sum(float(t.so_tien or 0.0) for t in txs if t.loai == "Chi")
+
+    # Define standard categories to show
+    standard_categories = [
+        "Văn phòng phẩm",
+        "In ấn - Photocopy",
+        "Chi quầy tiếp nhận",
+        "Ăn uống",
+        "Đi lại - Xăng xe - Gửi xe",
+        "Công tác phí",
+        "Chuyển phát - Bưu chính-Grap",
+        "Điện - Nước - Internet",
+        "Sửa chữa nhỏ",
+        "Bảo trì thiết bị",
+        "Vệ sinh - Rác thải",
+        "Hỗ trợ sự kiện - Marketing",
+        "Chi thụ lý bản vẽ",
+        "Chi bảo vệ",
+        "Công chứng hồ sơ",
+        "Thu chênh lệch kiểm kê quỹ",
+        "Chi chênh lệch kiểm kê quỹ"
+    ]
+
+    # Map categories
+    cat_map = {c: {"thu": 0.0, "chi": 0.0} for c in standard_categories}
+    
+    # Map any categories not in standard list
+    for t in txs:
+        cat = t.hang_muc or "Khác"
+        normalized_cat = cat
+        for sc in standard_categories:
+            if sc.lower() in cat.lower() or cat.lower() in sc.lower():
+                normalized_cat = sc
+                break
+        
+        if normalized_cat not in cat_map:
+            cat_map[normalized_cat] = {"thu": 0.0, "chi": 0.0}
+            
+        amt = float(t.so_tien or 0.0)
+        if t.loai == "Thu":
+            cat_map[normalized_cat]["thu"] += amt
+        else:
+            cat_map[normalized_cat]["chi"] += amt
+
+    categories_list = [
+        {"name": k, "thu": v["thu"], "chi": v["chi"]}
+        for k, v in cat_map.items()
+    ]
+
+    # Map departments (Phòng ban/Dự án)
+    dept_map = {}
+    for t in txs:
+        dept = t.du_an_phong_ban or "Khác / Văn phòng"
+        if dept not in dept_map:
+            dept_map[dept] = {"thu": 0.0, "chi": 0.0}
+        amt = float(t.so_tien or 0.0)
+        if t.loai == "Thu":
+            dept_map[dept]["thu"] += amt
+        else:
+            dept_map[dept]["chi"] += amt
+
+    departments_list = [
+        {"name": k, "thu": v["thu"], "chi": v["chi"]}
+        for k, v in dept_map.items()
+    ]
+
+    return {
+        "status": "success",
+        "month": m_num,
+        "year": year,
+        "tong_thu": tong_thu,
+        "tong_chi": tong_chi,
+        "chenh_lech": tong_thu - tong_chi,
+        "categories": categories_list,
+        "departments": departments_list
+    }
+
