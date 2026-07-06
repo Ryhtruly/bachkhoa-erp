@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from core import pricing_engine
+from src.core import pricing_engine
 
 router = APIRouter(prefix="/api/baogia", tags=["Báo Giá"])
 

@@ -2,18 +2,19 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from sqlalchemy.orm import Session
-from schemas.models import HopdongCreateSchema, ContractGenerateSchema
+from sqlalchemy import or_
+from src.schemas.models import HopdongCreateSchema, ContractGenerateSchema
 from src.db.database import get_db
 from src.db.models import Contract, Customer, Receivable, ProjectTask
-from services import telegram_service
-from services.contract_read_service import (
+from src.services import telegram_service
+from src.services.contract_read_service import (
     get_contract_cache_status,
     get_contract_hierarchy,
     get_contract_read_model,
     query_contract_read_model,
     sync_contract_read_model_after_write,
 )
-from core import doc_generator
+from src.core import doc_generator
 
 router = APIRouter(prefix="/api/hopdong", tags=["Hợp Đồng"])
 
@@ -50,7 +51,6 @@ def list_hopdong(
             page=page,
             page_size=page_size,
         )
-        # Tương thích client cũ: không truyền page_size thì vẫn nhận mảng đầy đủ.
         return result if page_size > 0 else result["data"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -92,9 +92,7 @@ def create_hopdong(payload: HopdongCreateSchema, db: Session = Depends(get_db)):
         db.add(rec)
         
         db.commit()
-        sync_contract_read_model_after_write(db)
-        
-        # Telegram
+        # sync bỏ qua (không có Redis)
         telegram_service.notify_new_contract({
             "Mã hợp đồng": new_hd.id,
             "Tên khách hàng": payload.Tên_khách_hàng,
@@ -153,8 +151,7 @@ def generate_and_save_contract(payload: ContractGenerateSchema, db: Session = De
                 task.contract_id = new_hd.id
                 
         db.commit()
-        sync_contract_read_model_after_write(db)
-        
+        # sync bỏ qua (không có Redis)
         telegram_service.notify_new_contract({
             "Mã hợp đồng": new_hd.id,
             "Tên khách hàng": payload.TEN_KHACH_HANG,

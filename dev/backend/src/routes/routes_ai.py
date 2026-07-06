@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from core import ai_vision_engine
+from src.core import ai_vision_engine
 
 router = APIRouter(prefix="/api/ai", tags=["AI Quy Hoạch"])
 
