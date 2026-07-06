@@ -7,7 +7,7 @@ from typing import Optional, Literal
 from src.db.database import get_db
 from src.crud.crud_finance import (
     _row, crud_get_cashflow_detail, crud_create_cashflow, 
-    crud_update_cashflow, crud_void_cashflow, _row_bulk, _voucher_id, 
+    crud_update_cashflow, crud_void_cashflow, crud_delete_cashflow, _row_bulk, _voucher_id, 
     _calculate_balances, _sync_receivables, get_setting_value,
     get_running_balance
 )
@@ -515,6 +515,10 @@ def update_cashflow(transaction_id: str, payload: CashflowUpdateIn, db: Session 
 @router.post("/cashflow/{transaction_id:path}/void")
 def void_cashflow(transaction_id: str, payload: CashflowVoidIn, db: Session = Depends(get_db)):
     return crud_void_cashflow(db, transaction_id, payload.reason, payload.actor_id)
+
+@router.delete("/cashflow/{transaction_id:path}")
+def delete_cashflow(transaction_id: str, db: Session = Depends(get_db)):
+    return crud_delete_cashflow(db, transaction_id)
 
 
 
@@ -1146,6 +1150,27 @@ def save_finance_settings(payload: FinanceSettingsIn, db: Session = Depends(get_
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/fund-balances/last-snapshot")
+def get_last_snapshot(db: Session = Depends(get_db)):
+    """Trả về mốc chốt cuối cùng trong DB cho từng hình thức."""
+    result = {}
+    for hinh_thuc in ["Tiền mặt", "Chuyển khoản"]:
+        snap = db.query(FundOpeningBalance).filter(
+            FundOpeningBalance.hinh_thuc == hinh_thuc
+        ).order_by(FundOpeningBalance.ngay_ap_dung.desc(), FundOpeningBalance.id.desc()).first()
+        if snap:
+            result[hinh_thuc] = {
+                "id": snap.id,
+                "so_tien_dau_ky": float(snap.so_tien_dau_ky),
+                "ngay_ap_dung": snap.ngay_ap_dung.isoformat(),
+                "nguoi_chot": snap.nguoi_chot or "",
+                "ghi_chu": snap.ghi_chu or ""
+            }
+        else:
+            result[hinh_thuc] = None
+    return result
 
 
 @router.get("/fund-balances/calculate")

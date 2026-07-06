@@ -19,6 +19,7 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
   const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [autofillNotice, setAutofillNotice] = useState('');
@@ -133,6 +134,25 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
       }
     } catch { setError('Lỗi kết nối'); }
     finally { setSubmitting(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`⚠️ Bạn có chắc muốn XÓA phiếu "${transactionId}" khỏi hệ thống?\nHành động này KHÔNG thể hoàn tác!`)) return;
+    if (!window.confirm('Xác nhận lần cuối: Xóa vĩnh viễn phiếu này?')) return;
+
+    setDeleting(true); setError('');
+    try {
+      const res = await fetch(`${API}/api/finance/cashflow/${transactionId}`, { method: 'DELETE' });
+      if (res.ok) {
+        addToast(`🗑️ Đã xóa phiếu ${transactionId}`, 'success');
+        onSuccess?.();
+        onClose();
+      } else {
+        const err = await res.json();
+        setError(err.detail || 'Lỗi khi xóa phiếu');
+      }
+    } catch { setError('Lỗi kết nối'); }
+    finally { setDeleting(false); }
   };
 
   if (!open) return null;
@@ -259,12 +279,23 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24, paddingTop: 20 }}>
-            <button type="button" className="btn btn-secondary" onClick={handleClose}>Hủy bỏ</button>
-            <button type="submit" className="btn" disabled={submitting || (!dirty && !isReadOnly)}
-              style={{ background: brandAccent, color: '#fff', padding: '0 24px', opacity: submitting ? 0.6 : 1 }}>
-              {submitting ? '⏳ Đang lưu...' : 'Lưu thay đổi'}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 24, paddingTop: 20 }}>
+            <button
+              type="button"
+              className="btn"
+              onClick={handleDelete}
+              disabled={deleting || submitting}
+              style={{ background: '#ef4444', color: '#fff', padding: '0 20px', opacity: (deleting || submitting) ? 0.6 : 1 }}
+            >
+              {deleting ? '⏳ Đang xóa...' : 'Xóa phiếu'}
             </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" className="btn btn-secondary" onClick={handleClose}>Hủy bỏ</button>
+              <button type="submit" className="btn" disabled={submitting || (!dirty && !isReadOnly)}
+                style={{ background: brandAccent, color: '#fff', padding: '0 24px', opacity: submitting ? 0.6 : 1 }}>
+                {submitting ? '⏳ Đang lưu...' : 'Lưu thay đổi'}
+              </button>
+            </div>
           </div>
         </form>
       )}

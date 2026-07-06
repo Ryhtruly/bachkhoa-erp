@@ -18,12 +18,12 @@ def get_setting_value(db: Session, key: str, default: float = 0.0) -> float:
 def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[datetime] = None) -> float:
     # 1. Tìm mốc chốt chặn (Snapshot) mới nhất trước hoặc bằng thời gian cần xem
     from src.db.models import FundOpeningBalance
-    
+
     q_snap = db.query(FundOpeningBalance).filter(FundOpeningBalance.hinh_thuc == hinh_thuc)
     if up_to_datetime:
         q_snap = q_snap.filter(FundOpeningBalance.ngay_ap_dung <= up_to_datetime)
     latest_snap = q_snap.order_by(FundOpeningBalance.ngay_ap_dung.desc(), FundOpeningBalance.id.desc()).first()
-    
+
     if latest_snap:
         start_bal = float(latest_snap.so_tien_dau_ky)
         start_time = latest_snap.ngay_ap_dung
@@ -34,32 +34,58 @@ def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[da
         start_time = None
 
     # 2. Tính tổng Thu / Chi phát sinh SAU mốc chốt sổ này
+    #    Loại trừ phiếu "Đã hủy" vì chúng đã có reverse entry riêng
     q_thu = db.query(func.sum(CashflowTransaction.so_tien)).filter(
         CashflowTransaction.loai == "Thu",
         CashflowTransaction.hinh_thuc == hinh_thuc,
-        CashflowTransaction.scope == "Công ty"
+        CashflowTransaction.scope == "Công ty",
+        CashflowTransaction.trang_thai != "Đã hủy"
     )
-    
+
     q_chi = db.query(func.sum(CashflowTransaction.so_tien)).filter(
         CashflowTransaction.loai == "Chi",
         CashflowTransaction.hinh_thuc == hinh_thuc,
-        CashflowTransaction.scope == "Công ty"
+        CashflowTransaction.scope == "Công ty",
+        CashflowTransaction.trang_thai != "Đã hủy"
     )
-    
-    # 2. Tính tổng Thu / Chi phát sinh SAU mốc chốt sổ này
+
+    # Lọc các giao dịch SAU mốc snapshot:
+    # - ngay > ngày chốt: luôn bao gồm
+    # - ngay == ngày chốt: chỉ bao gồm nếu created_at > thời điểm chốt (phiếu tạo sau khi chốt)
     if start_time:
-        q_thu = q_thu.filter(CashflowTransaction.ngay > start_time.date())
-        q_chi = q_chi.filter(CashflowTransaction.ngay > start_time.date())
-        
+        snap_date = start_time.date()
+        from sqlalchemy import or_, and_
+        q_thu = q_thu.filter(
+            or_(
+                CashflowTransaction.ngay > snap_date,
+                and_(
+                    CashflowTransaction.ngay == snap_date,
+                    CashflowTransaction.created_at > start_time
+                )
+            )
+        )
+        q_chi = q_chi.filter(
+            or_(
+                CashflowTransaction.ngay > snap_date,
+                and_(
+                    CashflowTransaction.ngay == snap_date,
+                    CashflowTransaction.created_at > start_time
+                )
+            )
+        )
+
+    # Giới hạn đến thời điểm cần tính (dùng ngay cho đơn giản)
     if up_to_datetime:
         q_thu = q_thu.filter(CashflowTransaction.ngay <= up_to_datetime.date())
         q_chi = q_chi.filter(CashflowTransaction.ngay <= up_to_datetime.date())
-        
+
+
     thu_sum = float(q_thu.scalar() or 0.0)
     chi_sum = float(q_chi.scalar() or 0.0)
-    
+
     # 3. Trả về kết quả
     return start_bal + thu_sum - chi_sum
+
 
 # ══════════════════════════════════════════════════════════════
 # Helpers
@@ -570,6 +596,32 @@ def crud_void_cashflow(db: Session, transaction_id: str, reason: str, actor_id: 
         
         db.commit()
         return {"status": "success", "message": "Đã hủy và tạo reverse entry thành công."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def crud_delete_cashflow(db: Session, transaction_id: str):
+    """Xóa cứng phiếu thu/chi khỏi DB. Cho phép xóa bất kỳ phiếu nào (dùng khi admin muốn xóa hẳn)."""
+    try:
+        t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
+
+        db.delete(t)
+
+        from src.db.models import AuditLog
+        db.add(AuditLog(
+            actor_id=None,
+            action="DELETE",
+            object_type="CashflowTransaction",
+            payload_json={"id": transaction_id}
+        ))
+
+        db.commit()
+        return {"status": "success", "message": f"Đã xóa phiếu {transaction_id} khỏi hệ thống."}
     except HTTPException:
         raise
     except Exception as e:

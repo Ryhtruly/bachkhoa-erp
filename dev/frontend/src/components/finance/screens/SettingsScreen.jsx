@@ -12,6 +12,7 @@ import CashflowDetailModal from '../modals/CashflowDetailModal';
 
 export default function SettingsScreen() {
   const [ngayChot, setNgayChot] = useState(getLocalISOTime());
+  const [lastSnapshot, setLastSnapshot] = useState(null);
   const [soDuHeThongTM, setSoDuHeThongTM] = useState(0);
   const [soDuThucTeTM, setSoDuThucTeTM] = useState('');
   const [ghiChuTM, setGhiChuTM] = useState('');
@@ -24,6 +25,34 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { addToast } = useToast();
+
+  // Tự động lấy mốc chốt cuối từ DB và đặt ngayChot = thời điểm đó
+  useEffect(() => {
+    fetch(`${API}/api/finance/fund-balances/last-snapshot`)
+      .then(r => r.json())
+      .then(d => {
+        setLastSnapshot(d);
+        // Lấy ngay_ap_dung từ Tiền mặt hoặc Chuyển khoản (ưu tiên cái nào mới hơn)
+        const snapTM = d['Tiền mặt'];
+        const snapCK = d['Chuyển khoản'];
+        let latestIso = null;
+        if (snapTM && snapCK) {
+          latestIso = snapTM.ngay_ap_dung > snapCK.ngay_ap_dung ? snapTM.ngay_ap_dung : snapCK.ngay_ap_dung;
+        } else if (snapTM) {
+          latestIso = snapTM.ngay_ap_dung;
+        } else if (snapCK) {
+          latestIso = snapCK.ngay_ap_dung;
+        }
+        if (latestIso) {
+          // Chuyển ISO sang định dạng datetime-local (YYYY-MM-DDTHH:mm)
+          const dt = new Date(latestIso);
+          const tzOffset = dt.getTimezoneOffset() * 60000;
+          const localIso = new Date(dt.getTime() - tzOffset).toISOString().slice(0, 16);
+          setNgayChot(localIso);
+        }
+      })
+      .catch(() => { /* fallback giữ giờ hiện tại */ });
+  }, []);
 
   const fetchSystemBalance = useCallback(async () => {
     setLoading(true);
@@ -51,6 +80,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     fetchSystemBalance();
   }, [fetchSystemBalance]);
+
 
   const valThucTeTM = soDuThucTeTM === '' ? 0 : Number(soDuThucTeTM);
   const chenhLechTM = soDuThucTeTM === '' ? 0 : valThucTeTM - soDuHeThongTM;
@@ -183,7 +213,15 @@ export default function SettingsScreen() {
                 }}
                 required
               />
+              {lastSnapshot?.['Tiền mặt'] && (
+                <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#64748b' }}>
+                  📌 Mốc chốt cuối (DB): <strong>
+                    {new Date(lastSnapshot['Tiền mặt'].ngay_ap_dung).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </strong> — bởi {lastSnapshot['Tiền mặt'].nguoi_chot || 'Hệ thống'}
+                </div>
+              )}
             </div>
+
             <div>
               <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người thực hiện chốt</label>
               <input
