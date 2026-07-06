@@ -1,5 +1,6 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
+import { Dropdown } from '../ui';
 import { fmt, fmtShort, docSoTiengViet } from './utils';
 
 export function FinanceScreenHeader({ title, subtitle, onRefresh, children }) {
@@ -62,7 +63,7 @@ export function ExcelGridTable({
   category, onCategoryChange, categoryOptions,
   personLabel, personName, onPersonNameChange, personReadOnly,
   method, onMethodChange, methodOptions, methodReadOnly,
-  department, onDepartmentChange,
+  department, onDepartmentChange, departmentOptions,
   amountDisplay, onAmountChange, amountReadOnly,
   status, onStatusChange, statusReadOnly,
   contractId, onContractIdChange,
@@ -155,7 +156,22 @@ export function ExcelGridTable({
         <tr>
           <td style={{ fontWeight: 'bold' }}>Phòng ban</td>
           <td>
-            <input type="text" disabled={isReadOnly} value={department} onChange={e => onDepartmentChange?.(e.target.value)} placeholder="Kế toán, Kỹ thuật, Công trường..." />
+            {departmentOptions && !isReadOnly ? (
+              <Dropdown
+                options={departmentOptions}
+                value={department}
+                onChange={onDepartmentChange}
+                placeholder="— Chọn phòng ban —"
+              />
+            ) : (
+              <input
+                type="text"
+                disabled={isReadOnly}
+                value={department}
+                onChange={e => onDepartmentChange?.(e.target.value)}
+                placeholder="Kế toán, Kỹ thuật, Công trường..."
+              />
+            )}
           </td>
           <td style={{ fontWeight: 'bold' }}>Số tiền</td>
           <td>

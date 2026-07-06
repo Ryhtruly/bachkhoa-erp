@@ -1,5 +1,6 @@
 import React, { useState, useEffect, memo } from 'react';
 import { Search, Filter, X, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import DatePicker from './DatePicker';
 
 /**
  * FilterBar — Thanh tìm kiếm + lọc dữ liệu dùng chung
@@ -16,6 +17,9 @@ const FilterBar = memo(function FilterBar({
   activeCount,
   month,
   onMonthChange,
+  date,
+  onDateChange,
+  dateLabel = 'Chọn ngày',
   sort,
   onSortChange,
 }) {
@@ -40,8 +44,10 @@ const FilterBar = memo(function FilterBar({
   const computedActive = activeCount ??
     filters.filter((f) => values[f.key] && values[f.key] !== 'All' && values[f.key] !== '').length;
 
-  const hasActive = localSearch.trim() !== '' || computedActive > 0;
-
+  const hasActive = localSearch.trim() !== ''
+    || computedActive > 0
+    || Boolean(month)
+    || Boolean(date);
   return (
     <div className="filter-bar-modern">
       {/* Row 1: Search + Controls */}
@@ -78,6 +84,14 @@ const FilterBar = memo(function FilterBar({
                 onChange={e => onMonthChange && onMonthChange(e.target.value)}
               />
             </div>
+          )}
+
+          {date !== undefined && (
+            <DatePicker
+              value={date}
+              onChange={onDateChange}
+              placeholder={dateLabel}
+            />
           )}
 
           {sort !== undefined && (

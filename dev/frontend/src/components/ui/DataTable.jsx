@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Inbox } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Inbox } from 'lucide-react';
 
 /**
  * DataTable — Bảng dữ liệu dùng chung
@@ -11,6 +11,7 @@ import { Search, ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight
  *   emptyText?: string
  *   rowKey?: string | ((row) => string)      — key duy nhất cho mỗi row (mặc định 'id')
  *   onRowClick?: (row) => void
+ *   rowClassName?: string | ((row) => string)
  *   selectable?: boolean                      — bật checkbox chọn row
  *   selected?: string[]                       — mảng key đã chọn
  *   onSelectionChange?: (keys: string[]) => void
@@ -25,6 +26,7 @@ export default function DataTable({
   emptyText = 'Không có dữ liệu',
   rowKey = 'id',
   onRowClick,
+  rowClassName,
   selectable = false,
   selected = [],
   onSelectionChange,
@@ -151,10 +153,13 @@ export default function DataTable({
               : paged.map((row) => {
                   const key = getKey(row);
                   const isSelected = selected.includes(key);
+                  const customRowClass = typeof rowClassName === 'function'
+                    ? rowClassName(row)
+                    : rowClassName;
                   return (
                     <tr
                       key={key}
-                      className={`dt-row${isSelected ? ' dt-row--selected' : ''}${onRowClick ? ' dt-row--clickable' : ''}`}
+                      className={`dt-row${isSelected ? ' dt-row--selected' : ''}${onRowClick ? ' dt-row--clickable' : ''}${customRowClass ? ` ${customRowClass}` : ''}`}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
                     >
                       {selectable && (

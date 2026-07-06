@@ -30,6 +30,16 @@ class UserRole(Base):
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
     role_id = Column(Integer, ForeignKey("roles.id"), primary_key=True)
 
+class RolePermission(Base):
+    __tablename__ = "role_permissions"
+    role_id = Column(Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    resource = Column(String(50), primary_key=True)
+    can_read = Column(Boolean, nullable=False, default=False)
+    can_create = Column(Boolean, nullable=False, default=False)
+    can_update = Column(Boolean, nullable=False, default=False)
+    can_delete = Column(Boolean, nullable=False, default=False)
+    can_approve = Column(Boolean, nullable=False, default=False)
+
 class AuthToken(Base):
     __tablename__ = "auth_tokens"
     token = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -91,10 +101,18 @@ class Contract(Base):
 
 # ----------------- C. Production & Operations -----------------
 
+class TaskType(Base):
+    __tablename__ = "task_types"
+    id = Column(String, primary_key=True, default=lambda: f"tt_{uuid.uuid4().hex[:10]}")
+    name = Column(String(100), unique=True, nullable=False)
+
+
 class ProjectTask(Base):
     __tablename__ = "projects_tasks"
     id = Column(String, primary_key=True) # e.g. BK-HS-0001
-    contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
+    # Một mã hợp đồng đầy đủ chỉ gắn với một hồ sơ.
+    # Hồ sơ chưa ký hợp đồng vẫn được phép để null.
+    contract_id = Column(String, ForeignKey("contracts.id"), nullable=True, unique=True)
     department = Column(String, nullable=True)
     task_name = Column(String, nullable=True)
     assignee_id = Column(String, ForeignKey("users.id"), nullable=True)
@@ -105,6 +123,14 @@ class ProjectTask(Base):
     completion_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+    review_note = Column(Text, nullable=True)
+    department_id = Column(String, ForeignKey("departments.id"), nullable=True)
+    task_type_id = Column(String, ForeignKey("task_types.id"), nullable=True)
+    ward = Column(String(100), nullable=True)
+    start_date = Column(Date, nullable=True)
+    stake_count = Column(Integer, nullable=True)
+    stake_type = Column(String(50), nullable=True)
+    is_overdue_flag = Column(Boolean, nullable=False, default=False)
 
 # ----------------- D. Finance & Accounting -----------------
 
@@ -148,16 +174,29 @@ class Receivable(Base):
 
 # ----------------- E. HR & Payroll -----------------
 
+class Department(Base):
+    __tablename__ = "departments"
+    id = Column(String, primary_key=True, default=lambda: f"dept_{uuid.uuid4().hex[:10]}")
+    name = Column(String(100), unique=True, nullable=False)
+    code = Column(String(30), unique=True, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    display_order = Column(Integer, nullable=False, default=100)
+
 class Employee(Base):
     __tablename__ = "employees"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, unique=True)
     full_name = Column(String, nullable=True)
     department = Column(String, nullable=True)
     base_salary = Column(Numeric, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+    department_id = Column(String, ForeignKey("departments.id"), nullable=True)
+    job_title = Column(String(100), nullable=True)
+    contract_status = Column(String(30), nullable=False, default="Probation")
+    join_date = Column(Date, nullable=True, default=datetime.date.today)
+    probation_end_date = Column(Date, nullable=True)
 
 class KpiPayroll(Base):
     __tablename__ = "kpi_payroll"
@@ -186,4 +225,3 @@ class FundOpeningBalance(Base):
     ngay_ap_dung = Column(DateTime(timezone=True), nullable=False)
     nguoi_chot = Column(String(100), nullable=True)
     ghi_chu = Column(Text, nullable=True)
-

@@ -87,6 +87,7 @@ export default function PrintVoucherScreen({ month }) {
 
   const [contracts, setContracts] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { addToast } = useToast();
@@ -117,9 +118,24 @@ export default function PrintVoucherScreen({ month }) {
     } catch (e) { /* không chặn UI, các trường liên kết chỉ là tuỳ chọn */ }
   };
 
+  const fetchDepartments = async () => {
+    try {
+      const response = await fetch(`${API}/api/finance/employees/departments`);
+      if (response.ok) {
+        const data = await response.json();
+        setDepartments(Array.isArray(data) ? data : []);
+      }
+    } catch (e) { /* vẫn dùng phòng ban lấy từ chứng từ cũ nếu API chưa sẵn sàng */ }
+  };
+
   const refreshAll = async () => {
     setRefreshing(true);
-    await Promise.all([fetchTransactions(), fetchActiveAdvances(), fetchContractsAndProjects()]);
+    await Promise.all([
+      fetchTransactions(),
+      fetchActiveAdvances(),
+      fetchContractsAndProjects(),
+      fetchDepartments(),
+    ]);
     setRefreshing(false);
   };
 
@@ -217,6 +233,19 @@ export default function PrintVoucherScreen({ month }) {
       })
       .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
   }, [transactions, printSearch, month]);
+
+  const departmentOptions = useMemo(() => {
+    const names = [
+      ...departments.map(department => department.name),
+      ...transactions.map(transaction => transaction.du_an_phong_ban || transaction['Dự án']),
+      ...Object.values(CATEGORY_AUTO_MAPPING).map(mapping => mapping.phong_ban),
+      form.du_an_phong_ban,
+    ];
+
+    return [...new Set(names.map(name => String(name || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'vi'))
+      .map(name => ({ value: name, label: name }));
+  }, [departments, transactions, form.du_an_phong_ban]);
 
   const filteredAdvances = useMemo(() => {
     if (!month) return activeAdvances;
@@ -626,6 +655,7 @@ export default function PrintVoucherScreen({ month }) {
                   methodOptions={METHOD_OPTIONS}
                   department={form.du_an_phong_ban}
                   onDepartmentChange={(v) => setForm({ ...form, du_an_phong_ban: v })}
+                  departmentOptions={departmentOptions}
                   amountDisplay={form.amount ? Number(form.amount).toLocaleString('vi-VN') : ''}
                   onAmountChange={(v) => setForm({ ...form, amount: v.replace(/[^\d]/g, '') })}
                   status={form.trang_thai}

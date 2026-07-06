@@ -43,6 +43,7 @@ const STATUS_MAPS = {
   hopdong: {
     'Đã tất toán': 'success',
     'Chờ thanh toán': 'warning',
+    'Còn nợ': 'warning',
     'Quá hạn': 'danger',
   },
   lead: {

@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, or_
-from pydantic import BaseModel
-from typing import Optional
+from sqlalchemy.exc import IntegrityError
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Literal
 from src.db.database import get_db
 from src.crud.crud_finance import (
     _row, crud_get_cashflow_detail, crud_create_cashflow, 
@@ -12,11 +13,11 @@ from src.crud.crud_finance import (
 )
 from src.db.models import (
     CashflowTransaction, Contract, Customer, Receivable,
-    ProjectTask, Employee, KpiPayroll, FinanceSetting, FundOpeningBalance
+    ProjectTask, Employee, Department, User, KpiPayroll,
+    FinanceSetting, FundOpeningBalance
 )
-from datetime import datetime, date
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 router = APIRouter(prefix="/api/finance", tags=["Finance ERP"])
 
@@ -81,6 +82,33 @@ class WageCreateIn(BaseModel):
     payer_payee: str
     note: Optional[str] = ""
     payment_method: str = "Tiền mặt"
+
+class EmployeeUpsertIn(BaseModel):
+    full_name: str
+    user_id: Optional[str] = None
+    department_id: Optional[str] = None
+    job_title: Optional[str] = None
+    contract_status: Literal["Probation", "Official", "Terminated"] = "Probation"
+    join_date: Optional[date] = None
+    probation_end_date: Optional[date] = None
+    base_salary: float = Field(default=0, ge=0)
+    is_active: bool = True
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Họ và tên không được để trống")
+        return value
+
+    @field_validator("user_id", "department_id", "job_title", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value):
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
 
 class FinanceSettingsIn(BaseModel):
     initial_cash_balance: float = 0.0
@@ -696,6 +724,172 @@ def clear_advance(payload: AdvanceClearIn, db: Session = Depends(get_db)):
 # 4. NHÂN SỰ & LƯƠNG
 # ══════════════════════════════════════════════════════════════
 
+def _employee_row(employee: Employee, department_name: str = None) -> dict:
+    return {
+        "id": employee.id,
+        "user_id": employee.user_id,
+        "full_name": employee.full_name or "",
+        "department_id": employee.department_id,
+        "department": department_name or employee.department or "",
+        "job_title": employee.job_title or "",
+        "contract_status": employee.contract_status or "Probation",
+        "join_date": employee.join_date.isoformat() if employee.join_date else None,
+        "probation_end_date": (
+            employee.probation_end_date.isoformat()
+            if employee.probation_end_date else None
+        ),
+        "base_salary": float(employee.base_salary or 0),
+        "is_active": bool(employee.is_active),
+        "created_at": employee.created_at.isoformat() if employee.created_at else None,
+        "updated_at": employee.updated_at.isoformat() if employee.updated_at else None,
+    }
+
+
+def _validate_employee_payload(payload: EmployeeUpsertIn, db: Session):
+    if (
+        payload.join_date
+        and payload.probation_end_date
+        and payload.probation_end_date < payload.join_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Ngày kết thúc thử việc không được trước ngày vào làm.",
+        )
+
+    department = None
+    if payload.department_id:
+        department = db.query(Department).filter(
+            Department.id == payload.department_id
+        ).first()
+        if not department:
+            raise HTTPException(status_code=422, detail="Phòng ban không tồn tại.")
+
+    if payload.user_id:
+        user = db.query(User).filter(User.id == payload.user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=422,
+                detail="Tài khoản liên kết không tồn tại.",
+            )
+
+    return department
+
+
+@router.get("/employees/departments")
+def list_employee_departments(db: Session = Depends(get_db)):
+    departments = db.query(Department).order_by(Department.name.asc()).all()
+    return [{"id": department.id, "name": department.name} for department in departments]
+
+
+@router.get("/employees")
+def list_employees(db: Session = Depends(get_db)):
+    rows = (
+        db.query(Employee, Department.name)
+        .outerjoin(Department, Department.id == Employee.department_id)
+        .order_by(Employee.full_name.asc(), Employee.created_at.desc())
+        .all()
+    )
+    return [_employee_row(employee, department_name) for employee, department_name in rows]
+
+
+@router.get("/employees/{employee_id}")
+def get_employee(employee_id: str, db: Session = Depends(get_db)):
+    row = (
+        db.query(Employee, Department.name)
+        .outerjoin(Department, Department.id == Employee.department_id)
+        .filter(Employee.id == employee_id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
+    return _employee_row(row[0], row[1])
+
+
+@router.post("/employees", status_code=201)
+def create_employee(payload: EmployeeUpsertIn, db: Session = Depends(get_db)):
+    department = _validate_employee_payload(payload, db)
+    employee = Employee(
+        id=f"emp_{uuid.uuid4().hex[:12]}",
+        user_id=payload.user_id,
+        full_name=payload.full_name,
+        department_id=payload.department_id,
+        department=department.name if department else None,
+        job_title=payload.job_title,
+        contract_status=payload.contract_status,
+        join_date=payload.join_date or date.today(),
+        probation_end_date=payload.probation_end_date,
+        base_salary=payload.base_salary,
+        is_active=payload.is_active,
+    )
+    try:
+        db.add(employee)
+        db.commit()
+        db.refresh(employee)
+        return _employee_row(employee, department.name if department else None)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Không thể tạo nhân sự do dữ liệu liên kết bị trùng hoặc không hợp lệ.",
+        ) from exc
+
+
+@router.put("/employees/{employee_id}")
+def update_employee(
+    employee_id: str,
+    payload: EmployeeUpsertIn,
+    db: Session = Depends(get_db),
+):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
+
+    department = _validate_employee_payload(payload, db)
+    employee.user_id = payload.user_id
+    employee.full_name = payload.full_name
+    employee.department_id = payload.department_id
+    employee.department = department.name if department else None
+    employee.job_title = payload.job_title
+    employee.contract_status = payload.contract_status
+    employee.join_date = payload.join_date or employee.join_date or date.today()
+    employee.probation_end_date = payload.probation_end_date
+    employee.base_salary = payload.base_salary
+    employee.is_active = payload.is_active
+    employee.updated_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+        db.refresh(employee)
+        return _employee_row(employee, department.name if department else None)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Không thể cập nhật nhân sự do dữ liệu liên kết không hợp lệ.",
+        ) from exc
+
+
+@router.delete("/employees/{employee_id}")
+def delete_employee(employee_id: str, db: Session = Depends(get_db)):
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
+
+    try:
+        db.delete(employee)
+        db.commit()
+        return {"status": "success", "id": employee_id}
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Nhân sự đã phát sinh chấm công hoặc bảng lương nên không thể xóa. "
+                "Hãy chuyển trạng thái sang Ngừng hoạt động."
+            ),
+        ) from exc
+
+
 @router.get("/payroll")
 def list_payroll(month: str = Query(None), db: Session = Depends(get_db)):
     employees = db.query(Employee).filter(Employee.is_active == True).all()
@@ -1141,4 +1335,3 @@ def get_monthly_dashboard(month: str = Query(..., description="Format: YYYY-MM")
         "categories": categories_list,
         "departments": departments_list
     }
-

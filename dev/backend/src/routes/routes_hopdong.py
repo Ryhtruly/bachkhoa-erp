@@ -1,55 +1,57 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy import extract
-from sqlalchemy.orm import Session
 from datetime import datetime
+
+from fastapi import APIRouter, HTTPException, Depends, Query, Response
+from sqlalchemy.orm import Session
 from schemas.models import HopdongCreateSchema, ContractGenerateSchema
 from src.db.database import get_db
 from src.db.models import Contract, Customer, Receivable, ProjectTask
 from services import telegram_service
+from services.contract_read_service import (
+    get_contract_cache_status,
+    get_contract_hierarchy,
+    get_contract_read_model,
+    query_contract_read_model,
+    sync_contract_read_model_after_write,
+)
 from core import doc_generator
 
 router = APIRouter(prefix="/api/hopdong", tags=["Hợp Đồng"])
 
+
+@router.get("/cache/status")
+def contract_cache_status():
+    return get_contract_cache_status()
+
+
 @router.get("/")
-def list_hopdong(month: str = Query(None), db: Session = Depends(get_db)):
+def list_hopdong(
+    response: Response,
+    month: str = Query(None),
+    date_signed: str = Query(None),
+    search: str = Query(None),
+    status: str = Query(None),
+    service: str = Query(None),
+    sort: str = Query("desc", pattern="^(asc|desc)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(0, ge=0, le=100),
+    db: Session = Depends(get_db),
+):
     try:
-        query = db.query(Contract)
-        if month:
-            try:
-                y, m = map(int, month.split('-'))
-                query = query.filter(
-                    extract('year', Contract.created_at) == y,
-                    extract('month', Contract.created_at) == m
-                )
-            except ValueError:
-                pass
-                
-        contracts = query.order_by(Contract.created_at.desc()).all()
-        result = []
-        for c in contracts:
-            customer = db.query(Customer).filter(Customer.id == c.customer_id).first() if c.customer_id else None
-            receivable = db.query(Receivable).filter(Receivable.contract_id == c.id).first()
-            task = db.query(ProjectTask).filter(ProjectTask.contract_id == c.id).first()
-            
-            paid = receivable.paid_amount if receivable else 0
-            debt = c.total_value - paid if c.total_value else 0
-            
-            result.append({
-                "Mã hợp đồng": c.id,
-                "Mã hồ sơ": task.id if task else "",
-                "Tên khách hàng": customer.full_name if customer else "N/A",
-                "Phòng ban": "Phòng Đo đạc",
-                "Dịch vụ": c.service_type,
-                "Ngày ký": c.date_signed.strftime("%Y-%m-%d") if c.date_signed else "",
-                "Giá trị hợp đồng": c.total_value,
-                "Đã thu": paid,
-                "Còn nợ": debt,
-                "Sale / nguồn": "", # Can map to Lead
-                "Tình trạng": "Đã tất toán" if debt <= 0 else "Chờ thanh toán",
-                "Ghi chú": "",
-                "File Hợp đồng": c.file_link or ""
-            })
-        return result
+        rows, source = get_contract_read_model(db)
+        response.headers["X-Contract-Read-Source"] = source
+        result = query_contract_read_model(
+            rows,
+            month=month,
+            date_signed=date_signed,
+            search=search,
+            status=status,
+            service=service,
+            sort=sort,
+            page=page,
+            page_size=page_size,
+        )
+        # Tương thích client cũ: không truyền page_size thì vẫn nhận mảng đầy đủ.
+        return result if page_size > 0 else result["data"]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -90,6 +92,7 @@ def create_hopdong(payload: HopdongCreateSchema, db: Session = Depends(get_db)):
         db.add(rec)
         
         db.commit()
+        sync_contract_read_model_after_write(db)
         
         # Telegram
         telegram_service.notify_new_contract({
@@ -150,6 +153,7 @@ def generate_and_save_contract(payload: ContractGenerateSchema, db: Session = De
                 task.contract_id = new_hd.id
                 
         db.commit()
+        sync_contract_read_model_after_write(db)
         
         telegram_service.notify_new_contract({
             "Mã hợp đồng": new_hd.id,

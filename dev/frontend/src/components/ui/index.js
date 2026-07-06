@@ -4,6 +4,7 @@
 export { default as SubTabs } from './SubTabs';
 export { default as DataTable } from './DataTable';
 export { default as FilterBar } from './FilterBar';
+export { default as DatePicker } from './DatePicker';
 export { default as StatCard, StatsGrid } from './StatCard';
 export { default as Modal, FormRow, FormGrid } from './Modal';
 export { default as Card, SectionHeader, EmptyState, Divider } from './Card';

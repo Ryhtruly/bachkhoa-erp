@@ -1,5 +1,10 @@
+import asyncio
+import contextlib
+import logging
 import os
 import sys
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -21,10 +26,45 @@ from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
 from src.db.database import engine, Base
 from src.db.models import *
+from src.services.contract_read_service import (
+    CONTRACT_CACHE_REFRESH_SECONDS,
+    warm_contract_read_model,
+)
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="OpenClaw ERP - Bach Khoa")
+logger = logging.getLogger(__name__)
+
+
+async def refresh_contract_cache_loop():
+    while True:
+        await asyncio.sleep(CONTRACT_CACHE_REFRESH_SECONDS)
+        try:
+            await asyncio.to_thread(warm_contract_read_model)
+        except Exception as exc:
+            logger.warning("Periodic contract cache refresh failed: %s", exc)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        await asyncio.to_thread(warm_contract_read_model)
+    except Exception as exc:
+        logger.warning("Initial contract cache warmup failed: %s", exc)
+
+    refresh_task = None
+    if CONTRACT_CACHE_REFRESH_SECONDS > 0:
+        refresh_task = asyncio.create_task(refresh_contract_cache_loop())
+
+    yield
+
+    if refresh_task:
+        refresh_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresh_task
+
+
+app = FastAPI(title="OpenClaw ERP - Bach Khoa", lifespan=lifespan)
 
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "static", "contracts"), exist_ok=True)
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")), name="static")
