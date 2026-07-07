@@ -329,10 +329,6 @@ docker compose -f docker-compose.dev.yml down
 
 ## Chạy thủ công để phát triển
 
-<<<<<<< Updated upstream
-### 1. Cài đặt Backend
-1. Cài đặt Python 3.10+
-=======
 ### 1. Chạy Redis cho Hợp đồng & Công nợ
 
 Redis chỉ là read model tăng tốc cho màn Hợp đồng & Công nợ. Supabase vẫn là nguồn dữ liệu chuẩn.
@@ -347,23 +343,31 @@ Kết quả kiểm tra phải là `PONG`.
 
 ### 2. Cài đặt Backend
 1. Cài đặt Python 3.11
->>>>>>> Stashed changes
 2. Mở terminal, di chuyển vào thư mục backend: `cd dev/backend`
 3. Cài đặt các thư viện cần thiết: `pip install -r requirements.txt`
 4. Copy file cấu hình: `cp .env.example .env` và điền cấu hình Database (PostgreSQL) của bạn vào file `.env`.
 5. Chạy server:
    ```bash
-   uvicorn src.index:app --reload --port 8000
+   uvicorn src.index:app --reload --port 8080
    ```
    *(Khi chạy lệnh này, hệ thống sẽ tự động tạo bảng trong Database)*
 
-### 2. Tạo Dữ liệu mẫu (Tùy chọn)
+Khi backend khởi động, toàn bộ read model Hợp đồng & Công nợ được nạp từ Supabase vào Redis. Kiểm tra:
+
+```bash
+curl http://127.0.0.1:8080/api/hopdong/cache/status
+curl -I http://127.0.0.1:8080/api/hopdong/
+```
+
+Header `X-Contract-Read-Source: redis` xác nhận API đang đọc Redis. Nếu Redis dừng, API tự fallback về Supabase.
+
+### 3. Tạo Dữ liệu mẫu (Tùy chọn)
 Nếu muốn có sẵn dữ liệu test (Khách hàng, Hợp đồng, Hồ sơ), hãy chạy lệnh sau ở thư mục backend:
 ```bash
 python scripts/seed_fake_data.py
 ```
 
-### 3. Cài đặt Frontend
+### 4. Cài đặt Frontend
 1. Cài đặt Node.js
 2. Mở một terminal khác, di chuyển vào thư mục frontend: `cd dev/frontend`
 3. Cài đặt các package: `npm install`

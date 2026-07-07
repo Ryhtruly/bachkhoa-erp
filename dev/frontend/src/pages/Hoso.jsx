@@ -1,7 +1,3 @@
-<<<<<<< Updated upstream
-import React, { useState, useEffect } from 'react';
-import { FolderOpen, Clock, AlertTriangle, CheckCircle, Search, Filter, Plus, User, Calendar, MapPin } from 'lucide-react';
-=======
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -135,246 +131,466 @@ function AssignmentPicker({
     </div>
   );
 }
->>>>>>> Stashed changes
 
 export default function Hoso() {
+  const { addToast } = useToast();
   const [hosoList, setHosoList] = useState([]);
+  const [assignmentOptions, setAssignmentOptions] = useState([]);
   const [stats, setStats] = useState({ total: 0, completed: 0, in_progress: 0, overdue: 0 });
   const [loading, setLoading] = useState(true);
+  const [assignmentLoading, setAssignmentLoading] = useState(true);
+  const [savingAssignment, setSavingAssignment] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Advanced filters state
-  const [showFilters, setShowFilters] = useState(false);
-  const [filterStatus, setFilterStatus] = useState('All');
-  const [filterWarning, setFilterWarning] = useState('All');
+  const [filterValues, setFilterValues] = useState({
+    status: 'All',
+    warning: 'All',
+    priority: 'All',
+  });
+  const [activeDepartment, setActiveDepartment] = useState('all');
+  const [month, setMonth] = useState('');
+  const [sort, setSort] = useState('desc');
 
-  const fetchData = async () => {
+  const fetchAssignmentOptions = useCallback(async () => {
     try {
+      setAssignmentLoading(true);
+      const response = await fetch(`${API}/api/hoso/assignment-options`);
+      if (!response.ok) throw new Error('Không tải được danh sách nhân sự');
+      const data = await response.json();
+      setAssignmentOptions(data.data || []);
+    } catch (error) {
+      console.error(error);
+      addToast(error.message, 'error');
+    } finally {
+      setAssignmentLoading(false);
+    }
+  }, [addToast]);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = month ? `?month=${month}` : '';
       const [hosoRes, statsRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/hoso/'),
-        fetch('http://127.0.0.1:8000/api/hoso/stats')
+        fetch(`${API}/api/hoso/${params}`),
+        fetch(`${API}/api/hoso/stats${params}`),
       ]);
-      
-      if (hosoRes.ok) {
-        const data = await hosoRes.json();
-        setHosoList(data.data || []);
-      }
-      if (statsRes.ok) {
-        const sData = await statsRes.json();
-        setStats(sData.data || {});
-      }
-    } catch (err) {
-      console.error(err);
+      if (!hosoRes.ok || !statsRes.ok) throw new Error('Không tải được dữ liệu hồ sơ');
+
+      const [hosoData, statsData] = await Promise.all([hosoRes.json(), statsRes.json()]);
+      setHosoList(hosoData.data || []);
+      setStats(statsData.data || {});
+    } catch (error) {
+      console.error(error);
+      addToast(error.message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [addToast, month]);
+
+  useEffect(() => {
+    fetchAssignmentOptions();
+  }, [fetchAssignmentOptions]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleStatusChange = async (id, newStatus) => {
     try {
-      await fetch('http://127.0.0.1:8000/api/hoso/update-status', {
+      const response = await fetch(`${API}/api/hoso/update-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 'Mã_hồ_sơ': id, 'Trạng_thái': newStatus })
+        body: JSON.stringify({ 'Mã_hồ_sơ': id, 'Trạng_thái': newStatus }),
       });
-      fetchData();
-    } catch (err) {
-      console.error(err);
+      if (!response.ok) throw new Error('Không cập nhật được trạng thái');
+      setHosoList((current) => current.map((row) => (
+        row['Mã hồ sơ'] === id ? { ...row, 'Trạng thái': newStatus } : row
+      )));
+      addToast('Đã cập nhật trạng thái hồ sơ', 'success');
+    } catch (error) {
+      console.error(error);
+      addToast(error.message, 'error');
     }
   };
 
-  const filteredList = hosoList.filter(h => {
-    const matchSearch = (h['Tên khách hàng'] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (h['Mã hồ sơ'] || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (h['SĐT'] || '').includes(searchTerm);
-    
-    const matchStatus = filterStatus === 'All' || h['Trạng thái'] === filterStatus;
-    const matchWarning = filterWarning === 'All' || h['Cảnh báo'] === filterWarning;
-    
-    return matchSearch && matchStatus && matchWarning;
-  });
+  const handleAssignmentChange = async (row, role, userId) => {
+    const taskId = row['Mã hồ sơ'];
+    const assigneeId = role === 'main' ? userId : row['Phụ trách chính ID'];
+    const supportId = role === 'support' ? userId : row['Phụ đo ID'];
+    if (assigneeId && assigneeId === supportId) {
+      addToast('Người chính và phụ đo phải là hai người khác nhau', 'error');
+      return;
+    }
 
-  const getWarningColor = (warning) => {
-    if (warning === "Hoàn thành") return { bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981' };
-    if (warning === "Trễ hạn") return { bg: 'rgba(239, 68, 68, 0.15)', color: '#ef4444' };
-    if (warning === "Sắp đến hạn") return { bg: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' };
-    return { bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6' }; // Trong hạn
+    try {
+      setSavingAssignment(`${taskId}:${role}`);
+      const response = await fetch(`${API}/api/hoso/update-assignment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_id: taskId,
+          assignee_id: assigneeId,
+          support_id: supportId,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || 'Không cập nhật được phân công');
+
+      setHosoList((current) => current.map((item) => (
+        item['Mã hồ sơ'] === taskId
+          ? {
+            ...item,
+            'Phụ trách chính ID': payload.data.assignee_id,
+            'Phụ trách chính': payload.data.assignee_name,
+            'Phụ đo ID': payload.data.support_id,
+            'Phụ đo': payload.data.support_name,
+          }
+          : item
+      )));
+      addToast('Đã cập nhật người chính và phụ đo', 'success');
+      fetchAssignmentOptions();
+    } catch (error) {
+      console.error(error);
+      addToast(error.message, 'error');
+    } finally {
+      setSavingAssignment('');
+    }
   };
 
-  return (
-    <section className="tab-pane active" id="tab-hoso">
-      {/* Stats Header */}
-      <div className="stats-grid" style={{ marginBottom: '24px' }}>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon purple"><FolderOpen size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Tổng Hồ Sơ</p>
-            <h4 className="stat-value">{stats.total || 0}</h4>
-          </div>
-        </div>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon orange"><Clock size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Đang Xử Lý</p>
-            <h4 className="stat-value">{stats.in_progress || 0}</h4>
-          </div>
-        </div>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon red"><AlertTriangle size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Trễ Hạn (Cần Xử Lý)</p>
-            <h4 className="stat-value" style={{ color: stats.overdue > 0 ? '#ef4444' : 'inherit' }}>{stats.overdue || 0}</h4>
-          </div>
-        </div>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon green"><CheckCircle size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Đã Hoàn Thành</p>
-            <h4 className="stat-value">{stats.completed || 0}</h4>
-          </div>
-        </div>
-      </div>
+  const departmentOptions = useMemo(() => {
+    const counts = new Map();
+    hosoList.forEach((row) => {
+      const id = row['Phòng ban ID'] || 'unassigned';
+      const current = counts.get(id) || {
+        id,
+        label: displayDepartment(row['Phòng ban']),
+        count: 0,
+      };
+      current.count += 1;
+      counts.set(id, current);
+    });
+    return Array.from(counts.values()).sort((a, b) => (
+      b.count - a.count || a.label.localeCompare(b.label, 'vi')
+    ));
+  }, [hosoList]);
 
-      {/* Toolbar */}
-      <div className="toolbar card glass-card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={16} color="var(--text-tertiary)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="Tìm mã hồ sơ, khách hàng..." 
-              style={{ paddingLeft: '36px', width: '300px', height: '38px' }}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <button className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'}`} style={{ height: '38px' }} onClick={() => setShowFilters(!showFilters)}>
-            <Filter size={16} /> Lọc nâng cao
-          </button>
-        </div>
-        <button className="btn btn-primary" style={{ height: '38px' }}>
-          <Plus size={16} /> Tạo Hồ Sơ Mới
-        </button>
-      </div>
+  const filteredList = hosoList.filter((row) => {
+    const normalizedSearch = searchTerm.toLowerCase();
+    const matchSearch = [
+      row['Tên khách hàng'],
+      row['Mã hồ sơ'],
+      row['Mã hợp đồng'],
+      row['SĐT'],
+      row['Loại dịch vụ'],
+      row['Phụ trách chính'],
+      row['Phụ đo'],
+    ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
+    const departmentId = row['Phòng ban ID'] || 'unassigned';
+    const matchDepartment = activeDepartment === 'all' || departmentId === activeDepartment;
+    const matchStatus = filterValues.status === 'All' || row['Trạng thái'] === filterValues.status;
+    const matchWarning = filterValues.warning === 'All' || row['Cảnh báo'] === filterValues.warning;
+    const rowPriority = row['Ưu tiên'] || 'Trung bình';
+    const matchPriority = filterValues.priority === 'All' || rowPriority === filterValues.priority;
+    return matchDepartment && matchSearch && matchStatus && matchWarning && matchPriority;
+  });
 
-      {/* Advanced Filters Panel */}
-      {showFilters && (
-        <div className="card glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '20px', alignItems: 'flex-end', background: 'var(--bg-deep)' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>Lọc theo Trạng thái</label>
-            <select className="form-control" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ width: '220px' }}>
-              <option value="All">Tất cả trạng thái</option>
-              <option value="Mới tiếp nhận">Mới tiếp nhận</option>
-              <option value="Đang đo đạc">Đang đo đạc</option>
-              <option value="Đang xử lý nội nghiệp">Đang xử lý nội nghiệp</option>
-              <option value="Nộp thành công - Chờ kết quả">Nộp thành công - Chờ kết quả</option>
-              <option value="Hoàn thành">Hoàn thành</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>Lọc theo Cảnh báo</label>
-            <select className="form-control" value={filterWarning} onChange={(e) => setFilterWarning(e.target.value)} style={{ width: '220px' }}>
-              <option value="All">Tất cả cảnh báo</option>
-              <option value="Hoàn thành">Hoàn thành</option>
-              <option value="Trong hạn">Trong hạn</option>
-              <option value="Sắp đến hạn">Sắp đến hạn</option>
-              <option value="Trễ hạn">Trễ hạn</option>
-            </select>
-          </div>
-          {(filterStatus !== 'All' || filterWarning !== 'All') && (
-            <button className="btn btn-secondary" style={{ height: '38px', color: 'var(--orange-500)' }} onClick={() => { setFilterStatus('All'); setFilterWarning('All'); }}>
-              Xóa lọc
-            </button>
+  const sortedList = sort === 'asc' ? [...filteredList].reverse() : filteredList;
+
+  const columns = [
+    {
+      key: 'Mã hồ sơ',
+      label: 'MÃ HỒ SƠ',
+      width: 170,
+      sortable: true,
+      render: (value, row) => (
+        <div className="hoso-identity">
+          <strong>{value}</strong>
+          <span className="hoso-contract-priority" title={`Ưu tiên: ${row['Ưu tiên'] || 'Trung bình'}`}>
+            <i className={`hoso-priority-dot hoso-priority-dot--${priorityVariant(row['Ưu tiên'])}`} />
+            HĐ: {row['Mã hợp đồng'] || 'Chưa có'}
+          </span>
+          <span>Tạo: {formatDate(row['Ngày tạo'])}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'Tên khách hàng',
+      label: 'KHÁCH HÀNG',
+      width: 220,
+      render: (value, row) => (
+        <div className="hoso-stack">
+          <strong>{value}</strong>
+          <span>{row['SĐT'] || 'Chưa có SĐT'}</span>
+          <span>{row['Khu vực/Phường'] || 'Chưa cập nhật khu vực'}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'Loại dịch vụ',
+      label: 'CÔNG VIỆC',
+      width: 190,
+      sortable: true,
+      render: (value) => <strong className="hoso-service">{value}</strong>,
+    },
+    {
+      key: 'Phụ trách chính',
+      label: 'NHÂN VIÊN ĐO',
+      width: 270,
+      render: (_value, row) => (
+        <AssignmentPicker
+          role="main"
+          row={row}
+          candidates={assignmentOptions}
+          disabled={assignmentLoading || savingAssignment.startsWith(`${row['Mã hồ sơ']}:`)}
+          onChange={(userId) => handleAssignmentChange(row, 'main', userId)}
+        />
+      ),
+    },
+    {
+      key: 'Phụ đo',
+      label: 'PHỤ ĐO',
+      width: 270,
+      render: (_value, row) => (
+        <AssignmentPicker
+          role="support"
+          row={row}
+          candidates={assignmentOptions}
+          disabled={assignmentLoading || savingAssignment.startsWith(`${row['Mã hồ sơ']}:`)}
+          onChange={(userId) => handleAssignmentChange(row, 'support', userId)}
+        />
+      ),
+    },
+    {
+      key: 'Ngày đo',
+      label: 'NGÀY ĐO',
+      width: 125,
+      sortable: true,
+      render: formatDate,
+    },
+    {
+      key: 'Deadline',
+      label: 'DEADLINE',
+      width: 155,
+      sortable: true,
+      render: (value, row) => (
+        <div className="hoso-stack">
+          <strong>{formatDate(value)}</strong>
+          {row['Số ngày còn lại'] !== null && !terminalStatuses.has(row['Trạng thái']) && (
+            <span>{row['Số ngày còn lại']} ngày còn lại</span>
           )}
         </div>
-      )}
+      ),
+    },
+    {
+      key: 'Trạng thái',
+      label: 'TRẠNG THÁI ĐO',
+      width: 220,
+      render: (value, row) => (
+        <select
+          className="hoso-status-select"
+          value={value}
+          onChange={(event) => handleStatusChange(row['Mã hồ sơ'], event.target.value)}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <option value="Mới tiếp nhận">Mới tiếp nhận</option>
+          <option value="Chờ khảo sát">Chờ khảo sát</option>
+          <option value="Đang đo đạc">Đang đo đạc</option>
+          <option value="Đang xử lý nội nghiệp">Đang xử lý nội nghiệp</option>
+          <option value="Nộp thành công - Chờ kết quả">Nộp thành công - Chờ kết quả</option>
+          <option value="Hoàn thành">Hoàn thành</option>
+          <option value="Hủy">Hủy</option>
+        </select>
+      ),
+    },
+    {
+      key: 'Kết quả hiện trường',
+      label: 'KẾT QUẢ HIỆN TRƯỜNG',
+      width: 210,
+    },
+    {
+      key: 'Cảnh báo',
+      label: 'QUÁ HẠN?',
+      width: 145,
+      render: (value) => <WarningBadge warning={value} />,
+    },
+    {
+      key: 'Ngày hoàn thành',
+      label: 'NGÀY HOÀN THÀNH',
+      width: 165,
+      sortable: true,
+      render: formatDate,
+    },
+    {
+      key: 'Phụ cấp',
+      label: 'PHỤ CẤP',
+      width: 180,
+      render: (value, row) => (
+        <div className="hoso-stack">
+          <strong>{formatMoney(value)}</strong>
+          {row['Số cọc'] ? (
+            <span>
+              {row['Số cọc']} cọc · {row['Loại cọc'] || 'Chưa rõ loại'}
+            </span>
+          ) : (
+            <span>Không phát sinh</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'Ghi chú',
+      label: 'GHI CHÚ',
+      width: 260,
+      render: (value) => (
+        <span className="hoso-note" title={value || ''}>{value || '—'}</span>
+      ),
+    },
+  ];
 
-      {/* Data Table */}
-      <div className="card glass-card table-responsive" style={{ padding: '0', overflow: 'hidden' }}>
-        <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead style={{ background: 'var(--bg-deep)', borderBottom: '1px solid var(--border-default)' }}>
-            <tr>
-              <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>MÃ HS & ƯU TIÊN</th>
-              <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>KHÁCH HÀNG</th>
-              <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>DỊCH VỤ & KHU VỰC</th>
-              <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>PHỤ TRÁCH</th>
-              <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>DEADLINE & CẢNH BÁO</th>
-              <th style={{ padding: '16px 24px', fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>TRẠNG THÁI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải dữ liệu...</td></tr>
-            ) : filteredList.length === 0 ? (
-              <tr><td colSpan="6" style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)' }}>Không có dữ liệu</td></tr>
-            ) : (
-              filteredList.map((h, idx) => {
-                const warnColors = getWarningColor(h['Cảnh báo']);
-                return (
-                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)', transition: 'background 0.2s' }}>
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>{h['Mã hồ sơ']}</div>
-                      {h['Ưu tiên'] === 'Cao' ? (
-                        <span style={{ fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>Ưu tiên Cao</span>
-                      ) : (
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{h['Ưu tiên']}</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>{h['Tên khách hàng']}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{h['SĐT']}</div>
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ fontWeight: 600, color: 'var(--orange-500)', marginBottom: '4px' }}>{h['Loại dịch vụ']}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <MapPin size={12} /> {h['Khu vực/Phường'] || 'Chưa cập nhật'}
-                      </div>
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <User size={14} color="var(--text-secondary)" />
-                        <span style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{h['Phụ trách chính']}</span>
-                      </div>
-                      {h['Hỗ trợ'] && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', paddingLeft: '22px' }}>
-                          + Hỗ trợ: {h['Hỗ trợ']}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                        <Calendar size={14} /> {h['Deadline'] || 'N/A'}
-                      </div>
-                      <span style={{ fontSize: '0.75rem', background: warnColors.bg, color: warnColors.color, padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                        {h['Cảnh báo']} {h['Số ngày còn lại'] !== null && h['Cảnh báo'] !== 'Hoàn thành' ? `(${h['Số ngày còn lại']} ngày)` : ''}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 24px' }}>
-                      <select
-                        className="form-control"
-                        value={h['Trạng thái']}
-                        onChange={(e) => handleStatusChange(h['Mã hồ sơ'], e.target.value)}
-                        style={{ fontSize: '0.85rem', padding: '6px 12px', height: 'auto', background: 'var(--bg-deep)', border: '1px solid var(--border-default)', borderRadius: '6px', color: 'var(--text-primary)', cursor: 'pointer' }}
-                      >
-                        <option value="Mới tiếp nhận">Mới tiếp nhận</option>
-                        <option value="Đang đo đạc">Đang đo đạc</option>
-                        <option value="Đang xử lý nội nghiệp">Đang xử lý nội nghiệp</option>
-                        <option value="Nộp thành công - Chờ kết quả">Nộp thành công - Chờ kết quả</option>
-                        <option value="Hoàn thành">Hoàn thành</option>
-                      </select>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+  return (
+    <section className="tab-pane active hoso-page" id="tab-hoso">
+      <StatsGrid>
+        <StatCard
+          label="Tổng Hồ Sơ"
+          value={stats.total || 0}
+          icon={<FolderOpen size={24} />}
+          iconVariant="purple"
+          loading={loading}
+        />
+        <StatCard
+          label="Đang Xử Lý"
+          value={stats.in_progress || 0}
+          icon={<Clock size={24} />}
+          iconVariant="orange"
+          loading={loading}
+        />
+        <StatCard
+          label="Trễ Hạn (Cần Xử Lý)"
+          value={stats.overdue || 0}
+          icon={<AlertTriangle size={24} />}
+          iconVariant="red"
+          loading={loading}
+        />
+        <StatCard
+          label="Đã Hoàn Thành"
+          value={stats.completed || 0}
+          icon={<CheckCircle size={24} />}
+          iconVariant="green"
+          loading={loading}
+        />
+      </StatsGrid>
+
+      <div className="hoso-department-filter">
+        <label htmlFor="hoso-department">
+          <Building2 size={17} />
+          Phòng ban
+        </label>
+        <div className="hoso-department-filter__select">
+          <select
+            id="hoso-department"
+            value={activeDepartment}
+            onChange={(event) => setActiveDepartment(event.target.value)}
+            aria-label="Chọn phòng ban để lọc hồ sơ"
+          >
+            <option value="all">Tất cả phòng ban ({hosoList.length})</option>
+            {departmentOptions.map((department) => (
+              <option key={department.id} value={department.id}>
+                {department.label} ({department.count})
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={15} aria-hidden="true" />
+        </div>
+        <span>
+          Hiển thị {filteredList.length} hồ sơ
+        </span>
       </div>
+
+      <FilterBar
+        search={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Tìm mã hồ sơ, hợp đồng, khách hàng, dịch vụ, nhân sự..."
+        filters={[
+          {
+            key: 'status',
+            label: 'Lọc theo Trạng thái',
+            type: 'select',
+            width: 220,
+            options: [
+              { value: 'Mới tiếp nhận', label: 'Mới tiếp nhận' },
+              { value: 'Chờ khảo sát', label: 'Chờ khảo sát' },
+              { value: 'Đang đo đạc', label: 'Đang đo đạc' },
+              { value: 'Đang xử lý nội nghiệp', label: 'Đang xử lý nội nghiệp' },
+              { value: 'Nộp thành công - Chờ kết quả', label: 'Nộp thành công - Chờ kết quả' },
+              { value: 'Hoàn thành', label: 'Hoàn thành' },
+              { value: 'Hủy', label: 'Hủy' },
+            ],
+          },
+          {
+            key: 'warning',
+            label: 'Lọc theo Cảnh báo',
+            type: 'select',
+            width: 200,
+            options: [
+              { value: 'Hoàn thành', label: 'Hoàn thành' },
+              { value: 'Trong hạn', label: 'Trong hạn' },
+              { value: 'Sắp đến hạn', label: 'Sắp đến hạn' },
+              { value: 'Trễ hạn', label: 'Trễ hạn' },
+            ],
+          },
+          {
+            key: 'priority',
+            label: 'Lọc theo Độ ưu tiên',
+            type: 'select',
+            width: 200,
+            options: [
+              { value: 'Cao', label: '🔴 Cao' },
+              { value: 'Trung bình', label: '🟠 Trung bình' },
+              { value: 'Thấp', label: '🟢 Thấp' },
+            ],
+          },
+        ]}
+        values={filterValues}
+        onFilterChange={(key, value) => setFilterValues((current) => ({ ...current, [key]: value }))}
+        onReset={() => {
+          setSearchTerm('');
+          setFilterValues({ status: 'All', warning: 'All', priority: 'All' });
+          setActiveDepartment('all');
+          setMonth('');
+          setSort('desc');
+        }}
+        month={month}
+        onMonthChange={setMonth}
+        sort={sort}
+        onSortChange={setSort}
+        actions={(
+          <button className="btn btn-primary" style={{ height: 38, marginLeft: 8 }}>
+            <Plus size={16} /> Tạo Hồ Sơ Mới
+          </button>
+        )}
+      />
+
+      <div className="hoso-table-note">
+        <div className="hoso-priority-legend" aria-label="Chú thích mức độ ưu tiên">
+          <span>Ưu tiên:</span>
+          <span><i className="hoso-priority-dot hoso-priority-dot--high" /> Cao</span>
+          <span><i className="hoso-priority-dot hoso-priority-dot--normal" /> Trung bình</span>
+          <span><i className="hoso-priority-dot hoso-priority-dot--low" /> Thấp</span>
+        </div>
+        <div className="hoso-assignment-note">
+          <Sparkles size={15} />
+          Gợi ý nhân sự dựa trên phòng ban, kinh nghiệm cùng dịch vụ và số việc đang mở.
+        </div>
+      </div>
+
+      <DataTable
+        columns={columns}
+        data={sortedList}
+        loading={loading}
+        rowKey="Mã hồ sơ"
+        emptyText="Không có hồ sơ nào phù hợp"
+        pageSize={15}
+        compact
+      />
     </section>
   );
 }

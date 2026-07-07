@@ -10,11 +10,7 @@ export default function KPI() {
     setLoading(true);
     setMonth(m);
     try {
-<<<<<<< Updated upstream
-      const res = await fetch(`http://127.0.0.1:8000/api/kpi/scores?month=${m}`);
-=======
       const res = await fetch(`/api/kpi/scores?month=${m}`);
->>>>>>> Stashed changes
       if (res.ok) {
         const data = await res.json();
         setKpiList(data.scores || []);
