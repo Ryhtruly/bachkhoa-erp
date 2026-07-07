@@ -18,14 +18,33 @@ export default function Hopdong() {
 
   const fetchConfig = async () => {
     try {
+<<<<<<< Updated upstream
       const res = await fetch('http://127.0.0.1:8000/api/config');
+=======
+      const res = await fetch('/api/config');
+>>>>>>> Stashed changes
       if (res.ok) setConfig(await res.json());
     } catch (err) {}
   };
 
   const fetchContracts = async () => {
     try {
+<<<<<<< Updated upstream
       const res = await fetch('http://127.0.0.1:8000/api/hopdong');
+=======
+      setLoading(true);
+      const params = new URLSearchParams({
+        page: String(page),
+        page_size: String(CONTRACT_GROUPS_PER_PAGE),
+        sort,
+      });
+      if (signedDate) params.set('date_signed', signedDate);
+      if (searchTerm.trim()) params.set('search', searchTerm.trim());
+      if (filterValues.status !== 'All') params.set('status', filterValues.status);
+      if (filterValues.service !== 'All') params.set('service', filterValues.service);
+
+      const res = await fetch(`/api/hopdong/?${params}`);
+>>>>>>> Stashed changes
       if (res.ok) {
         const data = await res.json();
         setContracts(Array.isArray(data) ? data : data.data || []);
@@ -40,6 +59,30 @@ export default function Hopdong() {
     } finally {
       setLoading(false);
     }
+<<<<<<< Updated upstream
+=======
+  }, [addToast, filterValues.service, filterValues.status, page, searchTerm, signedDate, sort]);
+
+  const fetchHosoList = useCallback(async () => {
+    if (hosoList.length > 0 || hosoLoading) return;
+    try {
+      setHosoLoading(true);
+      const response = await fetch('/api/hoso');
+      if (response.ok) {
+        const data = await response.json();
+        setHosoList(Array.isArray(data) ? data : data.data || []);
+      }
+    } catch {
+      addToast('Không tải được danh sách hồ sơ', 'error');
+    } finally {
+      setHosoLoading(false);
+    }
+  }, [addToast, hosoList.length, hosoLoading]);
+
+  const openContractModal = () => {
+    setIsModalOpen(true);
+    fetchHosoList();
+>>>>>>> Stashed changes
   };
 
   useEffect(() => {
@@ -79,7 +122,11 @@ export default function Hopdong() {
     }
 
     try {
+<<<<<<< Updated upstream
       const res = await fetch('http://127.0.0.1:8000/api/hopdong/generate', {
+=======
+      const res = await fetch('/api/hopdong/generate', {
+>>>>>>> Stashed changes
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, GIA_TRI_HOP_DONG: val })
@@ -88,7 +135,11 @@ export default function Hopdong() {
         const data = await res.json();
         addToast('Hợp đồng đã được tạo thành công!', 'success');
         if (data.download_url) {
+<<<<<<< Updated upstream
           window.open(`http://127.0.0.1:8000${data.download_url}`);
+=======
+          window.open(data.download_url);
+>>>>>>> Stashed changes
         }
         setFormData(prev => ({ ...prev, SO_HOP_DONG: '', GIA_TRI_HOP_DONG: '' }));
         setIsModalOpen(false);
@@ -106,6 +157,246 @@ export default function Hopdong() {
     try { return new Intl.NumberFormat('vi-VN').format(Number(amount) || 0) + '₫'; } catch { return amount; }
   };
 
+<<<<<<< Updated upstream
+=======
+  const toggleContractGroup = (groupId) => {
+    setExpandedGroups(current => ({ ...current, [groupId]: !current[groupId] }));
+  };
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchTerm(value);
+    setPage(1);
+  }, []);
+
+  const handleFilterChange = useCallback((key, value) => {
+    setFilterValues(current => ({ ...current, [key]: value }));
+    setPage(1);
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    setSearchTerm('');
+    setFilterValues({ status: 'All', service: 'All' });
+    setSignedDate('');
+    setSort('desc');
+    setPage(1);
+  }, []);
+
+  const columns = [
+    {
+      key: 'Mã hợp đồng',
+      label: 'Mã HỢP ĐỒNG',
+      width: 220,
+      render: (val, row) => {
+        if (row._rowType === 'group') {
+          const expanded = Boolean(expandedGroups[row._groupId]);
+          return (
+            <button
+              type="button"
+              className="contract-group-toggle"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleContractGroup(row._groupId);
+              }}
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Thu gọn' : 'Mở'} nhóm hợp đồng ${val}`}
+            >
+              {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{val}</span>
+              <span className="contract-child-count" title={`${row._childCount} hợp đồng con`}>
+                {row._childCount}
+              </span>
+            </button>
+          );
+        }
+
+        if (row._rowType === 'detail') {
+          return (
+            <span className="contract-detail-code">
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{val}</span>
+              <span className="contract-detail-kind">
+                {row._childNumber === null ? 'mã gốc' : `con ${row._childNumber}`}
+              </span>
+            </span>
+          );
+        }
+
+        return <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{val}</span>;
+      }
+    },
+    {
+      key: 'Mã hồ sơ',
+      label: 'Mã hồ sơ',
+      width: 150,
+      render: (val) => <span style={{ fontFamily: 'var(--font-mono)' }}>{val}</span>
+    },
+    {
+      key: 'Tên khách hàng',
+      label: 'Khách hàng',
+      width: 220,
+      render: (val) => <EllipsisCell value={val} />
+    },
+    {
+      key: 'Phòng ban',
+      label: 'Phòng ban',
+      width: 170,
+      render: (val) => <EllipsisCell value={val} />
+    },
+    {
+      key: 'Dịch vụ',
+      label: 'Dịch vụ',
+      width: 210,
+      render: (val, row) => (
+        <EllipsisCell value={val || row['Loại dịch vụ']} />
+      )
+    },
+    { key: 'Ngày ký', label: 'Ngày ký', width: 120 },
+    {
+      key: 'Giá trị hợp đồng',
+      label: 'Giá trị',
+      align: 'right',
+      render: (val, row) => {
+        const total = Number(val || row['Giá trị HĐ']) || 0;
+        return <span style={{ fontFamily: 'var(--font-mono)' }}>{formatVND(total)}</span>;
+      }
+    },
+    {
+      key: 'Đã thu',
+      label: 'Đã thu',
+      align: 'right',
+      render: (val, row) => {
+        const paid = Number(val || row['Đã thanh toán']) || 0;
+        return <span className="text-success" style={{ fontFamily: 'var(--font-mono)' }}>{formatVND(paid)}</span>;
+      }
+    },
+    {
+      key: '_debt',
+      label: 'Còn nợ',
+      align: 'right',
+      render: (_, row) => {
+        const total = Number(row['Giá trị hợp đồng'] || row['Giá trị HĐ']) || 0;
+        const paid = Number(row['Đã thu'] || row['Đã thanh toán']) || 0;
+        const debt = row['Còn nợ'] === null || row['Còn nợ'] === undefined
+          ? Math.max(total - paid, 0)
+          : Number(row['Còn nợ']) || 0;
+        return <span className="text-danger" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatVND(debt)}</span>;
+      }
+    },
+    {
+      key: 'Tình trạng',
+      label: 'Tình trạng',
+      render: (val) => <StatusBadge status={val || 'Chờ thanh toán'} domain="hopdong" />
+    },
+    {
+      key: 'Sale / nguồn',
+      label: 'Sale / nguồn',
+      width: 160,
+      render: (val) => <EllipsisCell value={val} />
+    },
+    { key: 'Ngày đến hạn', label: 'Ngày đến hạn', width: 130 },
+    {
+      key: 'Ghi chú',
+      label: 'Ghi chú',
+      width: 220,
+      render: (val) => <EllipsisCell value={val} />
+    },
+    {
+      key: 'File Hợp đồng',
+      label: 'File',
+      align: 'center',
+      width: 100,
+      render: (val) => val
+        ? <a href={val} target="_blank" rel="noreferrer" className="btn btn-secondary btn-xs" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}>
+          <Download size={14} /> File HĐ
+        </a>
+        : <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>—</span>
+    }
+  ];
+
+  const displayContracts = useMemo(() => {
+    const groups = new Map();
+
+    contracts.forEach(contract => {
+      const hierarchy = getContractHierarchy(contract);
+      if (!groups.has(hierarchy.groupId)) {
+        groups.set(hierarchy.groupId, { groupId: hierarchy.groupId, members: [] });
+      }
+      groups.get(hierarchy.groupId).members.push({
+        ...contract,
+        _childNumber: hierarchy.childNumber,
+      });
+    });
+
+    const rows = [];
+    groups.forEach(group => {
+      const members = [...group.members].sort((left, right) => {
+        if (left._childNumber === null) return -1;
+        if (right._childNumber === null) return 1;
+        return left._childNumber - right._childNumber;
+      });
+      const childCount = members.filter(member => member._childNumber !== null).length;
+
+      if (childCount === 0) {
+        rows.push({
+          ...members[0],
+          _rowKey: `contract:${members[0]['Mã hợp đồng']}`,
+          _rowType: 'single',
+        });
+        return;
+      }
+
+      const totalValue = members.reduce(
+        (sum, member) => sum + (Number(member['Giá trị hợp đồng']) || 0),
+        0
+      );
+      const totalPaid = members.reduce(
+        (sum, member) => sum + (Number(member['Đã thu']) || 0),
+        0
+      );
+      const totalDebt = members.reduce(
+        (sum, member) => sum + (Number(member['Còn nợ']) || 0),
+        0
+      );
+      const groupStatus = members.some(member => member['Tình trạng'] === 'Quá hạn')
+        ? 'Quá hạn'
+        : totalDebt <= 0 ? 'Đã tất toán' : 'Còn nợ';
+
+      rows.push({
+        'Mã hợp đồng': group.groupId,
+        'Mã hồ sơ': `${members.length} hồ sơ`,
+        'Tên khách hàng': commonValue(members, 'Tên khách hàng', 'Nhiều khách hàng'),
+        'Phòng ban': commonValue(members, 'Phòng ban', `${new Set(members.map(member => member['Phòng ban']).filter(Boolean)).size} phòng ban`),
+        'Dịch vụ': commonValue(members, 'Dịch vụ', `${new Set(members.map(member => member['Dịch vụ']).filter(Boolean)).size} dịch vụ`),
+        'Ngày ký': earliestDate(members, 'Ngày ký'),
+        'Giá trị hợp đồng': totalValue,
+        'Đã thu': totalPaid,
+        'Còn nợ': totalDebt,
+        'Tình trạng': groupStatus,
+        'Sale / nguồn': commonValue(members, 'Sale / nguồn', 'Nhiều nguồn'),
+        'Ngày đến hạn': earliestDate(members, 'Ngày đến hạn'),
+        'Ghi chú': `Nhóm gồm ${members.length} dòng hợp đồng`,
+        'File Hợp đồng': '',
+        _rowKey: `group:${group.groupId}`,
+        _rowType: 'group',
+        _groupId: group.groupId,
+        _childCount: childCount,
+      });
+
+      if (expandedGroups[group.groupId]) {
+        members.forEach(member => {
+          rows.push({
+            ...member,
+            _rowKey: `detail:${member['Mã hợp đồng']}`,
+            _rowType: 'detail',
+            _groupId: group.groupId,
+          });
+        });
+      }
+    });
+
+    return rows;
+  }, [contracts, expandedGroups]);
+
+>>>>>>> Stashed changes
   return (
     <section className="tab-pane active" id="tab-hopdong">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>

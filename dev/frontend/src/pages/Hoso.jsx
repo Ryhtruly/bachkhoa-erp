@@ -1,5 +1,141 @@
+<<<<<<< Updated upstream
 import React, { useState, useEffect } from 'react';
 import { FolderOpen, Clock, AlertTriangle, CheckCircle, Search, Filter, Plus, User, Calendar, MapPin } from 'lucide-react';
+=======
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Building2,
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  FolderOpen,
+  Plus,
+  Sparkles,
+} from 'lucide-react';
+import {
+  DataTable,
+  FilterBar,
+  StatCard,
+  StatsGrid,
+  WarningBadge,
+} from '../components/ui';
+import { useToast } from '../contexts/ToastContext';
+
+const API = '';
+
+const terminalStatuses = new Set(['Hoàn thành', 'Hủy', 'Đã hủy']);
+
+const formatDate = (value) => value
+  ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`))
+  : '—';
+
+const formatMoney = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value) || 0)}đ`;
+
+function priorityVariant(value) {
+  if (value === 'Cao') return 'high';
+  if (value === 'Thấp') return 'low';
+  return 'normal';
+}
+
+function displayDepartment(value) {
+  if (!value) return 'Chưa phân phòng';
+  return value === 'Kỹ thuật' ? 'Phòng Đo đạc' : value;
+}
+
+function candidateScore(candidate, row, role) {
+  const sameDepartment = (
+    Boolean(
+      row['Phòng ban ID']
+      && candidate.department_id
+      && row['Phòng ban ID'] === candidate.department_id
+    )
+    || displayDepartment(row['Phòng ban']) === displayDepartment(candidate.department)
+  );
+  const experienceMap = role === 'main'
+    ? candidate.main_experience
+    : candidate.support_experience;
+  const experience = Number(experienceMap?.[row['Loại dịch vụ']] || 0);
+  const load = Number(candidate.open_main_tasks || 0)
+    + Number(candidate.open_support_tasks || 0) * 0.5;
+
+  return (sameDepartment ? 40 : 0)
+    + Math.min(experience * 3, 30)
+    - Math.min(load * 4, 32);
+}
+
+function AssignmentPicker({
+  role,
+  row,
+  candidates,
+  disabled,
+  onChange,
+}) {
+  const isMain = role === 'main';
+  const value = isMain ? row['Phụ trách chính ID'] : row['Phụ đo ID'];
+  const otherRoleId = isMain ? row['Phụ đo ID'] : row['Phụ trách chính ID'];
+
+  const ranked = useMemo(
+    () => candidates
+      .filter((candidate) => candidate.user_id !== otherRoleId)
+      .map((candidate) => ({
+        ...candidate,
+        score: candidateScore(candidate, row, role),
+        experience: Number(
+          (isMain ? candidate.main_experience : candidate.support_experience)
+            ?.[row['Loại dịch vụ']] || 0
+        ),
+        load: Number(candidate.open_main_tasks || 0)
+          + Number(candidate.open_support_tasks || 0) * 0.5,
+      }))
+      .sort((a, b) => b.score - a.score || a.load - b.load || a.full_name.localeCompare(b.full_name, 'vi')),
+    [candidates, isMain, otherRoleId, role, row],
+  );
+
+  const recommended = ranked[0];
+  const selected = candidates.find((candidate) => candidate.user_id === value);
+  const selectedExperience = selected
+    ? Number((isMain ? selected.main_experience : selected.support_experience)?.[row['Loại dịch vụ']] || 0)
+    : 0;
+  const selectedLoad = selected
+    ? Number(selected.open_main_tasks || 0) + Number(selected.open_support_tasks || 0) * 0.5
+    : 0;
+
+  return (
+    <div className="assignment-picker" onClick={(event) => event.stopPropagation()}>
+      <select
+        className="assignment-picker__select"
+        value={value || ''}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value || null)}
+        aria-label={isMain ? 'Chọn người phụ trách chính' : 'Chọn người phụ đo'}
+      >
+        <option value="">{isMain ? 'Chưa phân công' : 'Không cần phụ đo'}</option>
+        {ranked.map((candidate, index) => (
+          <option key={candidate.user_id} value={candidate.user_id}>
+            {index === 0 ? '★ ' : ''}
+            {candidate.full_name} · {candidate.load} việc mở · {candidate.experience} cùng DV
+          </option>
+        ))}
+      </select>
+      <div className="assignment-picker__meta">
+        {disabled ? (
+          'Đang lưu...'
+        ) : selected ? (
+          `${selectedLoad} việc đang mở · ${selectedExperience} hồ sơ cùng dịch vụ`
+        ) : recommended ? (
+          <>
+            <Sparkles size={11} />
+            Gợi ý: {recommended.full_name}
+          </>
+        ) : (
+          'Chưa có nhân sự phù hợp'
+        )}
+      </div>
+    </div>
+  );
+}
+>>>>>>> Stashed changes
 
 export default function Hoso() {
   const [hosoList, setHosoList] = useState([]);

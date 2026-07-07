@@ -32,8 +32,13 @@ export default function Dashboard() {
     const fetchDashboard = async () => {
       try {
         const [resSummary, resCharts] = await Promise.all([
+<<<<<<< Updated upstream
           fetch('http://127.0.0.1:8000/api/dashboard/summary'),
           fetch('http://127.0.0.1:8000/api/dashboard/charts')
+=======
+          fetch('/api/dashboard/summary'),
+          fetch('/api/dashboard/charts')
+>>>>>>> Stashed changes
         ]);
         if (resSummary.ok) {
           const data = await resSummary.json();

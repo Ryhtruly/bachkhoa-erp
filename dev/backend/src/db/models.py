@@ -91,6 +91,25 @@ class Contract(Base):
 
 # ----------------- C. Production & Operations -----------------
 
+<<<<<<< Updated upstream
+=======
+class TaskType(Base):
+    __tablename__ = "task_types"
+    id = Column(String, primary_key=True, default=lambda: f"tt_{uuid.uuid4().hex[:10]}")
+    name = Column(String(100), unique=True, nullable=False)
+
+
+class TaskTypeRate(Base):
+    __tablename__ = "task_type_rates"
+    id = Column(String, primary_key=True, default=lambda: f"ttr_{uuid.uuid4().hex[:10]}")
+    task_type_id = Column(String, ForeignKey("task_types.id"), nullable=False)
+    role = Column(String(10), nullable=False)
+    rate = Column(Numeric(15, 2), nullable=False, default=0)
+    effective_from = Column(Date, nullable=False, default=datetime.date.today)
+    effective_to = Column(Date, nullable=True)
+
+
+>>>>>>> Stashed changes
 class ProjectTask(Base):
     __tablename__ = "projects_tasks"
     id = Column(String, primary_key=True) # e.g. BK-HS-0001
@@ -105,6 +124,39 @@ class ProjectTask(Base):
     completion_date = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+
+class TaskSubmission(Base):
+    __tablename__ = "task_submissions"
+    id = Column(String, primary_key=True, default=lambda: f"sub_{uuid.uuid4().hex[:12]}")
+    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=False)
+    submitted_by = Column(String(100), nullable=True)
+    submission_date = Column(Date, nullable=False, default=datetime.date.today)
+    is_first_submission = Column(Boolean, nullable=False, default=False)
+    result = Column(String(100), nullable=True)
+    expected_return_date = Column(Date, nullable=True)
+    receipt_photo_url = Column(Text, nullable=True)
+    received_by = Column(String(100), nullable=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+
+class TaskPayRecord(Base):
+    __tablename__ = "task_pay_records"
+    id = Column(String, primary_key=True, default=lambda: f"tpr_{uuid.uuid4().hex[:10]}")
+    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=False)
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    role = Column(String(10), nullable=False)
+    payroll_month = Column(Date, nullable=False)
+    base_rate = Column(Numeric(15, 2), nullable=False, default=0)
+    stake_allowance = Column(Numeric(15, 2), nullable=False, default=0)
+    cancellation_allowance = Column(Numeric(15, 2), nullable=False, default=0)
+    priority_bonus = Column(Numeric(15, 2), nullable=False, default=0)
+    penalty = Column(Numeric(15, 2), nullable=False, default=0)
+    payment_status = Column(String(20), nullable=False, default="Chưa thanh toán")
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    note = Column(Text, nullable=True)
+
 
 # ----------------- D. Finance & Accounting -----------------
 
@@ -148,10 +200,60 @@ class KpiPayroll(Base):
     __tablename__ = "kpi_payroll"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     employee_id = Column(String, ForeignKey("employees.id"))
-    month = Column(String, nullable=True) # YYYY-MM
+    month = Column(Date, nullable=True)
     tasks_completed = Column(Integer, default=0)
     kpi_score = Column(Numeric, default=0)
     bonus = Column(Numeric, default=0)
     total_salary = Column(Numeric, default=0)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+<<<<<<< Updated upstream
+=======
+    base_salary_computed = Column(Numeric(15, 2), nullable=False, default=0)
+    piece_rate_main = Column(Numeric(15, 2), nullable=False, default=0)
+    piece_rate_support = Column(Numeric(15, 2), nullable=False, default=0)
+    allowance = Column(Numeric(15, 2), nullable=False, default=0)
+    penalty = Column(Numeric(15, 2), nullable=False, default=0)
+    referral_commission = Column(Numeric(15, 2), nullable=False, default=0)
+    holiday_bonus = Column(Numeric(15, 2), nullable=False, default=0)
+    department_id = Column(String, ForeignKey("departments.id"), nullable=True)
+
+
+class PayrollPeriod(Base):
+    __tablename__ = "payroll_periods"
+    id = Column(String, primary_key=True, default=lambda: f"pp_{uuid.uuid4().hex[:10]}")
+    period_month = Column(Date, nullable=False, unique=True)
+    status = Column(String(20), nullable=False, default="Open")
+    locked_at = Column(DateTime(timezone=True), nullable=True)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class PayrollAdjustment(Base):
+    __tablename__ = "payroll_adjustments"
+    id = Column(String, primary_key=True, default=lambda: f"pa_{uuid.uuid4().hex[:12]}")
+    employee_id = Column(String, ForeignKey("employees.id"), nullable=False)
+    payroll_month = Column(Date, nullable=False)
+    adjustment_type = Column(String(30), nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False, default=0)
+    reason = Column(Text, nullable=False)
+    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=True)
+    status = Column(String(20), nullable=False, default="Approved")
+    approved_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+class FinanceSetting(Base):
+    __tablename__ = "finance_settings"
+    key = Column(String, primary_key=True)
+    value = Column(Numeric, default=0.0)
+
+
+class FundOpeningBalance(Base):
+    __tablename__ = "fund_opening_balances"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    hinh_thuc = Column(String(50), nullable=False) # 'Tiền mặt' hoặc 'Chuyển khoản'
+    so_tien_dau_ky = Column(Numeric(15, 2), nullable=False)
+    ngay_ap_dung = Column(DateTime(timezone=True), nullable=False)
+    nguoi_chot = Column(String(100), nullable=True)
+    ghi_chu = Column(Text, nullable=True)
+>>>>>>> Stashed changes

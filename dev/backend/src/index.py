@@ -19,6 +19,17 @@ from src.routes.routes_ai import router as ai_router
 from src.routes.routes_crm import router as crm_router
 from src.routes.routes_kpi import router as kpi_router
 from src.routes.routes_wiki import router as wiki_router
+<<<<<<< Updated upstream
+=======
+from src.routes.routes_finance import router as finance_router
+from src.routes.routes_payroll import router as payroll_router
+from src.db.database import engine, Base
+from src.db.models import *
+from src.services.contract_read_service import (
+    CONTRACT_CACHE_REFRESH_SECONDS,
+    warm_contract_read_model,
+)
+>>>>>>> Stashed changes
 
 app = FastAPI(title="OpenClaw ERP - Bach Khoa")
 
@@ -44,6 +55,11 @@ app.include_router(ai_router)
 app.include_router(crm_router)
 app.include_router(kpi_router)
 app.include_router(wiki_router)
+<<<<<<< Updated upstream
+=======
+app.include_router(finance_router)
+app.include_router(payroll_router)
+>>>>>>> Stashed changes
 
 @app.get("/")
 def read_root():

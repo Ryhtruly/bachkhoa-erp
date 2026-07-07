@@ -14,7 +14,11 @@ export default function Wiki() {
 
   const fetchWiki = async () => {
     try {
+<<<<<<< Updated upstream
       const res = await fetch('http://127.0.0.1:8000/api/wiki');
+=======
+      const res = await fetch('/api/wiki');
+>>>>>>> Stashed changes
       if (res.ok) {
         const data = await res.json();
         setDocuments(Array.isArray(data) ? data : data.data || []);
@@ -33,7 +37,11 @@ export default function Wiki() {
   const handleUploadWiki = async (e) => {
     e.preventDefault();
     try {
+<<<<<<< Updated upstream
       const res = await fetch('http://127.0.0.1:8000/api/wiki/upload', {
+=======
+      const res = await fetch('/api/wiki/upload', {
+>>>>>>> Stashed changes
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, roles_allowed: ["*"] })

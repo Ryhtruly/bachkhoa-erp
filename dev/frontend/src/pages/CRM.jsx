@@ -20,8 +20,13 @@ export default function CRM() {
   const fetchData = async () => {
     try {
       const [leadsRes, statsRes] = await Promise.all([
+<<<<<<< Updated upstream
         fetch('http://127.0.0.1:8000/api/crm/leads'),
         fetch('http://127.0.0.1:8000/api/crm/stats')
+=======
+        fetch('/api/crm/leads'),
+        fetch('/api/crm/stats')
+>>>>>>> Stashed changes
       ]);
       
       if (leadsRes.ok) {
@@ -54,7 +59,11 @@ export default function CRM() {
 
   const submitStatusChange = async (leadId, newStatus, extraData = {}) => {
     try {
+<<<<<<< Updated upstream
       await fetch(`http://127.0.0.1:8000/api/crm/leads/${leadId}/status`, {
+=======
+      await fetch(`/api/crm/leads/${leadId}/status`, {
+>>>>>>> Stashed changes
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_status: newStatus, ...extraData })
@@ -74,7 +83,11 @@ export default function CRM() {
   const handleCreateLead = async (e) => {
     e.preventDefault();
     try {
+<<<<<<< Updated upstream
       const res = await fetch('http://127.0.0.1:8000/api/crm/leads', {
+=======
+      const res = await fetch('/api/crm/leads', {
+>>>>>>> Stashed changes
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
