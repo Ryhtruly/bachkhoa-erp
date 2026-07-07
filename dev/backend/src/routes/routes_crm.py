@@ -10,6 +10,7 @@ from docxtpl import DocxTemplate
 
 from src.db.database import get_db
 from src.db.models import LeadPipeline, Customer, ProjectTask, Contract
+from src.services.contract_read_service import sync_contract_read_model_after_write
 
 router = APIRouter(prefix="/api/crm", tags=["CRM & Pipeline"])
 
@@ -94,6 +95,7 @@ def update_lead_status(lead_id: str, body: LeadStatusUpdate, db: Session = Depen
         
     old_status = lead.status
     lead.status = body.new_status
+    contract_created = False
     
     # --- AUTOMATION: Nếu chốt thành công -> Sinh Hồ sơ mới ---
     if body.new_status == "Chốt" and old_status != "Chốt":
@@ -162,6 +164,9 @@ def update_lead_status(lead_id: str, body: LeadStatusUpdate, db: Session = Depen
             priority="Cao"
         )
         db.add(new_task)
+        contract_created = True
         
     db.commit()
+    if contract_created:
+        sync_contract_read_model_after_write(db)
     return {"status": "success", "data": {"id": lead.id, "status": lead.status}}
