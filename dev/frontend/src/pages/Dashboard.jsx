@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Files, Loader, AlertTriangle, DollarSign, Clock } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { StatsGrid, StatCard } from '../components/ui';
-
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
@@ -34,8 +32,8 @@ export default function Dashboard() {
     const fetchDashboard = async () => {
       try {
         const [resSummary, resCharts] = await Promise.all([
-          fetch('/api/dashboard/summary'),
-          fetch('/api/dashboard/charts')
+          fetch('http://127.0.0.1:8000/api/dashboard/summary'),
+          fetch('http://127.0.0.1:8000/api/dashboard/charts')
         ]);
         if (resSummary.ok) {
           const data = await resSummary.json();
@@ -90,38 +88,36 @@ export default function Dashboard() {
         <div style={{ position: 'absolute', right: '-5%', top: '-50%', width: '300px', height: '300px', background: 'radial-gradient(circle, rgba(235,74,35,0.15) 0%, transparent 70%)', borderRadius: '50%' }}></div>
       </div>
 
-      <StatsGrid>
-        <StatCard
-          label="Tổng hồ sơ"
-          value={stats.total_hoso}
-          icon={<Files size={24} />}
-          iconVariant="purple"
-          loading={loading}
-        />
-        <StatCard
-          label="Đang xử lý"
-          value={stats.in_progress}
-          icon={<Loader size={24} />}
-          iconVariant="orange"
-          loading={loading}
-        />
-        <StatCard
-          label="Hồ sơ quá hạn"
-          value={stats.overdue}
-          icon={<AlertTriangle size={24} />}
-          iconVariant="red"
-          loading={loading}
-        />
-        <StatCard
-          label="Thực thu"
-          value={stats.revenue}
-          icon={<DollarSign size={24} />}
-          iconVariant="green"
-          format="currency"
-          loading={loading}
-        />
-      </StatsGrid>
-
+      <div className="stats-grid" id="dashboard-stats" style={{ marginBottom: '24px' }}>
+        <div className="stat-card card">
+          <div className="stat-icon purple"><Files /></div>
+          <div className="stat-info">
+            <h3>{loading ? '—' : stats.total_hoso}</h3>
+            <p>Tổng hồ sơ</p>
+          </div>
+        </div>
+        <div className="stat-card card">
+          <div className="stat-icon amber"><Loader /></div>
+          <div className="stat-info">
+            <h3>{loading ? '—' : stats.in_progress}</h3>
+            <p>Đang xử lý</p>
+          </div>
+        </div>
+        <div className="stat-card card">
+          <div className="stat-icon red"><AlertTriangle /></div>
+          <div className="stat-info">
+            <h3>{loading ? '—' : stats.overdue}</h3>
+            <p>Hồ sơ quá hạn</p>
+          </div>
+        </div>
+        <div className="stat-card card">
+          <div className="stat-icon green"><DollarSign /></div>
+          <div className="stat-info">
+            <h3>{loading ? '—' : formatVND(stats.revenue)}</h3>
+            <p>Thực thu</p>
+          </div>
+        </div>
+      </div>
 
       <div className="balance-strip card" style={{ marginBottom: '24px' }}>
         <div className="balance-item">
