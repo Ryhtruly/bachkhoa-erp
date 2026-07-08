@@ -25,6 +25,7 @@ from src.routes.routes_kpi import router as kpi_router
 from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
 from src.routes.routes_payroll import router as payroll_router
+from src.routes.routes_settings import router as settings_router
 from src.db.database import engine, Base
 from src.db.models import *
 from src.services.contract_read_service import (
@@ -90,6 +91,7 @@ app.include_router(kpi_router)
 app.include_router(wiki_router)
 app.include_router(finance_router)
 app.include_router(payroll_router)
+app.include_router(settings_router)
 
 @app.get("/")
 def read_root():

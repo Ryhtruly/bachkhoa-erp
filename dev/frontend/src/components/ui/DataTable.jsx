@@ -103,8 +103,8 @@ export default function DataTable({
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  style={{ width: col.width, textAlign: col.align || 'left' }}
-                  className={col.sortable ? 'dt-sortable' : ''}
+                  style={{ width: col.width, minWidth: col.width, textAlign: col.align || 'left' }}
+                  className={`${col.sortable ? 'dt-sortable' : ''}${col.stickyRight ? ' dt-sticky-right' : ''}`}
                   onClick={() => col.sortable && handleSort(col.key)}
                   aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
                 >
@@ -133,7 +133,7 @@ export default function DataTable({
                   <tr key={i} className="dt-skeleton-row">
                     {selectable && <td><div className="skeleton" style={{ width: 18, height: 18 }} /></td>}
                     {columns.map((col) => (
-                      <td key={col.key}>
+                      <td key={col.key} className={col.stickyRight ? 'dt-sticky-right' : ''}>
                         <div className="skeleton" style={{ height: 14, width: '70%', borderRadius: 4 }} />
                       </td>
                     ))}
@@ -174,7 +174,7 @@ export default function DataTable({
                         </td>
                       )}
                       {columns.map((col) => (
-                        <td key={col.key} style={{ textAlign: col.align || 'left' }}>
+                        <td key={col.key} style={{ textAlign: col.align || 'left' }} className={col.stickyRight ? 'dt-sticky-right' : ''}>
                           {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
                         </td>
                       ))}

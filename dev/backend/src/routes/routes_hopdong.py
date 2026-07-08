@@ -110,7 +110,11 @@ def create_hopdong(payload: HopdongCreateSchema, db: Session = Depends(get_db)):
 def generate_and_save_contract(payload: ContractGenerateSchema, db: Session = Depends(get_db)):
     try:
         contract_data = payload.model_dump()
-        success_gen, download_url, full_path = doc_generator.generate_contract(contract_data)
+        success_gen, download_url, full_path = doc_generator.generate_document(
+            data=contract_data, 
+            template_name="mau_hop_dong.docx", 
+            output_prefix="HopDong"
+        )
         
         if not success_gen:
             raise HTTPException(status_code=500, detail=f"Không thể xuất file Word: {download_url}")

@@ -404,34 +404,114 @@ def update_assignment(payload: AssignmentUpdateSchema, db: Session = Depends(get
     }
 
 
+@router.get("/contracts-lookup")
+def lookup_contracts(db: Session = Depends(get_db)):
+    """Return a lightweight list of contracts for the dropdown."""
+    contracts = db.query(Contract, Customer).outerjoin(Customer, Customer.id == Contract.customer_id).order_by(Contract.created_at.desc()).all()
+    result = []
+    for c, cust in contracts:
+        result.append({
+            "id": c.id,
+            "customer_name": cust.full_name if cust else "Khách vãng lai",
+            "service_type": c.service_type or ""
+        })
+    return {"status": "success", "data": result}
+
 class HosoCreateSchema(BaseModel):
-    Loại_dịch_vụ: str
-    Deadline: str
-    Trạng_thái: str = "Trong hạn"
+    contract_id: str
+    task_name: str
+    department_id: Optional[str] = None
+    priority: str = "Trung bình"
+    assignee_id: Optional[str] = None
+    support_id: Optional[str] = None
+    deadline: Optional[str] = None
+    stake_count: Optional[int] = None
+    stake_type: Optional[str] = None
+    status: str = "Mới tiếp nhận"
+
+class HosoUpdateSchema(HosoCreateSchema):
+    pass
 
 class StatusUpdateSchema(BaseModel):
     Mã_hồ_sơ: str
     Trạng_thái: str
 
+
 @router.post("/")
 def create_hoso(payload: HosoCreateSchema, db: Session = Depends(get_db)):
     try:
         new_id = f"BK-HS-{str(uuid.uuid4())[:8].upper()}"
-        try:
-            d_dl = datetime.strptime(payload.Deadline, "%Y-%m-%d").date()
-        except:
-            d_dl = None
-            
+        d_dl = None
+        if payload.deadline:
+            try:
+                d_dl = datetime.strptime(payload.deadline, "%Y-%m-%d").date()
+            except:
+                pass
+                
         t = ProjectTask(
             id=new_id,
-            task_name=payload.Loại_dịch_vụ,
+            contract_id=payload.contract_id,
+            task_name=payload.task_name,
+            department_id=payload.department_id,
+            priority=payload.priority,
+            assignee_id=payload.assignee_id,
+            support_id=payload.support_id,
             deadline=d_dl,
-            status=payload.Trạng_thái or "Mới tiếp nhận",
-            priority="Cao"
+            stake_count=payload.stake_count,
+            stake_type=payload.stake_type,
+            status=payload.status,
+            start_date=date.today()
         )
         db.add(t)
         db.commit()
         return {"status": "success", "id": new_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/{task_id}")
+def update_hoso_full(task_id: str, payload: HosoUpdateSchema, db: Session = Depends(get_db)):
+    try:
+        task = db.query(ProjectTask).filter(ProjectTask.id == task_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ")
+            
+        d_dl = None
+        if payload.deadline:
+            try:
+                d_dl = datetime.strptime(payload.deadline, "%Y-%m-%d").date()
+            except:
+                pass
+                
+        # If assignment changes, we might want to log it or check pay records, but for a full edit modal, we just update it.
+        # To be safe, we check if pay record exists if assignee changed.
+        if task.assignee_id != payload.assignee_id and _role_has_pay_record(db, task.id, "main", payload.assignee_id):
+             raise HTTPException(status_code=409, detail="Lương vai trò chính của task đã được ghi nhận; không thể đổi người.")
+        if task.support_id != payload.support_id and _role_has_pay_record(db, task.id, "support", payload.support_id):
+             raise HTTPException(status_code=409, detail="Lương phụ đo của task đã được ghi nhận; không thể đổi người.")
+             
+        # Update completion date if status changed to complete
+        if payload.status == "Hoàn thành" and task.status != "Hoàn thành":
+            task.completion_date = date.today()
+        elif payload.status != "Hoàn thành":
+            task.completion_date = None
+
+        task.contract_id = payload.contract_id
+        task.task_name = payload.task_name
+        task.department_id = payload.department_id
+        task.priority = payload.priority
+        task.assignee_id = payload.assignee_id
+        task.support_id = payload.support_id
+        task.deadline = d_dl
+        task.stake_count = payload.stake_count
+        task.stake_type = payload.stake_type
+        task.status = payload.status
+
+        db.commit()
+        return {"status": "success"}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -444,6 +524,8 @@ def update_hoso_status(payload: StatusUpdateSchema, db: Session = Depends(get_db
             raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ")
             
         task.status = payload.Trạng_thái
+        if payload.Trạng_thái == "Hoàn thành":
+            task.completion_date = date.today()
         db.commit()
         return {"status": "success"}
     except Exception as e:

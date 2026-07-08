@@ -4,12 +4,13 @@ import TopHeader from './components/TopHeader';
 import Dashboard from './pages/Dashboard';
 import CRM from './pages/CRM';
 import Hoso from './pages/Hoso';
-import Automations from './pages/Automations';
+import Settings from './pages/Settings';
 import Hopdong from './pages/Hopdong';
 import Thuchi from './pages/Thuchi';
 import Luong from './pages/Luong';
 import KPI from './pages/KPI';
 import Wiki from './pages/Wiki';
+import ChatWidget from './components/ChatWidget';
 import { ToastProvider } from './contexts/ToastContext';
 import './index.css';
 
@@ -24,8 +25,8 @@ function App() {
         return <CRM />;
       case 'hoso':
         return <Hoso />;
-      case 'automations':
-        return <Automations />;
+      case 'settings':
+        return <Settings />;
       case 'hopdong':
         return <Hopdong />;
       case 'thuchi':
@@ -50,6 +51,7 @@ function App() {
           <TopHeader />
           {renderTab()}
         </main>
+        <ChatWidget />
       </div>
     </ToastProvider>
   );

@@ -508,6 +508,7 @@ body {
 }
 
 .input,
+.form-control,
 .input-wrap input,
 select,
 textarea {
@@ -527,6 +528,7 @@ textarea {
 }
 
 .input:hover,
+.form-control:hover,
 .input-wrap input:hover,
 select:hover,
 textarea:hover {
@@ -534,12 +536,24 @@ textarea:hover {
 }
 
 .input:focus,
+.form-control:focus,
 .input-wrap input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--orange-500);
   background: #ffffff;
   box-shadow: 0 0 0 4px rgba(235, 74, 35, 0.15);
+}
+
+.input:disabled,
+.form-control:disabled,
+.input-wrap input:disabled,
+select:disabled,
+textarea:disabled {
+  background: #e2e8f0;
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  border-color: var(--border-default);
 }
 
 .input-wrap input {
@@ -1316,6 +1330,29 @@ tbody tr:last-child td {
   z-index: 10;
 }
 
+/* ─── Sticky Right Column (Actions / File) ─── */
+.dt-sticky-right {
+  position: sticky !important;
+  right: 0;
+  z-index: 2;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.06);
+  padding: 0 !important;
+  text-align: center;
+}
+
+thead th.dt-sticky-right {
+  background: var(--bg-surface);
+  z-index: 12;
+}
+
+tbody td.dt-sticky-right {
+  background: var(--bg-card);
+}
+
+tbody tr:hover td.dt-sticky-right {
+  background: var(--bg-surface);
+}
+
 .dt-sortable {
   cursor: pointer;
   user-select: none;
@@ -1572,6 +1609,31 @@ tbody tr:last-child td {
 }
 
 .contract-page .table-wrap tbody .contract-detail-row td {
+  background: var(--contract-detail-bg);
+}
+
+/* Sticky right column overrides for contract table row types */
+.contract-page thead th.dt-sticky-right {
+  background: var(--contract-table-header-bg);
+}
+
+.contract-page tbody td.dt-sticky-right {
+  background: var(--contract-table-bg);
+}
+
+.contract-page tbody tr:hover td.dt-sticky-right {
+  background: var(--contract-table-hover-bg);
+}
+
+.contract-page tbody .contract-group-row td.dt-sticky-right {
+  background: var(--contract-group-bg);
+}
+
+.contract-page tbody .contract-group-row:hover td.dt-sticky-right {
+  background: var(--contract-group-hover-bg);
+}
+
+.contract-page tbody .contract-detail-row td.dt-sticky-right {
   background: var(--contract-detail-bg);
 }
 
@@ -2125,7 +2187,13 @@ tbody tr:last-child td {
 .form-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+
+.form-row label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .form-row--wide {

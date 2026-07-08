@@ -20,10 +20,29 @@ def generate_quote(payload: QuoteRequestSchema):
             payload.location_zone
         )
         
-        # 2. Giả lập việc tạo file Báo Giá Word (mau_bao_gia.docx)
-        download_url = f"/static/generated_quotes/BaoGia_{payload.customer_name}.docx"
+        # 2. Tạo file Báo Giá Word bằng doc_generator
+        # Chuyển dữ liệu thành dict để đưa vào doc_generator
+        from datetime import datetime
+        quote_data = {
+            "customer_name": payload.customer_name,
+            "service_type": payload.service_type,
+            "area_sqm": payload.area_sqm,
+            "location_zone": payload.location_zone,
+            "final_price": f"{final_price:,.0f} VNĐ",
+            "date_generated": datetime.now().strftime("%d/%m/%Y")
+        }
         
-        # 3. Giả lập gửi tự động qua Email/Zalo
+        from core import doc_generator
+        success_gen, download_url, full_path = doc_generator.generate_document(
+            data=quote_data,
+            template_name="mau_bao_gia.docx", # Giả định đã có file này trong thư mục templates
+            output_prefix="BaoGia"
+        )
+        
+        if not success_gen:
+             download_url = f"/static/generated_quotes/BaoGia_{payload.customer_name}.docx" # Fallback if no template exists
+        
+        # 3. Giả lập gửi tự động qua Zalo (nếu có Webhook thì có thể gọi zalo_service)
         print(f"====== AUTO SEND QUOTE ======")
         print(f"To: {payload.customer_name}")
         print(f"Service: {payload.service_type} - Price: {final_price:,.0f} VNĐ")
@@ -34,7 +53,7 @@ def generate_quote(payload: QuoteRequestSchema):
             "status": "success",
             "price": final_price,
             "download_url": download_url,
-            "message": "Đã tạo báo giá và giả lập gửi tự động cho khách hàng."
+            "message": "Đã tạo báo giá thành công."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

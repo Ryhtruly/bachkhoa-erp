@@ -2,11 +2,11 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any
-from services import zalo_service
-from services import telegram_service
+from src.services import zalo_service
+from src.services import telegram_service
 from src.db.database import get_db
 from src.db.models import Contract, Receivable, ProjectTask, Customer
-from core import hr_engine
+from src.core import hr_engine
 
 router = APIRouter(prefix="/webhook", tags=["Webhooks & Automations"])
 

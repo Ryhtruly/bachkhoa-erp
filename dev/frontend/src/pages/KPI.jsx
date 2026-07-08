@@ -13,7 +13,7 @@ export default function KPI() {
       const res = await fetch(`/api/kpi/scores?month=${m}`);
       if (res.ok) {
         const data = await res.json();
-        setKpiList(data.scores || []);
+        setKpiList(data.data || []);
       }
     } catch (err) {
       console.error(err);
@@ -52,26 +52,42 @@ export default function KPI() {
             <thead>
               <tr>
                 <th>Nhân sự</th>
-                <th>Tổng Task</th>
-                <th>Điểm KPI</th>
-                <th>Đánh giá</th>
-                <th>Chi tiết</th>
+                <th style={{ textAlign: 'center' }}>Số hồ sơ HT (Target &gt; 10)</th>
+                <th style={{ textAlign: 'center' }}>Tỷ lệ đúng hạn</th>
+                <th style={{ textAlign: 'center' }}>Lỗi nộp lại</th>
+                <th style={{ textAlign: 'center' }}>TG xử lý TB (Ngày)</th>
+                <th style={{ textAlign: 'center' }}>Điểm KPI</th>
+                <th style={{ textAlign: 'center' }}>Đánh giá</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>Đang tải...</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Đang tải...</td></tr>
               ) : kpiList.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Chưa có dữ liệu KPI tháng này</td></tr>
+                <tr><td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Chưa có dữ liệu KPI tháng này</td></tr>
               ) : (
                 kpiList.map((kpi, i) => (
                   <tr key={i}>
                     <td><strong>{kpi.employee}</strong></td>
-                    <td>{kpi.total_tasks}</td>
-                    <td><span className="badge badge-primary">{kpi.final_score}</span></td>
-                    <td><span className={`badge ${kpi.performance === 'Tốt' ? 'badge-success' : 'badge-danger'}`}>{kpi.performance}</span></td>
-                    <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                      Đúng hạn: {kpi.on_time} / Trễ: {kpi.late}
+                    <td style={{ textAlign: 'center', fontWeight: 600, color: kpi.total_completed > 10 ? 'var(--green-600)' : 'inherit' }}>
+                      {kpi.total_completed}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`badge ${kpi.on_time_rate >= 90 ? 'badge-success' : 'badge-danger'}`}>
+                        {kpi.on_time_rate}%
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center', color: kpi.rejections > 0 ? 'var(--red-500)' : 'inherit' }}>
+                      {kpi.rejections}
+                    </td>
+                    <td style={{ textAlign: 'center' }}>{kpi.avg_time}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="badge badge-primary" style={{ fontSize: '1rem' }}>{kpi.final_score}</span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={`badge ${kpi.performance === 'Xuất sắc' ? 'badge-success' : kpi.performance === 'Tốt' ? 'badge-primary' : kpi.performance === 'Khá' ? 'badge-warning' : 'badge-danger'}`}>
+                        {kpi.performance}
+                      </span>
                     </td>
                   </tr>
                 ))

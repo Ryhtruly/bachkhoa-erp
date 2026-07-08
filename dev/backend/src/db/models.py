@@ -120,9 +120,9 @@ class TaskTypeRate(Base):
 class ProjectTask(Base):
     __tablename__ = "projects_tasks"
     id = Column(String, primary_key=True) # e.g. BK-HS-0001
-    # Một mã hợp đồng đầy đủ chỉ gắn với một hồ sơ.
+    # Một mã hợp đồng đầy đủ có thể gắn với nhiều hồ sơ.
     # Hồ sơ chưa ký hợp đồng vẫn được phép để null.
-    contract_id = Column(String, ForeignKey("contracts.id"), nullable=True, unique=True)
+    contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
     department = Column(String, nullable=True)
     task_name = Column(String, nullable=True)
     assignee_id = Column(String, ForeignKey("users.id"), nullable=True)
@@ -215,6 +215,21 @@ class Receivable(Base):
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
+class WikiDocument(Base):
+    __tablename__ = "wiki_documents"
+    id = Column(String, primary_key=True) # e.g. ISO-001
+    title = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    link = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(String(20), nullable=True)
+    effective_date = Column(Date, nullable=True)
+    author_id = Column(String, ForeignKey("users.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+
 # ----------------- E. HR & Payroll -----------------
 
 class Department(Base):
@@ -283,6 +298,12 @@ class PayrollAdjustment(Base):
     status = Column(String(20), nullable=False, default="Approved")
     approved_by = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=True)
+    description = Column(String, nullable=True)
 
 class FinanceSetting(Base):
     __tablename__ = "finance_settings"

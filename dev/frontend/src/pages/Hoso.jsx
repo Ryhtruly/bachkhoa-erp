@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Edit2,
   AlertTriangle,
   Building2,
   CheckCircle,
@@ -17,6 +18,8 @@ import {
   WarningBadge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
+import HosoFormModal from './HosoFormModal';
+import { StatusBadge } from '../components/ui';
 
 const API = '';
 
@@ -39,107 +42,19 @@ function displayDepartment(value) {
   return value === 'Kỹ thuật' ? 'Phòng Đo đạc' : value;
 }
 
-function candidateScore(candidate, row, role) {
-  const sameDepartment = (
-    Boolean(
-      row['Phòng ban ID']
-      && candidate.department_id
-      && row['Phòng ban ID'] === candidate.department_id
-    )
-    || displayDepartment(row['Phòng ban']) === displayDepartment(candidate.department)
-  );
-  const experienceMap = role === 'main'
-    ? candidate.main_experience
-    : candidate.support_experience;
-  const experience = Number(experienceMap?.[row['Loại dịch vụ']] || 0);
-  const load = Number(candidate.open_main_tasks || 0)
-    + Number(candidate.open_support_tasks || 0) * 0.5;
 
-  return (sameDepartment ? 40 : 0)
-    + Math.min(experience * 3, 30)
-    - Math.min(load * 4, 32);
-}
-
-function AssignmentPicker({
-  role,
-  row,
-  candidates,
-  disabled,
-  onChange,
-}) {
-  const isMain = role === 'main';
-  const value = isMain ? row['Phụ trách chính ID'] : row['Phụ đo ID'];
-  const otherRoleId = isMain ? row['Phụ đo ID'] : row['Phụ trách chính ID'];
-
-  const ranked = useMemo(
-    () => candidates
-      .filter((candidate) => candidate.user_id !== otherRoleId)
-      .map((candidate) => ({
-        ...candidate,
-        score: candidateScore(candidate, row, role),
-        experience: Number(
-          (isMain ? candidate.main_experience : candidate.support_experience)
-            ?.[row['Loại dịch vụ']] || 0
-        ),
-        load: Number(candidate.open_main_tasks || 0)
-          + Number(candidate.open_support_tasks || 0) * 0.5,
-      }))
-      .sort((a, b) => b.score - a.score || a.load - b.load || a.full_name.localeCompare(b.full_name, 'vi')),
-    [candidates, isMain, otherRoleId, role, row],
-  );
-
-  const recommended = ranked[0];
-  const selected = candidates.find((candidate) => candidate.user_id === value);
-  const selectedExperience = selected
-    ? Number((isMain ? selected.main_experience : selected.support_experience)?.[row['Loại dịch vụ']] || 0)
-    : 0;
-  const selectedLoad = selected
-    ? Number(selected.open_main_tasks || 0) + Number(selected.open_support_tasks || 0) * 0.5
-    : 0;
-
-  return (
-    <div className="assignment-picker" onClick={(event) => event.stopPropagation()}>
-      <select
-        className="assignment-picker__select"
-        value={value || ''}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value || null)}
-        aria-label={isMain ? 'Chọn người phụ trách chính' : 'Chọn người phụ đo'}
-      >
-        <option value="">{isMain ? 'Chưa phân công' : 'Không cần phụ đo'}</option>
-        {ranked.map((candidate, index) => (
-          <option key={candidate.user_id} value={candidate.user_id}>
-            {index === 0 ? '★ ' : ''}
-            {candidate.full_name} · {candidate.load} việc mở · {candidate.experience} cùng DV
-          </option>
-        ))}
-      </select>
-      <div className="assignment-picker__meta">
-        {disabled ? (
-          'Đang lưu...'
-        ) : selected ? (
-          `${selectedLoad} việc đang mở · ${selectedExperience} hồ sơ cùng dịch vụ`
-        ) : recommended ? (
-          <>
-            <Sparkles size={11} />
-            Gợi ý: {recommended.full_name}
-          </>
-        ) : (
-          'Chưa có nhân sự phù hợp'
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function Hoso() {
   const { addToast } = useToast();
   const [hosoList, setHosoList] = useState([]);
+  const [contractsList, setContractsList] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingHoso, setEditingHoso] = useState(null);
+  const [modalLoading, setModalLoading] = useState(false);
   const [assignmentOptions, setAssignmentOptions] = useState([]);
   const [stats, setStats] = useState({ total: 0, completed: 0, in_progress: 0, overdue: 0 });
   const [loading, setLoading] = useState(true);
   const [assignmentLoading, setAssignmentLoading] = useState(true);
-  const [savingAssignment, setSavingAssignment] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterValues, setFilterValues] = useState({
     status: 'All',
@@ -153,13 +68,19 @@ export default function Hoso() {
   const fetchAssignmentOptions = useCallback(async () => {
     try {
       setAssignmentLoading(true);
-      const response = await fetch(`${API}/api/hoso/assignment-options`);
-      if (!response.ok) throw new Error('Không tải được danh sách nhân sự');
-      const data = await response.json();
-      setAssignmentOptions(data.data || []);
+      const [assignmentRes, contractsRes] = await Promise.all([
+        fetch(`${API}/api/hoso/assignment-options`),
+        fetch(`${API}/api/hoso/contracts-lookup`),
+      ]);
+      const [assignmentData, contractsData] = await Promise.all([
+        assignmentRes.ok ? assignmentRes.json() : { data: [] },
+        contractsRes.ok ? contractsRes.json() : { data: [] },
+      ]);
+      setAssignmentOptions(assignmentData.data || []);
+      setContractsList(contractsData.data || []);
     } catch (error) {
       console.error(error);
-      addToast(error.message, 'error');
+      addToast('Lỗi khi tải danh sách phụ trợ', 'error');
     } finally {
       setAssignmentLoading(false);
     }
@@ -194,65 +115,28 @@ export default function Hoso() {
     fetchData();
   }, [fetchData]);
 
-  const handleStatusChange = async (id, newStatus) => {
+  const handleModalSubmit = async (payload) => {
     try {
-      const response = await fetch(`${API}/api/hoso/update-status`, {
-        method: 'POST',
+      setModalLoading(true);
+      const isEdit = !!editingHoso;
+      const url = isEdit ? `${API}/api/hoso/${editingHoso['Mã hồ sơ']}` : `${API}/api/hoso/`;
+      const method = isEdit ? 'PUT' : 'POST';
+      const response = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 'Mã_hồ_sơ': id, 'Trạng_thái': newStatus }),
+        body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error('Không cập nhật được trạng thái');
-      setHosoList((current) => current.map((row) => (
-        row['Mã hồ sơ'] === id ? { ...row, 'Trạng thái': newStatus } : row
-      )));
-      addToast('Đã cập nhật trạng thái hồ sơ', 'success');
-    } catch (error) {
-      console.error(error);
-      addToast(error.message, 'error');
-    }
-  };
-
-  const handleAssignmentChange = async (row, role, userId) => {
-    const taskId = row['Mã hồ sơ'];
-    const assigneeId = role === 'main' ? userId : row['Phụ trách chính ID'];
-    const supportId = role === 'support' ? userId : row['Phụ đo ID'];
-    if (assigneeId && assigneeId === supportId) {
-      addToast('Người chính và phụ đo phải là hai người khác nhau', 'error');
-      return;
-    }
-
-    try {
-      setSavingAssignment(`${taskId}:${role}`);
-      const response = await fetch(`${API}/api/hoso/update-assignment`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task_id: taskId,
-          assignee_id: assigneeId,
-          support_id: supportId,
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || 'Không cập nhật được phân công');
-
-      setHosoList((current) => current.map((item) => (
-        item['Mã hồ sơ'] === taskId
-          ? {
-            ...item,
-            'Phụ trách chính ID': payload.data.assignee_id,
-            'Phụ trách chính': payload.data.assignee_name,
-            'Phụ đo ID': payload.data.support_id,
-            'Phụ đo': payload.data.support_name,
-          }
-          : item
-      )));
-      addToast('Đã cập nhật người chính và phụ đo', 'success');
-      fetchAssignmentOptions();
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Không lưu được hồ sơ');
+      addToast(isEdit ? 'Đã cập nhật hồ sơ' : 'Đã tạo hồ sơ mới', 'success');
+      setIsModalOpen(false);
+      setEditingHoso(null);
+      fetchData();
     } catch (error) {
       console.error(error);
       addToast(error.message, 'error');
     } finally {
-      setSavingAssignment('');
+      setModalLoading(false);
     }
   };
 
@@ -299,7 +183,7 @@ export default function Hoso() {
     {
       key: 'Mã hồ sơ',
       label: 'MÃ HỒ SƠ',
-      width: 170,
+      width: 140,
       sortable: true,
       render: (value, row) => (
         <div className="hoso-identity">
@@ -315,7 +199,7 @@ export default function Hoso() {
     {
       key: 'Tên khách hàng',
       label: 'KHÁCH HÀNG',
-      width: 220,
+      width: 180,
       render: (value, row) => (
         <div className="hoso-stack">
           <strong>{value}</strong>
@@ -327,49 +211,33 @@ export default function Hoso() {
     {
       key: 'Loại dịch vụ',
       label: 'CÔNG VIỆC',
-      width: 190,
+      width: 120,
       sortable: true,
       render: (value) => <strong className="hoso-service">{value}</strong>,
     },
     {
       key: 'Phụ trách chính',
       label: 'NHÂN VIÊN ĐO',
-      width: 270,
-      render: (_value, row) => (
-        <AssignmentPicker
-          role="main"
-          row={row}
-          candidates={assignmentOptions}
-          disabled={assignmentLoading || savingAssignment.startsWith(`${row['Mã hồ sơ']}:`)}
-          onChange={(userId) => handleAssignmentChange(row, 'main', userId)}
-        />
-      ),
+      width: 140,
+      render: (value, row) => <span>{value || 'Chưa phân công'}</span>,
     },
     {
       key: 'Phụ đo',
       label: 'PHỤ ĐO',
-      width: 270,
-      render: (_value, row) => (
-        <AssignmentPicker
-          role="support"
-          row={row}
-          candidates={assignmentOptions}
-          disabled={assignmentLoading || savingAssignment.startsWith(`${row['Mã hồ sơ']}:`)}
-          onChange={(userId) => handleAssignmentChange(row, 'support', userId)}
-        />
-      ),
+      width: 140,
+      render: (value, row) => <span>{value || 'Không cần phụ đo'}</span>,
     },
     {
       key: 'Ngày đo',
       label: 'NGÀY ĐO',
-      width: 125,
+      width: 90,
       sortable: true,
       render: formatDate,
     },
     {
       key: 'Deadline',
       label: 'DEADLINE',
-      width: 155,
+      width: 110,
       sortable: true,
       render: (value, row) => (
         <div className="hoso-stack">
@@ -383,67 +251,29 @@ export default function Hoso() {
     {
       key: 'Trạng thái',
       label: 'TRẠNG THÁI ĐO',
-      width: 220,
-      render: (value, row) => (
-        <select
-          className="hoso-status-select"
-          value={value}
-          onChange={(event) => handleStatusChange(row['Mã hồ sơ'], event.target.value)}
-          onClick={(event) => event.stopPropagation()}
+      width: 140,
+      render: (value) => <StatusBadge status={value} />,
+    },
+
+
+    {
+      key: 'actions',
+      label: '',
+      width: 35,
+      stickyRight: true,
+      render: (_, row) => (
+        <button
+          className="btn btn-ghost btn-icon"
+          onClick={() => {
+            setEditingHoso(row);
+            setIsModalOpen(true);
+          }}
+          title="Chỉnh sửa hồ sơ"
         >
-          <option value="Mới tiếp nhận">Mới tiếp nhận</option>
-          <option value="Chờ khảo sát">Chờ khảo sát</option>
-          <option value="Đang đo đạc">Đang đo đạc</option>
-          <option value="Đang xử lý nội nghiệp">Đang xử lý nội nghiệp</option>
-          <option value="Nộp thành công - Chờ kết quả">Nộp thành công - Chờ kết quả</option>
-          <option value="Hoàn thành">Hoàn thành</option>
-          <option value="Hủy">Hủy</option>
-        </select>
-      ),
-    },
-    {
-      key: 'Kết quả hiện trường',
-      label: 'KẾT QUẢ HIỆN TRƯỜNG',
-      width: 210,
-    },
-    {
-      key: 'Cảnh báo',
-      label: 'QUÁ HẠN?',
-      width: 145,
-      render: (value) => <WarningBadge warning={value} />,
-    },
-    {
-      key: 'Ngày hoàn thành',
-      label: 'NGÀY HOÀN THÀNH',
-      width: 165,
-      sortable: true,
-      render: formatDate,
-    },
-    {
-      key: 'Phụ cấp',
-      label: 'PHỤ CẤP',
-      width: 180,
-      render: (value, row) => (
-        <div className="hoso-stack">
-          <strong>{formatMoney(value)}</strong>
-          {row['Số cọc'] ? (
-            <span>
-              {row['Số cọc']} cọc · {row['Loại cọc'] || 'Chưa rõ loại'}
-            </span>
-          ) : (
-            <span>Không phát sinh</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'Ghi chú',
-      label: 'GHI CHÚ',
-      width: 260,
-      render: (value) => (
-        <span className="hoso-note" title={value || ''}>{value || '—'}</span>
-      ),
-    },
+          <Edit2 size={16} />
+        </button>
+      )
+    }
   ];
 
   return (
@@ -563,7 +393,7 @@ export default function Hoso() {
         sort={sort}
         onSortChange={setSort}
         actions={(
-          <button className="btn btn-primary" style={{ height: 38, marginLeft: 8 }}>
+          <button className="btn btn-primary" style={{ height: 38, marginLeft: 8 }} onClick={() => { setEditingHoso(null); setIsModalOpen(true); }}>
             <Plus size={16} /> Tạo Hồ Sơ Mới
           </button>
         )}
@@ -583,6 +413,7 @@ export default function Hoso() {
       </div>
 
       <DataTable
+        onRowClick={(row) => { setEditingHoso(row); setIsModalOpen(true); }}
         columns={columns}
         data={sortedList}
         loading={loading}
@@ -590,6 +421,17 @@ export default function Hoso() {
         emptyText="Không có hồ sơ nào phù hợp"
         pageSize={15}
         compact
+      />
+
+      <HosoFormModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        initialData={editingHoso}
+        onSubmit={handleModalSubmit}
+        assignmentOptions={assignmentOptions}
+        departmentOptions={departmentOptions}
+        contractsList={contractsList}
+        loading={modalLoading}
       />
     </section>
   );

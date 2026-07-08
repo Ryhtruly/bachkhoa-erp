@@ -1,12 +1,11 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileText, Wallet, Coins, BarChart2, BookOpen, Cpu } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileText, Wallet, Coins, BarChart2, BookOpen, Settings2 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const menuItems = [
     { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard },
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter },
     { id: 'hoso', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban },
-    { id: 'automations', label: 'Tự Động Hóa & AI', icon: Cpu },
     { id: 'hopdong', label: 'Hợp Đồng & Công Nợ', icon: FileText },
     { id: 'thuchi', label: 'Thu Chi Sổ Quỹ', icon: Wallet },
     { id: 'luong', label: 'Lương Khoán 3P', icon: Coins },
@@ -34,6 +33,14 @@ export default function Sidebar({ activeTab, setActiveTab }) {
             </button>
           );
         })}
+        <div className="nav-label" style={{ marginTop: '16px' }}>Hệ thống</div>
+        <button
+          className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          <Settings2 size={18} />
+          <span>Cấu Hình</span>
+        </button>
       </nav>
       <div className="sidebar-footer">
         <div className="avatar">LD</div>

@@ -1,19 +1,19 @@
 import os
 from docx import Document
 
-TEMPLATE_PATH = os.path.join(os.getcwd(), "src", "templates", "mau_hop_dong.docx")
-OUTPUT_DIR = os.path.join(os.getcwd(), "src", "static", "generated_contracts")
+OUTPUT_DIR = os.path.join(os.getcwd(), "src", "static", "generated_docs")
 
-def generate_contract(data):
+def generate_document(data, template_name="mau_hop_dong.docx", output_prefix="Doc"):
     """
-    Generate a contract .docx file by replacing placeholders in the template.
-    data: dictionary containing placeholder values (e.g., SO_HOP_DONG, TEN_KHACH_HANG)
+    Generate a .docx file by replacing placeholders in the template.
+    data: dictionary containing placeholder values
     """
+    template_path = os.path.join(os.getcwd(), "src", "templates", template_name)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     try:
         # Load the template
-        doc = Document(TEMPLATE_PATH)
+        doc = Document(template_path)
         
         # Replace placeholders in paragraphs
         for paragraph in doc.paragraphs:
@@ -27,16 +27,20 @@ def generate_contract(data):
                         replace_placeholders_in_paragraph(paragraph, data)
                         
         # Save output file
-        filename = f"HopDong_{data.get('MA_HO_SO', 'TEMP')}_{data.get('SO_HOP_DONG', 'TEMP')}.docx"
-        filename = filename.replace("/", "_") # Sanitize filename
+        # Use primary key from data if available, else timestamp
+        import time
+        identifier = data.get('MA_HO_SO') or data.get('customer_name') or str(int(time.time()))
+        filename = f"{output_prefix}_{identifier}.docx"
+        filename = filename.replace("/", "_").replace(" ", "_") # Sanitize filename
         output_path = os.path.join(OUTPUT_DIR, filename)
         doc.save(output_path)
         
         # Return web-accessible path
-        return True, f"/static/generated_contracts/{filename}", output_path
+        return True, f"/static/generated_docs/{filename}", output_path
     except Exception as e:
-        print(f"Error generating contract: {e}")
+        print(f"Error generating document: {e}")
         return False, str(e), None
+
 
 def replace_placeholders_in_paragraph(paragraph, data):
     """Helper function to replace placeholder text while preserving formatting."""

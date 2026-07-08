@@ -238,7 +238,7 @@ export default function Hopdong() {
     {
       key: 'Mã hợp đồng',
       label: 'Mã HỢP ĐỒNG',
-      width: 220,
+      width: 160,
       render: (val, row) => {
         if (row._rowType === 'group') {
           const expanded = Boolean(expandedGroups[row._groupId]);
@@ -279,30 +279,25 @@ export default function Hopdong() {
     {
       key: 'Mã hồ sơ',
       label: 'Mã hồ sơ',
-      width: 150,
+      width: 90,
       render: (val) => <span style={{ fontFamily: 'var(--font-mono)' }}>{val}</span>
     },
     {
       key: 'Tên khách hàng',
       label: 'Khách hàng',
-      width: 220,
+      width: 150,
       render: (val) => <EllipsisCell value={val} />
     },
-    {
-      key: 'Phòng ban',
-      label: 'Phòng ban',
-      width: 170,
-      render: (val) => <EllipsisCell value={val} />
-    },
+    
     {
       key: 'Dịch vụ',
       label: 'Dịch vụ',
-      width: 210,
+      width: 120,
       render: (val, row) => (
         <EllipsisCell value={val || row['Loại dịch vụ']} />
       )
     },
-    { key: 'Ngày ký', label: 'Ngày ký', width: 120 },
+    { key: 'Ngày ký', label: 'Ngày ký', width: 90 },
     {
       key: 'Giá trị hợp đồng',
       label: 'Giá trị',
@@ -339,24 +334,15 @@ export default function Hopdong() {
       label: 'Tình trạng',
       render: (val) => <StatusBadge status={val || 'Chờ thanh toán'} domain="hopdong" />
     },
-    {
-      key: 'Sale / nguồn',
-      label: 'Sale / nguồn',
-      width: 160,
-      render: (val) => <EllipsisCell value={val} />
-    },
-    { key: 'Ngày đến hạn', label: 'Ngày đến hạn', width: 130 },
-    {
-      key: 'Ghi chú',
-      label: 'Ghi chú',
-      width: 220,
-      render: (val) => <EllipsisCell value={val} />
-    },
+    
+    { key: 'Ngày đến hạn', label: 'Ngày đến hạn', width: 100 },
+    
     {
       key: 'File Hợp đồng',
       label: 'File',
       align: 'center',
-      width: 100,
+      width: 80,
+      stickyRight: true,
       render: (val) => val
         ? <a href={val} target="_blank" rel="noreferrer" className="btn btn-secondary btn-xs" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}>
           <Download size={14} /> File HĐ
