@@ -56,7 +56,7 @@ export function SummaryStrip({ countText, items = [] }) {
   );
 }
 
-export function ExcelGridTable({ 
+export function ExcelGridTable({
   title, subtitle, accentColor,
   formId, date, onDateChange,
   note, onNoteChange,
@@ -91,14 +91,14 @@ export function ExcelGridTable({
               {title}
             </h2>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: '0.82rem', color: '#444' }}>
-               {subtitle ? (
-                 <span>{subtitle}</span>
-               ) : (
-                 <>
-                   <span>Ngày in: {new Date().toLocaleDateString('vi-VN')}</span>
-                   {dateType !== 'text' && <span>Giờ: {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>}
-                 </>
-               )}
+              {subtitle ? (
+                <span>{subtitle}</span>
+              ) : (
+                <>
+                  <span>Ngày in: {new Date().toLocaleDateString('vi-VN')}</span>
+                  {dateType !== 'text' && <span>Giờ: {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>}
+                </>
+              )}
             </div>
           </td>
         </tr>
@@ -139,11 +139,11 @@ export function ExcelGridTable({
           <td style={{ fontWeight: 'bold' }}>Hình thức</td>
           <td>
             {methodReadOnly || isReadOnly ? (
-               <input type="text" disabled={isReadOnly} readOnly value={method} />
+              <input type="text" disabled={isReadOnly} readOnly value={method} />
             ) : methodOptions ? (
-               <select disabled={isReadOnly} value={method} onChange={e => onMethodChange?.(e.target.value)}>
-                  {methodOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-               </select>
+              <select disabled={isReadOnly} value={method} onChange={e => onMethodChange?.(e.target.value)}>
+                {methodOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
             ) : (
               <select disabled={isReadOnly} value={method} onChange={e => onMethodChange?.(e.target.value)}>
                 <option value="Chuyển khoản">🏦 Chuyển khoản</option>

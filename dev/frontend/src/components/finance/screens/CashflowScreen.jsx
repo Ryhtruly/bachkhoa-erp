@@ -42,7 +42,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     }
   }, [mode]);
 
- const load = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const p = new URLSearchParams();
@@ -52,7 +52,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
       if (reconcileId) p.set(reconcileMode === 'contract' ? 'contract_id' : 'project_id', reconcileId);
 
       // Mốc thời gian thực để tính số dư hiện tại
-      const bayGio = new Date().toISOString(); 
+      const bayGio = new Date().toISOString();
 
       if (mode === 'cash') {
         // 🔥 Gọi song song: 1 cái lấy danh sách trans theo bộ lọc, 1 cái bốc số dư realtime từ DB
@@ -60,10 +60,10 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           fetch(`${API}/api/finance/cashflow/cash?${p}`),
           fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`)
         ]);
-        
+
         const d = await resData.json();
         const b = await resBal.json();
-        
+
         // Cập nhật: Danh sách trans giữ nguyên, nhưng số dư lấy từ hàm calculate chuẩn
         setBalance({
           ...d,
@@ -77,10 +77,10 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           fetch(`${API}/api/finance/cashflow/bank?${p}`),
           fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
         ]);
-        
+
         const d = await resData.json();
         const b = await resBal.json();
-        
+
         setBalance({
           ...d,
           balance: b.so_du_he_thong || 0,
@@ -95,31 +95,31 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`),
           fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
         ]);
-        
+
         const transactionsList = await resData.json();
         const bTM = await resBalTM.json();
         const bCK = await resBalCK.json();
-        
+
         const tm = bTM.so_du_he_thong || 0;
         const ck = bCK.so_du_he_thong || 0;
 
         // 🔥 SỬA TẠI ĐÂY: Tính trực tiếp từ dữ liệu vừa nhận về để tránh crash render
         const inlineThu = transactionsList.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
         const inlineChi = transactionsList.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
-        
+
         setBalance({
           tien_mat: tm,
           ngan_hang: ck,
           balance: tm + ck,
-          tong_thu: inlineThu, 
+          tong_thu: inlineThu,
           tong_chi: inlineChi
         });
         setData(transactionsList);
       }
-    } catch (e) { 
-      console.error(e); 
-    } finally { 
-      setLoading(false); 
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
   }, [mode, filters, month, reconcileMode, reconcileId]);
 
@@ -139,7 +139,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
 
   return (
     <div>
-      <FinanceScreenHeader 
+      <FinanceScreenHeader
         title={mode === 'all' ? 'Nhật Ký Thu Chi' : mode === 'cash' ? 'Quỹ Tiền Mặt' : 'Tài Khoản Ngân Hàng'}
         subtitle="Quản lý dòng tiền, ghi nhận các khoản thu chi thực tế"
         onRefresh={load}
@@ -158,22 +158,22 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
       {/* Balance card for cash/bank modes */}
       {mode !== 'all' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
-          <BalanceCard 
-            title="Số Dư Hiện Tại" 
-            amount={balance.balance} 
-            icon={mode === 'cash' ? '💵' : '🏦'} 
+          <BalanceCard
+            title="Số Dư Hiện Tại"
+            amount={balance.balance}
+            icon={mode === 'cash' ? '💵' : '🏦'}
           />
-          <BalanceCard 
-            title="Tổng Thu" 
-            amount={balance.tong_thu} 
-            icon="↑" 
-            forcePositive 
+          <BalanceCard
+            title="Tổng Thu"
+            amount={balance.tong_thu}
+            icon="↑"
+            forcePositive
           />
-          <BalanceCard 
-            title="Tổng Chi" 
-            amount={balance.tong_chi} 
-            icon="↓" 
-            forceNegative 
+          <BalanceCard
+            title="Tổng Chi"
+            amount={balance.tong_chi}
+            icon="↓"
+            forceNegative
           />
         </div>
       )}
@@ -198,14 +198,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
 
 
 
-      {/* Summary strip */}
-      {filtered.length > 0 && (
-        <SummaryStrip 
-          count={filtered.length} 
-          totalThu={totalThu} 
-          totalChi={totalChi} 
-        />
-      )}
+
 
       <DataTable columns={CF_COLS} data={sortedFiltered} loading={loading} rowKey="id"
         emptyText="Chưa có giao dịch nào" pageSize={15} onRowClick={row => setDetailId(row.id)} />

@@ -19,14 +19,14 @@ import PayablesScreen from '../components/finance/screens/PayablesScreen';
 import AnalyticsScreen from '../components/finance/screens/AnalyticsScreen';
 
 const THUCHI_TABS = [
-  { id: 'monthly-dashboard', label: 'Báo Cáo Tháng', icon: <BarChart2 size={16} /> },
-  { id: 'cashflow-all', label: 'Nhật Ký Thu Chi', icon: <Receipt size={16} /> },
+  { id: 'monthly-dashboard', label: 'Báo Cáo', icon: <BarChart2 size={16} /> },
+  { id: 'cashflow-all', label: 'Nhật Ký', icon: <Receipt size={16} /> },
   { id: 'cashflow-cash', label: 'Quỹ Tiền Mặt', icon: <Banknote size={16} /> },
-  { id: 'cashflow-bank', label: 'Quỹ Chuyển Khoản', icon: <Building2 size={16} /> },
-  { id: 'cashflow-print', label: 'Chứng Từ Thu/Chi', icon: <FileText size={16} /> },
-  { id: 'advance-request', label: 'Đề Xuất Tạm Ứng', icon: <PlusCircle size={16} /> },
-  { id: 'advance-clear', label: 'Quyết Toán Hoàn Ứng', icon: <RotateCcw size={16} /> },
-  { id: 'cashflow-settings', label: 'Thiết Lập Số Dư', icon: <Settings size={16} /> }
+  { id: 'cashflow-bank', label: 'Quỹ Ngân Hàng', icon: <Building2 size={16} /> },
+  { id: 'cashflow-print', label: 'Chứng Từ', icon: <FileText size={16} /> },
+  { id: 'advance-request', label: 'Tạm Ứng', icon: <PlusCircle size={16} /> },
+  { id: 'advance-clear', label: 'Quyết Toán', icon: <RotateCcw size={16} /> },
+  { id: 'cashflow-settings', label: 'Thiết Lập', icon: <Settings size={16} /> }
 ];
 
 export default function Finance() {
@@ -43,7 +43,7 @@ export default function Finance() {
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'cashflow-settings': return <SettingsScreen />;
-      
+
       // Các màn hình dưới đây đã được bóc tách và sẵn sàng để sử dụng 
       // nếu bạn muốn chuyển đổi UI sang dạng Sidebar (Phương án A)
       case 'contracts': return <ContractsScreen />;
@@ -51,7 +51,7 @@ export default function Finance() {
       case 'payables': return <PayablesScreen />;
       case 'analytics-dashboard': return <AnalyticsScreen mode="dashboard" />;
       case 'analytics-profit': return <AnalyticsScreen mode="profit" />;
-      
+
       default: return <MonthlyDashboardScreen />;
     }
   };
