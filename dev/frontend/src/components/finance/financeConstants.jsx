@@ -9,7 +9,7 @@ export const CF_COLS = [
   { key: 'Ngày', label: 'Ngày', width: 95, render: v => <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.83rem' }}>{v}</span> },
   { key: 'id', label: 'Mã phiếu', width: 160, render: v => <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem' }}>{v}</strong> },
   {
-    key: 'Hạng mục', label: 'Hạng mục', width: 300,
+    key: 'Hạng mục', label: 'Hạng mục', width: 200,
     render: (v) => {
       const isSensitive = v === 'Chi thụ lý bản vẽ' || (v && v.startsWith('Chi thụ lý bản vẽ:'));
       return (
@@ -32,7 +32,7 @@ export const CF_COLS = [
         background: v === 'Tiền mặt' ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)',
         color: v === 'Tiền mặt' ? '#f59e0b' : '#6366f1'
       }}>
-        {v === 'Tiền mặt' ? 'Tiền mặt' : 'Chuyển khoản'}
+        {v === 'Tiền mặt' ? 'Tiền mặt' : 'Ckhoản'}
       </span>
     )
   },

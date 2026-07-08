@@ -1042,13 +1042,17 @@ def get_summary(db: Session = Depends(get_db)):
         CashflowTransaction.scope == "Công ty"
     ).scalar() or 0)
 
-    # Monthly trend
+    # Monthly trend (exclude non-cost advance request and settlement returns to avoid double counting)
     monthly_raw = db.query(
         extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))).label("yr"),
         extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))).label("mo"),
         CashflowTransaction.loai,
         func.sum(CashflowTransaction.so_tien).label("total")
-    ).filter(CashflowTransaction.scope == "Công ty").group_by("yr", "mo", CashflowTransaction.loai).order_by("yr", "mo").all()
+    ).filter(
+        CashflowTransaction.scope == "Công ty",
+        CashflowTransaction.hang_muc != "Chi phí tạm ứng",
+        CashflowTransaction.hang_muc != "Quyết toán hoàn ứng"
+    ).group_by("yr", "mo", CashflowTransaction.loai).order_by("yr", "mo").all()
 
     mm: dict = {}
     for r in monthly_raw:
@@ -1070,9 +1074,12 @@ def get_summary(db: Session = Depends(get_db)):
     chi_by_p = db.query(
         CashflowTransaction.project_id,
         func.sum(CashflowTransaction.so_tien).label("t")
-    ).filter(CashflowTransaction.loai == "Chi",
-             CashflowTransaction.project_id.isnot(None),
-             CashflowTransaction.scope == "Công ty"
+    ).filter(
+        CashflowTransaction.loai == "Chi",
+        CashflowTransaction.project_id.isnot(None),
+        CashflowTransaction.scope == "Công ty",
+        CashflowTransaction.hang_muc != "Chi phí tạm ứng",
+        CashflowTransaction.hang_muc != "Quyết toán hoàn ứng"
     ).group_by(CashflowTransaction.project_id).all()
 
     pc_map = {p.id: p.contract_id for p in
@@ -1177,6 +1184,28 @@ def calculate_system_balance(
     return {"status": "success", "so_du_he_thong": bal}
 
 
+@router.get("/fund-balances/history")
+def get_fund_balances_history(db: Session = Depends(get_db)):
+    try:
+        history = db.query(FundOpeningBalance).order_by(FundOpeningBalance.ngay_ap_dung.desc(), FundOpeningBalance.id.desc()).all()
+        res = []
+        for h in history:
+            from datetime import timezone, timedelta
+            tz_vn = timezone(timedelta(hours=7))
+            dt_local = h.ngay_ap_dung.astimezone(tz_vn) if h.ngay_ap_dung.tzinfo else h.ngay_ap_dung.replace(tzinfo=timezone.utc).astimezone(tz_vn)
+            res.append({
+                "id": h.id,
+                "hinh_thuc": h.hinh_thuc,
+                "so_tien_dau_ky": float(h.so_tien_dau_ky),
+                "ngay_ap_dung": dt_local.strftime("%d/%m/%Y %H:%M"),
+                "nguoi_chot": h.nguoi_chot,
+                "ghi_chu": h.ghi_chu
+            })
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/fund-balances/close")
 def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
     try:
@@ -1259,11 +1288,13 @@ def get_monthly_dashboard(month: str = Query(..., description="Format: YYYY-MM")
     except Exception:
         raise HTTPException(status_code=400, detail="Tháng không hợp lệ. Format phải là YYYY-MM")
 
-    # Filter transactions in this month
+    # Filter transactions in this month (exclude advances and return adjustments to prevent double-counting of costs)
     txs = db.query(CashflowTransaction).filter(
         extract("year", CashflowTransaction.ngay) == year,
         extract("month", CashflowTransaction.ngay) == m_num,
-        CashflowTransaction.scope == "Công ty"
+        CashflowTransaction.scope == "Công ty",
+        CashflowTransaction.hang_muc != "Chi phí tạm ứng",
+        CashflowTransaction.hang_muc != "Quyết toán hoàn ứng"
     ).all()
 
     # Calculate overall totals

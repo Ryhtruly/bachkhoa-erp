@@ -75,7 +75,7 @@ const emptyForm = {
 };
 
 export default function PrintVoucherScreen({ month }) {
-  const [mode, setMode] = useState('print'); // 'print' | 'create'
+  const [mode, setMode] = useState('create'); // 'print' | 'create'
   const [txType, setTxType] = useState('Chi'); // 'Thu' | 'Chi' | 'Tạm ứng' | 'Hoàn ứng'
   const [transactions, setTransactions] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -463,6 +463,10 @@ export default function PrintVoucherScreen({ month }) {
           to { transform: rotate(360deg); }
         }
         @media print {
+          @page {
+            size: A5 landscape;
+            margin: 0;
+          }
           body * {
             visibility: hidden;
           }
@@ -471,9 +475,9 @@ export default function PrintVoucherScreen({ month }) {
           }
           .printable-card {
             position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
+            left: 15mm;
+            top: 15mm;
+            width: calc(100% - 30mm);
             border: none !important;
             box-shadow: none !important;
             padding: 0 !important;
@@ -496,15 +500,6 @@ export default function PrintVoucherScreen({ month }) {
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>Xem, in hoặc lập phiếu Thu, Chi, Tạm ứng, Hoàn ứng theo biểu mẫu</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button
-            className="btn btn-outline"
-            onClick={refreshAll}
-            disabled={refreshing}
-            title="Tải lại dữ liệu"
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <RefreshCw size={14} className={refreshing ? 'spin-icon' : ''} /> Làm mới
-          </button>
           <button className={`btn ${mode === 'print' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setMode('print')}>
             Xem & In Phiếu
           </button>
@@ -652,7 +647,7 @@ export default function PrintVoucherScreen({ month }) {
                   onPersonNameChange={(v) => setForm({ ...form, nguoi_nhan_nop: v })}
                   method={form.hinh_thuc}
                   onMethodChange={(v) => setForm({ ...form, hinh_thuc: v })}
-                  methodOptions={METHOD_OPTIONS}
+                  methodOptions={txType === 'Hoàn ứng' ? [{ value: 'Tạm ứng', label: 'Tạm ứng' }] : METHOD_OPTIONS.filter(o => o.value !== 'Tạm ứng')}
                   department={form.du_an_phong_ban}
                   onDepartmentChange={(v) => setForm({ ...form, du_an_phong_ban: v })}
                   departmentOptions={departmentOptions}

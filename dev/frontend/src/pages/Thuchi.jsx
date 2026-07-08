@@ -36,9 +36,9 @@ export default function Finance() {
   const renderContent = () => {
     switch (activeMenu) {
       case 'monthly-dashboard': return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-all': return <CashflowScreen mode="all" month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-cash': return <CashflowScreen mode="cash" month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-bank': return <CashflowScreen mode="bank" month={globalMonth} setMonth={setGlobalMonth} />;
+      case 'cashflow-all': return <CashflowScreen key="all" mode="all" month={globalMonth} setMonth={setGlobalMonth} />;
+      case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} />;
+      case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} />;
       case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} />;

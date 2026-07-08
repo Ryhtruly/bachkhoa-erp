@@ -22,20 +22,30 @@ export function FinanceScreenHeader({ title, subtitle, onRefresh, children }) {
   );
 }
 
-export function BalanceCard({ icon, label, amount, hint, amountClass, containerStyle }) {
+export function BalanceCard({ icon, label, title, amount, hint, subtitle, amountClass, containerStyle, forcePositive, forceNegative }) {
+  const displayLabel = label || title;
+  const displayHint = hint || subtitle;
+  
+  let isPositive = amount >= 0;
+  if (forcePositive) isPositive = true;
+  if (forceNegative) isPositive = false;
+  
+  const displaySign = isPositive ? '+' : '−';
+  const displayClass = amountClass || (isPositive ? 'positive' : 'negative');
+
   return (
     <div className="balance-card" style={containerStyle || {}}>
       {icon && (
-        <div className="balance-card__icon" style={{ background: (amountClass?.includes('negative') || hint?.includes('warn') || amount < 0) ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' }}>
+        <div className="balance-card__icon" style={{ background: !isPositive ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' }}>
           {icon}
         </div>
       )}
       <div>
-        <div className="balance-card__label">{label}</div>
-        <div className={`balance-card__amount ${amountClass || (amount >= 0 ? 'positive' : 'negative')}`}>
-          {amount >= 0 ? '+' : '−'}{fmtShort(Math.abs(amount))}
+        <div className="balance-card__label">{displayLabel}</div>
+        <div className={`balance-card__amount ${displayClass}`}>
+          {displaySign}{fmtShort(Math.abs(amount))}
         </div>
-        {hint && <div className="balance-card__sub">{hint}</div>}
+        {displayHint && <div className="balance-card__sub">{displayHint}</div>}
       </div>
     </div>
   );

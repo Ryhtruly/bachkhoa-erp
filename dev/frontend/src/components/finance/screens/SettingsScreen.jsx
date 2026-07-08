@@ -23,7 +23,22 @@ export default function SettingsScreen() {
   const [nguoiChot, setNguoiChot] = useState('Lê Văn Dựng');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [filterMonth, setFilterMonth] = useState('');
   const { addToast } = useToast();
+
+  const filteredHistory = useMemo(() => {
+    if (!filterMonth) return history;
+    const [filterYr, filterMo] = filterMonth.split('-');
+    return history.filter(row => {
+      if (!row.ngay_ap_dung) return false;
+      const parts = row.ngay_ap_dung.split(' ')[0].split('/');
+      if (parts.length < 3) return false;
+      const [d, m, y] = parts;
+      return y === filterYr && m === filterMo;
+    });
+  }, [history, filterMonth]);
 
   const fetchSystemBalance = useCallback(async () => {
     setLoading(true);
@@ -48,9 +63,25 @@ export default function SettingsScreen() {
     }
   }, [ngayChot, addToast]);
 
+  const fetchHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`${API}/api/finance/fund-balances/history`);
+      if (res.ok) {
+        const d = await res.json();
+        setHistory(d);
+      }
+    } catch (e) {
+      console.error("Lỗi lấy lịch sử chốt quỹ", e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSystemBalance();
-  }, [fetchSystemBalance]);
+    fetchHistory();
+  }, [fetchSystemBalance, fetchHistory]);
 
   const valThucTeTM = soDuThucTeTM === '' ? 0 : Number(soDuThucTeTM);
   const chenhLechTM = soDuThucTeTM === '' ? 0 : valThucTeTM - soDuHeThongTM;
@@ -135,6 +166,7 @@ export default function SettingsScreen() {
         setSoDuThucTeCK('');
         setGhiChuCK('');
         fetchSystemBalance();
+        fetchHistory();
       } else {
         addToast(' Lỗi hệ thống khi chốt quỹ', 'error');
       }
@@ -333,6 +365,104 @@ export default function SettingsScreen() {
           </button>
 
         </form>
+
+        {/* Khối 2: Lịch sử chốt quỹ */}
+        <div style={{ marginTop: 32, borderTop: '1px solid #e2e8f0', paddingTop: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+            <h4 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 10, letterSpacing: '-0.01em' }}>
+              📋 LỊCH SỬ CHỐT QUỸ TRƯỚC ĐÓ
+            </h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Chọn tháng:</span>
+                <input
+                  type="month"
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  style={{
+                    height: 32,
+                    padding: '0 8px',
+                    borderRadius: 8,
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    outline: 'none',
+                    color: '#1e293b',
+                    background: '#ffffff'
+                  }}
+                />
+              </div>
+              {filterMonth && (
+                <button
+                  onClick={() => setFilterMonth('')}
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    color: '#ef4444',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div style={{ overflowX: 'auto', background: '#f8fafc', borderRadius: 16, border: '1px solid #e2e8f0', padding: '8px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mốc Thời Gian Chốt</th>
+                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hình Thức</th>
+                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Số Dư Đầu Kỳ Mới</th>
+                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người Thực Hiện</th>
+                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ghi Chú</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingHistory ? (
+                  <tr>
+                    <td colSpan="5" style={{ padding: '24px 8px', textAlign: 'center', color: '#64748b' }}>Đang tải lịch sử...</td>
+                  </tr>
+                ) : filteredHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ padding: '24px 8px', textAlign: 'center', color: '#64748b' }}>Chưa có lịch sử chốt quỹ nào phù hợp.</td>
+                  </tr>
+                ) : (
+                  filteredHistory.map((row) => (
+                    <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px 8px', fontWeight: 500, color: '#334155' }}>{row.ngay_ap_dung}</td>
+                      <td style={{ padding: '12px 8px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '2px 8px',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          background: row.hinh_thuc === 'Tiền mặt' ? '#eff6ff' : '#f0fdf4',
+                          color: row.hinh_thuc === 'Tiền mặt' ? '#1d4ed8' : '#15803d',
+                          border: `1px solid ${row.hinh_thuc === 'Tiền mặt' ? '#bfdbfe' : '#bbf7d0'}`
+                        }}>
+                          {row.hinh_thuc === 'Tiền mặt' ? 'Tiền mặt' : 'Ckhoản'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#0f172a' }}>
+                        {fmt(row.so_tien_dau_ky)}
+                      </td>
+                      <td style={{ padding: '12px 8px', color: '#475569' }}>{row.nguoi_chot || '—'}</td>
+                      <td style={{ padding: '12px 8px', color: '#64748b', fontSize: '0.85rem' }}>{row.ghi_chu || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
     </div>
   );

@@ -18,6 +18,8 @@ def get_setting_value(db: Session, key: str, default: float = 0.0) -> float:
 def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[datetime] = None) -> float:
     # 1. Tìm mốc chốt chặn (Snapshot) mới nhất trước hoặc bằng thời gian cần xem
     from src.db.models import FundOpeningBalance
+    from datetime import timezone, timedelta
+    tz_vn = timezone(timedelta(hours=7))
     
     q_snap = db.query(FundOpeningBalance).filter(FundOpeningBalance.hinh_thuc == hinh_thuc)
     if up_to_datetime:
@@ -27,11 +29,13 @@ def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[da
     if latest_snap:
         start_bal = float(latest_snap.so_tien_dau_ky)
         start_time = latest_snap.ngay_ap_dung
+        start_time_local = start_time.astimezone(tz_vn) if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc).astimezone(tz_vn)
+        start_date = start_time_local.date()
     else:
         # Nếu chưa từng có mốc chốt nào, lấy cấu hình ban đầu hệ thống
         key = "initial_cash_balance" if hinh_thuc == "Tiền mặt" else "initial_bank_balance"
         start_bal = get_setting_value(db, key, 0.0)
-        start_time = None
+        start_date = None
 
     # 2. Tính tổng Thu / Chi phát sinh SAU mốc chốt sổ này
     q_thu = db.query(func.sum(CashflowTransaction.so_tien)).filter(
@@ -47,13 +51,14 @@ def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[da
     )
     
     # 2. Tính tổng Thu / Chi phát sinh SAU mốc chốt sổ này
-    if start_time:
-        q_thu = q_thu.filter(CashflowTransaction.ngay > start_time.date())
-        q_chi = q_chi.filter(CashflowTransaction.ngay > start_time.date())
+    if start_date:
+        q_thu = q_thu.filter(CashflowTransaction.ngay > start_date)
+        q_chi = q_chi.filter(CashflowTransaction.ngay > start_date)
         
     if up_to_datetime:
-        q_thu = q_thu.filter(CashflowTransaction.ngay <= up_to_datetime.date())
-        q_chi = q_chi.filter(CashflowTransaction.ngay <= up_to_datetime.date())
+        up_to_date = up_to_datetime.astimezone(tz_vn).date() if up_to_datetime.tzinfo else up_to_datetime.replace(tzinfo=timezone.utc).astimezone(tz_vn).date()
+        q_thu = q_thu.filter(CashflowTransaction.ngay <= up_to_date)
+        q_chi = q_chi.filter(CashflowTransaction.ngay <= up_to_date)
         
     thu_sum = float(q_thu.scalar() or 0.0)
     chi_sum = float(q_chi.scalar() or 0.0)
@@ -217,7 +222,14 @@ def _check_closed_period(db: Session, target_date: date):
     from src.db.models import FundOpeningBalance
     latest_snap = db.query(FundOpeningBalance).order_by(FundOpeningBalance.ngay_ap_dung.desc()).first()
     if latest_snap and latest_snap.ngay_ap_dung:
-        snap_date = latest_snap.ngay_ap_dung.date() if isinstance(latest_snap.ngay_ap_dung, datetime) else latest_snap.ngay_ap_dung
+        from datetime import timezone, timedelta
+        tz_vn = timezone(timedelta(hours=7))
+        snap_time = latest_snap.ngay_ap_dung
+        if isinstance(snap_time, datetime):
+            snap_time_local = snap_time.astimezone(tz_vn) if snap_time.tzinfo else snap_time.replace(tzinfo=timezone.utc).astimezone(tz_vn)
+            snap_date = snap_time_local.date()
+        else:
+            snap_date = snap_time
         if target_date <= snap_date:
             raise HTTPException(status_code=400, detail="Dữ liệu thuộc kỳ kế toán đã chốt, không thể thêm/sửa/hủy.")
 

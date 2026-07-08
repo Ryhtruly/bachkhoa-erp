@@ -44,6 +44,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
 
   const load = useCallback(async () => {
     setLoading(true);
+    setBalance({ tien_mat: 0, ngan_hang: 0, balance: 0, tong_thu: 0, tong_chi: 0 });
+    setData([]);
     try {
       const p = new URLSearchParams();
       if (month) p.set('month', month);

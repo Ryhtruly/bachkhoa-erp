@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw ERP — Đo Đạc Bách Khoa</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="ambient-bg"></div>
+
+    <div class="app">
+        <!-- ─── Sidebar ─── -->
+        <aside class="sidebar">
+            <div class="brand" style="padding: 22px 16px 28px 16px; gap: 8px;">
+                <div class="brand-logo" style="width:65px; height:65px; background:transparent; box-shadow:none; flex-shrink:0;">
+                    <img src="/static/logo.png" alt="Logo Bách Khoa" style="width:100%;height:100%;object-fit:contain;">
+                </div>
+                <div class="brand-text" style="display:flex; align-items:center;">
+                    <img src="/static/TieuDe.png" alt="Bách Khoa ERP" style="height:62px; max-width:150px; object-fit:contain;">
+                </div>
+            </div>
+            <nav class="nav">
+                <div class="nav-label">Điều hướng</div>
+                <button class="nav-item active" data-tab="dashboard">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Tổng Quan</span>
+                </button>
+                <button class="nav-item" data-tab="crm">
+                    <i data-lucide="filter"></i>
+                    <span>CRM Bán Hàng</span>
+                </button>
+                <button class="nav-item" data-tab="hoso">
+                    <i data-lucide="folder-kanban"></i>
+                    <span>Hồ Sơ Đo Vẽ</span>
+                </button>
+                <button class="nav-item" data-tab="hopdong">
+                    <i data-lucide="file-text"></i>
+                    <span>Hợp Đồng &amp; Công Nợ</span>
+                </button>
+                <button class="nav-item" data-tab="thuchi">
+                    <i data-lucide="wallet"></i>
+                    <span>Thu Chi Sổ Quỹ</span>
+                </button>
+                <button class="nav-item" data-tab="luong">
+                    <i data-lucide="coins"></i>
+                    <span>Lương Khoán 3P</span>
+                </button>
+                <button class="nav-item" data-tab="kpi">
+                    <i data-lucide="bar-chart-2"></i>
+                    <span>KPI Nhân Sự</span>
+                </button>
+                <button class="nav-item" data-tab="wiki">
+                    <i data-lucide="book-open"></i>
+                    <span>Đào Tạo &amp; ISO</span>
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="avatar">LD</div>
+                <div class="info">
+                    <h4>Lê Văn Dựng</h4>
+                    <p>Giám đốc điều hành</p>
+                </div>
+                <div class="status-led"></div>
+            </div>
+        </aside>
+
+        <!-- ─── Main ─── -->
+        <main class="main">
+            <!-- Top Header -->
+            <header class="top-header">
+                <div>
+                    <h1>Hệ Thống Tự Động Hóa Nghiệp Vụ</h1>
+                    <div class="sub" id="live-time">Đang tải…</div>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="refreshData()">
+                        <i data-lucide="refresh-cw"></i> Làm mới
+                    </button>
+                    <div class="flex-center" style="gap:6px;font-size:0.75rem;color:var(--text-tertiary);padding:0 8px;">
+                        <span class="status-led" style="width:6px;height:6px;"></span>
+                        Excel Master
+                    </div>
+                </div>
+            </header>
+
+            <!-- ═══ DASHBOARD ═══ -->
+            <section class="tab-pane active" id="tab-dashboard">
+                <div class="stats-grid" id="dashboard-stats">
+                    <div class="stat-card card">
+                        <div class="stat-icon purple"><i data-lucide="files"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-total-hoso">—</h3>
+                            <p>Tổng hồ sơ</p>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-icon amber"><i data-lucide="loader"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-in-progress">—</h3>
+                            <p>Đang xử lý</p>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-icon red"><i data-lucide="alert-triangle"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-overdue">—</h3>
+                            <p>Hồ sơ quá hạn</p>
+                        </div>
+                    </div>
+                    <div class="stat-card card">
+                        <div class="stat-icon green"><i data-lucide="dollar-sign"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-revenue">—</h3>
+                            <p>Thực thu</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="balance-strip card">
+                    <div class="balance-item">
+                        <span>Giá trị HĐ</span>
+                        <h4 id="stat-contract-val">—</h4>
+                    </div>
+                    <div class="balance-item">
+                        <span>Đã thu</span>
+                        <h4 id="stat-paid-val" class="text-success">—</h4>
+                    </div>
+                    <div class="balance-item">
+                        <span>Công nợ</span>
+                        <h4 id="stat-debt-val" class="text-danger">—</h4>
+                    </div>
+                </div>
+
+                <div class="card" style="padding:24px;">
+                    <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h3 style="font-size:0.95rem;font-weight:600;display:flex;align-items:center;gap:8px;">
+                            <i data-lucide="clock" style="width:16px;height:16px;color:var(--purple-400);"></i>
+                            Hồ sơ mới tiếp nhận
+                        </h3>
+                        <button class="btn btn-ghost btn-sm" onclick="switchTab('hoso')">Xem tất cả</button>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Mã hồ sơ</th>
+                                    <th>Khách hàng</th>
+                                    <th>Dịch vụ</th>
+                                    <th>Khu vực</th>
+                                    <th>Phụ trách</th>
+                                    <th>Hạn trả</th>
+                                    <th>Trạng thái</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-recent-hoso"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ CRM PIPELINE ═══ -->
+            <section class="tab-pane" id="tab-crm">
+                <div class="toolbar card">
+                    <div>
+                        <h3 style="font-size:1.1rem;font-weight:700;"><i data-lucide="filter" style="color:var(--orange-500);"></i> Pipeline Bán Hàng</h3>
+                        <p class="sub">Quản lý vòng đời khách hàng từ Tiếp cận đến Chốt Sale.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('add-lead-modal')">
+                        <i data-lucide="plus"></i> Tạo Lead Mới
+                    </button>
+                </div>
+                
+                <div class="crm-grid" id="crm-kanban-board">
+                    <!-- Các cột Kanban sẽ được JS render vào đây -->
+                </div>
+            </section>
+
+            <!-- ═══ HỒ SƠ ═══ -->
+            <section class="tab-pane" id="tab-hoso">
+                <div class="toolbar card">
+                    <div class="search-wrap">
+                        <i data-lucide="search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text-tertiary);pointer-events:none;"></i>
+                        <input type="text" id="hoso-search-input" placeholder="Tìm kiếm hồ sơ (mã, tên, khu vực…)">
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('add-hoso-modal')">
+                        <i data-lucide="plus"></i> Tạo hồ sơ
+                    </button>
+                </div>
+
+                <div class="card" style="padding:0;">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Mã HS</th>
+                                    <th>Khách hàng</th>
+                                    <th>SĐT</th>
+                                    <th>Dịch vụ</th>
+                                    <th>Khu vực</th>
+                                    <th>Chính</th>
+                                    <th>Hỗ trợ</th>
+                                    <th>Hạn</th>
+                                    <th>Cảnh báo</th>
+                                    <th>Trạng thái</th>
+                                    <th style="width:140px;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hoso-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="pagination" id="hoso-pagination"></div>
+                </div>
+            </section>
+
+            <!-- ═══ HỢP ĐỒNG ═══ -->
+            <section class="tab-pane" id="tab-hopdong">
+                <div class="split-view">
+                    <div class="card">
+                        <h3><i data-lucide="file-signature"></i> Soạn hợp đồng</h3>
+                        <div class="sub">Tự động điền mẫu Word và ghi công nợ vào Excel.</div>
+                        <form id="contract-generator-form" onsubmit="handleGenerateContract(event)" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Mã hợp đồng</label>
+                                    <input type="text" id="form-hd-code" placeholder="128/BK-2026" required>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Gắn hồ sơ</label>
+                                    <select id="form-hd-hoso-select" required onchange="populateContractFormFromHoso()">
+                                        <option value="">— Chọn —</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Tên khách hàng</label>
+                                    <input type="text" id="form-hd-name" placeholder="Họ và tên" required>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>SĐT</label>
+                                    <input type="text" id="form-hd-phone" placeholder="Số điện thoại">
+                                </div>
+                            </div>
+                            <div>
+                                <label>Địa chỉ BĐS</label>
+                                <input type="text" id="form-hd-address" placeholder="Phường, Quận, Tỉnh/TP" required>
+                            </div>
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Dịch vụ</label>
+                                    <select id="form-hd-service" required></select>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Sale / nguồn</label>
+                                    <input type="text" id="form-hd-sale" placeholder="Tên sale" required>
+                                </div>
+                            </div>
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Giá trị HĐ (VNĐ)</label>
+                                    <input type="number" id="form-hd-value" placeholder="15000000" required>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Ngày ký</label>
+                                    <input type="date" id="form-hd-signdate" required>
+                                </div>
+                            </div>
+                            <div>
+                                <label>Hạn hoàn thành</label>
+                                <input type="date" id="form-hd-enddate" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width:100%;height:44px;">
+                                <i data-lucide="printer"></i> Xuất Word &amp; lưu Excel
+                            </button>
+                        </form>
+                    </div>
+                    <div class="card" style="padding:0;">
+                        <div class="flex" style="justify-content:space-between;align-items:center;padding:16px 20px 0;">
+                            <h3 style="font-size:0.95rem;font-weight:600;display:flex;align-items:center;gap:8px;">
+                                <i data-lucide="table" style="width:16px;height:16px;color:var(--purple-400);"></i>
+                                Công nợ hợp đồng
+                            </h3>
+                        </div>
+                        <div class="table-wrap" style="margin-top:12px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Mã HĐ</th>
+                                        <th>Mã HS</th>
+                                        <th>Khách hàng</th>
+                                        <th>Dịch vụ</th>
+                                        <th>Giá trị</th>
+                                        <th>Đã thu</th>
+                                        <th>Còn nợ</th>
+                                        <th>Tình trạng</th>
+                                        <th>File</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="contract-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ THU CHI ═══ -->
+            <section class="tab-pane" id="tab-thuchi">
+                <div class="split-view">
+                    <div class="card">
+                        <h3><i data-lucide="plus-circle"></i> Lập phiếu thu / chi</h3>
+                        <div class="sub">Ghi nhận giao dịch và liên kết với hồ sơ / hợp đồng.</div>
+                        <form id="thuchi-form" onsubmit="handleCreateThuchi(event)" style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Loại</label>
+                                    <select id="form-tc-type" required>
+                                        <option value="Chi">Phiếu Chi (−)</option>
+                                        <option value="Thu">Phiếu Thu (+)</option>
+                                    </select>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Số tiền</label>
+                                    <input type="number" id="form-tc-amount" placeholder="200000" required>
+                                </div>
+                            </div>
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Mã hồ sơ</label>
+                                    <select id="form-tc-hoso">
+                                        <option value="None">Không liên kết</option>
+                                    </select>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Mã hợp đồng</label>
+                                    <select id="form-tc-hopdong">
+                                        <option value="None">Không liên kết</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label>Diễn giải</label>
+                                <input type="text" id="form-tc-details" placeholder="Nộp phí trích lục…" required>
+                            </div>
+                            <div class="flex" style="gap:12px;">
+                                <div style="flex:1;">
+                                    <label>Phòng ban</label>
+                                    <select id="form-tc-department" required></select>
+                                </div>
+                                <div style="flex:1;">
+                                    <label>Hình thức</label>
+                                    <select id="form-tc-method" required>
+                                        <option value="Chuyển khoản">Chuyển khoản</option>
+                                        <option value="Tiền mặt">Tiền mặt</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label>Người nhận / nộp</label>
+                                <input type="text" id="form-tc-person" placeholder="Tên người" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary" style="width:100%;height:44px;">
+                                <i data-lucide="check"></i> Ghi nhận chứng từ
+                            </button>
+                        </form>
+                    </div>
+                    <div class="card" style="padding:0;">
+                        <div class="flex" style="justify-content:space-between;align-items:center;padding:16px 20px 0;">
+                            <h3 style="font-size:0.95rem;font-weight:600;display:flex;align-items:center;gap:8px;">
+                                <i data-lucide="receipt" style="width:16px;height:16px;color:var(--purple-400);"></i>
+                                Nhật ký quỹ
+                            </h3>
+                        </div>
+                        <div class="table-wrap" style="margin-top:12px;">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Ngày</th>
+                                        <th>Số phiếu</th>
+                                        <th>Mã HS</th>
+                                        <th>Diễn giải</th>
+                                        <th>Loại</th>
+                                        <th>Người</th>
+                                        <th>Số tiền</th>
+                                        <th>Hình thức</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="thuchi-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ LƯƠNG ═══ -->
+            <section class="tab-pane" id="tab-luong">
+                <div class="card payroll-section">
+                    <div class="payroll-head">
+                        <div>
+                            <h3><i data-lucide="banknote"></i> Lương khoán 3P</h3>
+                            <div class="sub">Tự động tính dựa trên cơ chế khoán cho hồ sơ hoàn thành.</div>
+                        </div>
+                        <div class="flex-center" style="gap:8px;">
+                            <label style="margin:0;white-space:nowrap;">Tháng</label>
+                            <input type="month" id="payroll-month" value="2026-03" onchange="loadPayroll()" style="width:160px;">
+                        </div>
+                    </div>
+                    <div class="payroll-stats">
+                        <div class="payroll-stat-box">
+                            <span id="payroll-count">0</span>
+                            <p>Hồ sơ hoàn thành trong tháng</p>
+                        </div>
+                        <div class="payroll-stat-box">
+                            <span id="payroll-total-amount" class="text-success">0₫</span>
+                            <p>Tổng quỹ lương khoán</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nhân sự</th>
+                                    <th>Mã HS</th>
+                                    <th>Công đoạn</th>
+                                    <th>Tiền khoán</th>
+                                    <th>Phụ cấp</th>
+                                    <th>Thưởng/phạt</th>
+                                    <th>Tổng nhận</th>
+                                    <th>Ngày chốt</th>
+                                    <th>Ghi chú</th>
+                                </tr>
+                            </thead>
+                            <tbody id="payroll-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        <!-- ═══ KPI ═══ -->
+            <section class="tab-pane" id="tab-kpi">
+                <div class="card" style="padding:24px;">
+                    <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:20px;">
+                        <div>
+                            <h3 style="font-size:1.1rem;font-weight:700;"><i data-lucide="target" style="color:var(--orange-500);"></i> Bảng Điểm KPI Nhân Sự</h3>
+                            <p class="sub">Thuật toán tự động chấm điểm hiệu suất (Đúng hạn / Trễ hạn).</p>
+                        </div>
+                        <div class="flex-center" style="gap:8px;">
+                            <label style="margin:0;white-space:nowrap;">Kỳ Đánh Giá</label>
+                            <input type="month" id="kpi-month" value="2026-03" onchange="loadKpi()" style="width:160px; height: 38px;">
+                        </div>
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nhân sự</th>
+                                    <th>Tổng Task</th>
+                                    <th>Điểm KPI</th>
+                                    <th>Đánh giá</th>
+                                    <th>Chi tiết</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kpi-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ═══ WIKI ═══ -->
+            <section class="tab-pane" id="tab-wiki">
+                <div class="toolbar card">
+                    <div>
+                        <h3 style="font-size:1.1rem;font-weight:700;"><i data-lucide="book" style="color:var(--orange-500);"></i> Tri Thức Doanh Nghiệp (Wiki)</h3>
+                        <p class="sub">Kho lưu trữ Quy trình ISO và sổ tay nội bộ.</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="openModal('add-wiki-modal')">
+                        <i data-lucide="upload-cloud"></i> Upload Tài Liệu
+                    </button>
+                </div>
+                
+                <div class="table-wrap card">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Mã Tài Liệu</th>
+                                <th>Tên Tài Liệu / Quy Trình</th>
+                                <th>Phân Loại</th>
+                                <th>Thao Tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="wiki-table-body"></tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ═══ MODALS ═══ -->
+    <div class="modal-overlay" id="add-hoso-modal">
+        <div class="modal card">
+            <div class="modal-header">
+                <h2><i data-lucide="plus-circle"></i> Thêm hồ sơ mới</h2>
+                <button class="modal-close" onclick="closeModal('add-hoso-modal')">✕</button>
+            </div>
+            <form id="add-hoso-form" onsubmit="handleCreateHoso(event)" style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label>Tên hồ sơ</label>
+                    <input type="text" id="form-hs-name" placeholder="Tên công trình / hộ dân" required>
+                </div>
+                <div class="flex" style="gap:12px;">
+                    <div style="flex:1;">
+                        <label>Khách hàng</label>
+                        <input type="text" id="form-hs-client" placeholder="Họ tên" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label>SĐT</label>
+                        <input type="text" id="form-hs-phone" placeholder="Số điện thoại">
+                    </div>
+                </div>
+                <div class="flex" style="gap:12px;">
+                    <div style="flex:1;">
+                        <label>Khu vực / Phường</label>
+                        <input type="text" id="form-hs-area" placeholder="Tam Bình, An Khánh…" required>
+                    </div>
+                    <div style="flex:1;">
+                        <label>Dịch vụ</label>
+                        <select id="form-hs-service" required></select>
+                    </div>
+                </div>
+                <div class="flex" style="gap:12px;">
+                    <div style="flex:1;">
+                        <label>Phụ trách chính</label>
+                        <select id="form-hs-main" required></select>
+                    </div>
+                    <div style="flex:1;">
+                        <label>Hỗ trợ</label>
+                        <select id="form-hs-assist">
+                            <option value="Không cần">Không cần</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label>Deadline</label>
+                    <input type="date" id="form-hs-deadline" required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-hoso-modal')">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu hồ sơ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="add-lead-modal">
+        <div class="modal card">
+            <div class="modal-header">
+                <h2><i data-lucide="user-plus"></i> Tạo Lead Mới</h2>
+                <button class="modal-close" onclick="closeModal('add-lead-modal')">✕</button>
+            </div>
+            <form id="add-lead-form" onsubmit="handleCreateLead(event)" style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label>Tên Khách Hàng</label>
+                    <input type="text" id="form-lead-name" placeholder="Họ và tên..." required>
+                </div>
+                <div>
+                    <label>Số Điện Thoại</label>
+                    <input type="text" id="form-lead-phone" placeholder="SĐT..." required>
+                </div>
+                <div>
+                    <label>Nguồn Khách Hàng</label>
+                    <select id="form-lead-source" required>
+                        <option value="Facebook">Facebook</option>
+                        <option value="Zalo">Zalo</option>
+                        <option value="Hotline">Hotline</option>
+                        <option value="Khác">Khác</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Ghi Chú Yêu Cầu</label>
+                    <input type="text" id="form-lead-notes" placeholder="Khách cần tư vấn đo đạc...">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-lead-modal')">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu Lead</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="add-wiki-modal">
+        <div class="modal card">
+            <div class="modal-header">
+                <h2><i data-lucide="upload-cloud"></i> Upload Tài Liệu Mới</h2>
+                <button class="modal-close" onclick="closeModal('add-wiki-modal')">✕</button>
+            </div>
+            <form id="add-wiki-form" onsubmit="handleUploadWiki(event)" style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label>Mã Tài Liệu</label>
+                    <input type="text" id="form-wiki-id" placeholder="ISO-001..." required>
+                </div>
+                <div>
+                    <label>Tên Quy Trình / Tài Liệu</label>
+                    <input type="text" id="form-wiki-title" placeholder="Quy trình khảo sát..." required>
+                </div>
+                <div>
+                    <label>Phân Loại</label>
+                    <select id="form-wiki-category" required>
+                        <option value="Quy Trình ISO">Quy Trình ISO</option>
+                        <option value="Sổ Tay Nhân Sự">Sổ Tay Nhân Sự</option>
+                        <option value="Tài Liệu Đào Tạo">Tài Liệu Đào Tạo</option>
+                        <option value="Quy Định Khác">Quy Định Khác</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Link Trữ File (Google Drive / Doc)</label>
+                    <input type="url" id="form-wiki-link" placeholder="https://docs.google.com/..." required>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('add-wiki-modal')">Hủy</button>
+                    <button type="submit" class="btn btn-primary">Lưu Tài Liệu</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ═══ TOAST CONTAINER ═══ -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- ═══ SCRIPTS ═══ -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/static/main.js"></script>
+</body>
+</html>
