@@ -133,6 +133,66 @@ body {
     radial-gradient(circle at 80% 20%, rgba(235, 74, 35, 0.1), transparent 50%);
 }
 
+/* ─── Login Page ─── */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: 400px;
+  max-width: 92vw;
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 40px;
+}
+
+.login-brand {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  margin-bottom: 16px;
+}
+
+.login-brand h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.login-brand p {
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-btn {
+  width: 100%;
+  height: 48px;
+  font-size: 1rem;
+  margin-top: 8px;
+}
+
 /* ==========================================
    APP SHELL
    ========================================== */

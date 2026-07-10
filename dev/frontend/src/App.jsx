@@ -10,11 +10,13 @@ import Thuchi from './pages/Thuchi';
 import Luong from './pages/Luong';
 import KPI from './pages/KPI';
 import Wiki from './pages/Wiki';
+import Login from './pages/Login';
 import ChatWidget from './components/ChatWidget';
 import { ToastProvider } from './contexts/ToastContext';
 import './index.css';
 
 function App() {
+  const [loggedIn, setLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const renderTab = () => {
@@ -42,6 +44,10 @@ function App() {
         return <div className="tab-pane active"><h2 style={{padding:'24px'}}>Tính năng đang được chuyển đổi...</h2></div>;
     }
   };
+
+  if (!loggedIn) {
+    return <Login onLogin={() => setLoggedIn(true)} />;
+  }
 
   return (
     <ToastProvider>

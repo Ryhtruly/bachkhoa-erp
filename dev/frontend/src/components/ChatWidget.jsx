@@ -170,16 +170,11 @@ export default function ChatWidget() {
                 alignItems: 'flex-start',
                 gap: '8px'
               }}>
-                {msg.role === 'assistant' && (
-                  <div style={{ background: 'var(--bg-card-hover)', padding: '6px', borderRadius: '50%', flexShrink: 0 }}>
-                    <Bot size={16} color="var(--blue-400)" />
-                  </div>
-                )}
-                <div style={{
-                  maxWidth: '75%',
+                  <div style={{
+                  maxWidth: '85%',
                   padding: '10px 14px',
                   borderRadius: '12px',
-                  backgroundColor: msg.role === 'user' ? 'var(--blue-600)' : 'rgba(255,255,255,0.05)',
+                  backgroundColor: msg.role === 'user' ? '#2563eb' : 'rgba(255,255,255,0.05)',
                   color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
                   fontSize: '0.9rem',
                   lineHeight: 1.4,
@@ -188,11 +183,6 @@ export default function ChatWidget() {
                 }}>
                   {msg.content}
                 </div>
-                {msg.role === 'user' && (
-                  <div style={{ background: 'rgba(59, 130, 246, 0.2)', padding: '6px', borderRadius: '50%', flexShrink: 0 }}>
-                    <User size={16} color="var(--blue-400)" />
-                  </div>
-                )}
               </div>
             ))}
             {isLoading && (
