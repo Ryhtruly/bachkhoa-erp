@@ -28,7 +28,7 @@ from src.routes.routes_payroll import router as payroll_router
 from src.routes.routes_settings import router as settings_router
 from src.routes.routes_auth import router as auth_router
 from src.db.database import engine, Base, SessionLocal
-from src.services.storage_service import ensure_bucket
+from src.services.storage_service import ensure_bucket, set_bucket_public
 from src.db.models import *
 from src.services.contract_read_service import (
     CONTRACT_CACHE_REFRESH_SECONDS,
@@ -48,10 +48,11 @@ try:
 except Exception as e:
     logger.warning(f"Seed admin user failed (may already exist): {e}")
 
-# Ensure MinIO bucket exists
+# Ensure MinIO bucket exists and is public
 try:
     ensure_bucket()
-    logger.info("MinIO bucket ready")
+    set_bucket_public()
+    logger.info("MinIO bucket ready (public)")
 except Exception as e:
     logger.warning(f"MinIO bucket setup failed: {e}")
 
