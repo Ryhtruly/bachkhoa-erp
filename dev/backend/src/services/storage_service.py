@@ -1,4 +1,5 @@
 import boto3
+import json
 import os
 from botocore.config import Config
 from urllib.parse import urljoin
@@ -30,6 +31,22 @@ def ensure_bucket():
         client.head_bucket(Bucket=BUCKET)
     except Exception:
         client.create_bucket(Bucket=BUCKET)
+
+def set_bucket_public():
+    client = _get_client()
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": ["s3:GetObject"],
+            "Resource": f"arn:aws:s3:::{BUCKET}/*",
+        }]
+    }
+    try:
+        client.put_bucket_policy(Bucket=BUCKET, Policy=json.dumps(policy))
+    except Exception:
+        pass
 
 def upload_file(file_obj, object_name: str) -> str:
     client = _get_client()
