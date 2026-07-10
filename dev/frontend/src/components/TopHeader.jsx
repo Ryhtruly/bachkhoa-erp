@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, LogOut } from 'lucide-react';
 
-export default function TopHeader() {
+export default function TopHeader({ onLogout }) {
   const [timeStr, setTimeStr] = useState('');
 
   useEffect(() => {
@@ -37,6 +37,9 @@ export default function TopHeader() {
         </button>
         <button className="btn btn-secondary btn-sm" onClick={() => window.location.reload()}>
           <RefreshCw size={16} /> Làm mới
+        </button>
+        <button className="btn btn-secondary btn-sm" onClick={onLogout} title="Đăng xuất">
+          <LogOut size={16} /> Thoát
         </button>
         <div className="flex-center" style={{ gap: '6px', fontSize: '0.75rem', color: 'var(--text-tertiary)', padding: '0 8px' }}>
           <span className="status-led" style={{ width: '6px', height: '6px' }}></span>

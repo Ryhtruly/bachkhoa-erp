@@ -1,12 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onLogin();
+    onLogin('');
   };
 
   return (
@@ -29,9 +27,6 @@ export default function Login({ onLogin }) {
             <input
               type="text"
               placeholder="Tên đăng nhập"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
             />
           </div>
           <div className="input-wrap">
@@ -44,9 +39,6 @@ export default function Login({ onLogin }) {
             <input
               type="password"
               placeholder="Mật khẩu"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
             />
           </div>
           <button type="submit" className="btn btn-primary login-btn">

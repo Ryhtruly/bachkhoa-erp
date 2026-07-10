@@ -26,7 +26,9 @@ from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
 from src.routes.routes_payroll import router as payroll_router
 from src.routes.routes_settings import router as settings_router
-from src.db.database import engine, Base
+from src.routes.routes_auth import router as auth_router
+from src.db.database import engine, Base, SessionLocal
+from src.services.storage_service import ensure_bucket
 from src.db.models import *
 from src.services.contract_read_service import (
     CONTRACT_CACHE_REFRESH_SECONDS,
@@ -36,6 +38,22 @@ from src.services.contract_read_service import (
 Base.metadata.create_all(bind=engine)
 
 logger = logging.getLogger(__name__)
+
+# Seed default admin user on first run
+try:
+    db = SessionLocal()
+    from src.core.auth import seed_default_admin
+    seed_default_admin(db)
+    db.close()
+except Exception as e:
+    logger.warning(f"Seed admin user failed (may already exist): {e}")
+
+# Ensure MinIO bucket exists
+try:
+    ensure_bucket()
+    logger.info("MinIO bucket ready")
+except Exception as e:
+    logger.warning(f"MinIO bucket setup failed: {e}")
 
 
 async def refresh_contract_cache_loop():
@@ -92,6 +110,7 @@ app.include_router(wiki_router)
 app.include_router(finance_router)
 app.include_router(payroll_router)
 app.include_router(settings_router)
+app.include_router(auth_router)
 
 @app.get("/")
 def read_root():
