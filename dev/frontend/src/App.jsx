@@ -19,6 +19,9 @@ function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
 
+  const handleLogin = () => setLoggedIn(true);
+  const handleLogout = () => setLoggedIn(false);
+
   const renderTab = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -46,7 +49,7 @@ function App() {
   };
 
   if (!loggedIn) {
-    return <Login onLogin={() => setLoggedIn(true)} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
@@ -54,7 +57,7 @@ function App() {
       <div className="app">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="main">
-          <TopHeader />
+          <TopHeader onLogout={handleLogout} />
           {renderTab()}
         </main>
         <ChatWidget />
