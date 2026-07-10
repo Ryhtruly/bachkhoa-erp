@@ -1,7 +1,7 @@
 import json
 import time
 import httpx
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -52,10 +52,12 @@ async def ask_chatbot(
     sheet_id: str, 
     service_account_json: str, 
     provider: str, 
-    api_key: str
+    api_key: str,
+    wiki_context: Optional[List[Dict]] = None,
 ) -> Tuple[str, bool, str]:
     """
     history: [{"role": "user", "content": "..."}, ...]
+    wiki_context: list of {content, similarity, doc_title, category} from wiki RAG search
     Returns (reply_text, is_safe, reason)
     """
     
@@ -63,12 +65,25 @@ async def ask_chatbot(
         return "Hệ thống AI chưa được cấp API Key trong Cấu Hình.", False, "Missing API Key"
         
     kb_text = get_knowledge_base(sheet_id, service_account_json)
+
+    # Build knowledge section: wiki chunks takes priority, then Google Sheets KB
+    knowledge_parts = []
+    if wiki_context:
+        wiki_section = "\n\n".join(
+            f"[{c['category']}] {c['doc_title']}:\n{c['content']}"
+            for c in wiki_context
+        )
+        knowledge_parts.append(f"TÀI LIỆU NỘI BỘ (Wiki):\n{wiki_section}")
+    if kb_text.strip() and not kb_text.startswith("(Chưa cấu hình") and not kb_text.startswith("(Lỗi"):
+        knowledge_parts.append(f"GOOGLE SHEETS KB:\n{kb_text}")
+
+    full_knowledge = "\n\n---\n\n".join(knowledge_parts) if knowledge_parts else "(Chưa có cơ sở tri thức nào được cấu hình.)"
     
     system_prompt = f"""Bạn là trợ lý AI (Nhân viên CSKH nội bộ) của hệ thống ERP Bách Khoa.
 Bạn làm việc dựa trên Cơ Sở Tri Thức (KNOWLEDGE BASE) dưới đây.
 
 CƠ SỞ TRI THỨC:
-{kb_text}
+{full_knowledge}
 
 NHIỆM VỤ CỦA BẠN:
 1. Đọc kỹ CƠ SỞ TRI THỨC và Lịch sử trò chuyện để trả lời nhân viên/khách hàng.
@@ -88,7 +103,7 @@ NHIỆM VỤ CỦA BẠN:
                     "Content-Type": "application/json"
                 }
                 payload = {
-                    "model": "gemini-1.5-flash",
+                    "model": "gemini-2.0-flash",
                     "messages": messages,
                     "temperature": 0.7,
                     "max_tokens": 300

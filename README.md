@@ -376,3 +376,58 @@ python scripts/seed_fake_data.py
    npm run dev
    ```
 5. Mở trình duyệt và truy cập vào đường link hiển thị trên terminal (thường là `http://localhost:5173`).
+
+---
+
+## Kế hoạch tự động hóa Telegram Bot
+
+### Mục tiêu
+Test luồng: **Telegram → Tạo Lead CRM → Tra giá dịch vụ → Reply tự động + Notify nội bộ**
+
+### Kiến trúc dự kiến
+
+```text
+KH (Telegram App)
+  │  nhắn tin
+  ▼
+Telegram Server (api.telegram.org)
+  │  POST webhook → ngrok tunnel
+  ▼
+POST /webhook/telegram (routes_webhook.py)
+  │
+  ├── 1. Parse JSON → lấy chat_id, text
+  ├── 2. Tìm/tạo Customer (theo telegram_chat_id)
+  ├── 3. Tạo LeadPipeline (source="telegram", status="Mới tiếp nhận")
+  ├── 4. Gọi Wiki RAG search (pgvector)
+  ├── 5. Gọi pricing_engine (nếu detect service + area + location)
+  ├── 6. Gọi chatbot_engine (tri thức: Wiki + pricing result)
+  └── 7. Reply → Telegram + Notify nội bộ sale
+```
+
+### Các bước triển khai
+
+| Phase | Việc | Chi tiết |
+|-------|------|----------|
+| **1. Chuẩn bị** | Tạo bot Telegram | Qua BotFather → lấy token |
+| | Chạy ngrok | `ngrok http 8080` → URL public HTTPS |
+| **2. Code** | `telegram_service.py` | Thêm `send_to_chat(chat_id, text)` gửi động |
+| | `models.py` | Thêm `telegram_chat_id` vào Customer model |
+| | `routes_webhook.py` | Thêm 2 endpoint: `/webhook/telegram` + `/webhook/telegram/setup` |
+| **3. Tri thức** | Wiki RAG | Upload tài liệu ISO/dịch vụ (đã có) |
+| | Google Sheet KB | Nhập SP + giá (nếu có) |
+| | Pricing engine | Tính giá động (đã có code sẵn) |
+| **4. Mở rộng** | Zalo OA webhook | Đã có sẵn, chỉ cần nâng cấp core |
+| | Facebook webhook | Cần tạo Fanpage + App + App Review |
+
+### Luồng xử lý tin nhắn
+
+```text
+KH: "đo hiện trạng 80m2 quận 2 giá bao nhiêu?"
+  → Webhook nhận → parse ý định
+  → Tra Wiki RAG: tìm "Đo hiện trạng" → thông tin dịch vụ
+  → Tra pricing_engine: calculate_quote("Đo hiện trạng", area=80, location="Quận 2")
+  → Gọi Gemini/DeepSeek với tri thức: tổng hợp câu trả lời
+  → Reply: "Dịch vụ đo hiện trạng 80m² tại Quận 2: 6,000,000đ..."
+  → Tạo LeadPipeline (nguồn: telegram, status: Mới tiếp nhận)
+  → Notify nội bộ qua Telegram group
+```

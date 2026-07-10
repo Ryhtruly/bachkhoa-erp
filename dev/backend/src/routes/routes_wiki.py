@@ -4,10 +4,10 @@ from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List, Optional
 import math
-import os
-import shutil
 from src.db.database import get_db
 from src.db.models import WikiDocument
+from src.services.storage_service import upload_file, ensure_bucket
+from src.services.wiki_rag_service import index_document, delete_document_chunks
 
 router = APIRouter(prefix="/api/wiki", tags=["Tri Thức Doanh Nghiệp"])
 
@@ -74,7 +74,7 @@ def list_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/upload")
-def upload_document(
+async def upload_document(
     id: str = Form(...),
     title: str = Form(...),
     category: str = Form(...),
@@ -87,21 +87,15 @@ def upload_document(
         existing = db.query(WikiDocument).filter(WikiDocument.id == id).first()
         if existing:
             raise HTTPException(status_code=400, detail="Mã tài liệu đã tồn tại.")
-            
-        # Create directory if not exists
-        wiki_dir = os.path.join(os.path.dirname(__file__), "..", "..", "static", "wiki")
-        os.makedirs(wiki_dir, exist_ok=True)
-        
-        # Save file
-        # Secure filename by removing spaces and special characters if needed, but for now just use it
-        filename = f"{id}_{file.filename}"
-        file_path = os.path.join(wiki_dir, filename)
-        
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        link = f"/static/wiki/{filename}"
-            
+
+        file_bytes = await file.read()
+
+        # Upload file to MinIO
+        ensure_bucket()
+        object_name = f"{id}_{file.filename}"
+        import io
+        link = upload_file(io.BytesIO(file_bytes), object_name)
+
         new_doc = WikiDocument(
             id=id,
             title=title,
@@ -111,6 +105,13 @@ def upload_document(
             version=version
         )
         db.add(new_doc)
+        db.flush()  # Persist document first so wiki_chunks can reference it
+
+        try:
+            index_document(file_bytes, file.filename, id, db)
+        except Exception as rag_err:
+            print(f"[wiki_rag] Index error (non-fatal): {rag_err}")
+
         db.commit()
         
         return {"status": "success", "message": "Đã lưu tài liệu thành công"}
