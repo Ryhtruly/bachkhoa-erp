@@ -221,7 +221,7 @@ export default function CRM() {
 
       {/* Modal Tạo Lead Mới sử dụng Component Modal đã tách */}
       <Modal
-        isOpen={isModalOpen}
+        open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -263,7 +263,7 @@ export default function CRM() {
 
       {/* Modal Chốt Deal sử dụng Component Modal đã tách */}
       <Modal
-        isOpen={!!closingLead}
+        open={!!closingLead}
         onClose={() => setClosingLead(null)}
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

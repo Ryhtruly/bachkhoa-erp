@@ -25,6 +25,7 @@ from src.routes.routes_kpi import router as kpi_router
 from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
 from src.routes.routes_payroll import router as payroll_router
+from src.routes.routes_luong import router as luong_router
 from src.routes.routes_settings import router as settings_router
 from src.routes.routes_auth import router as auth_router
 from src.db.database import engine, Base, SessionLocal
@@ -34,6 +35,7 @@ from src.services.contract_read_service import (
     CONTRACT_CACHE_REFRESH_SECONDS,
     warm_contract_read_model,
 )
+from src.routes.routes_luong import refresh_rates_cache
 
 Base.metadata.create_all(bind=engine)
 
@@ -73,6 +75,11 @@ async def lifespan(_app: FastAPI):
     except Exception as exc:
         logger.warning("Initial contract cache warmup failed: %s", exc)
 
+    try:
+        await asyncio.to_thread(refresh_rates_cache, SessionLocal())
+    except Exception as exc:
+        logger.warning("Initial rates cache warmup failed: %s", exc)
+
     refresh_task = None
     if CONTRACT_CACHE_REFRESH_SECONDS > 0:
         refresh_task = asyncio.create_task(refresh_contract_cache_loop())
@@ -110,6 +117,7 @@ app.include_router(kpi_router)
 app.include_router(wiki_router)
 app.include_router(finance_router)
 app.include_router(payroll_router)
+app.include_router(luong_router)
 app.include_router(settings_router)
 app.include_router(auth_router)
 

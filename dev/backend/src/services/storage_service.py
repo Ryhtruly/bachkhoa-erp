@@ -53,6 +53,25 @@ def upload_file(file_obj, object_name: str) -> str:
     client.upload_fileobj(file_obj, BUCKET, object_name)
     return f"{PUBLIC_URL}/{BUCKET}/{object_name}"
 
+def file_exists(object_name: str) -> bool:
+    client = _get_client()
+    try:
+        client.head_object(Bucket=BUCKET, Key=object_name)
+        return True
+    except Exception:
+        return False
+
+def find_file_by_prefix(prefix: str) -> str | None:
+    """Find file in MinIO by prefix (e.g. 'BK-HS001_'). Returns object_name if found."""
+    client = _get_client()
+    try:
+        response = client.list_objects_v2(Bucket=BUCKET, Prefix=prefix, MaxKeys=10)
+        for obj in response.get('Contents', []):
+            return obj['Key']
+    except Exception:
+        pass
+    return None
+
 def delete_file(object_name: str):
     client = _get_client()
     client.delete_object(Bucket=BUCKET, Key=object_name)

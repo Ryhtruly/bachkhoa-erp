@@ -73,7 +73,10 @@ export default function Hopdong() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterValues, setFilterValues] = useState({ status: 'All', service: 'All' });
+  const [dateFilterMode, setDateFilterMode] = useState('day'); // 'day' | 'month' | 'year'
   const [signedDate, setSignedDate] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState('');
   const [sort, setSort] = useState('desc');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -105,7 +108,9 @@ export default function Hopdong() {
         page_size: String(CONTRACT_GROUPS_PER_PAGE),
         sort,
       });
-      if (signedDate) params.set('date_signed', signedDate);
+      if (dateFilterMode === 'day' && signedDate) params.set('date_signed', signedDate);
+      if (dateFilterMode === 'month' && filterMonth && filterYear) params.set('month', `${filterYear}-${filterMonth}`);
+      if (dateFilterMode === 'year' && filterYear) params.set('year', filterYear);
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
       if (filterValues.status !== 'All') params.set('status', filterValues.status);
       if (filterValues.service !== 'All') params.set('service', filterValues.service);
@@ -121,7 +126,7 @@ export default function Hopdong() {
     } finally {
       setLoading(false);
     }
-  }, [addToast, filterValues.service, filterValues.status, page, searchTerm, signedDate, sort]);
+  }, [addToast, dateFilterMode, filterMonth, filterYear, filterValues.service, filterValues.status, page, searchTerm, signedDate, sort]);
 
   const fetchHosoList = useCallback(async () => {
     if (hosoList.length > 0 || hosoLoading) return;
@@ -229,7 +234,10 @@ export default function Hopdong() {
   const handleResetFilters = useCallback(() => {
     setSearchTerm('');
     setFilterValues({ status: 'All', service: 'All' });
+    setDateFilterMode('day');
     setSignedDate('');
+    setFilterMonth('');
+    setFilterYear('');
     setSort('desc');
     setPage(1);
   }, []);
@@ -472,9 +480,21 @@ export default function Hopdong() {
         values={filterValues}
         onFilterChange={handleFilterChange}
         onReset={handleResetFilters}
+        dateFilterMode={dateFilterMode}
+        onDateFilterModeChange={(mode) => {
+          setDateFilterMode(mode);
+          setSignedDate('');
+          setFilterMonth('');
+          setFilterYear(mode === 'month' || mode === 'year' ? String(new Date().getFullYear()) : '');
+          setPage(1);
+        }}
         date={signedDate}
         dateLabel="Chọn ngày ký"
         onDateChange={(value) => { setSignedDate(value); setPage(1); }}
+        month={filterMonth}
+        onMonthChange={(value) => { setFilterMonth(value); setPage(1); }}
+        year={filterYear}
+        onYearChange={(value) => { setFilterYear(value); setPage(1); }}
         sort={sort}
         onSortChange={(value) => { setSort(value); setPage(1); }}
         actions={
