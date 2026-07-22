@@ -3362,6 +3362,13 @@ tbody tr:hover td.dt-sticky-right {
   width: 100%;
   min-height: 42px;
   background: #fff;
+  display: flex;
+  align-items: center;
+}
+
+.payroll-filter-grid select.form-control {
+  display: block;
+  line-height: 42px;
 }
 
 .payroll-employee-strip {

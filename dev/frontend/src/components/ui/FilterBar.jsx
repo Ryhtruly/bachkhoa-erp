@@ -20,6 +20,10 @@ const FilterBar = memo(function FilterBar({
   date,
   onDateChange,
   dateLabel = 'Chọn ngày',
+  dateFilterMode,
+  onDateFilterModeChange,
+  year,
+  onYearChange,
   sort,
   onSortChange,
 }) {
@@ -47,7 +51,8 @@ const FilterBar = memo(function FilterBar({
   const hasActive = localSearch.trim() !== ''
     || computedActive > 0
     || Boolean(month)
-    || Boolean(date);
+    || Boolean(date)
+    || Boolean(year);
   return (
     <div className="filter-bar-modern">
       {/* Row 1: Search + Controls */}
@@ -74,24 +79,91 @@ const FilterBar = memo(function FilterBar({
         </div>
 
         <div className="filter-bar-modern__controls">
-          {month !== undefined && (
-            <div className="filter-bar-modern__control-group">
-              <span className="filter-bar-modern__control-label">Tháng:</span>
-              <input
-                type="month"
-                className="filter-bar-modern__control-input"
-                value={month || ''}
-                onChange={e => onMonthChange && onMonthChange(e.target.value)}
-              />
-            </div>
+          {month !== undefined && dateFilterMode === 'month' && (
+            <>
+              {year !== undefined && (
+                <div className="filter-bar-modern__control-group">
+                  <span className="filter-bar-modern__control-label">Năm:</span>
+                  <input
+                    type="number"
+                    className="filter-bar-modern__control-input"
+                    value={year || ''}
+                    onChange={e => onYearChange && onYearChange(e.target.value)}
+                    placeholder="YYYY"
+                    min="2020"
+                    max="2099"
+                    style={{ width: 100 }}
+                  />
+                </div>
+              )}
+              <div className="filter-bar-modern__control-group">
+                <span className="filter-bar-modern__control-label">Tháng:</span>
+                <div className="filter-bar-modern__select-wrapper">
+                  <select
+                    className="filter-bar-modern__control-select"
+                    value={month || ''}
+                    onChange={e => onMonthChange && onMonthChange(e.target.value)}
+                  >
+                    <option value="">-- Chọn tháng --</option>
+                    <option value="01">Tháng 1</option>
+                    <option value="02">Tháng 2</option>
+                    <option value="03">Tháng 3</option>
+                    <option value="04">Tháng 4</option>
+                    <option value="05">Tháng 5</option>
+                    <option value="06">Tháng 6</option>
+                    <option value="07">Tháng 7</option>
+                    <option value="08">Tháng 8</option>
+                    <option value="09">Tháng 9</option>
+                    <option value="10">Tháng 10</option>
+                    <option value="11">Tháng 11</option>
+                    <option value="12">Tháng 12</option>
+                  </select>
+                  <ChevronDown size={14} className="select-icon" />
+                </div>
+              </div>
+            </>
           )}
 
-          {date !== undefined && (
+          {date !== undefined && dateFilterMode !== 'month' && dateFilterMode !== 'year' && (
             <DatePicker
               value={date}
               onChange={onDateChange}
               placeholder={dateLabel}
             />
+          )}
+
+          {dateFilterMode === 'year' && year !== undefined && (
+            <div className="filter-bar-modern__control-group">
+              <span className="filter-bar-modern__control-label">Năm:</span>
+              <input
+                type="number"
+                className="filter-bar-modern__control-input"
+                value={year || ''}
+                onChange={e => onYearChange && onYearChange(e.target.value)}
+                placeholder="YYYY"
+                min="2020"
+                max="2099"
+                style={{ width: 100 }}
+              />
+            </div>
+          )}
+
+          {onDateFilterModeChange && (
+            <div className="filter-bar-modern__control-group">
+              <span className="filter-bar-modern__control-label">Lọc theo:</span>
+              <div className="filter-bar-modern__select-wrapper">
+                <select
+                  className="filter-bar-modern__control-select"
+                  value={dateFilterMode || 'day'}
+                  onChange={e => onDateFilterModeChange(e.target.value)}
+                >
+                  <option value="day">Ngày</option>
+                  <option value="month">Tháng</option>
+                  <option value="year">Năm</option>
+                </select>
+                <ChevronDown size={14} className="select-icon" />
+              </div>
+            </div>
           )}
 
           {sort !== undefined && (

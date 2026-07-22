@@ -163,7 +163,7 @@ export default function Wiki() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <a href={doc.link} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <a href={`/api/wiki/download/${doc.id}`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <FileText size={14} /> Mở file
                     </a>
                   </td>

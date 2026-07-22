@@ -22,31 +22,17 @@ function App() {
   const handleLogin = () => setLoggedIn(true);
   const handleLogout = () => setLoggedIn(false);
 
-  const renderTab = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'crm':
-        return <CRM />;
-      case 'hoso':
-        return <Hoso />;
-      case 'settings':
-        return <Settings />;
-      case 'hopdong':
-        return <Hopdong />;
-      case 'thuchi':
-        return <Thuchi />;
-      case 'luong':
-        return <Luong />;
-      case 'kpi':
-        return <KPI />;
-      case 'wiki':
-        return <Wiki />;
-      // Other tabs will be added here
-      default:
-        return <div className="tab-pane active"><h2 style={{padding:'24px'}}>Tính năng đang được chuyển đổi...</h2></div>;
-    }
-  };
+  const TABS = [
+    { key: 'dashboard', Component: Dashboard },
+    { key: 'crm', Component: CRM },
+    { key: 'hoso', Component: Hoso },
+    { key: 'settings', Component: Settings },
+    { key: 'hopdong', Component: Hopdong },
+    { key: 'thuchi', Component: Thuchi },
+    { key: 'luong', Component: Luong },
+    { key: 'kpi', Component: KPI },
+    { key: 'wiki', Component: Wiki },
+  ];
 
   if (!loggedIn) {
     return <Login onLogin={handleLogin} />;
@@ -58,7 +44,11 @@ function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="main">
           <TopHeader onLogout={handleLogout} />
-          {renderTab()}
+          {TABS.map(({ key, Component }) => (
+            <div key={key} style={{ display: activeTab === key ? 'block' : 'none' }}>
+              <Component />
+            </div>
+          ))}
         </main>
         <ChatWidget />
       </div>

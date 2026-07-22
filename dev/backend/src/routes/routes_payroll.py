@@ -191,7 +191,7 @@ def _pay_components(
     if rate is None:
         rate = ZERO
 
-    base_rate = ZERO if cancelled or waiting or personnel_error else rate
+    base_rate = ZERO if cancelled or personnel_error else rate
     cancellation_allowance = Decimal("200000") if cancelled else ZERO
     priority_bonus = (
         Decimal("300000")
@@ -503,7 +503,8 @@ def employee_payroll_ledger(
         + adjustment_totals["holiday_bonus"]
     )
     penalty = task_penalty + adjustment_totals["penalty"]
-    gross_total = main_amount + support_amount + allowance + bonus - penalty
+    base_salary = _money(employee_row.base_salary)
+    gross_total = base_salary + main_amount + support_amount + allowance + bonus - penalty
     paid_total = sum(
         (
             _money(item["net_amount"])
@@ -542,10 +543,12 @@ def employee_payroll_ledger(
                 "job_title": employee_row.job_title,
                 "department_id": employee_row.department_id,
                 "department": department.name if department else "",
+                "base_salary": float(base_salary),
             },
             "period": period.isoformat(),
             "period_status": payroll_period.status if payroll_period else "Open",
             "summary": {
+                "base_salary": float(base_salary),
                 "main_task_count": len(main_items),
                 "support_task_count": len(support_items),
                 "piece_rate_main": float(main_amount),

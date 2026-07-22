@@ -195,6 +195,7 @@ def query_contract_read_model(
     rows,
     *,
     month=None,
+    year=None,
     date_signed=None,
     search=None,
     status=None,
@@ -206,6 +207,7 @@ def query_contract_read_model(
     """Lọc trên toàn bộ Redis read model rồi phân trang theo nhóm hợp đồng."""
     normalized_search = (search or "").strip().casefold()
     valid_month = month if month and re.fullmatch(r"\d{4}-\d{2}", month) else None
+    valid_year = year if year and re.fullmatch(r"\d{4}", year) else None
     valid_date = (
         date_signed
         if date_signed and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_signed)
@@ -222,6 +224,8 @@ def query_contract_read_model(
         if valid_date and str(row.get("Ngày ký", "")) != valid_date:
             return False
         if valid_month and not str(row.get("Ngày ký", "")).startswith(valid_month):
+            return False
+        if valid_year and not str(row.get("Ngày ký", "")).startswith(valid_year):
             return False
         if status and status != "All" and row.get("Tình trạng") != status:
             return False

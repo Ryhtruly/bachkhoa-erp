@@ -27,6 +27,7 @@ def contract_cache_status():
 def list_hopdong(
     response: Response,
     month: str = Query(None),
+    year: str = Query(None),
     date_signed: str = Query(None),
     search: str = Query(None),
     status: str = Query(None),
@@ -42,6 +43,7 @@ def list_hopdong(
         result = query_contract_read_model(
             rows,
             month=month,
+            year=year,
             date_signed=date_signed,
             search=search,
             status=status,
