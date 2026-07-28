@@ -27,3 +27,8 @@ Thumbs.db
 # Project specifics
 dev/backend/static/contracts/
 dev/backend/static/generated_contracts/
+/.agents
+/.claude
+/mdfiles
+CLAUDE.md
+AGENTS.md
