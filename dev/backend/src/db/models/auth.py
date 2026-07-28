@@ -15,7 +15,7 @@ class User(Base):
 
 class Role(Base):
     __tablename__ = "roles"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=False)
     role_name = Column(String, unique=True)
 
 class UserRole(Base):
@@ -40,9 +40,14 @@ class AuthToken(Base):
     expires_at = Column(DateTime(timezone=True))
     user_agent = Column(String, nullable=True)
 
+import time
+
+def generate_audit_id():
+    return time.time_ns() // 1000
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=False, default=generate_audit_id)
     actor_id = Column(String, ForeignKey("users.id"), nullable=True)
     action = Column(String)
     object_type = Column(String)

@@ -154,3 +154,203 @@ Tệp tin `dev/backend/src/db/models.py` chứa quá nhiều lớp dữ liệu (
 - **Đảm bảo không Regression**:
   - Chạy lại [verify_phase1.py](file:///t:/github/bachkhoa-erp/dev/backend/scripts/verify_phase1.py) và [verify_phase2a.py](file:///t:/github/bachkhoa-erp/dev/backend/scripts/verify_phase2a.py) thành công 100%.
 
+## 7. Phase 03 - Security, Auth & RBAC Hardening
+
+**Thời gian:** 2026-07-28  
+**Tác giả:** AI Assistant (Antigravity)
+
+### Chi tiết các bước đã làm:
+
+1. **Bảo mật Cấu hình Môi trường & CORS**:
+   - Cập nhật [settings.py](file:///t:/github/bachkhoa-erp/dev/backend/src/config/settings.py): Bổ sung property `cors_origins` tự động phân tách domain từ biến môi trường `CORS_ORIGINS` (mặc định cho phép localhost trong DEV, yêu cầu khai báo rõ ràng trong PROD) và cờ `seed_admin_enabled`.
+   - Cập nhật [index.py](file:///t:/github/bachkhoa-erp/dev/backend/src/index.py): Áp dụng `cors_origins` cho `CORSMiddleware`, ngăn ngừa tấn công Wildcard CORS origin trong môi trường sản xuất.
+   - Cập nhật [.env.example](file:///t:/github/bachkhoa-erp/dev/backend/.env.example): Khai báo đầy đủ các biến bảo mật `SECRET_KEY`, `ENV`, `CORS_ORIGINS`, `SEED_ADMIN_ENABLED`.
+
+2. **Xây dựng Động cơ RBAC & Xác thực Trung tâm**:
+   - Cập nhật [auth.py](file:///t:/github/bachkhoa-erp/dev/backend/src/core/auth.py):
+     - Chuyển sang sử dụng thư viện `bcrypt` trực tiếp cho `hash_password` và `verify_password` loại bỏ lỗi tương thích của `passlib`.
+     - Xây dựng `check_user_permission(db, user, resource, action)` hỗ trợ cơ chế Superuser Admin bypass (`username == "admin"` hoặc role `"admin"`), đồng thời truy vấn tự động liên kết các bảng `RolePermission` và `UserRole`.
+     - Xây dựng các FastAPI Security Dependencies: `require_permission(resource, action)`, `require_any_permission(*perms)`, `require_authenticated_user`.
+     - Cập nhật `seed_default_admin` tự động sinh hoặc liên kết tài khoản `admin` với `Role` và `UserRole` admin.
+
+3. **Bảo vệ Routes & Truyền Dẫn `actor_id` Vào Audit Log**:
+   - Áp dụng `require_permission` bảo vệ 100% tất cả các API domain:
+     - Finance ([routes_finance.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_finance.py) & [services.py](file:///t:/github/bachkhoa-erp/dev/backend/src/finance/services.py))
+     - Contracts ([routes_hopdong.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_hopdong.py) & [services.py](file:///t:/github/bachkhoa-erp/dev/backend/src/contracts/services.py))
+     - Payroll & Lương ([routes_payroll.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_payroll.py), [routes_luong.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_luong.py), [routes_kpi.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_kpi.py))
+     - CRM ([routes_crm.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_crm.py))
+     - Settings ([routes_settings.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_settings.py))
+     - Wiki ([routes_wiki.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_wiki.py))
+     - Hồ Sơ ([routes_hoso.py](file:///t:/github/bachkhoa-erp/dev/backend/src/routes/routes_hoso.py))
+   - Bổ sung `default=generate_audit_id` (64-bit integer timestamp) và `autoincrement=False` vào model [AuditLog](file:///t:/github/bachkhoa-erp/dev/backend/src/db/models/auth.py), đảm bảo truyền dẫn chính xác `actor_id` (`User.id`) trên tất cả các đường ghi dữ liệu (vouchers, hợp đồng, leads, cài đặt, v.v.).
+
+4. **Tối ưu Hóa Startup Lifespan**:
+   - Thêm cờ `TESTING=1` trong [index.py](file:///t:/github/bachkhoa-erp/dev/backend/src/index.py) để bỏ qua việc nạp toàn bộ cache contract nặng khi chạy test, giúp tốc độ phản hồi API gần như tức thì.
+
+### Kết quả xác thực (Verification):
+
+- **Script kiểm tra tự động Phase 03**:
+  - Tạo và chạy thành công script [verify_phase3.py](file:///t:/github/bachkhoa-erp/dev/backend/scripts/verify_phase3.py). Kết quả đầu ra:
+    ```text
+    ============================================================
+    RUNNING PHASE 03 SECURITY & RBAC VERIFICATION
+    ============================================================
+
+    1. Testing unauthenticated endpoint access (Expects 401)...
+      ✓ GET /api/finance/cashflow returned 401 Unauthorized as expected
+      ✓ GET /api/hopdong/ returned 401 Unauthorized as expected
+      ✓ GET /api/payroll/options returned 401 Unauthorized as expected
+      ✓ GET /api/crm/leads returned 401 Unauthorized as expected
+      ✓ GET /api/settings returned 401 Unauthorized as expected
+      ✓ GET /api/wiki/ returned 401 Unauthorized as expected
+      ✓ GET /api/hoso/ returned 401 Unauthorized as expected
+      ✓ POST /api/finance/cashflow/create returned 401 Unauthorized as expected
+    ✅ 401 Unauthenticated checks passed!
+
+    2. Testing authenticated user without permissions (Expects 403)...
+      ✓ GET /api/finance/cashflow returned 403 Forbidden as expected for unprivileged user
+      ✓ GET /api/hopdong/ returned 403 Forbidden as expected for unprivileged user
+      ✓ GET /api/payroll/options returned 403 Forbidden as expected for unprivileged user
+      ✓ GET /api/crm/leads returned 403 Forbidden as expected for unprivileged user
+      ✓ GET /api/settings returned 403 Forbidden as expected for unprivileged user
+      ✓ GET /api/wiki/ returned 403 Forbidden as expected for unprivileged user
+      ✓ GET /api/hoso/ returned 403 Forbidden as expected for unprivileged user
+      ✓ POST /api/finance/cashflow/create returned 403 Forbidden as expected for unprivileged user
+    ✅ 403 Forbidden checks passed!
+
+    3. Testing superuser admin & fine-grained RolePermission...
+      ✓ Admin superuser accessed /api/finance/cashflow (200 OK)
+      ✓ Finance clerk accessed /api/finance/cashflow (200 OK)
+      ✓ Finance clerk blocked from /api/crm/leads (403 Forbidden)
+    ✅ Fine-grained RBAC evaluation passed!
+
+    4. Verifying AuditLog actor_id propagation on write paths...
+      ✓ Created test voucher 'PT-07/2026-002' using finance clerk token
+      ✓ AuditLog correctly recorded actor_id = 'dfd3feee-1c4c-4980-b8c6-6ab1ab5469c6'
+    ✅ AuditLog actor_id verification passed!
+
+    ============================================================
+    🎉 PHASE 03 VERIFICATION COMPLETED SUCCESSFULLY!
+    ============================================================
+    ```
+
+## 8. Phase 04 - Database Migration and Integrity
+
+**Thời gian:** 2026-07-28  
+**Tác giả:** AI Assistant (Antigravity)
+
+### Chi tiết các bước đã làm:
+
+1. **Model Alignment (39/39 Bảng)**:
+   - Bổ sung 2 model mới vào [operations.py](file:///t:/github/bachkhoa-erp/dev/backend/src/db/models/operations.py):
+     - `ServicePackage` (bảng `service_packages`): quản lý gói dịch vụ với `name`, `description`, `display_order`, `is_active`.
+     - `TaskTransition` (bảng `task_transitions`): ghi nhận lịch sử chuyển đổi gói dịch vụ cho hồ sơ, bao gồm `from_service_line_id`, `to_service_line_id`, `from_package`, `to_package`, `reason`, `transitioned_by`.
+   - Bổ sung 2 cột `service_line_id` và `current_package` vào model `ProjectTask` phù hợp với schema DB mới.
+   - Cập nhật [__init__.py](file:///t:/github/bachkhoa-erp/dev/backend/src/db/models/__init__.py) export đầy đủ `ServicePackage` và `TaskTransition` trong `__all__`.
+   - Kết quả: 39/39 bảng trong Supabase PostgreSQL khớp 100% với 39 SQLAlchemy model classes.
+
+2. **Khởi tạo Alembic Migration Framework**:
+   - Cài đặt thư viện `alembic` (v1.18.5) vào virtual environment.
+   - Khởi tạo cấu trúc thư mục `dev/backend/alembic/` bao gồm `env.py`, `script.py.mako` và `versions/`.
+   - Cấu hình [alembic/env.py](file:///t:/github/bachkhoa-erp/dev/backend/alembic/env.py) sử dụng `settings.DATABASE_URL` và `Base.metadata` cho autogenerate support.
+   - Bổ sung property `DATABASE_URL` vào [settings.py](file:///t:/github/bachkhoa-erp/dev/backend/src/config/settings.py) để tập trung hóa connection string.
+   - Tạo bản revision đầu tiên `122f7a9c63e6 - Phase 4 initial migration snapshot`.
+   - Stamp database thành công: `alembic current` trả về `122f7a9c63e6 (head)`.
+
+3. **Loại bỏ Startup Side-Effect**:
+   - Xóa hoàn toàn `Base.metadata.create_all(bind=engine)` khỏi [index.py](file:///t:/github/bachkhoa-erp/dev/backend/src/index.py).
+   - Xóa `CREATE EXTENSION IF NOT EXISTS vector` khỏi [database.py](file:///t:/github/bachkhoa-erp/dev/backend/src/db/database.py) import path. Extension `vector` giờ được quản lý bởi Alembic migration.
+
+### Kết quả xác thực (Verification):
+
+- **Script kiểm tra tự động Phase 04**:
+  - Tạo và chạy thành công script [verify_phase4.py](file:///t:/github/bachkhoa-erp/dev/backend/scripts/verify_phase4.py). Kết quả đầu ra:
+    ```text
+    ============================================================
+    RUNNING PHASE 04 DATABASE MIGRATION & INTEGRITY VERIFICATION
+    ============================================================
+
+    1. Verifying 39/39 table alignment between Supabase DB & SQLAlchemy models...
+      ✓ Supabase physical tables: 39/39
+      ✓ Mapped SQLAlchemy models: 39/39
+    ✅ 39/39 Schema & Model alignment verification passed!
+
+    2. Verifying Alembic migration framework & database revision...
+      ✓ Alembic script head: 122f7a9c63e6
+      ✓ Database stamped current: 122f7a9c63e6
+    ✅ Alembic migration framework verification passed!
+
+    3. Verifying startup DDL side-effect cleanliness...
+      ✓ `Base.metadata.create_all` removed from startup flow
+      ✓ `CREATE EXTENSION` removed from database.py import path
+    ✅ Startup side-effect cleanliness check passed!
+
+    4. Running regression checks...
+      ✓ Phase 1: All 39 model classes imported successfully
+      ✓ Phase 1: All 14 route modules imported cleanly
+      ✓ Phase 2A: Finance package & routes verified
+      ✓ Phase 2B: Contracts package & routes verified
+      ✓ Phase 3: RBAC auth dependencies imported successfully
+    ✅ All regression checks passed!
+
+    ============================================================
+    🎉 PHASE 04 VERIFICATION COMPLETED SUCCESSFULLY!
+    ============================================================
+    ```
+
+- **GitNexus Change Detection**: Không phát sinh lỗi liên kết ký hiệu hay gãy liên kết.
+
+## 9. Phase 05 - Tests, Observability, and Cleanup
+
+**Thời gian:** 2026-07-28  
+**Tác giả:** AI Assistant (Antigravity)
+
+### Chi tiết các bước đã làm:
+
+1. **Xây dựng Pytest Test Suite Chuyên nghiệp (`dev/backend/tests/`)**:
+   - `conftest.py`: Thiết lập shared fixtures cho database session, `FastAPI TestClient(app)`, `admin_headers`, `unprivileged_user`, `finance_clerk_user` với cơ chế tự động dọn dẹp (cleanup DB rollback & AuditLog cascade cleanup).
+   - `test_models.py` (§3.1): Kiểm tra 39/39 table mapping giữa Supabase và SQLAlchemy, đối soát Foreign Key constraints, kiểm tra thuộc tính cột cốt lõi và đảm bảo không bị circular imports khi load `src.db.models`.
+   - `test_finance.py` (§3.2): Kiểm tra toàn bộ luồng nghiệp vụ tài chính bao gồm tạo phiếu thu/chi, xem chi tiết, hủy phiếu (void cashflow), tính toán lại số dư và lịch sử quỹ.
+   - `test_contracts.py` (§3.3): Kiểm tra trạng thái Redis/Supabase cache model hợp đồng, xem danh sách hợp đồng và tạo hợp đồng mới theo đúng schema `HopdongCreateSchema`.
+   - `test_auth_rbac.py` (§3.4): Kiểm tra truy cập không token (401 Unauthorized), truy cập sai quyền (403 Forbidden), Admin superuser bypass (200 OK), phân quyền chi tiết RolePermission và truyền dẫn `actor_id` vào AuditLog.
+
+2. **Hạ Tầng Observability & Request Tracing (§3.5)**:
+   - [logging_config.py](file:///t:/github/bachkhoa-erp/dev/backend/src/core/logging_config.py): Cấu hình định dạng log chuẩn hóa `[%(asctime)s] [%(levelname)s] [req_id=%(request_id)s] [%(name)s]: %(message)s` kèm `RequestIdFilter` tự động tiêm `request_id` vào mọi log output.
+   - [middleware.py](file:///t:/github/bachkhoa-erp/dev/backend/src/core/middleware.py): Xây dựng `RequestIdMiddleware` tự động sinh mã định danh UUID cho mỗi request HTTP (hoặc kế thừa `X-Request-ID` từ client), tính toán chính xác thời gian xử lý (ms) và gán `X-Request-ID` vào response headers.
+   - [index.py](file:///t:/github/bachkhoa-erp/dev/backend/src/index.py): Tích hợp `setup_logging()` và đăng ký `RequestIdMiddleware`.
+   - [read_model.py](file:///t:/github/bachkhoa-erp/dev/backend/src/contracts/read_model.py): Bổ sung log theo dõi chi tiết Cache HIT (Redis) và Cache MISS (fallback DB refresh).
+
+3. **Cleanup Dead Code & Deprecated Scripts (§3.6)**:
+   - Dọn dẹp và xóa bỏ 8 tệp script cũ dư thừa không còn sử dụng: `alter.py`, `drop_constraint.py`, `init_db.py`, `migrate_db.py`, `fix_imports.py`, `seed_hoso.py`, `dump_req.py`, `req_out.txt`.
+   - Xóa bỏ thư mục rỗng [src/crud/](file:///t:/github/bachkhoa-erp/dev/backend/src/crud/) (toàn bộ logic CRUD đã chuyển đổi hoàn toàn sang cấu trúc 3 lớp `src/finance/` và `src/contracts/`).
+
+### Kết quả xác thực (Verification):
+
+- **Pytest Suite (`pytest tests/ -v`)**:
+  - Chạy thành công 100% tất cả 14/14 bài test case:
+    ```text
+    ============================= test session starts =============================
+    platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0
+    rootdir: T:\github\bachkhoa-erp\dev\backend
+    collected 14 items
+
+    tests/test_auth_rbac.py::test_unauthenticated_access_returns_401 PASSED  [  7%]
+    tests/test_auth_rbac.py::test_unprivileged_user_returns_403 PASSED       [ 14%]
+    tests/test_auth_rbac.py::test_admin_superuser_access PASSED              [ 21%]
+    tests/test_auth_rbac.py::test_finance_clerk_rbac_and_audit_propagation PASSED [ 28%]
+    tests/test_contracts.py::test_contract_cache_status PASSED               [ 35%]
+    tests/test_contracts.py::test_list_contracts PASSED                      [ 42%]
+    tests/test_contracts.py::test_create_contract PASSED                     [ 50%]
+    tests/test_finance.py::test_list_cashflow PASSED                         [ 57%]
+    tests/test_finance.py::test_create_and_void_cashflow PASSED              [ 64%]
+    tests/test_finance.py::test_fund_balances_history PASSED                 [ 71%]
+    tests/test_models.py::test_table_model_alignment PASSED                  [ 78%]
+    tests/test_models.py::test_foreign_key_relationships PASSED              [ 85%]
+    tests/test_models.py::test_column_constraints_and_attributes PASSED      [ 92%]
+    tests/test_models.py::test_no_circular_imports PASSED                    [100%]
+
+    ============================= 14 passed in 18.20s =============================
+    ```
+
+- **GitNexus Change Detection**: Xác nhận toàn bộ symbol links trong hệ thống đạt chuẩn an toàn.
+

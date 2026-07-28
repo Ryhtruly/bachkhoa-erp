@@ -1,9 +1,12 @@
+import logging
 import uuid
 from datetime import datetime, date, timezone, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from src.db.models import (
     CashflowTransaction, Contract, Customer, Receivable,
@@ -19,7 +22,7 @@ from src.finance.serializers import serialize_employee
 class FinanceService:
 
     @staticmethod
-    def create_cashflow(db: Session, payload) -> dict:
+    def create_cashflow(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
             parsed_date = date.today()
             if payload.ngay:
@@ -99,7 +102,7 @@ class FinanceService:
 
             # 7. Approval Workflow Status
             trang_thai = payload.trang_thai or "Hoàn thành"
-            creator = payload.nguoi_lap or "Lê Văn Dựng"
+            creator = payload.nguoi_lap or actor_id or "Lê Văn Dựng"
             approver = payload.nguoi_duyet or "Lê Văn Dựng"
             if creator != approver:
                 trang_thai = "Chờ duyệt"
@@ -136,8 +139,9 @@ class FinanceService:
             db.add(tc)
 
             # Create audit log
-            actor_exists = db.query(User.id).filter(User.id == creator).first()
-            actor_id_val = creator if actor_exists else None
+            target_actor = actor_id or creator
+            actor_exists = db.query(User.id).filter(User.id == target_actor).first() if target_actor else None
+            actor_id_val = target_actor if actor_exists else None
             
             db.add(AuditLog(
                 actor_id=actor_id_val,
@@ -166,7 +170,7 @@ class FinanceService:
             raise HTTPException(status_code=500, detail=str(e))
 
     @staticmethod
-    def update_cashflow(db: Session, transaction_id: str, payload) -> dict:
+    def update_cashflow(db: Session, transaction_id: str, payload, actor_id: Optional[str] = None) -> dict:
         try:
             t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
             if not t:
@@ -227,9 +231,9 @@ class FinanceService:
             t.ngay = parsed_date
 
             # Create audit log
-            actor_id_val = t.nguoi_lap or "Lê Văn Dựng"
-            actor_exists = db.query(User.id).filter(User.id == actor_id_val).first()
-            actor_id_val = actor_id_val if actor_exists else None
+            target_actor = actor_id or t.nguoi_lap or "Lê Văn Dựng"
+            actor_exists = db.query(User.id).filter(User.id == target_actor).first() if target_actor else None
+            actor_id_val = target_actor if actor_exists else None
 
             db.add(AuditLog(
                 actor_id=actor_id_val,
@@ -302,8 +306,12 @@ class FinanceService:
             )
             db.add(reverse_tc)
             
+            target_actor = actor_id or t.nguoi_lap
+            actor_exists = db.query(User.id).filter(User.id == target_actor).first() if target_actor else None
+            actor_id_val = target_actor if actor_exists else None
+
             db.add(AuditLog(
-                actor_id=actor_id,
+                actor_id=actor_id_val,
                 action="VOID",
                 object_type="CashflowTransaction",
                 payload_json={"id": t.id, "reason": reason}

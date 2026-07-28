@@ -28,6 +28,8 @@ from src.db.models.operations import (
     TaskSubmission,
     TaskPayRecord,
     LegalSubmission,
+    ServicePackage,
+    TaskTransition,
 )
 from src.db.models.finance import (
     CashflowTransaction,
@@ -81,6 +83,8 @@ __all__ = [
     "TaskSubmission",
     "TaskPayRecord",
     "LegalSubmission",
+    "ServicePackage",
+    "TaskTransition",
     "CashflowTransaction",
     "Receivable",
     "FundOpeningBalance",

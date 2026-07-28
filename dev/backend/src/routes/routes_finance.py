@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
+from src.core.auth import require_permission, User
 from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
@@ -18,7 +19,11 @@ router = APIRouter(prefix="/api/finance", tags=["Finance ERP"])
 # ══════════════════════════════════════════════════════════════
 
 @router.get("/next-voucher-id")
-def get_next_voucher_id(type: str = "Thu", db: Session = Depends(get_db)):
+def get_next_voucher_id(
+    type: str = "Thu",
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return {"next_id": FinanceRepository.generate_voucher_id(type, db)}
 
 @router.get("/cashflow")
@@ -29,7 +34,8 @@ def list_cashflow(
     project_id: str = Query(None),
     contract_id: str = Query(None),
     scope: str = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
 ):
     rows = FinanceRepository.list_cashflow_transactions(
         db, month=month, type=type, payment_method=payment_method,
@@ -38,7 +44,11 @@ def list_cashflow(
     return serialize_cashflow_bulk(rows, db)
 
 @router.get("/cashflow/by-contract/{contract_id}")
-def cashflow_by_contract(contract_id: str, db: Session = Depends(get_db)):
+def cashflow_by_contract(
+    contract_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     res = FinanceRepository.get_cashflow_by_contract(db, contract_id)
     if not res:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy Hợp Đồng '{contract_id}'")
@@ -52,7 +62,11 @@ def cashflow_by_contract(contract_id: str, db: Session = Depends(get_db)):
     }
 
 @router.get("/cashflow/by-project/{project_id}")
-def cashflow_by_project(project_id: str, db: Session = Depends(get_db)):
+def cashflow_by_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     res = FinanceRepository.get_cashflow_by_project(db, project_id)
     if not res:
         raise HTTPException(status_code=404, detail=f"Không tìm thấy Hồ Sơ '{project_id}'")
@@ -73,7 +87,8 @@ def cashflow_cash(
     project_id: str = Query(None),
     contract_id: str = Query(None),
     scope: str = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
 ):
     balance = FinanceRepository.get_running_balance(db, "Tiền mặt")
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
@@ -102,7 +117,8 @@ def cashflow_bank(
     project_id: str = Query(None),
     contract_id: str = Query(None),
     scope: str = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
 ):
     balance = FinanceRepository.get_running_balance(db, "Chuyển khoản")
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
@@ -124,20 +140,39 @@ def cashflow_bank(
     }
 
 @router.post("/cashflow/create")
-def create_cashflow(payload: CashflowIn, db: Session = Depends(get_db)):
-    return FinanceService.create_cashflow(db, payload)
+def create_cashflow(
+    payload: CashflowIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "create"))
+):
+    return FinanceService.create_cashflow(db, payload, actor_id=user.id)
 
 @router.get("/cashflow/{transaction_id:path}")
-def get_cashflow_detail(transaction_id: str, db: Session = Depends(get_db)):
+def get_cashflow_detail(
+    transaction_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.get_cashflow_detail(db, transaction_id)
 
 @router.put("/cashflow/{transaction_id:path}")
-def update_cashflow(transaction_id: str, payload: CashflowUpdateIn, db: Session = Depends(get_db)):
-    return FinanceService.update_cashflow(db, transaction_id, payload)
+def update_cashflow(
+    transaction_id: str,
+    payload: CashflowUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "update"))
+):
+    return FinanceService.update_cashflow(db, transaction_id, payload, actor_id=user.id)
 
 @router.post("/cashflow/{transaction_id:path}/void")
-def void_cashflow(transaction_id: str, payload: CashflowVoidIn, db: Session = Depends(get_db)):
-    return FinanceService.void_cashflow(db, transaction_id, payload.reason, payload.actor_id)
+def void_cashflow(
+    transaction_id: str,
+    payload: CashflowVoidIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "delete"))
+):
+    actor = payload.actor_id or user.id
+    return FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -145,15 +180,24 @@ def void_cashflow(transaction_id: str, payload: CashflowVoidIn, db: Session = De
 # ══════════════════════════════════════════════════════════════
 
 @router.get("/contracts")
-def list_contracts(db: Session = Depends(get_db)):
+def list_contracts(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.list_contracts_with_payments(db)
 
 @router.get("/receivables")
-def list_receivables(db: Session = Depends(get_db)):
+def list_receivables(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.list_receivables_formatted(db)
 
 @router.get("/payables")
-def list_payables(db: Session = Depends(get_db)):
+def list_payables(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.list_payables_formatted(db)
 
 
@@ -162,15 +206,26 @@ def list_payables(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════
 
 @router.get("/advance")
-def list_advance(db: Session = Depends(get_db)):
+def list_advance(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.list_advances_formatted(db)
 
 @router.post("/advance/create")
-def create_advance(payload: AdvanceCreateIn, db: Session = Depends(get_db)):
+def create_advance(
+    payload: AdvanceCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "create"))
+):
     return FinanceService.create_advance(db, payload)
 
 @router.post("/advance/clear")
-def clear_advance(payload: AdvanceClearIn, db: Session = Depends(get_db)):
+def clear_advance(
+    payload: AdvanceClearIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "update"))
+):
     return FinanceService.clear_advance(db, payload)
 
 
@@ -179,48 +234,87 @@ def clear_advance(payload: AdvanceClearIn, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════
 
 @router.get("/employees/departments")
-def list_employee_departments(db: Session = Depends(get_db)):
+def list_employee_departments(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "read"))
+):
     departments = FinanceRepository.list_employee_departments(db)
     return [{"id": department.id, "name": department.name} for department in departments]
 
 @router.get("/employees")
-def list_employees(db: Session = Depends(get_db)):
+def list_employees(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "read"))
+):
     rows = FinanceRepository.list_employees(db)
     return [serialize_employee(employee, department_name) for employee, department_name in rows]
 
 @router.get("/employees/{employee_id}")
-def get_employee(employee_id: str, db: Session = Depends(get_db)):
+def get_employee(
+    employee_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "read"))
+):
     row = FinanceRepository.get_employee_by_id(db, employee_id)
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
     return serialize_employee(row[0], row[1])
 
 @router.post("/employees", status_code=201)
-def create_employee(payload: EmployeeUpsertIn, db: Session = Depends(get_db)):
+def create_employee(
+    payload: EmployeeUpsertIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "create"))
+):
     return FinanceService.create_employee(db, payload)
 
 @router.put("/employees/{employee_id}")
-def update_employee(employee_id: str, payload: EmployeeUpsertIn, db: Session = Depends(get_db)):
+def update_employee(
+    employee_id: str,
+    payload: EmployeeUpsertIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "update"))
+):
     return FinanceService.update_employee(db, employee_id, payload)
 
 @router.delete("/employees/{employee_id}")
-def delete_employee(employee_id: str, db: Session = Depends(get_db)):
+def delete_employee(
+    employee_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "delete"))
+):
     return FinanceService.delete_employee(db, employee_id)
 
 @router.get("/payroll")
-def list_payroll(month: str = Query(None), db: Session = Depends(get_db)):
+def list_payroll(
+    month: str = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read"))
+):
     return FinanceRepository.list_payroll_formatted(db, month)
 
 @router.get("/payroll/workers")
-def list_worker_wages(project_id: str = Query(None), db: Session = Depends(get_db)):
+def list_worker_wages(
+    project_id: str = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read"))
+):
     return FinanceRepository.list_worker_wages_formatted(db, project_id)
 
 @router.get("/payroll/workers/records")
-def get_worker_wage_records(month: str = Query(None), db: Session = Depends(get_db)):
+def get_worker_wage_records(
+    month: str = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read"))
+):
     return FinanceRepository.list_worker_wage_records_formatted(db, month)
 
 @router.post("/payroll/workers/create")
-def create_worker_wage(payload: WageCreateIn, db: Session = Depends(get_db)):
+def create_worker_wage(
+    payload: WageCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "create"))
+):
     return FinanceService.create_worker_wage(db, payload)
 
 
@@ -229,28 +323,42 @@ def create_worker_wage(payload: WageCreateIn, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════
 
 @router.get("/summary")
-def get_summary(db: Session = Depends(get_db)):
+def get_summary(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.get_summary_report(db)
 
 @router.get("/projects")
-def list_projects(db: Session = Depends(get_db)):
+def list_projects(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     rows = FinanceRepository.list_projects(db)
     return [{"id": p.id, "label": f"{p.id} — {p.task_name or p.contract_id or ''}".strip(" —")}
             for p in rows]
 
 @router.get("/settings")
-def get_finance_settings(db: Session = Depends(get_db)):
+def get_finance_settings(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.get_finance_settings(db)
 
 @router.post("/settings")
-def save_finance_settings(payload: FinanceSettingsIn, db: Session = Depends(get_db)):
+def save_finance_settings(
+    payload: FinanceSettingsIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "update"))
+):
     return FinanceService.save_settings(db, payload)
 
 @router.get("/fund-balances/calculate")
 def calculate_system_balance(
     hinh_thuc: str = Query(..., description="'Tiền mặt' hoặc 'Chuyển khoản'"),
     ngay_chot: str = Query(..., description="Mốc thời gian chốt (ISO string)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
 ):
     try:
         dt_chot = datetime.fromisoformat(ngay_chot.replace("Z", "+00:00"))
@@ -266,7 +374,10 @@ def calculate_system_balance(
     return {"status": "success", "so_du_he_thong": bal}
 
 @router.get("/fund-balances/history")
-def get_fund_balances_history(db: Session = Depends(get_db)):
+def get_fund_balances_history(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     history = FinanceRepository.get_fund_balances_history(db)
     res = []
     for h in history:
@@ -283,9 +394,18 @@ def get_fund_balances_history(db: Session = Depends(get_db)):
     return res
 
 @router.post("/fund-balances/close")
-def close_fund(payload: FundCloseIn, db: Session = Depends(get_db)):
+def close_fund(
+    payload: FundCloseIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "approve"))
+):
     return FinanceService.close_fund(db, payload)
 
 @router.get("/monthly-dashboard")
-def get_monthly_dashboard(month: str = Query(..., description="Format: YYYY-MM"), db: Session = Depends(get_db)):
+def get_monthly_dashboard(
+    month: str = Query(..., description="Format: YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     return FinanceRepository.get_monthly_dashboard(db, month)
+

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from src.db.database import get_db
 from src.db.models import TaskType, TaskTypeRate, Employee, ProjectTask
+from src.core.auth import require_permission, User
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def refresh_rates_cache(db: Session):
     try:
         _write_rates_cache(rows)
         logger.info("Rates cache refreshed: %s rows", len(rows))
-    except RedisError as exc:
+    except Exception as exc:
         logger.warning("Cannot write rates cache: %s", exc)
     return rows
 
@@ -87,7 +88,7 @@ def get_rates_from_cache(db: Session):
             rows = payload.get("rows")
             if isinstance(rows, list):
                 return rows, "redis"
-    except (RedisError, json.JSONDecodeError, TypeError) as exc:
+    except Exception as exc:
         logger.warning("Cannot read rates cache: %s", exc)
     rows = refresh_rates_cache(db)
     return rows, "supabase"
@@ -95,7 +96,7 @@ def get_rates_from_cache(db: Session):
 def invalidate_rates_cache():
     try:
         _get_redis_client().delete(RATES_CACHE_KEY)
-    except RedisError as exc:
+    except Exception as exc:
         logger.warning("Cannot invalidate rates cache: %s", exc)
 
 # ─── SCHEMAS ──────────────────────────────────────────────────────────────────
@@ -113,13 +114,20 @@ class TaskTypeRateSchema(BaseModel):
 # ─── QUẢN LÝ BẢNG GIÁ KHOÁN ───────────────────────────────────────────────────
 
 @router.get("/rates")
-def get_salary_rates(db: Session = Depends(get_db)):
+def get_salary_rates(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read"))
+):
     """Lấy bảng đơn giá khoán - cached Redis, fallback Supabase."""
     rows, source = get_rates_from_cache(db)
     return {"status": "success", "data": rows, "source": source}
 
 @router.post("/rates")
-def save_salary_rate(payload: TaskTypeRateSchema, db: Session = Depends(get_db)):
+def save_salary_rate(
+    payload: TaskTypeRateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "update"))
+):
     """Thêm mới hoặc cập nhật đơn giá khoán."""
     try:
         # Kiểm tra task_type tồn tại
@@ -162,7 +170,11 @@ def save_salary_rate(payload: TaskTypeRateSchema, db: Session = Depends(get_db))
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/rates/{rate_id}")
-def delete_salary_rate(rate_id: str, db: Session = Depends(get_db)):
+def delete_salary_rate(
+    rate_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "delete"))
+):
     """Xóa một dòng đơn giá."""
     try:
         rate = db.query(TaskTypeRate).filter(TaskTypeRate.id == rate_id).first()
@@ -180,7 +192,11 @@ def delete_salary_rate(rate_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/task-types")
-def create_task_type(payload: TaskTypeSchema, db: Session = Depends(get_db)):
+def create_task_type(
+    payload: TaskTypeSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "create"))
+):
     """Thêm loại hồ sơ mới."""
     try:
         # Kiểm tra trùng tên
@@ -203,7 +219,11 @@ def create_task_type(payload: TaskTypeSchema, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/task-types/{task_type_id}")
-def delete_task_type(task_type_id: str, db: Session = Depends(get_db)):
+def delete_task_type(
+    task_type_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "delete"))
+):
     """Xóa loại hồ sơ (chỉ khi không có rates hoặc tasks liên kết)."""
     try:
         task_type = db.query(TaskType).filter(TaskType.id == task_type_id).first()
@@ -228,7 +248,12 @@ def delete_task_type(task_type_id: str, db: Session = Depends(get_db)):
 # ─── QUẢN LÝ CHI TIẾT LƯƠNG KHOÁN (TỪNG HỒ SƠ) ────────────────────────────────
 
 @router.get("/items")
-def get_salary_items(month: str, employee_id: str = None, db: Session = Depends(get_db)):
+def get_salary_items(
+    month: str,
+    employee_id: str = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read"))
+):
     """Xem danh sách các mục khoán trong tháng (sử dụng task_pay_records)."""
     try:
         from src.db.models import TaskPayRecord
@@ -261,3 +286,4 @@ def get_salary_items(month: str, employee_id: str = None, db: Session = Depends(
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

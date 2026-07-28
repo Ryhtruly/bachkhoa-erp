@@ -26,7 +26,6 @@ class ProjectTask(Base):
     # Hồ sơ chưa ký hợp đồng vẫn được phép để null.
     contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
     department = Column(String, nullable=True)
-    task_name = Column(String, nullable=True)
     assignee_id = Column(String, ForeignKey("users.id"), nullable=True)
     support_id = Column(String, ForeignKey("users.id"), nullable=True)
     priority = Column(String, nullable=True, default="Trung bình")
@@ -38,10 +37,13 @@ class ProjectTask(Base):
     review_note = Column(Text, nullable=True)
     department_id = Column(String, ForeignKey("departments.id"), nullable=True)
     task_type_id = Column(String, ForeignKey("task_types.id"), nullable=True)
+    task_name = Column(String, nullable=True)
     ward = Column(String(100), nullable=True)
     start_date = Column(Date, nullable=True)
     stake_count = Column(Integer, nullable=True)
     stake_type = Column(String(50), nullable=True)
+    service_line_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
+    current_package = Column(String, nullable=True)
     is_overdue_flag = Column(Boolean, nullable=False, default=False)
 
 
@@ -87,3 +89,27 @@ class LegalSubmission(Base):
     portal_status = Column(String, nullable=True)
     handler_id = Column(String, ForeignKey("users.id"), nullable=True)
     last_sync_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ServicePackage(Base):
+    __tablename__ = "service_packages"
+    id = Column(String, primary_key=True, default=lambda: f"sp_{uuid.uuid4().hex[:10]}")
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    display_order = Column(Integer, nullable=True)
+    is_active = Column(Boolean, nullable=True, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+
+class TaskTransition(Base):
+    __tablename__ = "task_transitions"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=False)
+    from_service_line_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
+    to_service_line_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
+    from_package = Column(String, nullable=True)
+    to_package = Column(String, nullable=True)
+    reason = Column(Text, nullable=True)
+    transitioned_by = Column(String, ForeignKey("users.id"), nullable=True)
+    transitioned_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)

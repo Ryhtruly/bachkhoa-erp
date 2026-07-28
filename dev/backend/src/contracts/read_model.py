@@ -102,6 +102,9 @@ def build_contract_read_model(db: Session):
         else:
             status = "Còn nợ"
 
+        date_signed_str = contract.date_signed.strftime("%Y-%m-%d") if (contract.date_signed and hasattr(contract.date_signed, "strftime")) else str(contract.date_signed or "")
+        due_date_str = due_date.strftime("%Y-%m-%d") if (due_date and hasattr(due_date, "strftime")) else str(due_date or "")
+
         group_id, child_number = get_contract_hierarchy(contract.id)
         result.append({
             "Mã hợp đồng": contract.id,
@@ -111,13 +114,13 @@ def build_contract_read_model(db: Session):
             "Mã hồ sơ": task.id if task else "",
             "Tên khách hàng": customer.full_name if customer else "N/A",
             "Phòng ban": task.department if task and task.department else "",
-            "Dịch vụ": contract.service_type or (task.task_name if task else "") or "",
-            "Ngày ký": contract.date_signed.strftime("%Y-%m-%d") if contract.date_signed else "",
+            "Dịch vụ": contract.service_type or "",
+            "Ngày ký": date_signed_str,
             "Giá trị hợp đồng": total,
             "Đã thu": paid,
             "Còn nợ": debt,
             "Sale / nguồn": lead.source if lead and lead.source else "",
-            "Ngày đến hạn": due_date.strftime("%Y-%m-%d") if due_date else "",
+            "Ngày đến hạn": due_date_str,
             "Tình trạng": status,
             "Ghi chú": "",
             "File Hợp đồng": contract.file_link or "",
@@ -147,7 +150,7 @@ def refresh_contract_read_model(db: Session):
     try:
         _write_cache(rows)
         logger.info("Contract read model refreshed: %s rows", len(rows))
-    except RedisError as exc:
+    except Exception as exc:
         logger.warning("Cannot refresh contract Redis cache: %s", exc)
     return rows
 
@@ -156,7 +159,7 @@ def sync_contract_read_model_after_write(db: Session):
     """Command side: bỏ cache cũ rồi cố gắng dựng read model mới."""
     try:
         _get_redis_client().delete(CONTRACT_READ_KEY)
-    except RedisError as exc:
+    except Exception as exc:
         logger.warning("Cannot invalidate contract Redis cache: %s", exc)
 
     try:
@@ -183,10 +186,12 @@ def get_contract_read_model(db: Session):
             payload = json.loads(cached)
             rows = payload.get("rows")
             if isinstance(rows, list):
+                logger.info("Contract read model cache HIT (redis)")
                 return rows, "redis"
-    except (RedisError, json.JSONDecodeError, TypeError) as exc:
+    except Exception as exc:
         logger.warning("Cannot read contract Redis cache: %s", exc)
 
+    logger.info("Contract read model cache MISS (fallback to DB refresh)")
     rows = refresh_contract_read_model(db)
     return rows, "supabase"
 

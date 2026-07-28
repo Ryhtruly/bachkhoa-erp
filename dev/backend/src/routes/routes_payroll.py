@@ -8,6 +8,7 @@ from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
+from src.core.auth import require_permission, User
 from src.db.models import (
     Contract,
     Customer,
@@ -20,6 +21,7 @@ from src.db.models import (
     TaskSubmission,
     TaskType,
     TaskTypeRate,
+    AuditLog,
 )
 
 
@@ -222,7 +224,10 @@ def _pay_components(
 
 
 @router.get("/options")
-def payroll_options(db: Session = Depends(get_db)):
+def payroll_options(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read")),
+):
     rows = (
         db.query(Department, Employee)
         .outerjoin(
@@ -305,6 +310,7 @@ def employee_payroll_ledger(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read")),
 ):
     period = _period_date(year, month)
     employee = (
@@ -581,6 +587,7 @@ def employee_payroll_ledger(
 def close_employee_period(
     payload: CloseEmployeePeriodPayload,
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "approve")),
 ):
     period = _period_date(payload.year, payload.month)
     payroll_period = (
@@ -682,6 +689,17 @@ def close_employee_period(
             created_records.append(record)
             recognized_keys.add((task.id, role))
 
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="CLOSE_PERIOD",
+        object_type="PayrollPeriod",
+        payload_json={
+            "employee_id": payload.employee_id,
+            "period": period.isoformat(),
+            "created_count": len(created_records)
+        }
+    ))
+
     try:
         db.commit()
     except Exception as exc:
@@ -699,3 +717,4 @@ def close_employee_period(
             "warnings": sorted(set(warnings)),
         },
     }
+

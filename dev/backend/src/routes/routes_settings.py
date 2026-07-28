@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from src.db.database import get_db
-from src.db.models import SystemSetting
+from src.db.models import SystemSetting, AuditLog
+from src.core.auth import require_permission, User
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import httpx
@@ -18,7 +19,10 @@ class TestRequest(BaseModel):
     settings: Dict[str, Any]
 
 @router.get("")
-def get_all_settings(db: Session = Depends(get_db)):
+def get_all_settings(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("settings", "read"))
+):
     try:
         settings = db.query(SystemSetting).all()
         result = {}
@@ -29,7 +33,11 @@ def get_all_settings(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("")
-def update_settings(payload: List[SettingItem], db: Session = Depends(get_db)):
+def update_settings(
+    payload: List[SettingItem],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("settings", "update"))
+):
     try:
         for item in payload:
             setting = db.query(SystemSetting).filter(SystemSetting.key == item.key).first()
@@ -44,6 +52,13 @@ def update_settings(payload: List[SettingItem], db: Session = Depends(get_db)):
                     description=item.description
                 )
                 db.add(new_setting)
+
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="UPDATE_SETTINGS",
+            object_type="SystemSetting",
+            payload_json={"updated_keys": [item.key for item in payload]}
+        ))
         
         db.commit()
         return {"status": "success", "message": "Đã cập nhật cài đặt."}
@@ -52,7 +67,11 @@ def update_settings(payload: List[SettingItem], db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/test")
-async def test_connection(payload: TestRequest):
+async def test_connection(
+    payload: TestRequest,
+    user: User = Depends(require_permission("settings", "update"))
+):
+
     """Test real API connection for a given service."""
     service = payload.service
     s = payload.settings

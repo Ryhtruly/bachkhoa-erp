@@ -9,8 +9,9 @@ import os
 from docxtpl import DocxTemplate
 
 from src.db.database import get_db
-from src.db.models import LeadPipeline, Customer, ProjectTask, Contract
+from src.db.models import LeadPipeline, Customer, ProjectTask, Contract, AuditLog
 from src.contracts import sync_contract_read_model_after_write
+from src.core.auth import require_permission, User
 
 router = APIRouter(prefix="/api/crm", tags=["CRM & Pipeline"])
 
@@ -28,7 +29,10 @@ class LeadStatusUpdate(BaseModel):
     area: Optional[str] = None
 
 @router.get("/stats")
-def get_crm_stats(db: Session = Depends(get_db)):
+def get_crm_stats(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "read"))
+):
     total = db.query(LeadPipeline).count()
     won = db.query(LeadPipeline).filter(LeadPipeline.status == "Chốt").count()
     in_progress = db.query(LeadPipeline).filter(LeadPipeline.status.in_(["Tiếp cận", "Báo giá", "Đàm phán"])).count()
@@ -45,7 +49,11 @@ def get_crm_stats(db: Session = Depends(get_db)):
     }
 
 @router.post("/leads")
-def create_lead(data: LeadCreateSchema, db: Session = Depends(get_db)):
+def create_lead(
+    data: LeadCreateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "create"))
+):
     # Find or Create Customer
     cust = db.query(Customer).filter(Customer.phone == data.phone).first()
     if not cust:
@@ -64,13 +72,24 @@ def create_lead(data: LeadCreateSchema, db: Session = Depends(get_db)):
         assigned_to=data.assigned_to
     )
     db.add(new_lead)
+
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="CREATE",
+        object_type="LeadPipeline",
+        payload_json={"id": lead_id, "customer_name": data.customer_name}
+    ))
+
     db.commit()
     db.refresh(new_lead)
     
     return {"status": "success", "data": {"id": new_lead.id}}
 
 @router.get("/leads")
-def get_leads(db: Session = Depends(get_db)):
+def get_leads(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "read"))
+):
     leads = db.query(LeadPipeline).order_by(LeadPipeline.created_at.desc()).all()
     results = []
     for l in leads:
@@ -88,7 +107,12 @@ def get_leads(db: Session = Depends(get_db)):
     return {"status": "success", "data": results}
 
 @router.put("/leads/{lead_id}/status")
-def update_lead_status(lead_id: str, body: LeadStatusUpdate, db: Session = Depends(get_db)):
+def update_lead_status(
+    lead_id: str,
+    body: LeadStatusUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "update"))
+):
     lead = db.query(LeadPipeline).filter(LeadPipeline.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -165,8 +189,16 @@ def update_lead_status(lead_id: str, body: LeadStatusUpdate, db: Session = Depen
         )
         db.add(new_task)
         contract_created = True
+
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="UPDATE_STATUS",
+        object_type="LeadPipeline",
+        payload_json={"id": lead_id, "old_status": old_status, "new_status": body.new_status}
+    ))
         
     db.commit()
     if contract_created:
         sync_contract_read_model_after_write(db)
     return {"status": "success", "data": {"id": lead.id, "status": lead.status}}
+

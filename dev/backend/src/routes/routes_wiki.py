@@ -7,9 +7,10 @@ import math
 import re
 import io
 from src.db.database import get_db
-from src.db.models import WikiDocument
+from src.db.models import WikiDocument, AuditLog
 from src.services.storage_service import upload_file, ensure_bucket, file_exists, find_file_by_prefix, get_file_url
 from src.services.wiki_rag_service import index_document, delete_document_chunks
+from src.core.auth import require_permission, User
 
 router = APIRouter(prefix="/api/wiki", tags=["Tri Thức Doanh Nghiệp"])
 
@@ -27,7 +28,8 @@ def list_documents(
     category: str = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "read"))
 ):
     try:
         query = db.query(WikiDocument).filter(WikiDocument.is_active == True)
@@ -83,7 +85,8 @@ async def upload_document(
     description: Optional[str] = Form(None),
     version: Optional[str] = Form(None),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "create"))
 ):
     try:
         existing = db.query(WikiDocument).filter(WikiDocument.id == id).first()
@@ -111,6 +114,13 @@ async def upload_document(
         db.add(new_doc)
         db.flush()  # Persist document first so wiki_chunks can reference it
 
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="CREATE",
+            object_type="WikiDocument",
+            payload_json={"id": id, "title": title}
+        ))
+
         try:
             index_document(file_bytes, file.filename, id, db)
         except Exception as rag_err:
@@ -127,7 +137,11 @@ async def upload_document(
 
 
 @router.get("/download/{doc_id}")
-def download_document(doc_id: str, db: Session = Depends(get_db)):
+def download_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "read"))
+):
     """Download file - proxy qua backend để check file tồn tại trước."""
     from fastapi.responses import RedirectResponse
     import re as _re
@@ -158,4 +172,5 @@ def download_document(doc_id: str, db: Session = Depends(get_db)):
         return RedirectResponse(url=correct_link)
     
     raise HTTPException(status_code=404, detail="File không tồn tại trên MinIO. Vui lòng upload lại.")
+
 

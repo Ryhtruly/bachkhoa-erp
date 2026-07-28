@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
+from src.core.auth import require_permission, User
 from src.contracts import (
     ContractService,
     HopdongCreateSchema,
@@ -15,7 +16,9 @@ router = APIRouter(prefix="/api/hopdong", tags=["Hợp Đồng"])
 
 
 @router.get("/cache/status")
-def contract_cache_status():
+def contract_cache_status(
+    user: User = Depends(require_permission("contract", "read"))
+):
     return get_contract_cache_status()
 
 
@@ -32,6 +35,7 @@ def list_hopdong(
     page: int = Query(1, ge=1),
     page_size: int = Query(0, ge=0, le=100),
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "read")),
 ):
     try:
         rows, source = get_contract_read_model(db)
@@ -54,10 +58,19 @@ def list_hopdong(
 
 
 @router.post("/")
-def create_hopdong(payload: HopdongCreateSchema, db: Session = Depends(get_db)):
-    return ContractService.create_contract(db, payload)
+def create_hopdong(
+    payload: HopdongCreateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "create")),
+):
+    return ContractService.create_contract(db, payload, actor_id=user.id)
 
 
 @router.post("/generate")
-def generate_and_save_contract(payload: ContractGenerateSchema, db: Session = Depends(get_db)):
-    return ContractService.generate_and_save_contract(db, payload)
+def generate_and_save_contract(
+    payload: ContractGenerateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "create")),
+):
+    return ContractService.generate_and_save_contract(db, payload, actor_id=user.id)
+

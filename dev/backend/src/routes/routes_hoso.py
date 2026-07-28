@@ -11,6 +11,7 @@ from src.db.models import (
     ProjectTask,
     User,
 )
+from src.core.auth import require_permission
 import uuid
 from datetime import datetime, date
 from pydantic import BaseModel
@@ -52,7 +53,11 @@ def _task_result(task: ProjectTask) -> str:
 
 
 @router.get("/stats")
-def get_hoso_stats(month: str = Query(None), db: Session = Depends(get_db)):
+def get_hoso_stats(
+    month: str = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "read"))
+):
     query = _month_filter(db.query(ProjectTask), month)
 
     total = query.count()
@@ -78,7 +83,11 @@ def get_hoso_stats(month: str = Query(None), db: Session = Depends(get_db)):
     }
 
 @router.get("/")
-def list_hoso(month: str = Query(None), db: Session = Depends(get_db)):
+def list_hoso(
+    month: str = Query(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "read"))
+):
     try:
         main_user = aliased(User)
         support_user = aliased(User)
@@ -203,7 +212,10 @@ def list_hoso(month: str = Query(None), db: Session = Depends(get_db)):
 
 
 @router.get("/assignment-options")
-def assignment_options(db: Session = Depends(get_db)):
+def assignment_options(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "read"))
+):
     employee_rows = (
         db.query(Employee, User, Department)
         .join(User, User.id == Employee.user_id)
@@ -337,7 +349,11 @@ def _role_has_pay_record(
 
 
 @router.post("/update-assignment")
-def update_assignment(payload: AssignmentUpdateSchema, db: Session = Depends(get_db)):
+def update_assignment(
+    payload: AssignmentUpdateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "update"))
+):
     task = db.query(ProjectTask).filter(ProjectTask.id == payload.task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ.")
@@ -371,7 +387,7 @@ def update_assignment(payload: AssignmentUpdateSchema, db: Session = Depends(get
     task.support_id = payload.support_id
     db.add(
         AuditLog(
-            actor_id=None,
+            actor_id=user.id,
             action="UPDATE_TASK_ASSIGNMENT",
             object_type="projects_tasks",
             payload_json={
@@ -405,7 +421,10 @@ def update_assignment(payload: AssignmentUpdateSchema, db: Session = Depends(get
 
 
 @router.get("/contracts-lookup")
-def lookup_contracts(db: Session = Depends(get_db)):
+def lookup_contracts(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "read"))
+):
     """Return a lightweight list of contracts for the dropdown."""
     contracts = db.query(Contract, Customer).outerjoin(Customer, Customer.id == Contract.customer_id).order_by(Contract.created_at.desc()).all()
     result = []
@@ -438,7 +457,11 @@ class StatusUpdateSchema(BaseModel):
 
 
 @router.post("/")
-def create_hoso(payload: HosoCreateSchema, db: Session = Depends(get_db)):
+def create_hoso(
+    payload: HosoCreateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "create"))
+):
     try:
         new_id = f"BK-HS-{str(uuid.uuid4())[:8].upper()}"
         d_dl = None
@@ -463,6 +486,14 @@ def create_hoso(payload: HosoCreateSchema, db: Session = Depends(get_db)):
             start_date=date.today()
         )
         db.add(t)
+
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="CREATE",
+            object_type="projects_tasks",
+            payload_json={"id": new_id, "task_name": payload.task_name}
+        ))
+
         db.commit()
         return {"status": "success", "id": new_id}
     except Exception as e:
@@ -470,7 +501,12 @@ def create_hoso(payload: HosoCreateSchema, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{task_id}")
-def update_hoso_full(task_id: str, payload: HosoUpdateSchema, db: Session = Depends(get_db)):
+def update_hoso_full(
+    task_id: str,
+    payload: HosoUpdateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "update"))
+):
     try:
         task = db.query(ProjectTask).filter(ProjectTask.id == task_id).first()
         if not task:
@@ -483,14 +519,11 @@ def update_hoso_full(task_id: str, payload: HosoUpdateSchema, db: Session = Depe
             except:
                 pass
                 
-        # If assignment changes, we might want to log it or check pay records, but for a full edit modal, we just update it.
-        # To be safe, we check if pay record exists if assignee changed.
         if task.assignee_id != payload.assignee_id and _role_has_pay_record(db, task.id, "main", payload.assignee_id):
              raise HTTPException(status_code=409, detail="Lương vai trò chính của task đã được ghi nhận; không thể đổi người.")
         if task.support_id != payload.support_id and _role_has_pay_record(db, task.id, "support", payload.support_id):
              raise HTTPException(status_code=409, detail="Lương phụ đo của task đã được ghi nhận; không thể đổi người.")
              
-        # Update completion date if status changed to complete
         if payload.status == "Hoàn thành" and task.status != "Hoàn thành":
             task.completion_date = date.today()
         elif payload.status != "Hoàn thành":
@@ -507,6 +540,13 @@ def update_hoso_full(task_id: str, payload: HosoUpdateSchema, db: Session = Depe
         task.stake_type = payload.stake_type
         task.status = payload.status
 
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="UPDATE",
+            object_type="projects_tasks",
+            payload_json={"id": task_id, "status": payload.status}
+        ))
+
         db.commit()
         return {"status": "success"}
     except HTTPException:
@@ -517,7 +557,11 @@ def update_hoso_full(task_id: str, payload: HosoUpdateSchema, db: Session = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/update-status")
-def update_hoso_status(payload: StatusUpdateSchema, db: Session = Depends(get_db)):
+def update_hoso_status(
+    payload: StatusUpdateSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hoso", "update"))
+):
     try:
         task = db.query(ProjectTask).filter(ProjectTask.id == payload.Mã_hồ_sơ).first()
         if not task:
@@ -526,8 +570,17 @@ def update_hoso_status(payload: StatusUpdateSchema, db: Session = Depends(get_db
         task.status = payload.Trạng_thái
         if payload.Trạng_thái == "Hoàn thành":
             task.completion_date = date.today()
+
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="UPDATE_STATUS",
+            object_type="projects_tasks",
+            payload_json={"id": payload.Mã_hồ_sơ, "status": payload.Trạng_thái}
+        ))
+
         db.commit()
         return {"status": "success"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+

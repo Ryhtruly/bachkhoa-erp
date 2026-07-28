@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.db.models import Contract, Customer, Receivable, ProjectTask
+from src.db.models import Contract, Customer, Receivable, ProjectTask, AuditLog, User
 from src.services import telegram_service
 from src.core import doc_generator
 from src.contracts.read_model import sync_contract_read_model_after_write
@@ -11,7 +12,7 @@ from src.contracts.read_model import sync_contract_read_model_after_write
 class ContractService:
 
     @staticmethod
-    def create_contract(db: Session, payload) -> dict:
+    def create_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
             customer = db.query(Customer).filter(Customer.full_name == payload.Tên_khách_hàng).first()
             if not customer:
@@ -40,6 +41,20 @@ class ContractService:
                 remaining_amount=payload.Giá_trị_hợp_đồng - payload.Đã_thu
             )
             db.add(rec)
+
+            actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
+            actor_id_val = actor_id if actor_exists else None
+
+            db.add(AuditLog(
+                actor_id=actor_id_val,
+                action="CREATE",
+                object_type="Contract",
+                payload_json={
+                    "id": new_hd.id,
+                    "customer": payload.Tên_khách_hàng,
+                    "total_value": float(payload.Giá_trị_hợp_đồng)
+                }
+            ))
             
             db.commit()
             sync_contract_read_model_after_write(db)
@@ -56,7 +71,7 @@ class ContractService:
             raise HTTPException(status_code=500, detail=str(e))
 
     @staticmethod
-    def generate_and_save_contract(db: Session, payload) -> dict:
+    def generate_and_save_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
             contract_data = payload.model_dump()
             success_gen, download_url, full_path = doc_generator.generate_document(
@@ -106,6 +121,20 @@ class ContractService:
                 task = db.query(ProjectTask).filter(ProjectTask.id == payload.MA_HO_SO).first()
                 if task:
                     task.contract_id = new_hd.id
+
+            actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
+            actor_id_val = actor_id if actor_exists else None
+
+            db.add(AuditLog(
+                actor_id=actor_id_val,
+                action="GENERATE",
+                object_type="Contract",
+                payload_json={
+                    "id": new_hd.id,
+                    "customer": payload.TEN_KHACH_HANG,
+                    "total_value": float(payload.GIA_TRI_HOP_DONG)
+                }
+            ))
                     
             db.commit()
             sync_contract_read_model_after_write(db)
@@ -122,3 +151,4 @@ class ContractService:
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
+

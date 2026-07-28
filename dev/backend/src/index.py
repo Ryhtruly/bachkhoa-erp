@@ -31,32 +31,34 @@ from src.routes.routes_auth import router as auth_router
 from src.db.database import engine, Base, SessionLocal
 from src.services.storage_service import ensure_bucket, set_bucket_public
 from src.db.models import *
-from src.services.contract_read_service import (
+from src.contracts.read_model import (
     CONTRACT_CACHE_REFRESH_SECONDS,
     warm_contract_read_model,
 )
 from src.routes.routes_luong import refresh_rates_cache
 
-Base.metadata.create_all(bind=engine)
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Seed default admin user on first run
-try:
-    db = SessionLocal()
-    from src.core.auth import seed_default_admin
-    seed_default_admin(db)
-    db.close()
-except Exception as e:
-    logger.warning(f"Seed admin user failed (may already exist): {e}")
+# Seed default admin user on first run if enabled
+if settings.seed_admin_enabled:
+    try:
+        db = SessionLocal()
+        from src.core.auth import seed_default_admin
+        seed_default_admin(db)
+        db.close()
+    except Exception as e:
+        logger.warning(f"Seed admin user failed (may already exist): {e}")
 
 # Ensure MinIO bucket exists and is public
-try:
-    ensure_bucket()
-    set_bucket_public()
-    logger.info("MinIO bucket ready (public)")
-except Exception as e:
-    logger.warning(f"MinIO bucket setup failed: {e}")
+if not os.getenv("TESTING"):
+    try:
+        ensure_bucket()
+        set_bucket_public()
+        logger.info("MinIO bucket ready (public)")
+    except Exception as e:
+        logger.warning(f"MinIO bucket setup failed: {e}")
 
 
 async def refresh_contract_cache_loop():
@@ -70,15 +72,16 @@ async def refresh_contract_cache_loop():
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    try:
-        await asyncio.to_thread(warm_contract_read_model)
-    except Exception as exc:
-        logger.warning("Initial contract cache warmup failed: %s", exc)
+    if not os.getenv("TESTING"):
+        try:
+            await asyncio.to_thread(warm_contract_read_model)
+        except Exception as exc:
+            logger.warning("Initial contract cache warmup failed: %s", exc)
 
-    try:
-        await asyncio.to_thread(refresh_rates_cache, SessionLocal())
-    except Exception as exc:
-        logger.warning("Initial rates cache warmup failed: %s", exc)
+        try:
+            await asyncio.to_thread(refresh_rates_cache, SessionLocal())
+        except Exception as exc:
+            logger.warning("Initial rates cache warmup failed: %s", exc)
 
     refresh_task = None
     if CONTRACT_CACHE_REFRESH_SECONDS > 0:
@@ -92,14 +95,20 @@ async def lifespan(_app: FastAPI):
             await refresh_task
 
 
+from src.core.logging_config import setup_logging
+from src.core.middleware import RequestIdMiddleware
+
+setup_logging()
+
 app = FastAPI(title="OpenClaw ERP - Bach Khoa", lifespan=lifespan)
 
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "static", "contracts"), exist_ok=True)
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")), name="static")
 
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

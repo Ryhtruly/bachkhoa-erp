@@ -10,6 +10,8 @@ class CashflowIn(BaseModel):
     payment_method: str                 # "Tiền mặt" | "Chuyển khoản"
     contract_id: Optional[str] = None
     project_id: Optional[str] = None
+    du_an_phong_ban: Optional[str] = None
+    dien_giai: Optional[str] = None
     # Các trường kế toán nâng cao
     nguoi_lap: Optional[str] = None
     nguoi_duyet: Optional[str] = None
