@@ -12,28 +12,7 @@ class HosoCreateSchema(BaseModel):
     Deadline: str
     Trạng_thái: Optional[str] = "Mới tiếp nhận"
 
-class HopdongCreateSchema(BaseModel):
-    Mã_hợp_đồng: str
-    Mã_hồ_sơ: str
-    Tên_khách_hàng: str
-    Dịch_vụ: str
-    Giá_trị_hợp_đồng: float
-    Đã_thu: Optional[float] = 0.0
-    Sale_nguồn: str
-    Ghi_chú: Optional[str] = ""
-
-class ContractGenerateSchema(BaseModel):
-    SO_HOP_DONG: str
-    MA_HO_SO: str
-    TEN_KHACH_HANG: str
-    SO_DIEN_THOAI: str
-    KHACH_HANG_EMAIL: Optional[str] = ""
-    LOAI_DICH_VU: str
-    DIA_CHI: str
-    GIA_TRI_HOP_DONG: float
-    NGAY_KY: str
-    NGAY_HET_HAN: str
-    Sale_nguồn: str
+from src.contracts.schemas import HopdongCreateSchema, ContractGenerateSchema
 
 class ThuchiCreateSchema(BaseModel):
     Loại_Thu_Chi: str

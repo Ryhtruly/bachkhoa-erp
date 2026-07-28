@@ -10,7 +10,7 @@ from docxtpl import DocxTemplate
 
 from src.db.database import get_db
 from src.db.models import LeadPipeline, Customer, ProjectTask, Contract
-from src.services.contract_read_service import sync_contract_read_model_after_write
+from src.contracts import sync_contract_read_model_after_write
 
 router = APIRouter(prefix="/api/crm", tags=["CRM & Pipeline"])
 
