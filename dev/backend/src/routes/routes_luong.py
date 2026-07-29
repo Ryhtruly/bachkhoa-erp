@@ -18,7 +18,7 @@ from src.core.auth import require_permission, User
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/luong", tags=["Lương Khoán & Bảng Giá"])
+router = APIRouter(tags=["Lương Khoán & Bảng Giá"])
 
 # ─── REDIS CACHE ──────────────────────────────────────────────────────────────
 RATES_CACHE_KEY = "bachkhoa:read:rates:v1"

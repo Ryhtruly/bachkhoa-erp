@@ -26,6 +26,7 @@ from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
 from src.routes.routes_payroll import router as payroll_router
 from src.routes.routes_luong import router as luong_router
+from src.routes.routes_hoso_phaply import router as hoso_phaply_router
 from src.routes.routes_settings import router as settings_router
 from src.routes.routes_auth import router as auth_router
 from src.db.database import engine, Base, SessionLocal
@@ -114,19 +115,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers - Standardized English REST prefixes with legacy aliases
 app.include_router(dashboard_router)
-app.include_router(hoso_router)
-app.include_router(hopdong_router)
+app.include_router(hoso_router, prefix="/api/tasks")  # Primary English
+app.include_router(hoso_router, prefix="/api/hoso", include_in_schema=False)  # Legacy alias
+app.include_router(hopdong_router, prefix="/api/contracts")  # Primary English
+app.include_router(hopdong_router, prefix="/api/hopdong", include_in_schema=False)  # Legacy alias
 app.include_router(webhook_router)
-app.include_router(baogia_router)
+app.include_router(baogia_router, prefix="/api/quotations")  # Primary English
+app.include_router(baogia_router, prefix="/api/baogia", include_in_schema=False)  # Legacy alias
 app.include_router(ai_router)
 app.include_router(crm_router)
 app.include_router(kpi_router)
 app.include_router(wiki_router)
 app.include_router(finance_router)
 app.include_router(payroll_router)
-app.include_router(luong_router)
+app.include_router(luong_router, prefix="/api/piece-rates")  # Primary English
+app.include_router(luong_router, prefix="/api/luong", include_in_schema=False)  # Legacy alias
+app.include_router(hoso_phaply_router, prefix="/api/legal-submissions")  # Primary English
+app.include_router(hoso_phaply_router, prefix="/api/hoso-phaply", include_in_schema=False)  # Alias
 app.include_router(settings_router)
 app.include_router(auth_router)
 

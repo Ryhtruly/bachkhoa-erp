@@ -557,7 +557,7 @@ function BangGiaKhoan() {
   const loadRates = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API}/api/luong/rates`);
+      const response = await fetch(`${API}/api/piece-rates/rates`);
       if (!response.ok) throw new Error('Không tải được bảng giá');
       const payload = await response.json();
       setRates(payload.data || []);
@@ -590,7 +590,7 @@ function BangGiaKhoan() {
     event.preventDefault();
     setSaving(true);
     try {
-      const response = await fetch(`${API}/api/luong/rates`, {
+      const response = await fetch(`${API}/api/piece-rates/rates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -614,7 +614,7 @@ function BangGiaKhoan() {
   const deleteRate = async (rateId) => {
     if (!window.confirm('Xóa dòng đơn giá này?')) return;
     try {
-      const response = await fetch(`${API}/api/luong/rates/${rateId}`, { method: 'DELETE' });
+      const response = await fetch(`${API}/api/piece-rates/rates/${rateId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error('Không xóa được');
       addToast('Đã xóa đơn giá', 'success');
       await loadRates();

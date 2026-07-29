@@ -61,6 +61,10 @@ def audit_endpoints():
     wiki_row = db.query(WikiDocument).first()
     sample_wiki_id = wiki_row.id if wiki_row else "doc_01"
 
+    from src.db.models import TaskSubmission
+    sub_row = db.query(TaskSubmission).first()
+    sample_submission_id = sub_row.id if sub_row else "sub_test"
+
     print("=" * 85)
     print("DYNAMIC AUDIT: ALL REGISTERED GET ENDPOINTS IN FASTAPI APP")
     print("=" * 85)
@@ -82,6 +86,7 @@ def audit_endpoints():
                 params = {"type": "Thu"}
             elif path in [
                 "/api/luong/items",
+                "/api/piece-rates/items",
                 "/api/kpi/scores",
                 "/api/finance/monthly-dashboard",
             ]:
@@ -102,6 +107,7 @@ def audit_endpoints():
                 .replace("{transaction_id}", sample_cashflow_id)
                 .replace("{employee_id}", sample_employee_id)
                 .replace("{doc_id}", sample_wiki_id)
+                .replace("{submission_id}", sample_submission_id)
             )
 
             get_routes.append((path, actual_path, params))
@@ -156,6 +162,49 @@ def audit_endpoints():
             print(f"  [{status} FAIL] {actual_path:<49} -> {body}")
             failed.append((actual_path, status, body))
             data_summary.append((orig_path, actual_path, status, body, "ERROR"))
+
+    print()
+    print("=" * 85)
+    print("TESTING LEGAL SUBMISSIONS (/api/legal-submissions) FULL CRUD CYCLE")
+    print("=" * 85)
+
+    # 1. Create a test submission
+    create_payload = {
+        "task_id": sample_project_id,
+        "receipt_code": f"BN-TEST-{uuid.uuid4().hex[:6].upper()}",
+        "submitted_by": "Nguyễn Văn Test",
+        "submission_date": "2026-07-29",
+        "expected_return_date": "2026-08-15",
+        "gov_status": "Đã nộp",
+        "note": "Hồ sơ nộp đợt 1 phòng TNMT",
+    }
+    c_res = client.post("/api/legal-submissions/", headers=headers, json=create_payload)
+    if c_res.status_code == 200 and c_res.json().get("status") == "success":
+        new_sub_id = c_res.json()["id"]
+        print(f"  [CREATE OK]  POST /api/legal-submissions/ -> ID: {new_sub_id}")
+
+        # 2. Get details
+        d_res = client.get(f"/api/legal-submissions/{new_sub_id}", headers=headers)
+        print(f"  [DETAILS OK] GET /api/legal-submissions/{new_sub_id} -> Status: {d_res.status_code}")
+
+        # 3. Update gov_status (Patch sub-endpoint 1)
+        p1_res = client.patch(f"/api/legal-submissions/{new_sub_id}/gov-status", headers=headers, json={"gov_status": "Đã tiếp nhận"})
+        print(f"  [PATCH GOV_STATUS OK] PATCH /api/legal-submissions/{new_sub_id}/gov-status -> {p1_res.json().get('message')}")
+
+        # 4. Update photo (Patch sub-endpoint 2)
+        p2_res = client.patch(f"/api/legal-submissions/{new_sub_id}/photo", headers=headers, json={"receipt_photo_url": "http://minio/wiki-files/bien_nhan_test.png"})
+        print(f"  [PATCH PHOTO OK] PATCH /api/legal-submissions/{new_sub_id}/photo -> {p2_res.json().get('message')}")
+
+        # 5. Update note (Patch sub-endpoint 3)
+        p3_res = client.patch(f"/api/legal-submissions/{new_sub_id}/note", headers=headers, json={"note": "Đã nhận giấy hẹn phòng Một cửa"})
+        print(f"  [PATCH NOTE OK] PATCH /api/legal-submissions/{new_sub_id}/note -> {p3_res.json().get('message')}")
+
+        # 6. Delete test submission
+        del_res = client.delete(f"/api/legal-submissions/{new_sub_id}", headers=headers)
+        print(f"  [DELETE OK]  DELETE /api/legal-submissions/{new_sub_id} -> {del_res.json().get('message')}")
+    else:
+        print(f"  [CREATE FAIL] {c_res.status_code} -> {c_res.text}")
+        failed.append(("/api/legal-submissions/", c_res.status_code, c_res.text[:100]))
 
     print()
     print("=" * 85)

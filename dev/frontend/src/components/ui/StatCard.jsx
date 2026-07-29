@@ -43,8 +43,19 @@ export default function StatCard({
     }
   };
 
-  const trendUp = trend > 0;
-  const trendNeutral = trend === 0 || trend === undefined || trend === null;
+  const isNumberTrend = typeof trend === 'number';
+  const trendUp = isNumberTrend && trend > 0;
+  const trendNeutral = isNumberTrend && trend === 0;
+
+  const renderIcon = () => {
+    if (!icon) return null;
+    if (React.isValidElement(icon)) return icon;
+    if (typeof icon === 'function' || (typeof icon === 'object' && icon !== null && (icon.$$typeof || icon.render))) {
+      const IconComponent = icon;
+      return <IconComponent size={20} />;
+    }
+    return icon;
+  };
 
   return (
     <div
@@ -56,7 +67,7 @@ export default function StatCard({
     >
       {icon && (
         <div className={`stat-icon ${iconVariant}`}>
-          {loading ? <div className="skeleton" style={{ width: 24, height: 24, borderRadius: 4 }} /> : icon}
+          {loading ? <div className="skeleton" style={{ width: 24, height: 24, borderRadius: 4 }} /> : renderIcon()}
         </div>
       )}
       <div className="stat-info">
@@ -67,10 +78,14 @@ export default function StatCard({
           <h3 className="stat-value">{formatValue(value)}</h3>
         )}
         {!loading && trend !== undefined && trend !== null && (
-          <div className={`stat-trend ${trendNeutral ? 'neutral' : trendUp ? 'up' : 'down'}`}>
-            {trendNeutral ? <Minus size={12} /> : trendUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-            <span>{trendNeutral ? 'Không đổi' : `${trendUp ? '+' : ''}${trend.toFixed(1)}%`}</span>
-            <span className="stat-trend__label">{trendLabel}</span>
+          <div className={`stat-trend ${!isNumberTrend ? 'neutral' : trendNeutral ? 'neutral' : trendUp ? 'up' : 'down'}`}>
+            {isNumberTrend && (trendNeutral ? <Minus size={12} /> : trendUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />)}
+            <span>
+              {isNumberTrend
+                ? (trendNeutral ? 'Không đổi' : `${trendUp ? '+' : ''}${trend.toFixed(1)}%`)
+                : trend}
+            </span>
+            {isNumberTrend && <span className="stat-trend__label">{trendLabel}</span>}
           </div>
         )}
       </div>

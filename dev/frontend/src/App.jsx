@@ -4,6 +4,7 @@ import TopHeader from './components/TopHeader';
 import Dashboard from './pages/Dashboard';
 import CRM from './pages/CRM';
 import Hoso from './pages/Hoso';
+import Phaply from './pages/Phaply';
 import Settings from './pages/Settings';
 import Hopdong from './pages/Hopdong';
 import Thuchi from './pages/Thuchi';
@@ -16,7 +17,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import './index.css';
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const handleLogin = () => setLoggedIn(true);
@@ -26,6 +27,7 @@ function App() {
     { key: 'dashboard', Component: Dashboard },
     { key: 'crm', Component: CRM },
     { key: 'hoso', Component: Hoso },
+    { key: 'phaply', Component: Phaply },
     { key: 'settings', Component: Settings },
     { key: 'hopdong', Component: Hopdong },
     { key: 'thuchi', Component: Thuchi },

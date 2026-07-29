@@ -69,8 +69,8 @@ export default function Hoso() {
     try {
       setAssignmentLoading(true);
       const [assignmentRes, contractsRes] = await Promise.all([
-        fetch(`${API}/api/hoso/assignment-options`),
-        fetch(`${API}/api/hoso/contracts-lookup`),
+        fetch(`${API}/api/tasks/assignment-options`),
+        fetch(`${API}/api/tasks/contracts-lookup`),
       ]);
       const [assignmentData, contractsData] = await Promise.all([
         assignmentRes.ok ? assignmentRes.json() : { data: [] },
@@ -91,8 +91,8 @@ export default function Hoso() {
       setLoading(true);
       const params = month ? `?month=${month}` : '';
       const [hosoRes, statsRes] = await Promise.all([
-        fetch(`${API}/api/hoso/${params}`),
-        fetch(`${API}/api/hoso/stats${params}`),
+        fetch(`${API}/api/tasks/${params}`),
+        fetch(`${API}/api/tasks/stats${params}`),
       ]);
       if (!hosoRes.ok || !statsRes.ok) throw new Error('Không tải được dữ liệu hồ sơ');
 
@@ -119,7 +119,7 @@ export default function Hoso() {
     try {
       setModalLoading(true);
       const isEdit = !!editingHoso;
-      const url = isEdit ? `${API}/api/hoso/${editingHoso['Mã hồ sơ']}` : `${API}/api/hoso/`;
+      const url = isEdit ? `${API}/api/tasks/${editingHoso['Mã hồ sơ']}` : `${API}/api/tasks/`;
       const method = isEdit ? 'PUT' : 'POST';
       const response = await fetch(url, {
         method,

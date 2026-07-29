@@ -12,7 +12,7 @@ from src.contracts import (
     query_contract_read_model
 )
 
-router = APIRouter(prefix="/api/hopdong", tags=["Hợp Đồng"])
+router = APIRouter(tags=["Hợp Đồng"])
 
 
 @router.get("/cache/status")

@@ -115,7 +115,7 @@ export default function Hopdong() {
       if (filterValues.status !== 'All') params.set('status', filterValues.status);
       if (filterValues.service !== 'All') params.set('service', filterValues.service);
 
-      const res = await fetch(`/api/hopdong/?${params}`);
+      const res = await fetch(`/api/contracts/?${params}`);
       if (res.ok) {
         const payload = await res.json();
         setContracts(Array.isArray(payload) ? payload : payload.data || []);
@@ -132,7 +132,7 @@ export default function Hopdong() {
     if (hosoList.length > 0 || hosoLoading) return;
     try {
       setHosoLoading(true);
-      const response = await fetch('/api/hoso');
+      const response = await fetch('/api/tasks');
       if (response.ok) {
         const data = await response.json();
         setHosoList(Array.isArray(data) ? data : data.data || []);
@@ -189,7 +189,7 @@ export default function Hopdong() {
     }
 
     try {
-      const res = await fetch('/api/hopdong/generate', {
+      const res = await fetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, GIA_TRI_HOP_DONG: val })

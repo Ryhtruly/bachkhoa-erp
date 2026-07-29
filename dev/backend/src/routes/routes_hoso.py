@@ -17,7 +17,7 @@ from datetime import datetime, date
 from pydantic import BaseModel
 from typing import Optional
 
-router = APIRouter(prefix="/api/hoso", tags=["Hồ Sơ"])
+router = APIRouter(tags=["Hồ Sơ"])
 
 
 FINAL_STATUSES = ("Hoàn thành", "Hủy", "Đã hủy")

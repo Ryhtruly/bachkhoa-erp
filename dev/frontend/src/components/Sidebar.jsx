@@ -1,11 +1,12 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileText, Wallet, Coins, BarChart2, BookOpen, Settings2 } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, Coins, BarChart2, BookOpen, Settings2 } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab }) {
   const menuItems = [
     { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard },
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter },
     { id: 'hoso', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban },
+    { id: 'phaply', label: 'Hồ Sơ Pháp Lý', icon: FileCheck },
     { id: 'hopdong', label: 'Hợp Đồng & Công Nợ', icon: FileText },
     { id: 'thuchi', label: 'Thu Chi Sổ Quỹ', icon: Wallet },
     { id: 'luong', label: 'Lương Khoán 3P', icon: Coins },

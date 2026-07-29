@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from core import pricing_engine
 
-router = APIRouter(prefix="/api/baogia", tags=["Báo Giá"])
+router = APIRouter(tags=["Báo Giá"])
 
 class QuoteRequestSchema(BaseModel):
     customer_name: str
