@@ -59,6 +59,7 @@ def _task_result(task: ProjectTask) -> str:
 def get_hoso_stats(
     month: str = Query(None),
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
 ):
     query = _month_filter(db.query(ProjectTask), month)
 
@@ -88,6 +89,7 @@ def get_hoso_stats(
 def list_hoso(
     month: str = Query(None),
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
 ):
     try:
         main_user = aliased(User)
@@ -226,6 +228,7 @@ def list_hoso(
 @router.get("/assignment-options")
 def assignment_options(
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
 ):
     employee_rows = (
         db.query(Employee, User, Department)
@@ -363,7 +366,7 @@ def _role_has_pay_record(
 def update_assignment(
     payload: AssignmentUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_permission("task_node", "update"))
 ):
     task = db.query(ProjectTask).filter(ProjectTask.id == payload.task_id).first()
     if not task:
@@ -432,7 +435,10 @@ def update_assignment(
 
 
 @router.get("/task-types")
-def list_task_types(db: Session = Depends(get_db)):
+def list_task_types(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
+):
     types = (
         db.query(TaskType, ServicePackage)
         .join(ServicePackage, ServicePackage.id == TaskType.service_package_id)
@@ -457,6 +463,7 @@ def list_task_types(db: Session = Depends(get_db)):
 @router.get("/contracts-lookup")
 def lookup_contracts(
     db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
 ):
     """Return a lightweight list of contracts for the dropdown."""
     contracts = db.query(Contract, Customer, ServiceLine).outerjoin(Customer, Customer.id == Contract.customer_id).outerjoin(ServiceLine, ServiceLine.contract_id == Contract.id).order_by(Contract.created_at.desc()).all()
@@ -554,7 +561,7 @@ class StatusUpdateSchema(BaseModel):
 def create_hoso(
     payload: HosoCreateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_permission("workflow", "create"))
 ):
     try:
         task_type, package = _resolve_task_package(
@@ -627,7 +634,7 @@ def update_hoso_full(
     task_id: str,
     payload: HosoUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_permission("task_node", "update"))
 ):
     try:
         task_type, package = _resolve_task_package(
@@ -703,7 +710,7 @@ def update_hoso_full(
 def update_hoso_status(
     payload: StatusUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_permission("task_node", "update"))
 ):
     try:
         task = db.query(ProjectTask).filter(ProjectTask.id == payload.Mã_hồ_sơ).first()
