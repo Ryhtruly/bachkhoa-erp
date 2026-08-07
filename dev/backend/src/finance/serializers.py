@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from src.db.models import CashflowTransaction, Contract, Customer, ProjectTask, Employee
+from src.db.models import CashflowTransaction, Contract, Customer, ServiceLine, Employee
 
 def serialize_cashflow(t: CashflowTransaction, db: Session = None) -> dict:
     """Serialize 1 cashflow transaction."""
@@ -14,9 +14,9 @@ def serialize_cashflow(t: CashflowTransaction, db: Session = None) -> dict:
                 cust_name = cust.full_name if cust else ""
                 contract_label = f"{t.contract_id}" + (f" — {cust_name}" if cust_name else "")
         if t.project_id:
-            p = db.query(ProjectTask).filter(ProjectTask.id == t.project_id).first()
-            if p and p.task_name:
-                project_label = f"{t.project_id} — {p.task_name}"
+            p = db.query(ServiceLine).filter(ServiceLine.id == t.project_id).first()
+            if p and p.service_type:
+                project_label = f"{t.project_id} — {p.service_type}"
 
     return {
         "id": t.id,
@@ -57,7 +57,7 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
     } if customer_ids else {}
     
     projects = {
-        p.id: p for p in db.query(ProjectTask).filter(ProjectTask.id.in_(project_ids)).all()
+        p.id: p for p in db.query(ServiceLine).filter(ServiceLine.id.in_(project_ids)).all()
     } if project_ids else {}
 
     result = []
@@ -71,8 +71,8 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
             contract_label = f"{t.contract_id}" + (f" — {cust_name}" if cust_name else "")
         if t.project_id and t.project_id in projects:
             p = projects[t.project_id]
-            if p.task_name:
-                project_label = f"{t.project_id} — {p.task_name}"
+            if p.service_type:
+                project_label = f"{t.project_id} — {p.service_type}"
 
         result.append({
             "id": t.id,

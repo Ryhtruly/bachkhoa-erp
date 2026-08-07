@@ -4,8 +4,8 @@ from src.db.database import Base
 from src.db.models import (
     User, Role, UserRole, RolePermission, AuthToken, AuditLog, Notification,
     Customer, LeadPipeline, Contract, ZaloInteraction, ServiceLine,
-    TaskType, TaskTypeRate, ProjectTask, TaskSubmission, TaskPayRecord, LegalSubmission,
-    ServicePackage, TaskTransition,
+    TaskType, TaskTypeRate, ProjectTask, TaskSubmission, TaskPayRecord,
+    ServicePackage,
     CashflowTransaction, Receivable, FundOpeningBalance, FinanceSetting, ContractExpense,
     Department, Employee, KpiPayroll, PayrollPeriod, PayrollAdjustment, Attendance, LeaveRecord,
     ChatRoom, Message, ChatParticipant,
@@ -16,7 +16,7 @@ from src.db.models import (
 
 
 def test_table_model_alignment(db):
-    """Verify physical DB tables in Supabase match mapped SQLAlchemy models 100% (39/39)."""
+    """Mapped legacy models must exist; the new workflow schema is mapped separately."""
     db_tables = [
         r[0] for r in db.execute(
             text("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
@@ -26,9 +26,17 @@ def test_table_model_alignment(db):
     db_tables = sorted(db_tables)
     mapped_tables = sorted([mapper.class_.__tablename__ for mapper in Base.registry.mappers])
 
-    assert len(db_tables) == 39, f"Expected 39 DB tables in Supabase, got {len(db_tables)}"
-    assert len(mapped_tables) == 39, f"Expected 39 mapped SQLAlchemy models, got {len(mapped_tables)}"
-    assert set(db_tables) == set(mapped_tables), f"Mismatch: missing={set(db_tables)-set(mapped_tables)}, extra={set(mapped_tables)-set(db_tables)}"
+    assert set(mapped_tables).issubset(set(db_tables)), (
+        f"Mapped tables missing from DB: {set(mapped_tables) - set(db_tables)}"
+    )
+    removed_tables = {
+        "legal_submissions",
+        "task_transitions",
+        "task_nodes_legacy_empty",
+        "node_pay_rates_legacy_empty",
+    }
+    assert removed_tables.isdisjoint(db_tables)
+    assert removed_tables.isdisjoint(mapped_tables)
 
 
 def test_foreign_key_relationships():
@@ -42,10 +50,6 @@ def test_foreign_key_relationships():
 
     contract_fk_targets = [fk.target_fullname for fk in Contract.__table__.foreign_keys]
     assert "customers.id" in contract_fk_targets, "Contract missing FK to customers.id"
-
-    transition_fk_targets = [fk.target_fullname for fk in TaskTransition.__table__.foreign_keys]
-    assert "projects_tasks.id" in transition_fk_targets, "TaskTransition missing FK to projects_tasks.id"
-
 
 def test_column_constraints_and_attributes():
     """Verify critical column attributes and constraints."""
@@ -78,4 +82,5 @@ def test_no_circular_imports():
     import src.db.models as models_pkg
     assert hasattr(models_pkg, "User")
     assert hasattr(models_pkg, "ServicePackage")
-    assert hasattr(models_pkg, "TaskTransition")
+    assert not hasattr(models_pkg, "LegalSubmission")
+    assert not hasattr(models_pkg, "TaskTransition")

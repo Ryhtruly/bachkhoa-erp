@@ -13,7 +13,7 @@ class HopdongCreateSchema(BaseModel):
 
 class ContractGenerateSchema(BaseModel):
     SO_HOP_DONG: str
-    MA_HO_SO: str
+    MA_HO_SO: Optional[str] = ""
     TEN_KHACH_HANG: str
     SO_DIEN_THOAI: str
     KHACH_HANG_EMAIL: Optional[str] = ""

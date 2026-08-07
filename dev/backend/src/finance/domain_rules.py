@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 from typing import Optional
 
-from src.db.models import Contract, ProjectTask, Department, User, FundOpeningBalance
+from src.db.models import Contract, ServiceLine, Department, User, FundOpeningBalance
 from src.finance.repository import FinanceRepository
 
 def check_closed_period(db: Session, target_date: date):
@@ -48,11 +48,11 @@ def validate_contract(db: Session, contract_id: Optional[str]):
 def validate_project(db: Session, project_id: Optional[str]):
     if not project_id:
         return
-    exists = db.query(ProjectTask.id).filter(ProjectTask.id == project_id).first()
+    exists = db.query(ServiceLine.id).filter(ServiceLine.id == project_id).first()
     if not exists:
         raise HTTPException(
             status_code=400,
-            detail=f"Mã Hồ Sơ '{project_id}' không tồn tại."
+            detail=f"Mã Hạng mục '{project_id}' không tồn tại."
         )
 
 def validate_employee_payload(payload, db: Session):

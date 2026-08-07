@@ -1,12 +1,12 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract, or_
+from sqlalchemy import func, extract, or_, text
 from datetime import datetime, date, timezone, timedelta
 from typing import Optional, List, Dict
 
 from src.db.models import (
     CashflowTransaction, Contract, Customer, Receivable,
-    ProjectTask, Employee, Department, User, KpiPayroll,
+    ServiceLine, Employee, Department, User,
     FinanceSetting, FundOpeningBalance
 )
 
@@ -139,7 +139,7 @@ class FinanceRepository:
 
     @staticmethod
     def get_cashflow_by_project(db: Session, project_id: str) -> Dict:
-        project = db.query(ProjectTask).filter(ProjectTask.id == project_id).first()
+        project = db.query(ServiceLine).filter(ServiceLine.id == project_id).first()
         if not project:
             return None
 
@@ -152,7 +152,7 @@ class FinanceRepository:
 
         return {
             "project_id": project_id,
-            "task_name": project.task_name or "",
+            "task_name": project.service_type or "",
             "contract_id": project.contract_id or "",
             "tong_thu": thu,
             "tong_chi": chi,
@@ -285,24 +285,57 @@ class FinanceRepository:
                     status_code=422,
                     detail="Tháng phải có định dạng YYYY-MM.",
                 ) from exc
-        employees = db.query(Employee).filter(Employee.is_active == True).all()
-        result = []
-        for emp in employees:
-            q = db.query(KpiPayroll).filter(KpiPayroll.employee_id == emp.id)
-            if period_month:
-                q = q.filter(KpiPayroll.month == period_month)
-            kpi = q.order_by(KpiPayroll.created_at.desc()).first()
-            result.append({
-                "id": emp.id, "full_name": emp.full_name or "",
-                "department": emp.department or "",
-                "base_salary": float(emp.base_salary or 0),
-                "kpi_score": float(kpi.kpi_score or 0) if kpi else 0,
-                "bonus": float(kpi.bonus or 0) if kpi else 0,
-                "total_salary": float(kpi.total_salary or 0) if kpi else float(emp.base_salary or 0),
-                "month": kpi.month.strftime("%Y-%m") if kpi and kpi.month else (month or ""),
-                "tasks_completed": kpi.tasks_completed if kpi else 0,
-            })
-        return result
+        period_month = period_month or date.today().replace(day=1)
+        rows = db.execute(text("""
+            with period as (
+              select :period_month::date as start_date,
+                     (:period_month::date + interval '1 month')::date as end_date
+            ), base as (
+              select distinct on (employee_id) employee_id, base_salary
+              from public.employee_compensation_terms, period
+              where status = 'published'
+                and effective_from < period.end_date
+                and (effective_to is null or effective_to >= period.start_date)
+              order by employee_id, effective_from desc
+            ), piece as (
+              select employee_id, count(*) as tasks_completed,
+                     coalesce(sum(amount), 0) as piece_amount
+              from public.work_pay_entitlements, period
+              where status in ('eligible', 'approved', 'paid')
+                and earned_at >= period.start_date
+                and earned_at < period.end_date
+              group by employee_id
+            ), adjustments as (
+              select employee_id, coalesce(sum(amount), 0) as adjustment_amount
+              from public.employee_pay_adjustments, period
+              where status = 'approved'
+                and effective_date >= period.start_date
+                and effective_date < period.end_date
+              group by employee_id
+            )
+            select e.id, e.full_name, e.department,
+                   coalesce(b.base_salary, e.base_salary, 0) as base_salary,
+                   coalesce(p.piece_amount, 0) as piece_amount,
+                   coalesce(a.adjustment_amount, 0) as adjustment_amount,
+                   coalesce(p.tasks_completed, 0) as tasks_completed
+            from public.employees e
+            left join base b on b.employee_id = e.id
+            left join piece p on p.employee_id = e.id
+            left join adjustments a on a.employee_id = e.id
+            where coalesce(e.is_active, true)
+            order by e.full_name
+        """), {"period_month": period_month}).mappings().all()
+        return [{
+            "id": row["id"],
+            "full_name": row["full_name"] or "",
+            "department": row["department"] or "",
+            "base_salary": float(row["base_salary"] or 0),
+            "kpi_score": 0,
+            "bonus": float(row["piece_amount"] or 0) + float(row["adjustment_amount"] or 0),
+            "total_salary": float(row["base_salary"] or 0) + float(row["piece_amount"] or 0) + float(row["adjustment_amount"] or 0),
+            "month": period_month.strftime("%Y-%m"),
+            "tasks_completed": int(row["tasks_completed"] or 0),
+        } for row in rows]
 
     @staticmethod
     def list_worker_wages_formatted(db: Session, project_id: Optional[str] = None) -> dict:
@@ -405,7 +438,7 @@ class FinanceRepository:
         ).group_by(CashflowTransaction.project_id).all()
 
         pc_map = {p.id: p.contract_id for p in
-                  db.query(ProjectTask).filter(ProjectTask.contract_id.isnot(None)).all()}
+                  db.query(ServiceLine).filter(ServiceLine.contract_id.isnot(None)).all()}
         thu_map = {r.contract_id: float(r[1]) for r in thu_by_c}
         chi_map: dict = {}
         for r in chi_by_p:
@@ -448,8 +481,8 @@ class FinanceRepository:
         }
 
     @staticmethod
-    def list_projects(db: Session) -> List[ProjectTask]:
-        return db.query(ProjectTask).order_by(ProjectTask.created_at.desc()).limit(300).all()
+    def list_projects(db: Session) -> List[ServiceLine]:
+        return db.query(ServiceLine).order_by(ServiceLine.id.desc()).limit(300).all()
 
     @staticmethod
     def get_finance_settings(db: Session) -> Dict:

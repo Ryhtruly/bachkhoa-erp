@@ -1,44 +1,50 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from src.db.database import get_db
-from src.db.models import ProjectTask, Contract, Receivable, Customer, CashflowTransaction
+from src.db.models import Contract, Receivable, Customer, CashflowTransaction
 
 router = APIRouter(prefix="/api", tags=["Dashboard & Config"])
 
 @router.get("/dashboard/summary")
 def get_dashboard(db: Session = Depends(get_db)):
     try:
-        total_hoso = db.query(ProjectTask).count()
-        completed = db.query(ProjectTask).filter(ProjectTask.status.in_(["Hoàn thành", "Nộp thành công - Chờ kết quả"])).count()
-        in_progress = db.query(ProjectTask).filter(~ProjectTask.status.in_(["Hoàn thành", "Đã hủy", "Nộp thành công - Chờ kết quả"])).count()
-        
-        # Simple overdue checking logic for now (could be refined with actual date comparisons)
-        import datetime
-        overdue = db.query(ProjectTask).filter(
-            ProjectTask.deadline < datetime.datetime.now().date(),
-            ~ProjectTask.status.in_(["Hoàn thành", "Đã hủy"])
-        ).count()
+        total_hoso = db.execute(text("select count(*) from public.service_lines")).scalar_one()
+        completed = db.execute(text(
+            "select count(*) from public.workflow_instances where status = 'completed'"
+        )).scalar_one()
+        in_progress = db.execute(text(
+            "select count(*) from public.workflow_instances "
+            "where status in ('not_started', 'running', 'paused')"
+        )).scalar_one()
+        overdue = db.execute(text("""
+            select count(*)
+            from public.task_nodes
+            where planned_end < now()
+              and status not in ('completed', 'skipped', 'cancelled')
+        """)).scalar_one()
         
         total_val = db.query(func.sum(Contract.total_value)).scalar() or 0.0
         total_collected = db.query(func.sum(Receivable.paid_amount)).scalar() or 0.0
         debt = total_val - total_collected
 
-        recent_tasks = db.query(ProjectTask).order_by(ProjectTask.created_at.desc()).limit(10).all()
-        recent_hoso = []
-        for t in recent_tasks:
-            contract = db.query(Contract).filter(Contract.id == t.contract_id).first() if t.contract_id else None
-            customer = db.query(Customer).filter(Customer.id == contract.customer_id).first() if contract and contract.customer_id else None
-            recent_hoso.append({
-                "id": t.id,
-                "service_type": t.task_name,
-                "status": t.status,
-                "customer_name": customer.full_name if customer else "",
-                "area": customer.address if customer else "",
-                "pic_main": t.assignee_id or "",
-                "deadline": t.deadline.strftime("%Y-%m-%d") if t.deadline else "",
-                "Cảnh báo": "Trong hạn"
-            })
+        recent_hoso = [dict(row) for row in db.execute(text("""
+            select sl.id,
+                   coalesce(tt.name, sl.service_type, '') as service_type,
+                   coalesce(wi.status, 'not_started') as status,
+                   coalesce(cu.full_name, '') as customer_name,
+                   coalesce(sl.target_property, cu.address, '') as area,
+                   '' as pic_main,
+                   '' as deadline,
+                   'Trong hạn' as "Cảnh báo"
+            from public.service_lines sl
+            join public.contracts c on c.id = sl.contract_id
+            left join public.customers cu on cu.id = c.customer_id
+            left join public.task_types tt on tt.id = sl.task_type_id
+            left join public.workflow_instances wi on wi.service_line_id = sl.id
+            order by coalesce(wi.updated_at, wi.created_at) desc nulls last, sl.id desc
+            limit 10
+        """)).mappings().all()]
 
         return {
             "stats": {
@@ -97,12 +103,16 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
         bar_data = [{"service": k, "revenue": v} for k, v in revenue_by_service.items()]
         bar_data.sort(key=lambda x: x["revenue"], reverse=True)
         
-        tasks = db.query(ProjectTask).all()
-        status_counts = {}
-        for t in tasks:
-            st = t.status or "Khác"
-            status_counts[st] = status_counts.get(st, 0) + 1
-        pie_status_data = [{"name": k, "value": v} for k, v in status_counts.items()]
+        status_rows = db.execute(text("""
+            select status, count(*) as value
+            from public.workflow_instances
+            group by status
+            order by status
+        """)).mappings().all()
+        pie_status_data = [
+            {"name": row["status"] or "Khác", "value": row["value"]}
+            for row in status_rows
+        ]
         
         cashflow = db.query(CashflowTransaction).filter(CashflowTransaction.loai == "Chi").all()
         expense_cats = {}

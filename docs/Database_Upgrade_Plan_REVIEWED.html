@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Database Upgrade Plan — Dynamic Workflow</title>
+  <style>
+    :root {
+      --ink:#172033; --muted:#667085; --line:#d8dee9; --soft:#f5f7fb;
+      --navy:#243b67; --brand:#e65332; --green:#177245; --amber:#a56300;
+      --red:#b42318; --blue:#2457c5; --white:#fff;
+    }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; font:15px/1.55 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#eef2f7; }
+    header { padding:42px max(24px, calc((100vw - 1320px)/2)); color:white; background:linear-gradient(125deg,#172a50,#294a81 70%,#e65332 160%); }
+    header h1 { margin:0 0 6px; font-size:clamp(28px,4vw,44px); line-height:1.15; }
+    header p { margin:4px 0; color:#dbe6f7; }
+    .toolbar { margin-top:18px; display:flex; gap:10px; flex-wrap:wrap; }
+    button { border:1px solid rgba(255,255,255,.35); border-radius:9px; padding:9px 13px; color:white; background:rgba(255,255,255,.10); cursor:pointer; font-weight:650; }
+    button:hover { background:rgba(255,255,255,.20); }
+    .layout { max-width:1320px; margin:22px auto 60px; padding:0 20px; display:grid; grid-template-columns:250px minmax(0,1fr); gap:22px; align-items:start; }
+    nav { position:sticky; top:18px; padding:16px; border:1px solid var(--line); border-radius:14px; background:white; box-shadow:0 8px 28px rgba(30,48,77,.07); }
+    nav strong { display:block; margin:0 0 8px; color:var(--navy); }
+    nav a { display:block; padding:7px 9px; border-radius:7px; color:#43506a; text-decoration:none; }
+    nav a:hover { color:var(--brand); background:#fff1ec; }
+    main { min-width:0; }
+    section { margin-bottom:20px; padding:24px; border:1px solid var(--line); border-radius:14px; background:white; box-shadow:0 8px 28px rgba(30,48,77,.06); }
+    h2 { margin:0 0 16px; color:var(--navy); font-size:24px; }
+    h3 { margin:28px 0 10px; color:#283c60; font-size:18px; }
+    h3:first-child { margin-top:0; }
+    code { padding:2px 5px; border-radius:5px; color:#1d355b; background:#edf2f8; font:13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .notice { margin:14px 0; padding:13px 15px; border-left:4px solid #f0a128; border-radius:7px; background:#fff7e8; }
+    .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .card { padding:18px; border:1px solid var(--line); border-radius:11px; background:linear-gradient(180deg,#fff,#f8faff); }
+    .card b { display:block; color:var(--brand); font-size:32px; line-height:1; }
+    .card span { display:block; margin-top:8px; color:var(--muted); }
+    .table-wrap { overflow:auto; border:1px solid var(--line); border-radius:10px; }
+    table { width:100%; border-collapse:separate; border-spacing:0; min-width:760px; }
+    th { position:sticky; top:0; z-index:1; padding:11px 12px; text-align:left; color:white; background:var(--navy); font-size:13px; letter-spacing:.01em; }
+    td { padding:10px 12px; border-top:1px solid var(--line); vertical-align:top; }
+    tbody tr:nth-child(even) td { background:#f8faff; }
+    tbody tr:hover td { background:#fff8f4; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; white-space:nowrap; font-size:12px; font-weight:750; }
+    .keep { color:var(--green); background:#eaf8f0; }
+    .change { color:var(--amber); background:#fff4db; }
+    .remove { color:var(--red); background:#ffebe8; }
+    .add { color:var(--blue); background:#eaf0ff; }
+    .schema { scroll-margin-top:15px; }
+    .schema-note { margin:-4px 0 10px; color:var(--muted); }
+    .flow { padding:15px; overflow:auto; border-radius:9px; color:white; background:#243b67; font:600 14px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:nowrap; }
+    footer { color:var(--muted); text-align:center; padding:0 20px 35px; }
+    @media (max-width:900px) { .layout{grid-template-columns:1fr} nav{position:static}.cards{grid-template-columns:1fr} section{padding:18px} }
+    @media print { body{background:white}.layout{display:block;max-width:none;margin:0;padding:0}nav,.toolbar{display:none}section{box-shadow:none;break-inside:avoid;margin:0 0 14px}header{padding:22px;background:white;color:var(--ink);border-bottom:2px solid var(--navy)}header p{color:var(--muted)}.table-wrap{overflow:visible}table{min-width:0;font-size:11px}th{position:static} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Database Upgrade Plan</h1>
+    <p><strong>Dynamic Workflow và Khoán theo Node — Bản đã rà soát</strong></p>
+    <p>Ngày cập nhật: 03/08/2026 · Thiết kế để duyệt, chưa chạy migration</p>
+    <div class="toolbar"><button onclick="window.print()">In / Xuất PDF</button><button onclick="document.getElementById('changes').scrollIntoView()">Xem chỗ cần sửa</button></div>
+  </header>
+
+  <div class="layout">
+    <nav>
+      <strong>Mục lục</strong>
+      <a href="#summary">1. Tổng quan</a>
+      <a href="#changes">2. Chỗ cần sửa</a>
+      <a href="#new-tables">3. 10 bảng mới</a>
+      <a href="#pay-records">4. Bảng cần chỉnh</a>
+      <a href="#reuse">5. Bảng dùng lại</a>
+      <a href="#jsonb">6. Dữ liệu JSONB</a>
+      <a href="#flow">7. Luồng dữ liệu</a>
+    </nav>
+
+    <main>
+      <section id="summary">
+        <h2>1. Tổng quan</h2>
+        <div class="cards">
+          <div class="card"><b>10</b><span>Bảng mới: 4 cấu hình + 5 thực thi + 1 đơn giá</span></div>
+          <div class="card"><b>1</b><span>Bảng hiện có cần chỉnh: <code>task_pay_records</code></span></div>
+          <div class="card"><b>7</b><span>Bảng hiện có dùng lại, không tạo bản sao</span></div>
+        </div>
+        <div class="notice"><strong>Mục tiêu:</strong> chỉ rõ bảng nào tạo/sửa, cột dữ liệu, kiểu dữ liệu, khóa liên kết và lý do. File này không tự thay đổi database.</div>
+      </section>
+
+      <section id="changes">
+        <h2>2. Bản đề xuất cũ cần sửa chỗ nào?</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Nội dung cũ</th><th>Xử lý</th><th>Thiết kế thay thế</th><th>Lý do</th></tr></thead>
+          <tbody id="changes-body"></tbody>
+        </table></div>
+      </section>
+
+      <section id="new-tables">
+        <h2>3. Mười bảng mới</h2>
+        <div id="schemas"></div>
+      </section>
+
+      <section id="pay-records">
+        <h2>4. Bảng hiện có cần chỉnh</h2>
+        <h3><code>task_pay_records</code></h3>
+        <p class="schema-note">Bổ sung nguồn phát sinh khoán; giữ liên kết Task để tương thích dữ liệu cũ.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Cột</th><th>Kiểu dữ liệu</th><th>Thao tác</th><th>Ý nghĩa</th></tr></thead>
+          <tbody id="pay-body"></tbody>
+        </table></div>
+      </section>
+
+      <section id="reuse">
+        <h2>5. Bảy bảng hiện có dùng lại</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Bảng</th><th>Vai trò</th><th>Ghi chú</th></tr></thead>
+          <tbody id="reuse-body"></tbody>
+        </table></div>
+      </section>
+
+      <section id="jsonb">
+        <h2>6. Dữ liệu lưu JSONB</h2>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Bảng.cột</th><th>Nội dung linh hoạt</th><th>Không thay thế dữ liệu cột chuẩn</th></tr></thead>
+          <tbody id="json-body"></tbody>
+        </table></div>
+      </section>
+
+      <section id="flow">
+        <h2>7. Luồng dữ liệu chuẩn</h2>
+        <div class="flow">Service Line → Task → Workflow Instance → Task Nodes → Assignments → Acceptance → Pay Records</div>
+        <ul>
+          <li>Node chỉ sinh khoán sau khi được nghiệm thu <strong>ACCEPTED</strong>.</li>
+          <li>Một Node có thể có một hoặc nhiều người; vai trò và khoản khoán đi theo assignment.</li>
+          <li>Task đang chạy giữ snapshot cũ dù Giám đốc xuất bản phiên bản workflow mới.</li>
+          <li>Khi triển khai Supabase: bật RLS, policy theo vai trò, index cho FK và các cột truy vấn chính.</li>
+        </ul>
+        <div class="notice"><strong>Trước migration:</strong> phải đối chiếu kiểu khóa chính thật của <code>users</code>, <code>employees</code>, <code>projects_tasks</code>, <code>task_types</code>, <code>service_packages</code> và <code>payroll_periods</code>.</div>
+      </section>
+    </main>
+  </div>
+
+  <footer>Nhà Đất Bách Khoa · Tài liệu thiết kế database Phase 3</footer>
+
+  <script>
+    const badge = (text, kind) => `<span class="badge ${kind}">${text}</span>`;
+    const code = value => `<code>${value}</code>`;
+
+    const changes = [
+      ['workflow_nodes', badge('ĐỔI TÊN + CHUẨN HÓA','change'), code('workflow_node_definitions'), 'Phân biệt định nghĩa K01–K09 với Node thực tế của Task.'],
+      ['workflows', badge('TÁCH 2 BẢNG','change'), `${code('workflow_templates')} + ${code('workflow_versions')}`, 'Cho phép sửa quy trình nhưng Task cũ vẫn giữ đúng phiên bản.'],
+      ['workflow_sequences', badge('BỎ','remove'), `${code('workflow_versions.definition')} JSONB`, 'Danh sách tuyến tính không biểu diễn được rẽ nhánh, chờ và vòng bổ sung.'],
+      ['projects_tasks.workflow_id', badge('KHÔNG THÊM','remove'), code('workflow_instances.task_id'), 'Tách Task khỏi dữ liệu chạy workflow và lưu snapshot phiên bản.'],
+      ['projects_tasks.current_node', badge('KHÔNG THÊM','remove'), `Suy ra từ ${code('task_nodes')}`, 'Tránh hai nguồn trạng thái bị lệch.'],
+      ['task_nodes.assignee_id', badge('TÁCH RA','change'), code('task_node_assignments'), 'Một Node có thể có người chính, phụ, viết, nộp và nghiệm thu.'],
+      ['4 trạng thái Node', badge('MỞ RỘNG','change'), 'State machine có SUBMITTED, REWORK_REQUIRED, ACCEPTED…', 'Tách “làm xong” khỏi “nghiệm thu đạt”.'],
+      ['node_pay_rates.service_type', badge('THAY BẰNG FK','change'), `${code('service_package_id')} + ${code('task_type_id')}`, 'Liên kết đúng Gói/Hạng mục, không lưu tên tự do.'],
+      ['Completed → tự sinh lương', badge('SỬA ĐIỀU KIỆN','change'), 'ACCEPTED + idempotency key', 'Không trả khoán cho Node chưa nghiệm thu hoặc bị trả lại.'],
+      ['Thiếu mapping, phiên chạy, audit, nghiệm thu', badge('THÊM','add'), 'Bindings + Instances + Events + Acceptances', 'Đủ dữ liệu vận hành, truy vết và tính khoán.']
+    ];
+
+    const schemas = [
+      {name:'workflow_node_definitions', note:'Danh mục cụm công việc K01–K09.', rows:[
+        ['id','UUID','PK, DEFAULT gen_random_uuid()','ID nội bộ'],['code','TEXT','UNIQUE, NOT NULL','Mã K01…K09'],['name','TEXT','NOT NULL','Tên cụm công việc'],['description','TEXT','NULL','Đầu ra nghiệm thu chuẩn'],['is_active','BOOLEAN','NOT NULL, DEFAULT TRUE','Ngừng dùng mềm'],['created_at','TIMESTAMPTZ','NOT NULL, DEFAULT now()','Ngày tạo'],['updated_at','TIMESTAMPTZ','NOT NULL, DEFAULT now()','Ngày cập nhật']
+      ]},
+      {name:'workflow_templates', note:'Thông tin chung của mẫu quy trình.', rows:[
+        ['id','UUID','PK','ID mẫu'],['code','TEXT','UNIQUE, NOT NULL','Ví dụ PL_CAP_DOI'],['name','TEXT','NOT NULL','Tên hiển thị'],['description','TEXT','NULL','Mô tả phạm vi'],['is_active','BOOLEAN','NOT NULL, DEFAULT TRUE','Cho phép dùng'],['created_by','TEXT','FK → users.id','Người tạo'],['created_at / updated_at','TIMESTAMPTZ','NOT NULL','Audit thời gian']
+      ]},
+      {name:'workflow_versions', note:'Phiên bản sơ đồ kéo thả; phiên đã xuất bản không sửa trực tiếp.', rows:[
+        ['id','UUID','PK','ID phiên bản'],['workflow_template_id','UUID','FK → workflow_templates.id, NOT NULL','Thuộc mẫu'],['version_no','INTEGER','NOT NULL, CHECK > 0','Số phiên bản'],['status','TEXT','DRAFT/PUBLISHED/ARCHIVED','Trạng thái xuất bản'],['schema_version','INTEGER','NOT NULL, DEFAULT 1','Phiên bản cấu trúc JSON'],['definition','JSONB','NOT NULL','Nodes, edges, layout, checklist, điều kiện'],['definition_hash','TEXT','NULL','Kiểm tra snapshot'],['created_by / published_by','TEXT','FK → users.id','Người tạo/xuất bản'],['created_at / published_at','TIMESTAMPTZ','published_at có thể NULL','Audit thời gian']
+      ]},
+      {name:'task_type_workflow_bindings', note:'Gắn từng Hạng mục với phiên bản quy trình mặc định.', rows:[
+        ['id','UUID','PK','ID mapping'],['task_type_id','TEXT','FK → task_types.id, NOT NULL','Hạng mục'],['workflow_version_id','UUID','FK → workflow_versions.id, NOT NULL','Phiên bản mặc định'],['is_default','BOOLEAN','NOT NULL, DEFAULT TRUE','Mapping mặc định'],['effective_from / effective_to','DATE','effective_to có thể NULL','Khoảng hiệu lực'],['created_by','TEXT','FK → users.id','Người cấu hình']
+      ]},
+      {name:'workflow_instances', note:'Một lần chạy workflow của một Task.', rows:[
+        ['id','UUID','PK','ID phiên chạy'],['task_id','TEXT','FK → projects_tasks.id, UNIQUE, NOT NULL','Mỗi Task một workflow chính'],['workflow_version_id','UUID','FK → workflow_versions.id, NOT NULL','Phiên bản đã chọn'],['definition_snapshot','JSONB','NOT NULL','Bản chụp bất biến'],['status','TEXT','NOT_STARTED/RUNNING/PAUSED/COMPLETED/CANCELLED','Trạng thái quy trình'],['started_at / completed_at','TIMESTAMPTZ','NULL khi chưa phát sinh','Mốc thực hiện'],['created_by','TEXT','FK → users.id','Người khởi tạo'],['created_at','TIMESTAMPTZ','NOT NULL, DEFAULT now()','Ngày tạo']
+      ]},
+      {name:'task_nodes', note:'Các Node thực tế được sinh ra cho Task.', rows:[
+        ['id','UUID','PK','ID Node'],['workflow_instance_id','UUID','FK → workflow_instances.id, NOT NULL','Thuộc phiên chạy'],['template_node_key','TEXT','NOT NULL','Khóa trong JSON template'],['node_type','TEXT','START/END/K_NODE/DECISION/WAIT','Loại Node'],['node_code','TEXT','NULL với Node hệ thống','K01–K09'],['occurrence_no','INTEGER','NOT NULL, DEFAULT 1','Lần chạy/bổ sung'],['status','TEXT','PENDING/READY/IN_PROGRESS/SUBMITTED/REWORK_REQUIRED/ACCEPTED/BLOCKED/SKIPPED/CANCELLED','Trạng thái Node'],['is_required','BOOLEAN','NOT NULL','Bắt buộc/tùy chọn'],['config_snapshot','JSONB','NOT NULL','Checklist, role, minh chứng, lịch, pay policy'],['planned_start / planned_end','TIMESTAMPTZ','NULL','Dữ liệu timetable'],['started_at / submitted_at / accepted_at / completed_at','TIMESTAMPTZ','NULL theo trạng thái','Mốc thực tế'],['blocked_reason','TEXT','NULL','Lý do chặn'],['created_at / updated_at','TIMESTAMPTZ','NOT NULL','Audit thời gian']
+      ]},
+      {name:'task_node_assignments', note:'Phân công linh hoạt một hoặc nhiều người cho một Node.', rows:[
+        ['id','UUID','PK','ID phân công'],['task_node_id','UUID','FK → task_nodes.id, NOT NULL','Node được giao'],['employee_id','TEXT','FK → employees.id, NOT NULL','Nhân viên'],['role_code','TEXT','MAIN/ASSISTANT/WRITER/SUBMITTER/REVIEWER/SPECIALIST','Vai trò'],['assignment_status','TEXT','PROPOSED/ASSIGNED/ACCEPTED/DECLINED/COMPLETED/REPLACED','Trạng thái giao việc'],['is_primary','BOOLEAN','NOT NULL, DEFAULT FALSE','Phụ trách chính'],['planned_start / planned_end','TIMESTAMPTZ','NULL','Lịch cá nhân'],['assigned_by','TEXT','FK → users.id','Người giao'],['assigned_at / ended_at','TIMESTAMPTZ','ended_at có thể NULL','Thời gian hiệu lực'],['replacement_reason','TEXT','NULL','Lý do thay người']
+      ]},
+      {name:'task_node_events', note:'Nhật ký sự kiện bất biến để audit.', rows:[
+        ['id','UUID','PK','ID sự kiện'],['task_node_id','UUID','FK → task_nodes.id, NOT NULL','Node phát sinh'],['event_type','TEXT','NOT NULL','ASSIGNED/STARTED/SUBMITTED/ACCEPTED/REWORK/BLOCKED…'],['actor_user_id','TEXT','FK → users.id','Người thao tác'],['payload','JSONB','NOT NULL, DEFAULT {}','Chi tiết sự kiện'],['created_at','TIMESTAMPTZ','NOT NULL, DEFAULT now()','Thời điểm']
+      ]},
+      {name:'task_node_acceptances', note:'Lưu từng lần gửi và kết quả nghiệm thu.', rows:[
+        ['id','UUID','PK','ID lần nghiệm thu'],['task_node_id','UUID','FK → task_nodes.id, NOT NULL','Node được duyệt'],['attempt_no','INTEGER','NOT NULL, CHECK > 0','Lần gửi'],['decision','TEXT','ACCEPTED/REWORK_REQUIRED/REJECTED','Kết quả'],['reviewer_user_id','TEXT','FK → users.id, NOT NULL','Người duyệt'],['submission_payload','JSONB','NOT NULL','Checklist/minh chứng snapshot'],['review_payload','JSONB','NOT NULL, DEFAULT {}','Điểm và ghi chú'],['decided_at','TIMESTAMPTZ','NOT NULL','Thời điểm quyết định']
+      ]},
+      {name:'node_pay_rates', note:'Đơn giá khoán theo Node, Gói, Hạng mục, vai trò và thời gian.', rows:[
+        ['id','UUID','PK','ID đơn giá'],['node_definition_id','UUID','FK → workflow_node_definitions.id, NOT NULL','K01–K09'],['service_package_id','TEXT','FK → service_packages.id, NULL','NULL = mọi Gói'],['task_type_id','TEXT','FK → task_types.id, NULL','NULL = mọi Hạng mục trong scope'],['role_code','TEXT','NOT NULL','Vai trò nhận khoán'],['pay_component_code','TEXT','NOT NULL','Mã khoản lương'],['base_amount','NUMERIC(14,2)','NOT NULL, CHECK >= 0','Số tiền'],['currency','CHAR(3)','NOT NULL, DEFAULT VND','Đơn vị tiền'],['conditions','JSONB','NOT NULL, DEFAULT {}','Điều kiện/hệ số'],['effective_from / effective_to','DATE','effective_to có thể NULL','Khoảng hiệu lực'],['is_active','BOOLEAN','NOT NULL, DEFAULT TRUE','Cho phép áp dụng'],['created_by','TEXT','FK → users.id','Người cấu hình'],['created_at','TIMESTAMPTZ','NOT NULL','Ngày tạo']
+      ]}
+    ];
+
+    const payRows = [
+      ['task_id','TEXT',badge('GIỮ','keep'),'Truy vết Task và tương thích legacy'],['task_node_id','UUID',badge('THÊM FK','add'),'Node tạo khoản tiền'],['assignment_id','UUID',badge('THÊM FK','add'),'Người + vai trò thực hiện'],['employee_id','TEXT',badge('GIỮ / CHUẨN HÓA','keep'),'Người nhận tiền'],['acceptance_id','UUID',badge('THÊM FK','add'),'Nghiệm thu cho phép trả'],['node_pay_rate_id','UUID',badge('THÊM FK','add'),'Đơn giá đã dùng'],['pay_component_code','TEXT',badge('THÊM','add'),'Loại khoản'],['amount','NUMERIC(14,2)',badge('GIỮ / CHUẨN HÓA','keep'),'Số tiền snapshot'],['calculation_snapshot','JSONB',badge('THÊM','add'),'Rate, hệ số và phép tính'],['idempotency_key','TEXT UNIQUE',badge('THÊM','add'),'Chống sinh trùng'],['payroll_period_id','Kiểu hiện tại',badge('GIỮ FK','keep'),'Kỳ lương'],['payment_status','TEXT',badge('MỞ RỘNG','change'),'ELIGIBLE/APPROVED/LOCKED/PAID/VOID'],['created_at','TIMESTAMPTZ',badge('GIỮ','keep'),'Ngày tạo khoản']
+    ];
+
+    const reused = [
+      ['projects_tasks','Task chính của một Hạng mục','Không thêm workflow_id/current_node'],['task_types','Danh mục Hạng mục đúng theo Gói','Dùng FK trong mapping và bảng giá'],['service_packages','Gói Đo Vẽ/Pháp Lý/Xây Dựng','Không lưu tên Gói tự do'],['service_lines','Hạng mục khách mua trong hợp đồng','Mỗi Service Line tạo đúng một Task'],['users','Tài khoản thao tác','Nguồn created_by/reviewer/actor'],['employees','Hồ sơ nhân viên','Nguồn phân công và nhận lương'],['payroll_periods','Kỳ lương','Khóa khoản đã chốt theo tháng']
+    ];
+
+    const jsonb = [
+      ['workflow_versions.definition','Nodes, edges, vị trí, checklist, điều kiện','ID, status, quan hệ FK'],['workflow_instances.definition_snapshot','Bản chụp workflow lúc Task bắt đầu','Trạng thái phiên chạy'],['task_nodes.config_snapshot','Checklist, minh chứng, role, lịch, pay policy','Status và timestamp cần truy vấn'],['task_node_events.payload','Chi tiết theo loại event','event_type, actor, created_at'],['task_node_acceptances.submission_payload','Checklist/minh chứng tại lần gửi','decision và reviewer'],['node_pay_rates.conditions','Điều kiện và hệ số linh hoạt','Số tiền và thời gian hiệu lực'],['task_pay_records.calculation_snapshot','Phép tính tại lúc nghiệm thu','amount, employee, payment_status']
+    ];
+
+    const rowHtml = row => `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`;
+    document.getElementById('changes-body').innerHTML = changes.map(rowHtml).join('');
+    document.getElementById('pay-body').innerHTML = payRows.map(row => rowHtml([code(row[0]),code(row[1]),row[2],row[3]])).join('');
+    document.getElementById('reuse-body').innerHTML = reused.map(row => rowHtml([code(row[0]),row[1],row[2]])).join('');
+    document.getElementById('json-body').innerHTML = jsonb.map(row => rowHtml([code(row[0]),row[1],row[2]])).join('');
+    document.getElementById('schemas').innerHTML = schemas.map((schema,index) => `
+      <div class="schema" id="schema-${index+1}">
+        <h3>3.${index+1} ${code(schema.name)}</h3>
+        <p class="schema-note">${schema.note}</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Cột</th><th>Kiểu dữ liệu</th><th>Ràng buộc</th><th>Ý nghĩa</th></tr></thead>
+          <tbody>${schema.rows.map(row => rowHtml([code(row[0]),code(row[1]),row[2],row[3]])).join('')}</tbody>
+        </table></div>
+      </div>`).join('');
+  </script>
+</body>
+</html>

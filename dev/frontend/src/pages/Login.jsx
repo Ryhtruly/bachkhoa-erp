@@ -1,10 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 export default function Login({ onLogin }) {
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onLogin('');
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || 'Không thể đăng nhập');
+      onLogin(payload.token);
+    } catch (loginError) {
+      setError(loginError.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -27,6 +46,9 @@ export default function Login({ onLogin }) {
             <input
               type="text"
               placeholder="Tên đăng nhập"
+              value={username}
+              onChange={event => setUsername(event.target.value)}
+              required
             />
           </div>
           <div className="input-wrap">
@@ -39,10 +61,14 @@ export default function Login({ onLogin }) {
             <input
               type="password"
               placeholder="Mật khẩu"
+              value={password}
+              onChange={event => setPassword(event.target.value)}
+              required
             />
           </div>
-          <button type="submit" className="btn btn-primary login-btn">
-            Đăng nhập
+          {error && <p className="login-error">{error}</p>}
+          <button type="submit" className="btn btn-primary login-btn" disabled={loading}>
+            {loading ? 'Đang đăng nhập…' : 'Đăng nhập'}
           </button>
         </form>
       </div>

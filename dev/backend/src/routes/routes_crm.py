@@ -9,7 +9,7 @@ import os
 from docxtpl import DocxTemplate
 
 from src.db.database import get_db
-from src.db.models import LeadPipeline, Customer, ProjectTask, Contract, AuditLog
+from src.db.models import LeadPipeline, Customer, ServiceLine, Contract, AuditLog
 from src.contracts import sync_contract_read_model_after_write
 from src.core.auth import require_permission, User
 
@@ -177,17 +177,16 @@ def update_lead_status(
         )
         db.add(new_contract)
         
-        # Tạo ProjectTask Tự Động cho bộ phận Kỹ thuật
-        task_id = f"BK-HS-AUTO-{str(uuid.uuid4())[:4].upper()}"
-        new_task = ProjectTask(
-            id=task_id,
+        # Mỗi dịch vụ khách chốt là một Hạng mục hợp đồng. Workflow chỉ được
+        # tạo/kích hoạt sau khi Giám đốc thiết lập quy trình cho Hạng mục này.
+        new_service_line = ServiceLine(
+            id=f"SL-AUTO-{str(uuid.uuid4())[:8].upper()}",
             contract_id=contract_id,
-            task_name=lead.requirements or "Chờ phân công",
-            status="Mới tiếp nhận",
-            deadline=datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=7),
-            priority="Cao"
+            service_type=lead.requirements or "Dịch vụ tự động",
+            target_property=customer.address if customer else None,
+            price=numeric_total_value,
         )
-        db.add(new_task)
+        db.add(new_service_line)
         contract_created = True
 
     db.add(AuditLog(
@@ -201,4 +200,3 @@ def update_lead_status(
     if contract_created:
         sync_contract_read_model_after_write(db)
     return {"status": "success", "data": {"id": lead.id, "status": lead.status}}
-

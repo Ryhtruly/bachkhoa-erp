@@ -1,42 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSignature, Table, Printer, Download, Plus, MoveHorizontal } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSignature, Table, Printer, Download, Plus, MoveHorizontal, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow, FormGrid, DataTable, StatusBadge, FilterBar } from '../components/ui';
+import '../components/contracts/contracts.css';
 
-const CHILD_CONTRACT_PATTERN = /^(.*)-(\d+)\/(BK-\d{4})$/i;
+const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
+
 const CONTRACT_GROUPS_PER_PAGE = 15;
-
-function getContractHierarchy(contract) {
-  const contractId = String(contract['Mã hợp đồng'] || '').trim();
-  const apiGroupId = contract['Mã hợp đồng nhóm'];
-  const apiChildNumber = contract['Số thứ tự hợp đồng con'];
-
-  if (apiGroupId) {
-    return {
-      groupId: apiGroupId,
-      childNumber: apiChildNumber === null || apiChildNumber === undefined || apiChildNumber === ''
-        ? null
-        : Number(apiChildNumber),
-    };
-  }
-
-  const match = contractId.match(CHILD_CONTRACT_PATTERN);
-  if (!match) return { groupId: contractId, childNumber: null };
-
-  return {
-    groupId: `${match[1]}/${match[3]}`,
-    childNumber: Number(match[2]),
-  };
-}
-
-function commonValue(rows, key, multipleLabel = 'Nhiều giá trị') {
-  const values = [...new Set(rows.map(row => row[key]).filter(Boolean))];
-  if (values.length === 0) return '';
-  return values.length === 1 ? values[0] : multipleLabel;
-}
-
-function earliestDate(rows, key) {
-  return rows.map(row => row[key]).filter(Boolean).sort()[0] || '';
+function getContractId(contract) {
+  return contract?.['Mã hợp đồng'] || contract?.id || '';
 }
 
 function EllipsisCell({ value }) {
@@ -63,20 +35,16 @@ function getPaginationItems(currentPage, totalPages) {
 
 export default function Hopdong() {
   const [contracts, setContracts] = useState([]);
-  const [hosoList, setHosoList] = useState([]);
-  const [hosoLoading, setHosoLoading] = useState(false);
   const [config, setConfig] = useState({ personnel: [], services: [] });
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState({});
+  const [contractView, setContractView] = useState('list');
+  const [selectedContract, setSelectedContract] = useState(null);
   const { addToast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterValues, setFilterValues] = useState({ status: 'All', service: 'All' });
-  const [dateFilterMode, setDateFilterMode] = useState('day'); // 'day' | 'month' | 'year'
+  const [filterValues, setFilterValues] = useState({ service: 'All' });
   const [signedDate, setSignedDate] = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
-  const [filterYear, setFilterYear] = useState('');
   const [sort, setSort] = useState('desc');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -88,7 +56,7 @@ export default function Hopdong() {
   });
 
   const [formData, setFormData] = useState({
-    SO_HOP_DONG: '', MA_HO_SO: '', TEN_KHACH_HANG: '', SO_DIEN_THOAI: '',
+    SO_HOP_DONG: '', TEN_KHACH_HANG: '', SO_DIEN_THOAI: '',
     KHACH_HANG_EMAIL: 'admin@nhadatbachkhoa.com', LOAI_DICH_VU: '',
     DIA_CHI: '', GIA_TRI_HOP_DONG: '', NGAY_KY: '', NGAY_HET_HAN: '', Sale_nguồn: ''
   });
@@ -108,17 +76,18 @@ export default function Hopdong() {
         page_size: String(CONTRACT_GROUPS_PER_PAGE),
         sort,
       });
-      if (dateFilterMode === 'day' && signedDate) params.set('date_signed', signedDate);
-      if (dateFilterMode === 'month' && filterMonth && filterYear) params.set('month', `${filterYear}-${filterMonth}`);
-      if (dateFilterMode === 'year' && filterYear) params.set('year', filterYear);
+      if (signedDate) params.set('date_signed', signedDate);
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
-      if (filterValues.status !== 'All') params.set('status', filterValues.status);
       if (filterValues.service !== 'All') params.set('service', filterValues.service);
 
-      const res = await fetch(`/api/contracts/?${params}`);
+      const res = await fetch(`/api/contracts/workspace-list?${params}`);
       if (res.ok) {
         const payload = await res.json();
-        setContracts(Array.isArray(payload) ? payload : payload.data || []);
+        const rows = Array.isArray(payload) ? payload : payload.data || [];
+        setContracts(rows);
+        setSelectedContract(current => (
+          rows.find(item => getContractId(item) === getContractId(current)) || rows[0] || null
+        ));
         if (payload.pagination) setPagination(payload.pagination);
       }
     } catch {
@@ -126,27 +95,10 @@ export default function Hopdong() {
     } finally {
       setLoading(false);
     }
-  }, [addToast, dateFilterMode, filterMonth, filterYear, filterValues.service, filterValues.status, page, searchTerm, signedDate, sort]);
-
-  const fetchHosoList = useCallback(async () => {
-    if (hosoList.length > 0 || hosoLoading) return;
-    try {
-      setHosoLoading(true);
-      const response = await fetch('/api/tasks');
-      if (response.ok) {
-        const data = await response.json();
-        setHosoList(Array.isArray(data) ? data : data.data || []);
-      }
-    } catch {
-      addToast('Không tải được danh sách hồ sơ', 'error');
-    } finally {
-      setHosoLoading(false);
-    }
-  }, [addToast, hosoList.length, hosoLoading]);
+  }, [addToast, filterValues.service, page, searchTerm, signedDate, sort]);
 
   const openContractModal = () => {
     setIsModalOpen(true);
-    fetchHosoList();
   };
 
   useEffect(() => {
@@ -162,23 +114,6 @@ export default function Hopdong() {
     const nextWeek = d.toISOString().split('T')[0];
     setFormData(prev => ({ ...prev, NGAY_KY: today, NGAY_HET_HAN: nextWeek }));
   }, [fetchContracts]);
-
-  const handleHosoChange = (e) => {
-    const maHs = e.target.value;
-    const hs = hosoList.find(h => h['Mã hồ sơ'] === maHs);
-    if (hs) {
-      setFormData(prev => ({
-        ...prev,
-        MA_HO_SO: maHs,
-        TEN_KHACH_HANG: hs['Tên khách hàng'] || '',
-        SO_DIEN_THOAI: hs['SĐT'] || '',
-        DIA_CHI: hs['Khu vực/Phường'] || '',
-        LOAI_DICH_VU: hs['Loại dịch vụ'] || ''
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, MA_HO_SO: maHs, TEN_KHACH_HANG: '', SO_DIEN_THOAI: '', DIA_CHI: '', LOAI_DICH_VU: '' }));
-    }
-  };
 
   const handleGenerateContract = async (e) => {
     e.preventDefault();
@@ -217,10 +152,6 @@ export default function Hopdong() {
     try { return new Intl.NumberFormat('vi-VN').format(Number(amount) || 0) + '₫'; } catch { return amount; }
   };
 
-  const toggleContractGroup = (groupId) => {
-    setExpandedGroups(current => ({ ...current, [groupId]: !current[groupId] }));
-  };
-
   const handleSearchChange = useCallback((value) => {
     setSearchTerm(value);
     setPage(1);
@@ -233,120 +164,52 @@ export default function Hopdong() {
 
   const handleResetFilters = useCallback(() => {
     setSearchTerm('');
-    setFilterValues({ status: 'All', service: 'All' });
-    setDateFilterMode('day');
+    setFilterValues({ service: 'All' });
     setSignedDate('');
-    setFilterMonth('');
-    setFilterYear('');
     setSort('desc');
     setPage(1);
   }, []);
 
   const columns = [
     {
-      key: 'Mã hợp đồng',
-      label: 'Mã HỢP ĐỒNG',
-      width: 160,
-      render: (val, row) => {
-        if (row._rowType === 'group') {
-          const expanded = Boolean(expandedGroups[row._groupId]);
-          return (
-            <button
-              type="button"
-              className="contract-group-toggle"
-              onClick={(event) => {
-                event.stopPropagation();
-                toggleContractGroup(row._groupId);
-              }}
-              aria-expanded={expanded}
-              aria-label={`${expanded ? 'Thu gọn' : 'Mở'} nhóm hợp đồng ${val}`}
-            >
-              {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{val}</span>
-              <span className="contract-child-count" title={`${row._childCount} hợp đồng con`}>
-                {row._childCount}
-              </span>
-            </button>
-          );
-        }
-
-        if (row._rowType === 'detail') {
-          return (
-            <span className="contract-detail-code">
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{val}</span>
-              <span className="contract-detail-kind">
-                {row._childNumber === null ? 'mã gốc' : `con ${row._childNumber}`}
-              </span>
-            </span>
-          );
-        }
-
-        return <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{val}</span>;
-      }
-    },
-    {
-      key: 'Mã hồ sơ',
-      label: 'Mã hồ sơ',
-      width: 90,
-      render: (val) => <span style={{ fontFamily: 'var(--font-mono)' }}>{val}</span>
-    },
-    {
-      key: 'Tên khách hàng',
-      label: 'Khách hàng',
+      key: 'id',
+      label: 'Mã hợp đồng',
       width: 150,
+      render: (value) => <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{value}</span>
+    },
+    {
+      key: 'customer_name',
+      label: 'Khách hàng',
+      width: 170,
       render: (val) => <EllipsisCell value={val} />
     },
-    
     {
-      key: 'Dịch vụ',
-      label: 'Dịch vụ',
-      width: 120,
-      render: (val, row) => (
-        <EllipsisCell value={val || row['Loại dịch vụ']} />
+      key: 'service_lines',
+      label: 'Hạng mục',
+      width: 210,
+      render: (lines = []) => (
+        <span className="contract-service-summary">
+          <Layers3 size={14} />
+          <span>{lines.map(line => line.name).filter(Boolean).join(', ') || 'Chưa có Hạng mục'}</span>
+          <small>{lines.length}</small>
+        </span>
       )
     },
-    { key: 'Ngày ký', label: 'Ngày ký', width: 90 },
+    { key: 'date_signed', label: 'Ngày ký', width: 105 },
     {
-      key: 'Giá trị hợp đồng',
+      key: 'total_value',
       label: 'Giá trị',
       align: 'right',
-      render: (val, row) => {
-        const total = Number(val || row['Giá trị HĐ']) || 0;
-        return <span style={{ fontFamily: 'var(--font-mono)' }}>{formatVND(total)}</span>;
-      }
+      render: (value) => <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 650 }}>{formatVND(value)}</span>
     },
     {
-      key: 'Đã thu',
-      label: 'Đã thu',
-      align: 'right',
-      render: (val, row) => {
-        const paid = Number(val || row['Đã thanh toán']) || 0;
-        return <span className="text-success" style={{ fontFamily: 'var(--font-mono)' }}>{formatVND(paid)}</span>;
-      }
+      key: 'status',
+      label: 'Trạng thái',
+      width: 120,
+      render: (value) => <StatusBadge status={value || 'Chưa cập nhật'} domain="hopdong" />
     },
     {
-      key: '_debt',
-      label: 'Còn nợ',
-      align: 'right',
-      render: (_, row) => {
-        const total = Number(row['Giá trị hợp đồng'] || row['Giá trị HĐ']) || 0;
-        const paid = Number(row['Đã thu'] || row['Đã thanh toán']) || 0;
-        const debt = row['Còn nợ'] === null || row['Còn nợ'] === undefined
-          ? Math.max(total - paid, 0)
-          : Number(row['Còn nợ']) || 0;
-        return <span className="text-danger" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{formatVND(debt)}</span>;
-      }
-    },
-    {
-      key: 'Tình trạng',
-      label: 'Tình trạng',
-      render: (val) => <StatusBadge status={val || 'Chờ thanh toán'} domain="hopdong" />
-    },
-    
-    { key: 'Ngày đến hạn', label: 'Ngày đến hạn', width: 100 },
-    
-    {
-      key: 'File Hợp đồng',
+      key: 'file_link',
       label: 'File',
       align: 'center',
       width: 80,
@@ -359,235 +222,139 @@ export default function Hopdong() {
     }
   ];
 
-  const displayContracts = useMemo(() => {
-    const groups = new Map();
-
-    contracts.forEach(contract => {
-      const hierarchy = getContractHierarchy(contract);
-      if (!groups.has(hierarchy.groupId)) {
-        groups.set(hierarchy.groupId, { groupId: hierarchy.groupId, members: [] });
-      }
-      groups.get(hierarchy.groupId).members.push({
-        ...contract,
-        _childNumber: hierarchy.childNumber,
-      });
-    });
-
-    const rows = [];
-    groups.forEach(group => {
-      const members = [...group.members].sort((left, right) => {
-        if (left._childNumber === null) return -1;
-        if (right._childNumber === null) return 1;
-        return left._childNumber - right._childNumber;
-      });
-      const childCount = members.filter(member => member._childNumber !== null).length;
-
-      if (childCount === 0) {
-        rows.push({
-          ...members[0],
-          _rowKey: `contract:${members[0]['Mã hợp đồng']}`,
-          _rowType: 'single',
-        });
-        return;
-      }
-
-      const totalValue = members.reduce(
-        (sum, member) => sum + (Number(member['Giá trị hợp đồng']) || 0),
-        0
-      );
-      const totalPaid = members.reduce(
-        (sum, member) => sum + (Number(member['Đã thu']) || 0),
-        0
-      );
-      const totalDebt = members.reduce(
-        (sum, member) => sum + (Number(member['Còn nợ']) || 0),
-        0
-      );
-      const groupStatus = members.some(member => member['Tình trạng'] === 'Quá hạn')
-        ? 'Quá hạn'
-        : totalDebt <= 0 ? 'Đã tất toán' : 'Còn nợ';
-
-      rows.push({
-        'Mã hợp đồng': group.groupId,
-        'Mã hồ sơ': `${members.length} hồ sơ`,
-        'Tên khách hàng': commonValue(members, 'Tên khách hàng', 'Nhiều khách hàng'),
-        'Phòng ban': commonValue(members, 'Phòng ban', `${new Set(members.map(member => member['Phòng ban']).filter(Boolean)).size} phòng ban`),
-        'Dịch vụ': commonValue(members, 'Dịch vụ', `${new Set(members.map(member => member['Dịch vụ']).filter(Boolean)).size} dịch vụ`),
-        'Ngày ký': earliestDate(members, 'Ngày ký'),
-        'Giá trị hợp đồng': totalValue,
-        'Đã thu': totalPaid,
-        'Còn nợ': totalDebt,
-        'Tình trạng': groupStatus,
-        'Sale / nguồn': commonValue(members, 'Sale / nguồn', 'Nhiều nguồn'),
-        'Ngày đến hạn': earliestDate(members, 'Ngày đến hạn'),
-        'Ghi chú': `Nhóm gồm ${members.length} dòng hợp đồng`,
-        'File Hợp đồng': '',
-        _rowKey: `group:${group.groupId}`,
-        _rowType: 'group',
-        _groupId: group.groupId,
-        _childCount: childCount,
-      });
-
-      if (expandedGroups[group.groupId]) {
-        members.forEach(member => {
-          rows.push({
-            ...member,
-            _rowKey: `detail:${member['Mã hợp đồng']}`,
-            _rowType: 'detail',
-            _groupId: group.groupId,
-          });
-        });
-      }
-    });
-
-    return rows;
-  }, [contracts, expandedGroups]);
-
   return (
-    <section className="tab-pane active contract-page" id="tab-hopdong">
-      {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '1.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Table size={24} color="var(--blue-500)" />
-          Quản Lý Hợp Đồng & Công Nợ
-        </h2>
-      </div>
-
-      <FilterBar
-        search={searchTerm}
-        onSearchChange={handleSearchChange}
-        searchPlaceholder="Tìm mã HĐ, mã HS, khách hàng..."
-        filters={[
-          {
-            key: 'status',
-            label: 'Tình trạng',
-            type: 'select',
-            width: 180,
-            options: [
-              { value: 'Còn nợ', label: 'Còn nợ' },
-              { value: 'Quá hạn', label: 'Quá hạn' },
-              { value: 'Đã tất toán', label: 'Đã tất toán' }
-            ]
-          },
-          {
-            key: 'service',
-            label: 'Dịch vụ',
-            type: 'select',
-            width: 220,
-            options: config.services.map(s => ({ value: s, label: s }))
-          }
-        ]}
-        values={filterValues}
-        onFilterChange={handleFilterChange}
-        onReset={handleResetFilters}
-        dateFilterMode={dateFilterMode}
-        onDateFilterModeChange={(mode) => {
-          setDateFilterMode(mode);
-          setSignedDate('');
-          setFilterMonth('');
-          setFilterYear(mode === 'month' || mode === 'year' ? String(new Date().getFullYear()) : '');
-          setPage(1);
-        }}
-        date={signedDate}
-        dateLabel="Chọn ngày ký"
-        onDateChange={(value) => { setSignedDate(value); setPage(1); }}
-        month={filterMonth}
-        onMonthChange={(value) => { setFilterMonth(value); setPage(1); }}
-        year={filterYear}
-        onYearChange={(value) => { setFilterYear(value); setPage(1); }}
-        sort={sort}
-        onSortChange={(value) => { setSort(value); setPage(1); }}
-        actions={
-          <>
-            <button className="btn btn-primary" onClick={openContractModal} style={{ marginLeft: 8 }}>
-              <Plus size={16} /> Soạn Hợp Đồng Mới
-            </button>
-          </>
-        }
-      />
-
-      {/* Data Table */}
-      <div className="contract-table-hint">
-        <MoveHorizontal size={15} />
-        Kéo ngang để xem đủ cột; mã hợp đồng và mã hồ sơ luôn được cố định.
-      </div>
-      <DataTable
-        columns={columns}
-        data={displayContracts}
-        loading={loading}
-        rowKey="_rowKey"
-        rowClassName={(row) => {
-          if (row._rowType === 'group') return 'contract-group-row';
-          if (row._rowType === 'detail') return 'contract-detail-row';
-          return '';
-        }}
-        emptyText="Chưa có hợp đồng nào"
-        pageSize={0}
-      />
-      {pagination.total_pages > 0 && (
-        <div className="contract-server-pagination">
-          <span>
-            {(pagination.page - 1) * CONTRACT_GROUPS_PER_PAGE + 1}
-            –{Math.min(pagination.page * CONTRACT_GROUPS_PER_PAGE, pagination.total_groups)}
-            {' / '}{pagination.total_groups} nhóm
-            {' · '}{pagination.total_contracts} hợp đồng
-          </span>
-          <div className="contract-server-pagination__controls">
-            <button
-              type="button"
-              className="contract-page-button"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage(1)}
-              aria-label="Trang đầu"
-            >
-              <ChevronsLeft size={16} />
-            </button>
-            <button
-              type="button"
-              className="contract-page-button"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage(current => Math.max(1, current - 1))}
-              aria-label="Trang trước"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            {getPaginationItems(pagination.page, pagination.total_pages).map((item, index) => (
-              item === '…'
-                ? <span key={`ellipsis-${index}`} className="contract-page-ellipsis">…</span>
-                : (
-                  <button
-                    type="button"
-                    key={item}
-                    className={`contract-page-button${pagination.page === item ? ' contract-page-button--active' : ''}`}
-                    disabled={loading}
-                    onClick={() => setPage(item)}
-                    aria-label={`Trang ${item}`}
-                    aria-current={pagination.page === item ? 'page' : undefined}
-                  >
-                    {item}
-                  </button>
-                )
-            ))}
-            <button
-              type="button"
-              className="contract-page-button"
-              disabled={page >= pagination.total_pages || loading}
-              onClick={() => setPage(current => Math.min(pagination.total_pages, current + 1))}
-              aria-label="Trang sau"
-            >
-              <ChevronRight size={16} />
-            </button>
-            <button
-              type="button"
-              className="contract-page-button"
-              disabled={page >= pagination.total_pages || loading}
-              onClick={() => setPage(pagination.total_pages)}
-              aria-label="Trang cuối"
-            >
-              <ChevronsRight size={16} />
-            </button>
-          </div>
+    <section className={`tab-pane active contract-page${contractView === 'list' ? ' contract-page--list' : ''}`} id="tab-hopdong">
+      <div className={`contract-page-heading contract-page-heading--${contractView}`}>
+        <div>
+          <h2>
+            {contractView === 'workflow' ? <WorkflowIcon size={22} /> : <Table size={23} />}
+            {contractView === 'workflow' ? `Thiết lập quy trình · ${getContractId(selectedContract)}` : 'Quản Lý Hợp Đồng'}
+          </h2>
         </div>
+        {contractView === 'workflow' && (
+          <button type="button" className="btn btn-secondary" onClick={() => setContractView('list')}>
+            <ArrowLeft size={16} /> Quay lại danh sách
+          </button>
+        )}
+      </div>
+
+      {contractView === 'list' ? (
+        <div className="contract-master-detail">
+          <section className="contract-master-pane">
+            <header className="contract-pane-title">
+              <div><span>Danh sách hợp đồng</span><strong>{pagination.total_contracts || contracts.length}</strong></div>
+              <button type="button" className="contract-add-button" onClick={openContractModal} title="Soạn hợp đồng mới">
+                <Plus size={20} />
+              </button>
+            </header>
+
+            <div className="contract-master-filters">
+              <FilterBar
+                search={searchTerm}
+                onSearchChange={handleSearchChange}
+                searchPlaceholder="Tìm mã hợp đồng, khách hàng, địa điểm..."
+                filters={[
+                  {
+                    key: 'service',
+                    label: 'Dịch vụ',
+                    type: 'select',
+                    width: 180,
+                    options: config.services.map(s => ({ value: s, label: s }))
+                  }
+                ]}
+                values={filterValues}
+                onFilterChange={handleFilterChange}
+                onReset={handleResetFilters}
+                date={signedDate}
+                dateLabel="Chọn ngày ký"
+                onDateChange={(value) => { setSignedDate(value); setPage(1); }}
+                sort={sort}
+                onSortChange={(value) => { setSort(value); setPage(1); }}
+              />
+            </div>
+
+            <div className="contract-table-hint">
+              <MoveHorizontal size={15} /> Kéo ngang để xem đầy đủ thông tin.
+            </div>
+            <DataTable
+              columns={columns}
+              data={contracts}
+              loading={loading}
+              rowKey="id"
+              onRowClick={setSelectedContract}
+              rowClassName={(row) => {
+                return getContractId(row) === getContractId(selectedContract) ? 'contract-selected-row' : '';
+              }}
+              emptyText="Chưa có hợp đồng nào"
+              pageSize={0}
+            />
+            {pagination.total_pages > 0 && (
+              <div className="contract-server-pagination">
+                <span>
+                  {(pagination.page - 1) * CONTRACT_GROUPS_PER_PAGE + 1}
+                  –{Math.min(pagination.page * CONTRACT_GROUPS_PER_PAGE, pagination.total_groups)}
+                  {' / '}{pagination.total_contracts} hợp đồng
+                </span>
+                <div className="contract-server-pagination__controls">
+                  <button type="button" className="contract-page-button" disabled={page <= 1 || loading} onClick={() => setPage(1)} aria-label="Trang đầu"><ChevronsLeft size={16} /></button>
+                  <button type="button" className="contract-page-button" disabled={page <= 1 || loading} onClick={() => setPage(current => Math.max(1, current - 1))} aria-label="Trang trước"><ChevronLeft size={16} /></button>
+                  {getPaginationItems(pagination.page, pagination.total_pages).map((item, index) => (
+                    item === '…'
+                      ? <span key={`ellipsis-${index}`} className="contract-page-ellipsis">…</span>
+                      : <button type="button" key={item} className={`contract-page-button${pagination.page === item ? ' contract-page-button--active' : ''}`} disabled={loading} onClick={() => setPage(item)} aria-label={`Trang ${item}`}>{item}</button>
+                  ))}
+                  <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(current => Math.min(pagination.total_pages, current + 1))} aria-label="Trang sau"><ChevronRight size={16} /></button>
+                  <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(pagination.total_pages)} aria-label="Trang cuối"><ChevronsRight size={16} /></button>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <aside className="contract-detail-pane">
+            {selectedContract ? (
+              <>
+                <header>
+                  <div className="contract-detail-pane__document"><FileText size={24} /></div>
+                  <div><span>Hợp đồng đang chọn</span><h3>{getContractId(selectedContract)}</h3></div>
+                  <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="hopdong" />
+                </header>
+                <div className="contract-detail-pane__content">
+                  <div className="contract-detail-field"><UserRound size={17} /><div><span>Khách hàng</span><strong>{selectedContract.customer_name || 'Chưa cập nhật'}</strong></div></div>
+                  <div className="contract-detail-field"><CalendarDays size={17} /><div><span>Ngày ký</span><strong>{selectedContract.date_signed || 'Chưa cập nhật'}</strong></div></div>
+                  <div className="contract-detail-field"><CircleDollarSign size={17} /><div><span>Giá trị hợp đồng</span><strong>{formatVND(selectedContract.total_value)}</strong></div></div>
+                  <div className="contract-detail-field"><Layers3 size={17} /><div><span>Hạng mục</span><strong>{selectedContract.service_lines?.map(line => line.name).filter(Boolean).join(', ') || 'Chưa cập nhật'}</strong></div></div>
+                  <div className="contract-paper-preview">
+                    <FileText size={42} />
+                    <strong>Tài liệu hợp đồng</strong>
+                    <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
+                    {selectedContract.file_link && <a href={selectedContract.file_link} target="_blank" rel="noreferrer"><Download size={15} /> Mở tài liệu</a>}
+                  </div>
+                </div>
+                <footer>
+                  <button type="button" className="btn btn-primary" onClick={() => setContractView('workflow')}>
+                    <WorkflowIcon size={17} /> Thiết lập quy trình Hạng mục hợp đồng
+                  </button>
+                </footer>
+              </>
+            ) : (
+              <div className="contract-detail-pane__empty">
+                <FileText size={38} />
+                <strong>Chọn một hợp đồng</strong>
+                <span>Thông tin chi tiết và nút thiết lập quy trình sẽ xuất hiện tại đây.</span>
+              </div>
+            )}
+          </aside>
+        </div>
+      ) : (
+        <React.Suspense fallback={<div className="contract-workspace-loading">Đang mở trình thiết lập quy trình…</div>}>
+          <ContractWorkspace
+            tab="workflow"
+            contract={selectedContract}
+            contracts={contracts}
+            onContractChange={setSelectedContract}
+            addToast={addToast}
+          />
+        </React.Suspense>
       )}
 
       {/* Modal Soạn Hợp Đồng */}
@@ -602,18 +369,12 @@ export default function Hopdong() {
         }
       >
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 20px 0' }}>
-          Tự động điền mẫu Word và ghi công nợ vào hệ thống.
+          Điền thông tin và lưu hợp đồng vào hệ thống.
         </p>
         <form id="hopdong-form" onSubmit={handleGenerateContract}>
           <FormGrid cols={2}>
             <FormRow label="Mã hợp đồng" required>
               <input className="form-control" required value={formData.SO_HOP_DONG} onChange={e => setFormData({ ...formData, SO_HOP_DONG: e.target.value })} type="text" placeholder="128/BK-2026" />
-            </FormRow>
-            <FormRow label="Gắn hồ sơ (Tự động điền)">
-              <select className="form-control" value={formData.MA_HO_SO} onChange={handleHosoChange}>
-                <option value="">{hosoLoading ? 'Đang tải hồ sơ...' : '— Chọn Hồ Sơ —'}</option>
-                {hosoList.map((h, i) => <option key={i} value={h['Mã hồ sơ']}>{h['Mã hồ sơ']} - {h['Tên khách hàng']}</option>)}
-              </select>
             </FormRow>
             <FormRow label="Tên khách hàng" required>
               <input className="form-control" required value={formData.TEN_KHACH_HANG} onChange={e => setFormData({ ...formData, TEN_KHACH_HANG: e.target.value })} type="text" />

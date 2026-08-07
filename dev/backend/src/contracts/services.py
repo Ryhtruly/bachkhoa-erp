@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from src.db.models import Contract, Customer, Receivable, ProjectTask, AuditLog, User
+from src.db.models import Contract, Customer, Receivable, AuditLog, User
 from src.services import telegram_service
 from src.core import doc_generator
 from src.contracts.read_model import sync_contract_read_model_after_write
@@ -28,11 +28,6 @@ class ContractService:
                 date_signed=datetime.now().date()
             )
             db.add(new_hd)
-            
-            if payload.Mã_hồ_sơ:
-                task = db.query(ProjectTask).filter(ProjectTask.id == payload.Mã_hồ_sơ).first()
-                if task:
-                    task.contract_id = new_hd.id
             
             rec = Receivable(
                 id=str(uuid.uuid4()),
@@ -117,11 +112,6 @@ class ContractService:
             )
             db.add(rec)
             
-            if payload.MA_HO_SO:
-                task = db.query(ProjectTask).filter(ProjectTask.id == payload.MA_HO_SO).first()
-                if task:
-                    task.contract_id = new_hd.id
-
             actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
             actor_id_val = actor_id if actor_exists else None
 
@@ -151,4 +141,3 @@ class ContractService:
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
-

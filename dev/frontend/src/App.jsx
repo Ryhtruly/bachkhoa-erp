@@ -17,11 +17,17 @@ import { ToastProvider } from './contexts/ToastContext';
 import './index.css';
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(() => Boolean(localStorage.getItem('bachkhoa_access_token')));
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  const handleLogin = () => setLoggedIn(true);
-  const handleLogout = () => setLoggedIn(false);
+  const handleLogin = (token) => {
+    localStorage.setItem('bachkhoa_access_token', token);
+    setLoggedIn(true);
+  };
+  const handleLogout = () => {
+    localStorage.removeItem('bachkhoa_access_token');
+    setLoggedIn(false);
+  };
 
   const TABS = [
     { key: 'dashboard', Component: Dashboard },
@@ -44,8 +50,8 @@ function App() {
     <ToastProvider>
       <div className="app">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main className="main">
-          <TopHeader onLogout={handleLogout} />
+        <main className={`main${activeTab === 'hopdong' ? ' main--contract' : ''}`}>
+          {activeTab !== 'hopdong' && <TopHeader onLogout={handleLogout} />}
           {TABS.map(({ key, Component }) => (
             <div key={key} style={{ display: activeTab === key ? 'block' : 'none' }}>
               <Component />

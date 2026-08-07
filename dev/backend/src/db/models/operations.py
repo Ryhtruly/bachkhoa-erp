@@ -1,4 +1,4 @@
-"""Production & Operations models: TaskType, TaskTypeRate, ProjectTask, TaskSubmission, TaskPayRecord, LegalSubmission."""
+"""Production & Operations models still used by the legacy application paths."""
 
 from src.db.models._base import *
 
@@ -7,6 +7,7 @@ class TaskType(Base):
     __tablename__ = "task_types"
     id = Column(String, primary_key=True, default=lambda: f"tt_{uuid.uuid4().hex[:10]}")
     name = Column(String(100), unique=True, nullable=True)
+    service_package_id = Column(String, ForeignKey("service_packages.id"), nullable=True)
 
 
 class TaskTypeRate(Base):
@@ -81,16 +82,6 @@ class TaskPayRecord(Base):
     note = Column(Text, nullable=True)
 
 
-class LegalSubmission(Base):
-    __tablename__ = "legal_submissions"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=True)
-    portal_tracking_code = Column(String, nullable=True)
-    portal_status = Column(String, nullable=True)
-    handler_id = Column(String, ForeignKey("users.id"), nullable=True)
-    last_sync_at = Column(DateTime(timezone=True), nullable=True)
-
-
 class ServicePackage(Base):
     __tablename__ = "service_packages"
     id = Column(String, primary_key=True, default=lambda: f"sp_{uuid.uuid4().hex[:10]}")
@@ -98,18 +89,4 @@ class ServicePackage(Base):
     description = Column(Text, nullable=True)
     display_order = Column(Integer, nullable=True)
     is_active = Column(Boolean, nullable=True, default=True)
-    created_at = Column(DateTime(timezone=True), default=get_utc_now)
-
-
-class TaskTransition(Base):
-    __tablename__ = "task_transitions"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=False)
-    from_service_line_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
-    to_service_line_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
-    from_package = Column(String, nullable=True)
-    to_package = Column(String, nullable=True)
-    reason = Column(Text, nullable=True)
-    transitioned_by = Column(String, ForeignKey("users.id"), nullable=True)
-    transitioned_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)

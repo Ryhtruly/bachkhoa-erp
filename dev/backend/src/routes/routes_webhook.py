@@ -5,7 +5,8 @@ from typing import Dict, Any
 from src.services import zalo_service
 from src.services import telegram_service
 from src.db.database import get_db
-from src.db.models import Contract, Receivable, ProjectTask, Customer
+from sqlalchemy import text
+from src.db.models import Contract, Receivable, Customer
 from src.core import hr_engine
 
 router = APIRouter(prefix="/webhook", tags=["Webhooks & Automations"])
@@ -71,7 +72,9 @@ def trigger_debt_reminders(db: Session = Depends(get_db)):
 @router.post("/trigger-daily-care-cron")
 def trigger_daily_care_cron(db: Session = Depends(get_db)):
     try:
-        completed_tasks = db.query(ProjectTask).filter(ProjectTask.status == "Hoàn thành").all()
-        return {"status": "success", "message": f"Đã quét {len(completed_tasks)} hồ sơ hoàn thành để CSKH định kỳ."}
+        completed_count = db.execute(text(
+            "select count(*) from public.workflow_instances where status = 'completed'"
+        )).scalar_one()
+        return {"status": "success", "message": f"Đã quét {completed_count} hạng mục hoàn thành để CSKH định kỳ."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

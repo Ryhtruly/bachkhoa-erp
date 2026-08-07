@@ -36,7 +36,6 @@ from src.contracts.read_model import (
     CONTRACT_CACHE_REFRESH_SECONDS,
     warm_contract_read_model,
 )
-from src.routes.routes_luong import refresh_rates_cache
 
 from src.config.settings import settings
 
@@ -78,11 +77,6 @@ async def lifespan(_app: FastAPI):
             await asyncio.to_thread(warm_contract_read_model)
         except Exception as exc:
             logger.warning("Initial contract cache warmup failed: %s", exc)
-
-        try:
-            await asyncio.to_thread(refresh_rates_cache, SessionLocal())
-        except Exception as exc:
-            logger.warning("Initial rates cache warmup failed: %s", exc)
 
     refresh_task = None
     if CONTRACT_CACHE_REFRESH_SECONDS > 0:

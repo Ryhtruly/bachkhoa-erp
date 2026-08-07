@@ -7,7 +7,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter },
     { id: 'hoso', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban },
     { id: 'phaply', label: 'Hồ Sơ Pháp Lý', icon: FileCheck },
-    { id: 'hopdong', label: 'Hợp Đồng & Công Nợ', icon: FileText },
+    { id: 'hopdong', label: 'Hợp Đồng', icon: FileText },
     { id: 'thuchi', label: 'Thu Chi Sổ Quỹ', icon: Wallet },
     { id: 'luong', label: 'Lương Khoán 3P', icon: Coins },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2 },

@@ -24,7 +24,7 @@ expected_tables = sorted([
     'users', 'roles', 'user_roles', 'role_permissions', 'auth_tokens',
     'audit_log', 'notifications', 'customers', 'leads_pipeline', 'contracts',
     'zalo_interactions', 'service_lines', 'task_types', 'task_type_rates',
-    'departments', 'projects_tasks', 'task_submissions', 'legal_submissions',
+    'departments', 'projects_tasks', 'task_submissions',
     'employees', 'task_pay_records', 'kpi_payroll', 'payroll_periods',
     'payroll_adjustments', 'attendance', 'leave_records', 'cashflow_transactions',
     'receivables', 'fund_opening_balances', 'finance_settings', 'contract_expenses',

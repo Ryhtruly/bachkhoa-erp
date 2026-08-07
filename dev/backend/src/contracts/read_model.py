@@ -9,7 +9,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
 from src.db.database import SessionLocal
-from src.db.models import Contract, Customer, LeadPipeline, ProjectTask, Receivable
+from src.db.models import Contract, Customer, LeadPipeline, Receivable, ServiceLine, TaskType
 
 logger = logging.getLogger(__name__)
 
@@ -77,18 +77,33 @@ def build_contract_read_model(db: Session):
         receivable.contract_id: receivable for receivable in receivables
     }
 
-    tasks = (
-        db.query(ProjectTask).filter(ProjectTask.contract_id.in_(contract_ids)).all()
+    service_lines = (
+        db.query(ServiceLine).filter(ServiceLine.contract_id.in_(contract_ids)).all()
         if contract_ids else []
     )
-    task_by_contract = {task.contract_id: task for task in tasks}
+    lines_by_contract = {}
+    for service_line in service_lines:
+        lines_by_contract.setdefault(service_line.contract_id, []).append(service_line)
+
+    task_type_ids = {line.task_type_id for line in service_lines if line.task_type_id}
+    task_types = (
+        db.query(TaskType).filter(TaskType.id.in_(task_type_ids)).all()
+        if task_type_ids else []
+    )
+    task_type_by_id = {task_type.id: task_type for task_type in task_types}
 
     result = []
     for contract in contracts:
         customer = customer_by_id.get(contract.customer_id)
         lead = lead_by_id.get(contract.lead_id)
         receivable = receivable_by_contract.get(contract.id)
-        task = task_by_contract.get(contract.id)
+        contract_lines = lines_by_contract.get(contract.id, [])
+        service_names = []
+        for line in contract_lines:
+            task_type = task_type_by_id.get(line.task_type_id)
+            name = (task_type.name if task_type else None) or line.service_type
+            if name and name not in service_names:
+                service_names.append(name)
 
         total = float(contract.total_value or 0)
         paid = float((receivable.paid_amount or 0) if receivable else 0)
@@ -111,10 +126,9 @@ def build_contract_read_model(db: Session):
             "Mã hợp đồng nhóm": group_id,
             "Số thứ tự hợp đồng con": child_number,
             "Là hợp đồng con": child_number is not None,
-            "Mã hồ sơ": task.id if task else "",
             "Tên khách hàng": customer.full_name if customer else "N/A",
-            "Phòng ban": task.department if task and task.department else "",
-            "Dịch vụ": contract.service_type or "",
+            "Số hạng mục": len(contract_lines),
+            "Dịch vụ": ", ".join(service_names) or contract.service_type or "",
             "Ngày ký": date_signed_str,
             "Giá trị hợp đồng": total,
             "Đã thu": paid,

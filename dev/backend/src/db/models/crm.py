@@ -59,6 +59,8 @@ class ServiceLine(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
     service_package = Column(String, nullable=True)
+    service_package_id = Column(String, ForeignKey("service_packages.id"), nullable=True)
     service_type = Column(String, nullable=True)
+    task_type_id = Column(String, ForeignKey("task_types.id"), nullable=True)
     target_property = Column(String, nullable=True)
     price = Column(Numeric, nullable=True)

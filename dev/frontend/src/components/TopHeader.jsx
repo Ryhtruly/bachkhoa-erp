@@ -2,19 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, LogOut } from 'lucide-react';
 
 export default function TopHeader({ onLogout }) {
-  const [timeStr, setTimeStr] = useState('');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const d = new Date();
-      const days = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
-      setTimeStr(`${days[d.getDay()]}, ${d.getDate()} Tháng ${d.getMonth() + 1}, ${d.getFullYear()}`);
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000 * 60);
-    return () => clearInterval(interval);
-  }, []);
-
   const [theme, setTheme] = useState('light');
 
   useEffect(() => {
@@ -26,11 +13,7 @@ export default function TopHeader({ onLogout }) {
   };
 
   return (
-    <header className="top-header">
-      <div>
-        <h1>Hệ Thống Tự Động Hóa Nghiệp Vụ</h1>
-        <div className="sub">{timeStr}</div>
-      </div>
+    <header className="top-header top-header--compact">
       <div className="header-actions">
         <button className="btn btn-secondary btn-icon btn-sm" onClick={toggleTheme} title="Đổi giao diện">
           {theme === 'light' ? <span style={{fontSize: '16px'}}>🌙</span> : <span style={{fontSize: '16px'}}>☀️</span>}

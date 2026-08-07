@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from src.db.models import Contract, Customer, ProjectTask, Receivable
+from src.db.models import Contract, Customer, ServiceLine, Receivable
 from typing import Optional
 
 class ContractRepository:
@@ -13,5 +13,5 @@ class ContractRepository:
         return db.query(Customer).filter(Customer.full_name == name).first()
 
     @staticmethod
-    def get_project_task_by_id(db: Session, task_id: str) -> Optional[ProjectTask]:
-        return db.query(ProjectTask).filter(ProjectTask.id == task_id).first()
+    def get_service_line_by_id(db: Session, service_line_id: str) -> Optional[ServiceLine]:
+        return db.query(ServiceLine).filter(ServiceLine.id == service_line_id).first()

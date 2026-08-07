@@ -1,120 +1,91 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import extract, func
-from src.db.models import ProjectTask, User, Employee, TaskSubmission, UserRole, Role
-import datetime
+from datetime import date
 
-def calculate_employee_kpi(db: Session, month: str) -> dict:
-    """
-    Calculate KPI metrics for 'staff' only based on completed tasks in a given month.
-    month format: 'YYYY-MM'
-    
-    Metrics:
-    1. Số hồ sơ hoàn thành (Target = 10)
-    2. Tỷ lệ đúng hạn (%)
-    3. Số lỗi nộp lại (số lần bị TỪ CHỐI)
-    4. Thời gian xử lý trung bình (Ngày)
-    """
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+
+def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
+    """Tổng hợp KPI từ Node, phân công và event của workflow mới."""
     try:
-        target_year, target_month = map(int, month.split('-'))
-    except ValueError:
+        year, month_number = map(int, month.split("-"))
+        period_start = date(year, month_number, 1)
+    except (TypeError, ValueError):
         return []
 
-    # Get all completed tasks for the given month
-    completed_tasks = db.query(ProjectTask).filter(
-        ProjectTask.status == 'Hoàn thành',
-        extract('year', ProjectTask.completion_date) == target_year,
-        extract('month', ProjectTask.completion_date) == target_month,
-        ProjectTask.assignee_id.isnot(None)
-    ).all()
-
-    # Get only 'staff' users, join with Employee to get full_name
-    users_query = db.query(User, Employee).join(UserRole, UserRole.user_id == User.id)\
-                                          .join(Role, Role.id == UserRole.role_id)\
-                                          .outerjoin(Employee, Employee.user_id == User.id)\
-                                          .filter(Role.role_name == 'staff').all()
-    
-    kpi_data = {}
-    for u, emp in users_query:
-        display_name = (emp.full_name if emp and emp.full_name else None) or u.username
-        kpi_data[u.id] = {
-            "employee": display_name,
-            "total_completed": 0,
-            "on_time_count": 0,
-            "processing_time_days": 0,
-            "valid_processing_time_count": 0
-        }
-
-    # Get rejections for these tasks
-    rejections_query = db.query(
-        ProjectTask.assignee_id,
-        func.count(TaskSubmission.id)
-    ).join(
-        TaskSubmission, ProjectTask.id == TaskSubmission.task_id
-    ).filter(
-        extract('year', ProjectTask.completion_date) == target_year,
-        extract('month', ProjectTask.completion_date) == target_month,
-        TaskSubmission.result.ilike('%từ chối%')
-    ).group_by(ProjectTask.assignee_id).all()
-    
-    rejections_map = {row[0]: row[1] for row in rejections_query}
-
-    for task in completed_tasks:
-        uid = task.assignee_id
-        if not uid or uid not in kpi_data:
-            continue
-        
-        data = kpi_data[uid]
-        data["total_completed"] += 1
-        
-        if not task.is_overdue_flag:
-            data["on_time_count"] += 1
-            
-        if task.completion_date and task.start_date:
-            days = (task.completion_date - task.start_date).days
-            if days >= 0:
-                data["processing_time_days"] += days
-                data["valid_processing_time_count"] += 1
+    rows = db.execute(text("""
+        with period as (
+          select :period_start::date as start_date,
+                 (:period_start::date + interval '1 month')::date as end_date
+        ), completed as (
+          select a.employee_id,
+                 count(distinct n.id) as total_completed,
+                 count(distinct n.id) filter (
+                   where n.planned_end is null or n.completed_at <= n.planned_end
+                 ) as on_time_count,
+                 avg(extract(epoch from (n.completed_at - n.started_at)) / 86400.0)
+                   filter (where n.started_at is not null) as avg_time
+          from public.task_node_assignments a
+          join public.task_nodes n on n.id = a.task_node_id
+          cross join period p
+          where n.status = 'completed'
+            and n.completed_at >= p.start_date
+            and n.completed_at < p.end_date
+            and a.assignment_status in ('assigned', 'accepted', 'completed')
+          group by a.employee_id
+        ), rejected as (
+          select a.employee_id, count(distinct ev.id) as rejections
+          from public.task_node_assignments a
+          join public.task_node_events ev on ev.task_node_id = a.task_node_id
+          cross join period p
+          where ev.created_at >= p.start_date
+            and ev.created_at < p.end_date
+            and ev.event_type in ('AGENCY_REJECTED', 'REWORK_REQUIRED', 'ACCEPTANCE_REJECTED')
+          group by a.employee_id
+        )
+        select e.id, e.full_name,
+               coalesce(c.total_completed, 0) as total_completed,
+               coalesce(c.on_time_count, 0) as on_time_count,
+               coalesce(c.avg_time, 0) as avg_time,
+               coalesce(r.rejections, 0) as rejections
+        from public.employees e
+        left join completed c on c.employee_id = e.id
+        left join rejected r on r.employee_id = e.id
+        where coalesce(e.is_active, true)
+        order by e.full_name
+    """), {"period_start": period_start}).mappings().all()
 
     results = []
-    for uid, data in kpi_data.items():
-        total = data["total_completed"]
-        on_time_rate = (data["on_time_count"] / total * 100) if total > 0 else 100
-        avg_time = (data["processing_time_days"] / data["valid_processing_time_count"]) if data["valid_processing_time_count"] > 0 else 0
-        rejections = rejections_map.get(uid, 0)
-        
-        if total == 0:
+    for row in rows:
+        total = int(row["total_completed"] or 0)
+        on_time_count = int(row["on_time_count"] or 0)
+        rejections = int(row["rejections"] or 0)
+        on_time_rate = (on_time_count / total * 100) if total else 100
+        if not total:
             score = 0
             performance = "Chưa đánh giá"
         else:
-            score = 100
-            # Target = 10
-            if total > 10:
-                score += (total - 10) * 2 # Bonus 2 points per extra task
-            elif total < 10:
-                score -= (10 - total) * 2 # Penalty 2 points per missing task
-                
+            score = 100 + (total - 10) * 2
             if on_time_rate < 90:
-                score -= (90 - on_time_rate) * 0.5  # slight penalty
-                
-            score -= (rejections * 5)
-            
-            score = min(max(round(score, 1), 0), 150)
-            
-            if score >= 95: performance = "Xuất sắc"
-            elif score >= 80: performance = "Tốt"
-            elif score >= 60: performance = "Khá"
-            else: performance = "Cần cố gắng"
+                score -= (90 - on_time_rate) * 0.5
+            score = min(max(round(score - rejections * 5, 1), 0), 150)
+            if score >= 95:
+                performance = "Xuất sắc"
+            elif score >= 80:
+                performance = "Tốt"
+            elif score >= 60:
+                performance = "Khá"
+            else:
+                performance = "Cần cố gắng"
 
         results.append({
-            "employee": data["employee"],
+            "employee": row["full_name"] or row["id"],
             "total_completed": total,
             "on_time_rate": round(on_time_rate, 1),
             "rejections": rejections,
-            "avg_time": round(avg_time, 1),
+            "avg_time": round(float(row["avg_time"] or 0), 1),
             "final_score": score,
-            "performance": performance
+            "performance": performance,
         })
 
-    # Sort by score descending
-    results.sort(key=lambda x: x["final_score"], reverse=True)
+    results.sort(key=lambda item: item["final_score"], reverse=True)
     return results

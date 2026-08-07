@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from src.db.models import (
     CashflowTransaction, Contract, Customer, Receivable,
-    ProjectTask, Employee, AuditLog, User, FinanceSetting, FundOpeningBalance
+    ServiceLine, Employee, AuditLog, User, FinanceSetting, FundOpeningBalance
 )
 from src.finance.repository import FinanceRepository
 from src.finance.domain_rules import (
@@ -96,7 +96,7 @@ class FinanceService:
                 project_id = None
             else:
                 if contract_id and not project_id:
-                    p = db.query(ProjectTask).filter(ProjectTask.contract_id == contract_id).order_by(ProjectTask.created_at.desc()).first()
+                    p = db.query(ServiceLine).filter(ServiceLine.contract_id == contract_id).first()
                     if p:
                         project_id = p.id
 
@@ -112,8 +112,8 @@ class FinanceService:
             
             proj_label = ""
             if project_id:
-                p = db.query(ProjectTask).filter(ProjectTask.id == project_id).first()
-                if p: proj_label = f"{p.id} — {p.task_name or ''}"
+                p = db.query(ServiceLine).filter(ServiceLine.id == project_id).first()
+                if p: proj_label = f"{p.id} — {p.service_type or ''}"
 
             tc = CashflowTransaction(
                 id=new_id,
@@ -336,8 +336,8 @@ class FinanceService:
 
             proj_label = ""
             if payload.project_id:
-                p = db.query(ProjectTask).filter(ProjectTask.id == payload.project_id).first()
-                if p: proj_label = f"{p.id} — {p.task_name or ''}"
+                p = db.query(ServiceLine).filter(ServiceLine.id == payload.project_id).first()
+                if p: proj_label = f"{p.id} — {p.service_type or ''}"
 
             tc = CashflowTransaction(
                 id=new_id,
@@ -460,8 +460,8 @@ class FinanceService:
 
             proj_label = ""
             if payload.project_id:
-                p = db.query(ProjectTask).filter(ProjectTask.id == payload.project_id).first()
-                if p: proj_label = f"{p.id} — {p.task_name or ''}"
+                p = db.query(ServiceLine).filter(ServiceLine.id == payload.project_id).first()
+                if p: proj_label = f"{p.id} — {p.service_type or ''}"
 
             tc = CashflowTransaction(
                 id=new_id,

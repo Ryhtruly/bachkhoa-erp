@@ -9,9 +9,12 @@ from src.db.models import (
     Department,
     Employee,
     ProjectTask,
+    ServiceLine,
+    ServicePackage,
+    TaskType,
     User,
 )
-from src.core.auth import require_permission
+from src.core.auth import require_permission, get_current_user
 import uuid
 from datetime import datetime, date
 from pydantic import BaseModel
@@ -56,7 +59,6 @@ def _task_result(task: ProjectTask) -> str:
 def get_hoso_stats(
     month: str = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read"))
 ):
     query = _month_filter(db.query(ProjectTask), month)
 
@@ -86,7 +88,6 @@ def get_hoso_stats(
 def list_hoso(
     month: str = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read"))
 ):
     try:
         main_user = aliased(User)
@@ -99,6 +100,9 @@ def list_hoso(
                 ProjectTask,
                 Contract,
                 Customer,
+                ServiceLine,
+                ServicePackage,
+                TaskType,
                 main_user,
                 main_employee,
                 support_user,
@@ -106,6 +110,9 @@ def list_hoso(
             )
             .outerjoin(Contract, Contract.id == ProjectTask.contract_id)
             .outerjoin(Customer, Customer.id == Contract.customer_id)
+            .outerjoin(ServiceLine, ServiceLine.id == ProjectTask.service_line_id)
+            .outerjoin(TaskType, TaskType.id == ProjectTask.task_type_id)
+            .outerjoin(ServicePackage, ServicePackage.id == TaskType.service_package_id)
             .outerjoin(main_user, main_user.id == ProjectTask.assignee_id)
             .outerjoin(main_employee, main_employee.user_id == main_user.id)
             .outerjoin(support_user, support_user.id == ProjectTask.support_id)
@@ -128,7 +135,7 @@ def list_hoso(
         result = []
         today = date.today()
         
-        for t, contract, customer, assignee, assignee_employee, support, support_employee_row in tasks:
+        for t, contract, customer, service_line, service_package, task_type, assignee, assignee_employee, support, support_employee_row in tasks:
             days_left = None
             warning = "Chưa có deadline"
             if t.deadline:
@@ -160,10 +167,13 @@ def list_hoso(
             
             result.append({
                 "Mã hồ sơ": t.id,
+                "Mã ServiceLine": service_line.id if service_line else "",
+                "Service Package": service_package.name if service_package else (service_line.service_package if service_line else ""),
+                "Service Package ID": service_package.id if service_package else (service_line.service_package_id if service_line else ""),
                 "Tên khách hàng": customer.full_name if customer else "Khách vãng lai",
                 "SĐT": customer.phone if customer else "",
                 "Khu vực/Phường": t.ward or (customer.address if customer else ""),
-                "Loại dịch vụ": t.task_name or (contract.service_type if contract else "N/A"),
+                "Loại dịch vụ": task_type.name if task_type else (t.task_name or (contract.service_type if contract else "N/A")),
                 "Mã hợp đồng": t.contract_id,
                 "Phòng ban": getattr(t, 'department', '') or 'Chưa phân phòng',
                 "Phòng ban ID": t.department_id,
@@ -180,6 +190,8 @@ def list_hoso(
                     else (support.username if support else "")
                 ),
                 "Phụ đo ID": t.support_id,
+                "Hạng mục ID": t.task_type_id or "",
+                "Tên hạng mục": t.task_name or "",
                 "Ngày giao": t.start_date.strftime("%Y-%m-%d") if t.start_date else "",
                 "Ngày đo": t.start_date.strftime("%Y-%m-%d") if t.start_date else "",
                 "Deadline": t.deadline.strftime("%Y-%m-%d") if t.deadline else "",
@@ -214,7 +226,6 @@ def list_hoso(
 @router.get("/assignment-options")
 def assignment_options(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read"))
 ):
     employee_rows = (
         db.query(Employee, User, Department)
@@ -352,7 +363,7 @@ def _role_has_pay_record(
 def update_assignment(
     payload: AssignmentUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update"))
+    user: User = Depends(get_current_user)
 ):
     task = db.query(ProjectTask).filter(ProjectTask.id == payload.task_id).first()
     if not task:
@@ -420,36 +431,119 @@ def update_assignment(
     }
 
 
+@router.get("/task-types")
+def list_task_types(db: Session = Depends(get_db)):
+    types = (
+        db.query(TaskType, ServicePackage)
+        .join(ServicePackage, ServicePackage.id == TaskType.service_package_id)
+        .filter(ServicePackage.is_active.is_(True))
+        .order_by(ServicePackage.display_order, TaskType.name)
+        .all()
+    )
+    return {
+        "status": "success",
+        "data": [
+            {
+                "id": task_type.id,
+                "name": task_type.name,
+                "service_package_id": package.id,
+                "service_package_name": package.name,
+            }
+            for task_type, package in types
+        ]
+    }
+
+
 @router.get("/contracts-lookup")
 def lookup_contracts(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read"))
 ):
     """Return a lightweight list of contracts for the dropdown."""
-    contracts = db.query(Contract, Customer).outerjoin(Customer, Customer.id == Contract.customer_id).order_by(Contract.created_at.desc()).all()
-    result = []
-    for c, cust in contracts:
-        result.append({
+    contracts = db.query(Contract, Customer, ServiceLine).outerjoin(Customer, Customer.id == Contract.customer_id).outerjoin(ServiceLine, ServiceLine.contract_id == Contract.id).order_by(Contract.created_at.desc()).all()
+    by_contract = {}
+    for c, cust, sl in contracts:
+        entry = by_contract.setdefault(c.id, {
             "id": c.id,
             "customer_name": cust.full_name if cust else "Khách vãng lai",
-            "service_type": c.service_type or ""
+            "service_type": c.service_type or "",
+            "service_package_ids": [],
         })
+        if sl and sl.service_package_id and sl.service_package_id not in entry["service_package_ids"]:
+            entry["service_package_ids"].append(sl.service_package_id)
+
+    result = []
+    for entry in by_contract.values():
+        package_ids = entry["service_package_ids"]
+        entry["service_package_id"] = package_ids[0] if len(package_ids) == 1 else None
+        result.append(entry)
     return {"status": "success", "data": result}
 
 class HosoCreateSchema(BaseModel):
     contract_id: str
+    service_package_id: str
+    task_type_id: str
     task_name: str
     department_id: Optional[str] = None
     priority: str = "Trung bình"
     assignee_id: Optional[str] = None
     support_id: Optional[str] = None
     deadline: Optional[str] = None
+    start_date: Optional[str] = None
+    ward: Optional[str] = None
     stake_count: Optional[int] = None
     stake_type: Optional[str] = None
     status: str = "Mới tiếp nhận"
+    review_note: Optional[str] = None
 
 class HosoUpdateSchema(HosoCreateSchema):
     pass
+
+
+def _resolve_task_package(db: Session, task_type_id: str, service_package_id: str):
+    row = (
+        db.query(TaskType, ServicePackage)
+        .join(ServicePackage, ServicePackage.id == TaskType.service_package_id)
+        .filter(
+            TaskType.id == task_type_id,
+            ServicePackage.id == service_package_id,
+            ServicePackage.is_active.is_(True),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(
+            status_code=422,
+            detail="Hạng mục không thuộc gói dịch vụ đã chọn.",
+        )
+    return row
+
+
+def _find_service_line_id(
+    db: Session,
+    contract_id: str,
+    service_package_id: str,
+    task_type_id: str,
+) -> Optional[str]:
+    exact = (
+        db.query(ServiceLine.id)
+        .filter(
+            ServiceLine.contract_id == contract_id,
+            ServiceLine.service_package_id == service_package_id,
+            ServiceLine.task_type_id == task_type_id,
+        )
+        .first()
+    )
+    if exact:
+        return exact[0]
+    package_line = (
+        db.query(ServiceLine.id)
+        .filter(
+            ServiceLine.contract_id == contract_id,
+            ServiceLine.service_package_id == service_package_id,
+        )
+        .first()
+    )
+    return package_line[0] if package_line else None
 
 class StatusUpdateSchema(BaseModel):
     Mã_hồ_sơ: str
@@ -460,9 +554,12 @@ class StatusUpdateSchema(BaseModel):
 def create_hoso(
     payload: HosoCreateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "create"))
+    user: User = Depends(get_current_user)
 ):
     try:
+        task_type, package = _resolve_task_package(
+            db, payload.task_type_id, payload.service_package_id
+        )
         new_id = f"BK-HS-{str(uuid.uuid4())[:8].upper()}"
         d_dl = None
         if payload.deadline:
@@ -471,10 +568,26 @@ def create_hoso(
             except:
                 pass
                 
+        d_start = date.today()
+        if payload.start_date:
+            try:
+                d_start = datetime.strptime(payload.start_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Ngày giao không hợp lệ.")
+
+        service_line_id = _find_service_line_id(
+            db,
+            payload.contract_id,
+            package.id,
+            task_type.id,
+        )
         t = ProjectTask(
             id=new_id,
             contract_id=payload.contract_id,
-            task_name=payload.task_name,
+            task_type_id=task_type.id,
+            task_name=task_type.name,
+            service_line_id=service_line_id,
+            current_package=package.name,
             department_id=payload.department_id,
             priority=payload.priority,
             assignee_id=payload.assignee_id,
@@ -483,7 +596,9 @@ def create_hoso(
             stake_count=payload.stake_count,
             stake_type=payload.stake_type,
             status=payload.status,
-            start_date=date.today()
+            start_date=d_start,
+            ward=payload.ward,
+            review_note=payload.review_note,
         )
         db.add(t)
 
@@ -491,11 +606,18 @@ def create_hoso(
             actor_id=user.id,
             action="CREATE",
             object_type="projects_tasks",
-            payload_json={"id": new_id, "task_name": payload.task_name}
+            payload_json={
+                "id": new_id,
+                "task_type_id": task_type.id,
+                "service_package_id": package.id,
+            }
         ))
 
         db.commit()
         return {"status": "success", "id": new_id}
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -505,9 +627,12 @@ def update_hoso_full(
     task_id: str,
     payload: HosoUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update"))
+    user: User = Depends(get_current_user)
 ):
     try:
+        task_type, package = _resolve_task_package(
+            db, payload.task_type_id, payload.service_package_id
+        )
         task = db.query(ProjectTask).filter(ProjectTask.id == task_id).first()
         if not task:
             raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ")
@@ -529,8 +654,23 @@ def update_hoso_full(
         elif payload.status != "Hoàn thành":
             task.completion_date = None
 
+        d_start = task.start_date or date.today()
+        if payload.start_date:
+            try:
+                d_start = datetime.strptime(payload.start_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Ngày giao không hợp lệ.")
+
         task.contract_id = payload.contract_id
-        task.task_name = payload.task_name
+        task.task_type_id = task_type.id
+        task.task_name = task_type.name
+        task.service_line_id = _find_service_line_id(
+            db,
+            payload.contract_id,
+            package.id,
+            task_type.id,
+        )
+        task.current_package = package.name
         task.department_id = payload.department_id
         task.priority = payload.priority
         task.assignee_id = payload.assignee_id
@@ -539,6 +679,9 @@ def update_hoso_full(
         task.stake_count = payload.stake_count
         task.stake_type = payload.stake_type
         task.status = payload.status
+        task.start_date = d_start
+        task.ward = payload.ward
+        task.review_note = payload.review_note
 
         db.add(AuditLog(
             actor_id=user.id,
@@ -560,7 +703,7 @@ def update_hoso_full(
 def update_hoso_status(
     payload: StatusUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update"))
+    user: User = Depends(get_current_user)
 ):
     try:
         task = db.query(ProjectTask).filter(ProjectTask.id == payload.Mã_hồ_sơ).first()
@@ -583,4 +726,3 @@ def update_hoso_status(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-

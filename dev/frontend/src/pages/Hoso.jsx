@@ -48,6 +48,7 @@ export default function Hoso() {
   const { addToast } = useToast();
   const [hosoList, setHosoList] = useState([]);
   const [contractsList, setContractsList] = useState([]);
+  const [taskTypes, setTaskTypes] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingHoso, setEditingHoso] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
@@ -68,16 +69,19 @@ export default function Hoso() {
   const fetchAssignmentOptions = useCallback(async () => {
     try {
       setAssignmentLoading(true);
-      const [assignmentRes, contractsRes] = await Promise.all([
+      const [assignmentRes, contractsRes, taskTypesRes] = await Promise.all([
         fetch(`${API}/api/tasks/assignment-options`),
         fetch(`${API}/api/tasks/contracts-lookup`),
+        fetch(`${API}/api/tasks/task-types`),
       ]);
-      const [assignmentData, contractsData] = await Promise.all([
+      const [assignmentData, contractsData, taskTypesData] = await Promise.all([
         assignmentRes.ok ? assignmentRes.json() : { data: [] },
         contractsRes.ok ? contractsRes.json() : { data: [] },
+        taskTypesRes.ok ? taskTypesRes.json() : { data: [] },
       ]);
       setAssignmentOptions(assignmentData.data || []);
       setContractsList(contractsData.data || []);
+      setTaskTypes(taskTypesData.data || []);
     } catch (error) {
       console.error(error);
       addToast('Lỗi khi tải danh sách phụ trợ', 'error');
@@ -160,13 +164,14 @@ export default function Hoso() {
   const filteredList = hosoList.filter((row) => {
     const normalizedSearch = searchTerm.toLowerCase();
     const matchSearch = [
-      row['Tên khách hàng'],
-      row['Mã hồ sơ'],
       row['Mã hợp đồng'],
-      row['SĐT'],
-      row['Loại dịch vụ'],
+      row['Service Package'],
       row['Phụ trách chính'],
       row['Phụ đo'],
+      row['Mã hồ sơ'],
+      row['Tên khách hàng'],
+      row['SĐT'],
+      row['Loại dịch vụ'],
     ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
     const departmentId = row['Phòng ban ID'] || 'unassigned';
     const matchDepartment = activeDepartment === 'all' || departmentId === activeDepartment;
@@ -181,81 +186,51 @@ export default function Hoso() {
 
   const columns = [
     {
-      key: 'Mã hồ sơ',
-      label: 'MÃ HỒ SƠ',
+      key: 'Mã hợp đồng',
+      label: 'MÃ HỢP ĐỒNG',
       width: 140,
-      sortable: true,
       render: (value, row) => (
         <div className="hoso-identity">
-          <strong>{value}</strong>
+          <strong>{value || 'Chưa có HĐ'}</strong>
           <span className="hoso-contract-priority" title={`Ưu tiên: ${row['Ưu tiên'] || 'Trung bình'}`}>
             <i className={`hoso-priority-dot hoso-priority-dot--${priorityVariant(row['Ưu tiên'])}`} />
-            HĐ: {row['Mã hợp đồng'] || 'Chưa có'}
+            HS: {row['Mã hồ sơ']}
           </span>
-          <span>Tạo: {formatDate(row['Ngày tạo'])}</span>
         </div>
       ),
     },
     {
-      key: 'Tên khách hàng',
-      label: 'KHÁCH HÀNG',
-      width: 180,
-      render: (value, row) => (
-        <div className="hoso-stack">
-          <strong>{value}</strong>
-          <span>{row['SĐT'] || 'Chưa có SĐT'}</span>
-          <span>{row['Khu vực/Phường'] || 'Chưa cập nhật khu vực'}</span>
-        </div>
-      ),
+      key: 'Service Package',
+      label: 'GÓI DỊCH VỤ',
+      width: 160,
+      sortable: true,
+      render: (value) => <strong className="hoso-service">{value || '—'}</strong>,
     },
     {
       key: 'Loại dịch vụ',
-      label: 'CÔNG VIỆC',
-      width: 120,
+      label: 'HẠNG MỤC',
+      width: 180,
       sortable: true,
-      render: (value) => <strong className="hoso-service">{value}</strong>,
+      render: (value) => <span>{value || '—'}</span>,
     },
     {
       key: 'Phụ trách chính',
-      label: 'NHÂN VIÊN ĐO',
-      width: 140,
-      render: (value, row) => <span>{value || 'Chưa phân công'}</span>,
+      label: 'NHÂN VIÊN CHÍNH',
+      width: 150,
+      render: (value) => <span>{value || 'Chưa phân công'}</span>,
     },
     {
       key: 'Phụ đo',
-      label: 'PHỤ ĐO',
-      width: 140,
-      render: (value, row) => <span>{value || 'Không cần phụ đo'}</span>,
-    },
-    {
-      key: 'Ngày đo',
-      label: 'NGÀY ĐO',
-      width: 90,
-      sortable: true,
-      render: formatDate,
-    },
-    {
-      key: 'Deadline',
-      label: 'DEADLINE',
-      width: 110,
-      sortable: true,
-      render: (value, row) => (
-        <div className="hoso-stack">
-          <strong>{formatDate(value)}</strong>
-          {row['Số ngày còn lại'] !== null && !terminalStatuses.has(row['Trạng thái']) && (
-            <span>{row['Số ngày còn lại']} ngày còn lại</span>
-          )}
-        </div>
-      ),
+      label: 'NHÂN VIÊN PHỤ',
+      width: 150,
+      render: (value) => <span>{value || 'Không cần'}</span>,
     },
     {
       key: 'Trạng thái',
-      label: 'TRẠNG THÁI ĐO',
+      label: 'TRẠNG THÁI',
       width: 140,
       render: (value) => <StatusBadge status={value} />,
     },
-
-
     {
       key: 'actions',
       label: '',
@@ -268,7 +243,7 @@ export default function Hoso() {
             setEditingHoso(row);
             setIsModalOpen(true);
           }}
-          title="Chỉnh sửa hồ sơ"
+          title="Chỉnh sửa"
         >
           <Edit2 size={16} />
         </button>
@@ -338,7 +313,7 @@ export default function Hoso() {
       <FilterBar
         search={searchTerm}
         onSearchChange={setSearchTerm}
-        searchPlaceholder="Tìm mã hồ sơ, hợp đồng, khách hàng, dịch vụ, nhân sự..."
+        searchPlaceholder="Tìm hợp đồng, service line, gói dịch vụ, nhân sự..."
         filters={[
           {
             key: 'status',
@@ -431,6 +406,7 @@ export default function Hoso() {
         assignmentOptions={assignmentOptions}
         departmentOptions={departmentOptions}
         contractsList={contractsList}
+        taskTypes={taskTypes}
         loading={modalLoading}
       />
     </section>

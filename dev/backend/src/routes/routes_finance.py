@@ -335,7 +335,7 @@ def list_projects(
     user: User = Depends(require_permission("finance", "read"))
 ):
     rows = FinanceRepository.list_projects(db)
-    return [{"id": p.id, "label": f"{p.id} — {p.task_name or p.contract_id or ''}".strip(" —")}
+    return [{"id": p.id, "label": f"{p.id} — {p.service_type or p.contract_id or ''}".strip(" —")}
             for p in rows]
 
 @router.get("/settings")
@@ -408,4 +408,3 @@ def get_monthly_dashboard(
     user: User = Depends(require_permission("finance", "read"))
 ):
     return FinanceRepository.get_monthly_dashboard(db, month)
-

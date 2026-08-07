@@ -94,8 +94,8 @@ def run_phase4_verification():
         from src.db.models import (
             User, Role, UserRole, RolePermission, AuthToken, AuditLog, Notification,
             Customer, LeadPipeline, Contract, ZaloInteraction, ServiceLine,
-            TaskType, TaskTypeRate, ProjectTask, TaskSubmission, TaskPayRecord, LegalSubmission,
-            ServicePackage, TaskTransition,
+            TaskType, TaskTypeRate, ProjectTask, TaskSubmission, TaskPayRecord,
+            ServicePackage,
             CashflowTransaction, Receivable, FundOpeningBalance, FinanceSetting, ContractExpense,
             Department, Employee, KpiPayroll, PayrollPeriod, PayrollAdjustment, Attendance, LeaveRecord,
             ChatRoom, Message, ChatParticipant,
@@ -103,7 +103,7 @@ def run_phase4_verification():
             SystemSetting,
             GoogleSheetSyncConfig,
         )
-        print("  ✓ Phase 1: All 39 model classes imported successfully")
+        print("  ✓ Legacy model classes imported successfully")
 
         route_modules = [
             "routes_finance", "routes_payroll", "routes_hoso", "routes_hopdong",
