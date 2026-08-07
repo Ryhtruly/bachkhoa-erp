@@ -20,14 +20,14 @@ def check_closed_period(db: Session, target_date: date):
             raise HTTPException(status_code=400, detail="Dữ liệu thuộc kỳ kế toán đã chốt, không thể thêm/sửa/hủy.")
 
 def check_cash_balance(db: Session, amount: float, exclude_transaction_id: Optional[str] = None):
-    balance = FinanceRepository.get_running_balance(db, "Tiền mặt")
+    balance = FinanceRepository.get_running_balance(db, "CASH")
     if exclude_transaction_id:
         from src.db.models import CashflowTransaction
         t = db.query(CashflowTransaction).filter(CashflowTransaction.id == exclude_transaction_id).first()
-        if t and t.loai == "Chi" and t.hinh_thuc == "Tiền mặt":
-            balance += float(t.so_tien or 0)
-        elif t and t.loai == "Thu" and t.hinh_thuc == "Tiền mặt":
-            balance -= float(t.so_tien or 0)
+        if t and t.transaction_type == "EXPENSE" and t.payment_method == "CASH":
+            balance += float(t.amount or 0)
+        elif t and t.transaction_type == "INCOME" and t.payment_method == "CASH":
+            balance -= float(t.amount or 0)
 
     if balance < amount:
         raise HTTPException(
@@ -88,19 +88,19 @@ def parse_category(cat_val: str):
     if ": " in cat_val:
         parts = cat_val.split(": ", 1)
         return parts[0], parts[1]
-    return "Khác", cat_val
+    return "OTHER", cat_val
 
 def calculate_balances(db: Session, type_val: str, amount: float, method: str):
-    bal_tm = FinanceRepository.get_running_balance(db, "Tiền mặt")
-    bal_ck = FinanceRepository.get_running_balance(db, "Chuyển khoản")
+    bal_tm = FinanceRepository.get_running_balance(db, "CASH")
+    bal_ck = FinanceRepository.get_running_balance(db, "BANK_TRANSFER")
     
-    if method == "Tiền mặt":
-        if type_val == "Thu":
+    if method == "CASH":
+        if type_val == "INCOME":
             bal_tm += amount
         else:
             bal_tm -= amount
-    elif method == "Chuyển khoản":
-        if type_val == "Thu":
+    elif method == "BANK_TRANSFER":
+        if type_val == "INCOME":
             bal_ck += amount
         else:
             bal_ck -= amount

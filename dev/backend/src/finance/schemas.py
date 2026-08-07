@@ -3,32 +3,33 @@ from typing import Optional, Literal
 from datetime import date
 
 class CashflowIn(BaseModel):
-    type: str                           # "Thu" | "Chi"
+    type: str                           # "INCOME" | "EXPENSE"
     amount: float
-    category: str                       # Dropdown: Hạng mục + Diễn giải
+    category: str                       # Category code / description
     payer_payee: str
-    payment_method: str                 # "Tiền mặt" | "Chuyển khoản"
+    payment_method: str                 # "CASH" | "BANK_TRANSFER"
     contract_id: Optional[str] = None
     project_id: Optional[str] = None
-    du_an_phong_ban: Optional[str] = None
-    dien_giai: Optional[str] = None
-    # Các trường kế toán nâng cao
-    nguoi_lap: Optional[str] = None
-    nguoi_duyet: Optional[str] = None
-    trang_thai: Optional[str] = None
-    ngay: Optional[str] = None
-    scope: Optional[str] = "Công ty"
+    department_code: Optional[str] = None
+    description: Optional[str] = None
+    is_pass_through_fee: bool = False
+    # Accounting workflow fields
+    created_by_user_id: Optional[str] = None
+    approved_by_user_id: Optional[str] = None
+    status: Optional[str] = None
+    transaction_date: Optional[str] = None
+    scope: Optional[str] = "INTERNAL"
 
 class CashflowUpdateIn(BaseModel):
-    hang_muc: str
-    nguoi_nhan_nop: str
-    hinh_thuc: str
-    so_tien: float
-    ngay: Optional[str] = None
-    dien_giai: Optional[str] = ""
-    ghi_chu: Optional[str] = ""
+    category_code: str
+    payer_payee_name: str
+    payment_method: str
+    amount: float
+    transaction_date: Optional[str] = None
+    description: Optional[str] = ""
+    notes: Optional[str] = ""
     contract_id: Optional[str] = None
-    scope: Optional[str] = "Công ty"
+    scope: Optional[str] = "INTERNAL"
 
 class CashflowVoidIn(BaseModel):
     reason: str
@@ -39,26 +40,26 @@ class AdvanceCreateIn(BaseModel):
     amount: float
     payer_payee: str
     note: Optional[str] = ""
-    payment_method: str = "Tiền mặt"
+    payment_method: str = "CASH"
 
 class AdvanceClearIn(BaseModel):
-    advance_id: str          # ID phiếu tạm ứng gốc
-    actual_amount: float     # Số tiền thực chi từ hóa đơn
+    advance_id: str          # ID of original advance voucher
+    actual_amount: float     # Actual expenditure amount from invoices
     note: Optional[str] = ""
 
 class FundCloseIn(BaseModel):
-    hinh_thuc: str            # "Tiền mặt" | "Chuyển khoản"
-    so_tien_thuc_te: float
-    ngay_chot: str            # ISO string or YYYY-MM-DD HH:MM:SS
-    ghi_chu: Optional[str] = ""
-    nguoi_chot: Optional[str] = ""
+    payment_method: str       # "CASH" | "BANK_TRANSFER"
+    actual_amount: float
+    close_datetime: str       # ISO string or YYYY-MM-DD HH:MM:SS
+    notes: Optional[str] = ""
+    closed_by: Optional[str] = ""
 
 class WageCreateIn(BaseModel):
     project_id: str
     amount: float
     payer_payee: str
     note: Optional[str] = ""
-    payment_method: str = "Tiền mặt"
+    payment_method: str = "CASH"
 
 class EmployeeUpsertIn(BaseModel):
     full_name: str

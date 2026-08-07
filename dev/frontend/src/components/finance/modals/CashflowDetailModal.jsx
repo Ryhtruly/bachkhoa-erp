@@ -38,18 +38,18 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
         .then(r => r.json())
         .then(d => {
           setDetail(d);
-          let parsedDate = d.ngay;
+          let parsedDate = d.transaction_date || d.ngay;
           if (parsedDate && parsedDate.includes('/')) {
             const [dd, mm, yy] = parsedDate.split('/');
             parsedDate = `20${yy}-${mm}-${dd}`;
           }
           setForm({
-            hang_muc: d['Hạng mục'] || '',
-            nguoi_nhan_nop: d['Đối tác'] || '',
-            hinh_thuc: d['Hình thức'] || 'Tiền mặt',
+            category_code: d.category_code || d['Hạng mục'] || '',
+            payer_payee_name: d.payer_payee_name || d['Đối tác'] || '',
+            payment_method: d.payment_method || (d['Hình thức'] === 'Chuyển khoản' ? 'BANK_TRANSFER' : 'CASH'),
             so_tien: String(d.amount || ''),
-            ngay: parsedDate || '',
-            dien_giai: d['Diễn giải'] || '',
+            transaction_date: parsedDate || '',
+            description: d.description || d['Diễn giải'] || '',
             contract_id: d.contract_id || ''
           });
           setLoading(false);
@@ -70,15 +70,15 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
   const handleContractChange = (cid) => {
     setDirty(true);
 
-    let newPayer = form.nguoi_nhan_nop;
+    let newPayer = form.payer_payee_name;
     let notice = '';
 
     if (cid) {
       const c = contracts.find(x => x.id === cid);
       if (c && c.customer_name) {
-        if (!form.nguoi_nhan_nop) {
+        if (!form.payer_payee_name) {
           newPayer = c.customer_name;
-        } else if (form.nguoi_nhan_nop !== c.customer_name) {
+        } else if (form.payer_payee_name !== c.customer_name) {
           newPayer = c.customer_name;
           notice = 'Đã tự điền theo hồ sơ — bạn có thể chỉnh lại';
         }
@@ -86,7 +86,7 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
     }
 
     setAutofillNotice(notice);
-    setForm(prev => ({ ...prev, contract_id: cid, nguoi_nhan_nop: newPayer }));
+    setForm(prev => ({ ...prev, contract_id: cid, payer_payee_name: newPayer }));
   };
 
   const handleChange = (field, val) => {
@@ -109,12 +109,12 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
     setSubmitting(true); setError('');
     try {
       const payload = {
-        hang_muc: form.hang_muc,
-        nguoi_nhan_nop: form.nguoi_nhan_nop,
-        hinh_thuc: form.hinh_thuc,
-        so_tien: amount,
-        ngay: form.ngay,
-        dien_giai: form.dien_giai,
+        category_code: form.category_code,
+        payer_payee_name: form.payer_payee_name,
+        payment_method: form.payment_method,
+        amount: amount,
+        transaction_date: form.transaction_date,
+        description: form.description,
         contract_id: form.contract_id || null
       };
 
@@ -175,31 +175,31 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
                 </td>
                 <td style={{ fontWeight: 'bold', width: '15%' }}>Ngày</td>
                 <td style={{ width: '35%' }}>
-                  <input type="date" disabled={isReadOnly} value={form.ngay} onChange={e => handleChange('ngay', e.target.value)} style={{ fontFamily: 'monospace' }} required />
+                  <input type="date" disabled={isReadOnly} value={form.transaction_date} onChange={e => handleChange('transaction_date', e.target.value)} style={{ fontFamily: 'monospace' }} required />
                 </td>
               </tr>
 
               <tr>
                 <td style={{ fontWeight: 'bold' }}>Diễn giải</td>
                 <td>
-                  <input type="text" disabled={isReadOnly} value={form.dien_giai} onChange={e => handleChange('dien_giai', e.target.value)} placeholder="Nhập diễn giải chi tiết..." required />
+                  <input type="text" disabled={isReadOnly} value={form.description} onChange={e => handleChange('description', e.target.value)} placeholder="Nhập diễn giải chi tiết..." required />
                 </td>
                 <td style={{ fontWeight: 'bold' }}>Hạng mục</td>
                 <td>
-                  <input type="text" disabled={isReadOnly} value={form.hang_muc} onChange={e => handleChange('hang_muc', e.target.value)} required />
+                  <input type="text" disabled={isReadOnly} value={form.category_code} onChange={e => handleChange('category_code', e.target.value)} required />
                 </td>
               </tr>
 
               <tr>
                 <td style={{ fontWeight: 'bold' }}>{isThu ? 'Người nộp' : 'Người nhận'}</td>
                 <td>
-                  <input type="text" disabled={isReadOnly} value={form.nguoi_nhan_nop} onChange={e => handleChange('nguoi_nhan_nop', e.target.value)} placeholder={isThu ? 'Họ tên người nộp tiền...' : 'Họ tên người nhận tiền...'} required />
+                  <input type="text" disabled={isReadOnly} value={form.payer_payee_name} onChange={e => handleChange('payer_payee_name', e.target.value)} placeholder={isThu ? 'Họ tên người nộp tiền...' : 'Họ tên người nhận tiền...'} required />
                 </td>
                 <td style={{ fontWeight: 'bold' }}>Hình thức</td>
                 <td>
-                  <select disabled={isReadOnly} value={form.hinh_thuc} onChange={e => handleChange('hinh_thuc', e.target.value)}>
-                    <option value="Chuyển khoản">🏦 Chuyển khoản</option>
-                    <option value="Tiền mặt">💵 Tiền mặt</option>
+                  <select disabled={isReadOnly} value={form.payment_method} onChange={e => handleChange('payment_method', e.target.value)}>
+                    <option value="BANK_TRANSFER">🏦 Chuyển khoản</option>
+                    <option value="CASH">💵 Tiền mặt</option>
                   </select>
                 </td>
               </tr>

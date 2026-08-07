@@ -114,12 +114,12 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
             for row in status_rows
         ]
         
-        cashflow = db.query(CashflowTransaction).filter(CashflowTransaction.loai == "Chi").all()
+        cashflow = db.query(CashflowTransaction).filter(CashflowTransaction.transaction_type == "EXPENSE").all()
         expense_cats = {}
         for tc in cashflow:
-            cat = tc.hang_muc or "Khác"
+            cat = tc.category_code or "Khác"
             if not cat.strip(): cat = "Khác"
-            expense_cats[cat] = expense_cats.get(cat, 0) + float(tc.so_tien or 0)
+            expense_cats[cat] = expense_cats.get(cat, 0) + float(tc.amount or 0)
             
         pie_expense_data = [{"name": k, "value": v} for k, v in expense_cats.items() if v > 0]
         pie_expense_data.sort(key=lambda x: x["value"], reverse=True)

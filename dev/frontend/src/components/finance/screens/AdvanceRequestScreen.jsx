@@ -58,6 +58,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
     if (!amount) { setError('Nhập số tiền'); return; }
     setSubmitting(true); setError('');
     try {
+      const pmVal = form.payment_method === 'Tiền mặt' ? 'CASH' : (form.payment_method === 'Chuyển khoản' ? 'BANK_TRANSFER' : form.payment_method);
       const res = await fetch(`${API}/api/finance/advance/create`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -66,7 +67,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
           amount,
           payer_payee: form.payer_payee,
           note: form.note,
-          payment_method: form.payment_method,
+          payment_method: pmVal,
           nguoi_lap: form.nguoi_lap,
           nguoi_duyet: form.nguoi_duyet,
           trang_thai: form.trang_thai,

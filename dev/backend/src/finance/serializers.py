@@ -18,25 +18,31 @@ def serialize_cashflow(t: CashflowTransaction, db: Session = None) -> dict:
             if p and p.service_type:
                 project_label = f"{t.project_id} — {p.service_type}"
 
+    formatted_date = t.transaction_date.strftime("%d/%m/%y") if t.transaction_date else (t.created_at.strftime("%d/%m/%y") if t.created_at else "")
+    cat_code = t.category_code or "OTHER"
+    desc = t.description or ""
+    cat_label = f"{cat_code}: {desc}" if cat_code and desc else (cat_code or desc or "")
+
     return {
         "id": t.id,
-        "type": t.loai,
-        "Ngày": t.ngay.strftime("%d/%m/%y") if t.ngay else (t.created_at.strftime("%d/%m/%y") if t.created_at else ""),
-        "Hạng mục": t.hang_muc or "Khác",
-        "Diễn giải": t.dien_giai or "",
-        "Danh mục": f"{t.hang_muc}: {t.dien_giai}" if t.hang_muc and t.dien_giai else (t.hang_muc or t.dien_giai or ""),
-        "Đối tác": t.nguoi_nhan_nop or "",
-        "Hình thức": t.hinh_thuc or "",
-        "Dự án": project_label,
-        "Hợp đồng": contract_label,
-        "amount": float(t.so_tien or 0),
+        "transaction_type": t.transaction_type,
+        "transaction_date": formatted_date,
+        "category_code": cat_code,
+        "description": desc,
+        "category_label": cat_label,
+        "payer_payee_name": t.payer_payee_name or "",
+        "payment_method": t.payment_method or "",
+        "project_label": project_label,
+        "contract_label": contract_label,
+        "amount": float(t.amount or 0),
         "contract_id": t.contract_id,
         "project_id": t.project_id,
-        "so_du_sau_gd": float(t.so_du_sau_gd or 0),
-        "so_du_tien_mat": float(t.so_du_tien_mat or 0),
-        "so_du_ck": float(t.so_du_ck or 0),
-        "trang_thai": t.trang_thai or "",
-        "scope": getattr(t, "scope", "Công ty") or "Công ty"
+        "balance_after": float(t.balance_after or 0),
+        "cash_balance_after": float(t.cash_balance_after or 0),
+        "bank_balance_after": float(t.bank_balance_after or 0),
+        "status": t.status or "",
+        "scope": getattr(t, "scope", "INTERNAL") or "INTERNAL",
+        "is_pass_through_fee": bool(t.is_pass_through_fee),
     }
 
 def serialize_cashflow_bulk(rows, db: Session) -> list:
@@ -74,25 +80,31 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
             if p.service_type:
                 project_label = f"{t.project_id} — {p.service_type}"
 
+        formatted_date = t.transaction_date.strftime("%d/%m/%y") if t.transaction_date else (t.created_at.strftime("%d/%m/%y") if t.created_at else "")
+        cat_code = t.category_code or "OTHER"
+        desc = t.description or ""
+        cat_label = f"{cat_code}: {desc}" if cat_code and desc else (cat_code or desc or "")
+
         result.append({
             "id": t.id,
-            "type": t.loai,
-            "Ngày": t.ngay.strftime("%d/%m/%y") if t.ngay else (t.created_at.strftime("%d/%m/%y") if t.created_at else ""),
-            "Hạng mục": t.hang_muc or "Khác",
-            "Diễn giải": t.dien_giai or "",
-            "Danh mục": f"{t.hang_muc}: {t.dien_giai}" if t.hang_muc and t.dien_giai else (t.hang_muc or t.dien_giai or ""),
-            "Đối tác": t.nguoi_nhan_nop or "",
-            "Hình thức": t.hinh_thuc or "",
-            "Dự án": project_label,
-            "Hợp đồng": contract_label,
-            "amount": float(t.so_tien or 0),
+            "transaction_type": t.transaction_type,
+            "transaction_date": formatted_date,
+            "category_code": cat_code,
+            "description": desc,
+            "category_label": cat_label,
+            "payer_payee_name": t.payer_payee_name or "",
+            "payment_method": t.payment_method or "",
+            "project_label": project_label,
+            "contract_label": contract_label,
+            "amount": float(t.amount or 0),
             "contract_id": t.contract_id,
             "project_id": t.project_id,
-            "so_du_sau_gd": float(t.so_du_sau_gd or 0),
-            "so_du_tien_mat": float(t.so_du_tien_mat or 0),
-            "so_du_ck": float(t.so_du_ck or 0),
-            "trang_thai": t.trang_thai or "",
-            "scope": getattr(t, "scope", "Công ty") or "Công ty"
+            "balance_after": float(t.balance_after or 0),
+            "cash_balance_after": float(t.cash_balance_after or 0),
+            "bank_balance_after": float(t.bank_balance_after or 0),
+            "status": t.status or "",
+            "scope": getattr(t, "scope", "INTERNAL") or "INTERNAL",
+            "is_pass_through_fee": bool(t.is_pass_through_fee),
         })
     return result
 

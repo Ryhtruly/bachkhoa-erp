@@ -54,12 +54,15 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
 
     setSubmitting(true); setError('');
     try {
+      const typeVal = type === 'Thu' ? 'INCOME' : 'EXPENSE';
+      const pmVal = form.payment_method === 'Tiền mặt' ? 'CASH' : (form.payment_method === 'Chuyển khoản' ? 'BANK_TRANSFER' : form.payment_method);
       const res = await fetch(`${API}/api/finance/cashflow/create`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type,
+          type: typeVal,
           amount,
           ...form,
+          payment_method: pmVal,
           category: finalCategory,
           contract_id: form.contract_id || null,
           project_id: form.project_id || null,

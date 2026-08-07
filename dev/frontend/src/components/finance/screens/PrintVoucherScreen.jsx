@@ -304,6 +304,9 @@ export default function PrintVoucherScreen({ month }) {
     setLoading(true);
     try {
       let res;
+      const pmMap = { 'Tiền mặt': 'CASH', 'Chuyển khoản': 'BANK_TRANSFER', 'Tạm ứng': 'OTHER' };
+      const pmVal = pmMap[form.hinh_thuc] || form.hinh_thuc;
+
       if (txType === 'Tạm ứng') {
         res = await fetch(`${API}/api/finance/advance/create`, {
           method: 'POST',
@@ -313,7 +316,7 @@ export default function PrintVoucherScreen({ month }) {
             amount: Number(form.amount),
             payer_payee: form.nguoi_nhan_nop,
             note: form.dien_giai,
-            payment_method: form.hinh_thuc
+            payment_method: pmVal
           })
         });
       } else if (txType === 'Hoàn ứng') {
@@ -327,15 +330,16 @@ export default function PrintVoucherScreen({ month }) {
           })
         });
       } else {
+        const typeVal = txType === 'Thu' ? 'INCOME' : (txType === 'Chi' ? 'EXPENSE' : txType);
         res = await fetch(`${API}/api/finance/cashflow/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: txType,
+            type: typeVal,
             amount: Number(form.amount),
             category: form.hang_muc,
             payer_payee: form.nguoi_nhan_nop,
-            payment_method: form.hinh_thuc,
+            payment_method: pmVal,
             contract_id: form.contract_id || null,
             project_id: form.project_id || null,
             nguoi_lap: form.nguoi_lap,

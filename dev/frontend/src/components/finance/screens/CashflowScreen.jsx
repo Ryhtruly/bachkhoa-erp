@@ -57,57 +57,55 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
       const bayGio = new Date().toISOString();
 
       if (mode === 'cash') {
-        // 🔥 Gọi song song: 1 cái lấy danh sách trans theo bộ lọc, 1 cái bốc số dư realtime từ DB
         const [resData, resBal] = await Promise.all([
           fetch(`${API}/api/finance/cashflow/cash?${p}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=CASH&close_datetime=${encodeURIComponent(bayGio)}`)
         ]);
 
         const d = await resData.json();
         const b = await resBal.json();
+        const balVal = b.system_balance || b.so_du_he_thong || 0;
 
-        // Cập nhật: Danh sách trans giữ nguyên, nhưng số dư lấy từ hàm calculate chuẩn
         setBalance({
           ...d,
-          balance: b.so_du_he_thong || 0,
-          tien_mat: b.so_du_he_thong || 0
+          balance: balVal,
+          tien_mat: balVal
         });
         setData(d.transactions || []);
 
       } else if (mode === 'bank') {
         const [resData, resBal] = await Promise.all([
           fetch(`${API}/api/finance/cashflow/bank?${p}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=BANK_TRANSFER&close_datetime=${encodeURIComponent(bayGio)}`)
         ]);
 
         const d = await resData.json();
         const b = await resBal.json();
+        const balVal = b.system_balance || b.so_du_he_thong || 0;
 
         setBalance({
           ...d,
-          balance: b.so_du_he_thong || 0,
-          ngan_hang: b.so_du_he_thong || 0
+          balance: balVal,
+          ngan_hang: balVal
         });
         setData(d.transactions || []);
 
       } else {
-        // Màn hình 'all' (Tổng cả 2 quỹ)
         const [resData, resBalTM, resBalCK] = await Promise.all([
           fetch(`${API}/api/finance/cashflow?${p}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=CASH&close_datetime=${encodeURIComponent(bayGio)}`),
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=BANK_TRANSFER&close_datetime=${encodeURIComponent(bayGio)}`)
         ]);
 
         const transactionsList = await resData.json();
         const bTM = await resBalTM.json();
         const bCK = await resBalCK.json();
 
-        const tm = bTM.so_du_he_thong || 0;
-        const ck = bCK.so_du_he_thong || 0;
+        const tm = bTM.system_balance || bTM.so_du_he_thong || 0;
+        const ck = bCK.system_balance || bCK.so_du_he_thong || 0;
 
-        // 🔥 SỬA TẠI ĐÂY: Tính trực tiếp từ dữ liệu vừa nhận về để tránh crash render
-        const inlineThu = transactionsList.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
-        const inlineChi = transactionsList.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
+        const inlineThu = transactionsList.filter(t => (t.transaction_type === 'INCOME' || t.type === 'Thu')).reduce((s, t) => s + (t.amount || 0), 0);
+        const inlineChi = transactionsList.filter(t => (t.transaction_type === 'EXPENSE' || t.type === 'Chi')).reduce((s, t) => s + (t.amount || 0), 0);
 
         setBalance({
           tien_mat: tm,
@@ -130,14 +128,15 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const filtered = data.filter(t => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (t['Danh mục'] || '').toLowerCase().includes(q) ||
-      (t['Đối tác'] || '').toLowerCase().includes(q) ||
+    return (t.category_code || t['Hạng mục'] || '').toLowerCase().includes(q) ||
+      (t.description || t['Diễn giải'] || '').toLowerCase().includes(q) ||
+      (t.payer_payee_name || t['Đối tác'] || '').toLowerCase().includes(q) ||
       (t.id || '').toLowerCase().includes(q);
   });
   const sortedFiltered = sort === 'asc' ? [...filtered].reverse() : filtered;
 
-  const totalThu = filtered.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
-  const totalChi = filtered.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
+  const totalThu = filtered.filter(t => (t.transaction_type === 'INCOME' || t.type === 'Thu')).reduce((s, t) => s + (t.amount || 0), 0);
+  const totalChi = filtered.filter(t => (t.transaction_type === 'EXPENSE' || t.type === 'Chi')).reduce((s, t) => s + (t.amount || 0), 0);
 
   return (
     <div>
@@ -186,8 +185,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         onSearchChange={setSearch}
         searchPlaceholder={mode === 'all' ? "Tìm số phiếu, đối tác, danh mục..." : "Tìm số phiếu, đối tác..."}
         filters={[
-          { key: 'type', label: 'Loại', type: 'select', width: 140, options: [{ value: 'Thu', label: '🟢 Thu' }, { value: 'Chi', label: '🔴 Chi' }] },
-          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 160, options: [{ value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] }
+          { key: 'type', label: 'Loại', type: 'select', width: 140, options: [{ value: 'INCOME', label: '🟢 Thu' }, { value: 'EXPENSE', label: '🔴 Chi' }] },
+          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 160, options: [{ value: 'CASH', label: 'Tiền mặt' }, { value: 'BANK_TRANSFER', label: 'Chuyển khoản' }] }
         ]}
         values={filters}
         onFilterChange={(k, v) => setFilters(p => ({ ...p, [k]: v }))}

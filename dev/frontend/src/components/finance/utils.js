@@ -69,3 +69,27 @@ export const CATEGORY_AUTO_MAPPING = {
   "Chi quầy tiếp nhận": { phong_ban: "Phòng Marketing", doi_tac: "Nhân viên Marketing", nguoi_lap: "Nhân viên Marketing", nguoi_duyet: "Giám đốc" },
   "Chi thụ lý bản vẽ": { phong_ban: "Phòng Kỹ Thuật", doi_tac: "Lê Văn Dựng", nguoi_lap: "Lê Văn Dựng", nguoi_duyet: "Giám đốc" }
 };
+
+export const TYPE_MAP = {
+  INCOME: { label: 'Thu', color: '#10b981', symbol: '+' },
+  EXPENSE: { label: 'Chi', color: '#ef4444', symbol: '−' },
+  Thu: { label: 'Thu', color: '#10b981', symbol: '+' },
+  Chi: { label: 'Chi', color: '#ef4444', symbol: '−' }
+};
+
+export const METHOD_MAP = {
+  CASH: { label: 'Tiền mặt', shortLabel: 'Tiền mặt', bg: 'rgba(245,158,11,0.1)', color: '#f59e0b' },
+  BANK_TRANSFER: { label: 'Chuyển khoản', shortLabel: 'Ckhoản', bg: 'rgba(99,102,241,0.1)', color: '#6366f1' },
+  OTHER: { label: 'Khác', shortLabel: 'Khác', bg: 'rgba(107,114,128,0.1)', color: '#6b7280' },
+  'Tiền mặt': { label: 'Tiền mặt', shortLabel: 'Tiền mặt', bg: 'rgba(245,158,11,0.1)', color: '#f59e0b' },
+  'Chuyển khoản': { label: 'Chuyển khoản', shortLabel: 'Ckhoản', bg: 'rgba(99,102,241,0.1)', color: '#6366f1' }
+};
+
+export const STATUS_MAP = {
+  COMPLETED: { label: 'Hoàn thành', color: '#10b981' },
+  PENDING: { label: 'Chờ duyệt', color: '#f59e0b' },
+  CANCELLED: { label: 'Đã hủy', color: '#ef4444' },
+  'Hoàn thành': { label: 'Hoàn thành', color: '#10b981' },
+  'Chờ duyệt': { label: 'Chờ duyệt', color: '#f59e0b' },
+  'Đã hủy': { label: 'Đã hủy', color: '#ef4444' }
+};

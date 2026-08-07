@@ -45,14 +45,14 @@ export default function SettingsScreen() {
     try {
       const isoString = new Date(ngayChot).toISOString();
       const [resTM, resCK] = await Promise.all([
-        fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(isoString)}`),
-        fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(isoString)}`)
+        fetch(`${API}/api/finance/fund-balances/calculate?payment_method=CASH&close_datetime=${encodeURIComponent(isoString)}`),
+        fetch(`${API}/api/finance/fund-balances/calculate?payment_method=BANK_TRANSFER&close_datetime=${encodeURIComponent(isoString)}`)
       ]);
       if (resTM.ok && resCK.ok) {
         const dTM = await resTM.json();
         const dCK = await resCK.json();
-        setSoDuHeThongTM(dTM.so_du_he_thong || 0);
-        setSoDuHeThongCK(dCK.so_du_he_thong || 0);
+        setSoDuHeThongTM(dTM.system_balance ?? dTM.so_du_he_thong ?? 0);
+        setSoDuHeThongCK(dCK.system_balance ?? dCK.so_du_he_thong ?? 0);
       } else {
         addToast('❌ Không thể tính toán số dư từ hệ thống', 'error');
       }
@@ -130,11 +130,11 @@ export default function SettingsScreen() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              hinh_thuc: 'Tiền mặt',
-              so_tien_thuc_te: valThucTeTM,
-              ngay_chot: isoString,
-              ghi_chu: ghiChuTM,
-              nguoi_chot: nguoiChot
+              payment_method: 'CASH',
+              actual_amount: valThucTeTM,
+              close_datetime: isoString,
+              notes: ghiChuTM,
+              closed_by: nguoiChot
             })
           })
         );
@@ -146,11 +146,11 @@ export default function SettingsScreen() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              hinh_thuc: 'Chuyển khoản',
-              so_tien_thuc_te: valThucTeCK,
-              ngay_chot: isoString,
-              ghi_chu: ghiChuCK,
-              nguoi_chot: nguoiChot
+              payment_method: 'BANK_TRANSFER',
+              actual_amount: valThucTeCK,
+              close_datetime: isoString,
+              notes: ghiChuCK,
+              closed_by: nguoiChot
             })
           })
         );
@@ -432,31 +432,34 @@ export default function SettingsScreen() {
                     <td colSpan="5" style={{ padding: '24px 8px', textAlign: 'center', color: '#64748b' }}>Chưa có lịch sử chốt quỹ nào phù hợp.</td>
                   </tr>
                 ) : (
-                  filteredHistory.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px 8px', fontWeight: 500, color: '#334155' }}>{row.ngay_ap_dung}</td>
-                      <td style={{ padding: '12px 8px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '2px 8px',
-                          borderRadius: '9999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: row.hinh_thuc === 'Tiền mặt' ? '#eff6ff' : '#f0fdf4',
-                          color: row.hinh_thuc === 'Tiền mặt' ? '#1d4ed8' : '#15803d',
-                          border: `1px solid ${row.hinh_thuc === 'Tiền mặt' ? '#bfdbfe' : '#bbf7d0'}`
-                        }}>
-                          {row.hinh_thuc === 'Tiền mặt' ? 'Tiền mặt' : 'Ckhoản'}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#0f172a' }}>
-                        {fmt(row.so_tien_dau_ky)}
-                      </td>
-                      <td style={{ padding: '12px 8px', color: '#475569' }}>{row.nguoi_chot || '—'}</td>
-                      <td style={{ padding: '12px 8px', color: '#64748b', fontSize: '0.85rem' }}>{row.ghi_chu || '—'}</td>
-                    </tr>
-                  ))
+                  filteredHistory.map((row) => {
+                    const isCash = row.payment_method === 'CASH' || row.hinh_thuc === 'Tiền mặt';
+                    return (
+                      <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px 8px', fontWeight: 500, color: '#334155' }}>{row.close_datetime || row.ngay_ap_dung}</td>
+                        <td style={{ padding: '12px 8px' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '2px 8px',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: isCash ? '#eff6ff' : '#f0fdf4',
+                            color: isCash ? '#1d4ed8' : '#15803d',
+                            border: `1px solid ${isCash ? '#bfdbfe' : '#bbf7d0'}`
+                          }}>
+                            {isCash ? 'Tiền mặt' : 'Ckhoản'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#0f172a' }}>
+                          {fmt(row.opening_balance ?? row.so_tien_dau_ky)}
+                        </td>
+                        <td style={{ padding: '12px 8px', color: '#475569' }}>{row.closed_by || row.nguoi_chot || '—'}</td>
+                        <td style={{ padding: '12px 8px', color: '#64748b', fontSize: '0.85rem' }}>{row.notes || row.ghi_chu || '—'}</td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
