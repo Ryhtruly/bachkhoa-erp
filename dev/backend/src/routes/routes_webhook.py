@@ -51,8 +51,13 @@ async def receive_hanet_webhook(request: Request):
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 
+from src.core.auth import require_permission, User
+
 @router.post("/trigger-debt-reminders")
-def trigger_debt_reminders(db: Session = Depends(get_db)):
+def trigger_debt_reminders(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     try:
         reminded_count = 0
         receivables = db.query(Receivable).filter(Receivable.remaining_amount > 0).all()
@@ -70,7 +75,10 @@ def trigger_debt_reminders(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/trigger-daily-care-cron")
-def trigger_daily_care_cron(db: Session = Depends(get_db)):
+def trigger_daily_care_cron(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "read"))
+):
     try:
         completed_count = db.execute(text(
             "select count(*) from public.workflow_instances where status = 'completed'"
@@ -78,3 +86,4 @@ def trigger_daily_care_cron(db: Session = Depends(get_db)):
         return {"status": "success", "message": f"Đã quét {completed_count} hạng mục hoàn thành để CSKH định kỳ."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

@@ -3,11 +3,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 from src.db.database import get_db
 from src.db.models import Contract, Receivable, Customer, CashflowTransaction
+from src.core.auth import require_authenticated_user, User
 
 router = APIRouter(prefix="/api", tags=["Dashboard & Config"])
 
 @router.get("/dashboard/summary")
-def get_dashboard(db: Session = Depends(get_db)):
+def get_dashboard(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authenticated_user)
+):
     try:
         total_hoso = db.execute(text("select count(*) from public.service_lines")).scalar_one()
         completed = db.execute(text(
@@ -72,7 +76,10 @@ def get_config():
     }
 
 @router.get("/dashboard/charts")
-def get_dashboard_charts(db: Session = Depends(get_db)):
+def get_dashboard_charts(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authenticated_user)
+):
     try:
         contracts = db.query(Contract).all()
         receivables = db.query(Receivable).all()
@@ -157,3 +164,4 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

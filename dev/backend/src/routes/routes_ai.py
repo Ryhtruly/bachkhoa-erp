@@ -7,11 +7,15 @@ from src.db.models import SystemSetting
 from src.core import ai_vision_engine
 from src.core.chatbot_engine import ask_chatbot
 from src.services.wiki_rag_service import search_chunks as wiki_search
+from src.core.auth import require_authenticated_user, User
 
 router = APIRouter(prefix="/api/ai", tags=["AI Quy Hoạch"])
 
 @router.post("/analyze-planning")
-async def analyze_planning(file: UploadFile = File(...)):
+async def analyze_planning(
+    file: UploadFile = File(...),
+    user: User = Depends(require_authenticated_user)
+):
     """
     Upload a planning document (PDF/Image) for AI analysis (VN2000 extraction).
     """
@@ -26,7 +30,11 @@ class ChatRequest(BaseModel):
     history: List[Dict[str, str]]
 
 @router.post("/chat")
-async def chat_with_bot(req: ChatRequest, db: Session = Depends(get_db)):
+async def chat_with_bot(
+    req: ChatRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authenticated_user)
+):
     try:
         # Get settings from DB
         settings = db.query(SystemSetting).all()
@@ -70,4 +78,5 @@ async def chat_with_bot(req: ChatRequest, db: Session = Depends(get_db)):
         return {"status": "success", "reply": reply_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
