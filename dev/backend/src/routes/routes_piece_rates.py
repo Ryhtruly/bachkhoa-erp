@@ -18,7 +18,7 @@ from src.core.auth import require_permission, User
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Lương Khoán & Bảng Giá"])
+router = APIRouter(tags=["07. Payroll & Piece Rates"])
 
 # ─── REDIS CACHE ──────────────────────────────────────────────────────────────
 RATES_CACHE_KEY = "bachkhoa:read:rates:v1"
@@ -273,15 +273,15 @@ def get_salary_items(
             
             result.append({
                 "id": item.id,
-                "nhan_vien": emp.full_name if emp else item.employee_id,
-                "ma_ho_so": item.task_id or "",
-                "ten_ho_so": task.task_name if task else "",
-                "loai_ho_so": "",
-                "vai_tro": item.role or "",
-                "don_gia": float(item.base_rate) if item.base_rate else 0,
-                "he_so": 1,
-                "thanh_tien": float(item.base_rate) if item.base_rate else 0,
-                "ghi_chu": item.note or ""
+                "employee_name": emp.full_name if emp else item.employee_id,
+                "task_id": item.task_id or "",
+                "task_name": task.task_name if task else "",
+                "task_type": "",
+                "role": item.role or "",
+                "base_rate": float(item.base_rate) if item.base_rate else 0,
+                "multiplier": 1,
+                "amount": float(item.base_rate) if item.base_rate else 0,
+                "notes": item.note or ""
             })
         return {"status": "success", "data": result}
     except Exception as e:

@@ -7,10 +7,10 @@ from src.db.models import Contract, ServiceLine, Department, User, FundOpeningBa
 from src.finance.repository import FinanceRepository
 
 def check_closed_period(db: Session, target_date: date):
-    latest_snap = db.query(FundOpeningBalance).order_by(FundOpeningBalance.ngay_ap_dung.desc()).first()
-    if latest_snap and latest_snap.ngay_ap_dung:
+    latest_snap = db.query(FundOpeningBalance).order_by(FundOpeningBalance.effective_date.desc()).first()
+    if latest_snap and latest_snap.effective_date:
         tz_vn = timezone(timedelta(hours=7))
-        snap_time = latest_snap.ngay_ap_dung
+        snap_time = latest_snap.effective_date
         if isinstance(snap_time, datetime):
             snap_time_local = snap_time.astimezone(tz_vn) if snap_time.tzinfo else snap_time.replace(tzinfo=timezone.utc).astimezone(tz_vn)
             snap_date = snap_time_local.date()
@@ -24,10 +24,10 @@ def check_cash_balance(db: Session, amount: float, exclude_transaction_id: Optio
     if exclude_transaction_id:
         from src.db.models import CashflowTransaction
         t = db.query(CashflowTransaction).filter(CashflowTransaction.id == exclude_transaction_id).first()
-        if t and t.loai == "Chi" and t.hinh_thuc == "Tiền mặt":
-            balance += float(t.so_tien or 0)
-        elif t and t.loai == "Thu" and t.hinh_thuc == "Tiền mặt":
-            balance -= float(t.so_tien or 0)
+        if t and t.transaction_type == "Chi" and t.payment_method == "Tiền mặt":
+            balance += float(t.amount or 0)
+        elif t and t.transaction_type == "Thu" and t.payment_method == "Tiền mặt":
+            balance -= float(t.amount or 0)
 
     if balance < amount:
         raise HTTPException(

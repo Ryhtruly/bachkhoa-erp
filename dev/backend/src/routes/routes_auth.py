@@ -5,7 +5,7 @@ from src.db.database import get_db
 from src.db.models import User
 from src.core.auth import verify_password, create_access_token, get_current_user, seed_default_admin
 
-router = APIRouter(prefix="/api/auth", tags=["Auth"])
+router = APIRouter(prefix="/api/auth", tags=["01. Authentication & Security"])
 
 class LoginSchema(BaseModel):
     username: str
@@ -15,7 +15,7 @@ class LoginResponse(BaseModel):
     token: str
     user: dict
 
-@router.post("/login")
+@router.post("/login", summary="User Login", description="Authenticate username/password credentials and issue JWT Access Token.")
 def login(body: LoginSchema, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == body.username).first()
     if not user or not verify_password(body.password, user.password_hash):
@@ -28,7 +28,7 @@ def login(body: LoginSchema, db: Session = Depends(get_db)):
         user={"id": user.id, "username": user.username, "email": user.email},
     )
 
-@router.get("/me")
+@router.get("/me", summary="Get Current User Profile", description="Retrieve profile details for the authenticated user.")
 def get_me(user: User = Depends(get_current_user)):
     return {
         "id": user.id,

@@ -1,6 +1,6 @@
 from src.contracts.repository import ContractRepository
 from src.contracts.services import ContractService
-from src.contracts.schemas import HopdongCreateSchema, ContractGenerateSchema
+from src.contracts.schemas import ContractCreateSchema, ContractGenerateSchema
 from src.contracts.read_model import (
     get_contract_cache_status,
     get_contract_hierarchy,
@@ -13,7 +13,7 @@ from src.contracts.read_model import (
 __all__ = [
     "ContractRepository",
     "ContractService",
-    "HopdongCreateSchema",
+    "ContractCreateSchema",
     "ContractGenerateSchema",
     "get_contract_cache_status",
     "get_contract_hierarchy",

@@ -37,11 +37,11 @@ def notify_new_contract(contract_data: dict):
     """
     msg = (
         f"🎉 *CÓ HỢP ĐỒNG MỚI* 🎉\n"
-        f"Mã HĐ: `{contract_data.get('Mã hợp đồng', 'N/A')}`\n"
-        f"Khách hàng: *{contract_data.get('Tên khách hàng', 'N/A')}*\n"
-        f"Dịch vụ: {contract_data.get('Dịch vụ', 'N/A')}\n"
-        f"Giá trị: {contract_data.get('Giá trị hợp đồng', 0):,} VNĐ\n"
-        f"Sale phụ trách: {contract_data.get('Sale / nguồn', 'N/A')}"
+        f"Mã HĐ: `{contract_data.get('contract_id') or contract_data.get('id', 'N/A')}`\n"
+        f"Khách hàng: *{contract_data.get('customer_name', 'N/A')}*\n"
+        f"Dịch vụ: {contract_data.get('service_type', 'N/A')}\n"
+        f"Giá trị: {contract_data.get('contract_value') or contract_data.get('total_value', 0):,} VNĐ\n"
+        f"Sale phụ trách: {contract_data.get('sales_source', 'N/A')}"
     )
     return send_telegram_message(msg)
 

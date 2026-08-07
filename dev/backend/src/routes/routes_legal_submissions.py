@@ -17,7 +17,7 @@ from datetime import datetime, date
 from pydantic import BaseModel
 from typing import Optional, List
 
-router = APIRouter(tags=["Hồ Sơ Pháp Lý"])
+router = APIRouter(tags=["05. Legal Submissions"])
 
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ class NoteUpdateSchema(BaseModel):
 @router.get("/stats")
 def get_submission_stats(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read")),
+    user: User = Depends(require_permission("legal_submissions", "read")),
 ):
     """Statistical summary of government submissions."""
     total = db.query(TaskSubmission).count()
@@ -101,7 +101,7 @@ def list_legal_submissions(
     gov_status: Optional[str] = Query(None),
     task_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read")),
+    user: User = Depends(require_permission("legal_submissions", "read")),
 ):
     """getAll endpoint with pagination (default 20), search, and filters."""
     assignee_user = aliased(User)
@@ -200,7 +200,7 @@ def list_legal_submissions(
 def get_submissions_by_task(
     task_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read")),
+    user: User = Depends(require_permission("legal_submissions", "read")),
 ):
     """List all legal submissions for a specific project task."""
     submissions = (
@@ -233,7 +233,7 @@ def get_submissions_by_task(
 def get_submission_details(
     submission_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "read")),
+    user: User = Depends(require_permission("legal_submissions", "read")),
 ):
     """getDetails endpoint: returns full task_submissions table record + related task/contract/customer objects."""
     sub = db.query(TaskSubmission).filter(TaskSubmission.id == submission_id).first()
@@ -315,7 +315,7 @@ def get_submission_details(
 def create_legal_submission(
     payload: LegalSubmissionCreateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "create")),
+    user: User = Depends(require_permission("legal_submissions", "create")),
 ):
     """create endpoint: insert new TaskSubmission entry."""
     task = db.query(ProjectTask).filter(ProjectTask.id == payload.task_id).first()
@@ -382,7 +382,7 @@ def update_legal_submission_full(
     submission_id: str,
     payload: LegalSubmissionUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update")),
+    user: User = Depends(require_permission("legal_submissions", "update")),
 ):
     """Full update endpoint for a legal submission."""
     sub = db.query(TaskSubmission).filter(TaskSubmission.id == submission_id).first()
@@ -430,7 +430,7 @@ def update_gov_status(
     submission_id: str,
     payload: GovStatusUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update")),
+    user: User = Depends(require_permission("legal_submissions", "update")),
 ):
     """Granular sub-endpoint 1: Update gov_status."""
     sub = db.query(TaskSubmission).filter(TaskSubmission.id == submission_id).first()
@@ -463,7 +463,7 @@ def update_receipt_photo(
     submission_id: str,
     payload: PhotoUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update")),
+    user: User = Depends(require_permission("legal_submissions", "update")),
 ):
     """Granular sub-endpoint 2: Update receipt_photo_url."""
     sub = db.query(TaskSubmission).filter(TaskSubmission.id == submission_id).first()
@@ -495,7 +495,7 @@ def update_submission_note(
     submission_id: str,
     payload: NoteUpdateSchema,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "update")),
+    user: User = Depends(require_permission("legal_submissions", "update")),
 ):
     """Granular sub-endpoint 3: Update note."""
     sub = db.query(TaskSubmission).filter(TaskSubmission.id == submission_id).first()
@@ -526,7 +526,7 @@ def update_submission_note(
 def delete_legal_submission(
     submission_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hoso", "delete")),
+    user: User = Depends(require_permission("legal_submissions", "delete")),
 ):
     """Delete a legal submission entry."""
     sub = db.query(TaskSubmission).filter(TaskSubmission.id == submission_id).first()

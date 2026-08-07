@@ -9,7 +9,7 @@ from sqlalchemy import text
 from src.db.models import Contract, Receivable, Customer
 from src.core import hr_engine
 
-router = APIRouter(prefix="/webhook", tags=["Webhooks & Automations"])
+router = APIRouter(prefix="/webhook", tags=["11. System & Webhooks"])
 
 class ZaloWebhookPayload(BaseModel):
     event_name: str

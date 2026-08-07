@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from core import pricing_engine
 
-router = APIRouter(tags=["Báo Giá"])
+router = APIRouter(tags=["08. CRM & Quotations"])
 
 class QuoteRequestSchema(BaseModel):
     customer_name: str
@@ -36,11 +36,11 @@ def generate_quote(payload: QuoteRequestSchema):
         success_gen, download_url, full_path = doc_generator.generate_document(
             data=quote_data,
             template_name="mau_bao_gia.docx", # Giả định đã có file này trong thư mục templates
-            output_prefix="BaoGia"
+            output_prefix="Quotation"
         )
         
         if not success_gen:
-             download_url = f"/static/generated_quotes/BaoGia_{payload.customer_name}.docx" # Fallback if no template exists
+             download_url = f"/static/generated_quotes/Quotation_{payload.customer_name}.docx" # Fallback if no template exists
         
         # 3. Giả lập gửi tự động qua Zalo (nếu có Webhook thì có thể gọi zalo_service)
         print(f"====== AUTO SEND QUOTE ======")

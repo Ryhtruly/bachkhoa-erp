@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from datetime import date, datetime, timezone
+from typing import Optional
 
 import redis
 from redis.exceptions import RedisError
@@ -108,36 +109,36 @@ def build_contract_read_model(db: Session):
         total = float(contract.total_value or 0)
         paid = float((receivable.paid_amount or 0) if receivable else 0)
         debt = max(total - paid, 0)
-        due_date = receivable.due_date if receivable else None
+        due_date = getattr(receivable, 'due_date', None) if receivable else None
 
         if debt <= 0:
-            status = "Đã tất toán"
+            status = "settled"
         elif due_date and due_date < date.today():
-            status = "Quá hạn"
+            status = "overdue"
         else:
-            status = "Còn nợ"
+            status = "pending"
 
         date_signed_str = contract.date_signed.strftime("%Y-%m-%d") if (contract.date_signed and hasattr(contract.date_signed, "strftime")) else str(contract.date_signed or "")
         due_date_str = due_date.strftime("%Y-%m-%d") if (due_date and hasattr(due_date, "strftime")) else str(due_date or "")
 
         group_id, child_number = get_contract_hierarchy(contract.id)
         result.append({
-            "Mã hợp đồng": contract.id,
-            "Mã hợp đồng nhóm": group_id,
-            "Số thứ tự hợp đồng con": child_number,
-            "Là hợp đồng con": child_number is not None,
-            "Tên khách hàng": customer.full_name if customer else "N/A",
-            "Số hạng mục": len(contract_lines),
-            "Dịch vụ": ", ".join(service_names) or contract.service_type or "",
-            "Ngày ký": date_signed_str,
-            "Giá trị hợp đồng": total,
-            "Đã thu": paid,
-            "Còn nợ": debt,
-            "Sale / nguồn": lead.source if lead and lead.source else "",
-            "Ngày đến hạn": due_date_str,
-            "Tình trạng": status,
-            "Ghi chú": "",
-            "File Hợp đồng": contract.file_link or "",
+            "contract_id": contract.id,
+            "group_contract_id": group_id,
+            "sub_contract_order": child_number,
+            "is_sub_contract": child_number is not None,
+            "customer_name": customer.full_name if customer else "N/A",
+            "item_count": len(contract_lines),
+            "service_type": ", ".join(service_names) or contract.service_type or "",
+            "date_signed": date_signed_str,
+            "contract_value": total,
+            "paid_amount": paid,
+            "debt_amount": debt,
+            "sales_source": lead.source if lead and lead.source else "",
+            "due_date": due_date_str,
+            "status": status,
+            "notes": "",
+            "contract_file": contract.file_link or "",
         })
     return result
 
@@ -236,29 +237,30 @@ def query_contract_read_model(
 
     groups = {}
     for row in source:
-        group_id = row.get("Mã hợp đồng nhóm") or row.get("Mã hợp đồng")
+        group_id = row.get("group_contract_id") or row.get("contract_id") or row.get("id")
         groups.setdefault(group_id, []).append(row)
 
     def matches(row):
-        if valid_date and str(row.get("Ngày ký", "")) != valid_date:
+        row_date = str(row.get("date_signed") or "")
+        if valid_date and row_date != valid_date:
             return False
-        if valid_month and not str(row.get("Ngày ký", "")).startswith(valid_month):
+        if valid_month and not row_date.startswith(valid_month):
             return False
-        if valid_year and not str(row.get("Ngày ký", "")).startswith(valid_year):
+        if valid_year and not row_date.startswith(valid_year):
             return False
-        if status and status != "All" and row.get("Tình trạng") != status:
+        row_status = row.get("status")
+        if status and status != "All" and row_status != status:
             return False
-        if service and service != "All" and row.get("Dịch vụ") != service:
+        row_service = row.get("service_type")
+        if service and service != "All" and row_service != service:
             return False
         if normalized_search:
             searchable = (
-                row.get("Mã hợp đồng"),
-                row.get("Mã hợp đồng nhóm"),
-                row.get("Mã hồ sơ"),
-                row.get("Tên khách hàng"),
-                row.get("Phòng ban"),
-                row.get("Dịch vụ"),
-                row.get("Sale / nguồn"),
+                row.get("contract_id") or row.get("id"),
+                row.get("group_contract_id"),
+                row.get("customer_name"),
+                row.get("service_type"),
+                row.get("sales_source"),
             )
             if not any(normalized_search in str(value or "").casefold() for value in searchable):
                 return False

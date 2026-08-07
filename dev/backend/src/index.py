@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add app directory to Python path
@@ -30,6 +29,7 @@ from src.routes.routes_legal_submissions import router as legal_submissions_rout
 from src.routes.routes_cashflow import router as cashflow_router
 from src.routes.routes_settings import router as settings_router
 from src.routes.routes_auth import router as auth_router
+
 from src.db.database import engine, Base, SessionLocal
 from src.services.storage_service import ensure_bucket, set_bucket_public
 from src.db.models import *
@@ -39,6 +39,8 @@ from src.contracts.read_model import (
 )
 
 from src.config.settings import settings
+from src.core.logging_config import setup_logging
+from src.core.middleware import RequestIdMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +93,62 @@ async def lifespan(_app: FastAPI):
             await refresh_task
 
 
-from src.core.logging_config import setup_logging
-from src.core.middleware import RequestIdMiddleware
-
 setup_logging()
 
-app = FastAPI(title="OpenClaw ERP - Bach Khoa", lifespan=lifespan)
+openapi_tags = [
+    {
+        "name": "01. Authentication & Security",
+        "description": "User Login, JWT Token Authentication, and Current User Profile Management"
+    },
+    {
+        "name": "02. Dashboard & Analytics",
+        "description": "Executive Overview, Revenue/Debt Charts, and System Configurations"
+    },
+    {
+        "name": "03. Contracts & Workflows",
+        "description": "Land Surveying Contracts, Workflow Runtime Engine, and Task Assignments"
+    },
+    {
+        "name": "04. Tasks & Workflow Nodes",
+        "description": "Task Case Management, Workflow Node Execution, and Staff Assignments"
+    },
+    {
+        "name": "05. Legal Submissions",
+        "description": "Government Legal Dossier Submissions and Government Processing Status"
+    },
+    {
+        "name": "06. Finance & Cashflow",
+        "description": "Cashflow Voucher Ledger, Receivables/Payables, Advances, and Fund Balances"
+    },
+    {
+        "name": "07. Payroll & Piece Rates",
+        "description": "Piece-rate Salary Calculation, Task Rates Table, and Payroll Period Closing"
+    },
+    {
+        "name": "08. CRM & Quotations",
+        "description": "Customer Lead Pipeline Management, Service Cost Estimation, and Quotation Generation"
+    },
+    {
+        "name": "09. Knowledge Base & Wiki",
+        "description": "Enterprise Knowledge Base, RAG Document Indexing, and File Management"
+    },
+    {
+        "name": "10. AI Assistant",
+        "description": "AI Planning Document Vision Analyzer (VN2000) and RAG Intelligence Chatbot"
+    },
+    {
+        "name": "11. System & Webhooks",
+        "description": "System Settings, External Webhooks (Zalo/Hanet), and Cron Automations"
+    }
+]
+
+app = FastAPI(
+    title="Bach Khoa ERP - RESTful API Specification",
+    description="Standardized OpenAPI Specification for Bach Khoa Enterprise Resource Planning (ERP) System.",
+    version="2.0.0",
+    openapi_tags=openapi_tags,
+    lifespan=lifespan
+)
 
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "static", "contracts"), exist_ok=True)
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")), name="static")
@@ -110,28 +162,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers - Standardized English REST prefixes with legacy aliases
+# Include routers - Pure 100% Standardized English REST APIs
+app.include_router(auth_router)
 app.include_router(dashboard_router)
-app.include_router(tasks_router, prefix="/api/tasks")  # Primary English
-app.include_router(tasks_router, prefix="/api/hoso", include_in_schema=False)  # Legacy alias
-app.include_router(contracts_router, prefix="/api/contracts")  # Primary English
-app.include_router(contracts_router, prefix="/api/hopdong", include_in_schema=False)  # Legacy alias
-app.include_router(webhook_router)
-app.include_router(quotations_router, prefix="/api/quotations")  # Primary English
-app.include_router(quotations_router, prefix="/api/baogia", include_in_schema=False)  # Legacy alias
-app.include_router(ai_router)
-app.include_router(crm_router)
-app.include_router(kpi_router)
-app.include_router(wiki_router)
+app.include_router(contracts_router, prefix="/api/contracts")
+app.include_router(tasks_router, prefix="/api/tasks")
+app.include_router(legal_submissions_router, prefix="/api/legal-submissions")
 app.include_router(finance_router)
 app.include_router(cashflow_router)
 app.include_router(payroll_router)
-app.include_router(piece_rates_router, prefix="/api/piece-rates")  # Primary English
-app.include_router(piece_rates_router, prefix="/api/luong", include_in_schema=False)  # Legacy alias
-app.include_router(legal_submissions_router, prefix="/api/legal-submissions")  # Primary English
-app.include_router(legal_submissions_router, prefix="/api/hoso-phaply", include_in_schema=False)  # Alias
+app.include_router(piece_rates_router, prefix="/api/piece-rates")
+app.include_router(crm_router)
+app.include_router(quotations_router, prefix="/api/quotations")
+app.include_router(wiki_router)
+app.include_router(ai_router)
+app.include_router(webhook_router)
 app.include_router(settings_router)
-app.include_router(auth_router)
+app.include_router(kpi_router)
 
 @app.get("/")
 def read_root():

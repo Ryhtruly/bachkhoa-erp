@@ -23,49 +23,52 @@ class FinanceRepository:
         return default
 
     @staticmethod
-    def get_running_balance(db: Session, hinh_thuc: str, up_to_datetime: Optional[datetime] = None) -> float:
+    def get_running_balance(db: Session, payment_method: str = "Tiền mặt", up_to_datetime: Optional[datetime] = None) -> float:
         tz_vn = timezone(timedelta(hours=7))
         
-        q_snap = db.query(FundOpeningBalance).filter(FundOpeningBalance.hinh_thuc == hinh_thuc)
+        q_snap = db.query(FundOpeningBalance).filter(FundOpeningBalance.payment_method == payment_method)
         if up_to_datetime:
-            q_snap = q_snap.filter(FundOpeningBalance.ngay_ap_dung <= up_to_datetime)
-        latest_snap = q_snap.order_by(FundOpeningBalance.ngay_ap_dung.desc(), FundOpeningBalance.id.desc()).first()
+            q_snap = q_snap.filter(FundOpeningBalance.effective_date <= up_to_datetime)
+        latest_snap = q_snap.order_by(FundOpeningBalance.effective_date.desc(), FundOpeningBalance.id.desc()).first()
         
         if latest_snap:
-            start_bal = float(latest_snap.so_tien_dau_ky)
-            start_time = latest_snap.ngay_ap_dung
-            start_time_local = start_time.astimezone(tz_vn) if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc).astimezone(tz_vn)
-            start_date = start_time_local.date()
+            start_bal = float(latest_snap.opening_balance or 0)
+            start_time = latest_snap.effective_date
+            if start_time:
+                start_time_local = start_time.astimezone(tz_vn) if start_time.tzinfo else start_time.replace(tzinfo=timezone.utc).astimezone(tz_vn)
+                start_date = start_time_local.date()
+            else:
+                start_date = None
         else:
-            key = "initial_cash_balance" if hinh_thuc == "Tiền mặt" else "initial_bank_balance"
+            key = "initial_cash_balance" if payment_method == "Tiền mặt" else "initial_bank_balance"
             start_bal = FinanceRepository.get_setting_value(db, key, 0.0)
             start_date = None
 
-        q_thu = db.query(func.sum(CashflowTransaction.so_tien)).filter(
-            CashflowTransaction.loai == "Thu",
-            CashflowTransaction.hinh_thuc == hinh_thuc,
+        q_thu = db.query(func.sum(CashflowTransaction.amount)).filter(
+            CashflowTransaction.transaction_type == "Thu",
+            CashflowTransaction.payment_method == payment_method,
             CashflowTransaction.scope == "Công ty"
         )
         
-        q_chi = db.query(func.sum(CashflowTransaction.so_tien)).filter(
-            CashflowTransaction.loai == "Chi",
-            CashflowTransaction.hinh_thuc == hinh_thuc,
+        q_chi = db.query(func.sum(CashflowTransaction.amount)).filter(
+            CashflowTransaction.transaction_type == "Chi",
+            CashflowTransaction.payment_method == payment_method,
             CashflowTransaction.scope == "Công ty"
         )
         
         if start_date:
-            q_thu = q_thu.filter(CashflowTransaction.ngay > start_date)
-            q_chi = q_chi.filter(CashflowTransaction.ngay > start_date)
+            q_thu = q_thu.filter(CashflowTransaction.transaction_date > start_date)
+            q_chi = q_chi.filter(CashflowTransaction.transaction_date > start_date)
             
         if up_to_datetime:
             up_to_date = up_to_datetime.astimezone(tz_vn).date() if up_to_datetime.tzinfo else up_to_datetime.replace(tzinfo=timezone.utc).astimezone(tz_vn).date()
-            q_thu = q_thu.filter(CashflowTransaction.ngay <= up_to_date)
-            q_chi = q_chi.filter(CashflowTransaction.ngay <= up_to_date)
+            q_thu = q_thu.filter(CashflowTransaction.transaction_date <= up_to_date)
+            q_chi = q_chi.filter(CashflowTransaction.transaction_date <= up_to_date)
             
-        thu_sum = float(q_thu.scalar() or 0.0)
-        chi_sum = float(q_chi.scalar() or 0.0)
+        income_sum = float(q_thu.scalar() or 0.0)
+        expenditure_sum = float(q_chi.scalar() or 0.0)
         
-        return start_bal + thu_sum - chi_sum
+        return start_bal + income_sum - expenditure_sum
 
     @staticmethod
     def generate_voucher_id(type_val: str, db: Session, target_date: date = None) -> str:
@@ -97,15 +100,15 @@ class FinanceRepository:
             try:
                 y, m = month.split("-")
                 q = q.filter(
-                    extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(y),
-                    extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))) == int(m)
+                    extract("year", func.coalesce(CashflowTransaction.transaction_date, func.date(CashflowTransaction.created_at))) == int(y),
+                    extract("month", func.coalesce(CashflowTransaction.transaction_date, func.date(CashflowTransaction.created_at))) == int(m)
                 )
             except Exception:
                 pass
         if type and type not in ("All", ""):
-            q = q.filter(CashflowTransaction.loai == type)
+            q = q.filter(CashflowTransaction.transaction_type == type)
         if payment_method and payment_method not in ("All", ""):
-            q = q.filter(CashflowTransaction.hinh_thuc == payment_method)
+            q = q.filter(CashflowTransaction.payment_method == payment_method)
         if project_id:
             q = q.filter(CashflowTransaction.project_id == project_id)
         if contract_id:
@@ -125,15 +128,15 @@ class FinanceRepository:
             CashflowTransaction.contract_id == contract_id
         ).order_by(CashflowTransaction.created_at.desc()).all()
 
-        thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
-        chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+        total_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu")
+        total_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi")
         customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
 
         return {
             "contract": contract,
             "customer_name": customer.full_name if customer else "",
-            "tong_thu": thu,
-            "tong_chi": chi,
+            "total_income": total_income,
+            "total_expenditure": total_expenditure,
             "transactions": rows,
         }
 
@@ -147,15 +150,15 @@ class FinanceRepository:
             CashflowTransaction.project_id == project_id
         ).order_by(CashflowTransaction.created_at.desc()).all()
 
-        thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
-        chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+        total_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu")
+        total_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi")
 
         return {
             "project_id": project_id,
             "task_name": project.service_type or "",
             "contract_id": project.contract_id or "",
-            "tong_thu": thu,
-            "tong_chi": chi,
+            "total_income": total_income,
+            "total_expenditure": total_expenditure,
             "transactions": rows,
         }
 
@@ -182,8 +185,8 @@ class FinanceRepository:
         from src.finance.serializers import serialize_cashflow
         data = serialize_cashflow(t, db)
         data["contract_info"] = contract_info
-        data["ngay"] = str(t.ngay) if t.ngay else ""
-        data["ghi_chu"] = t.ghi_chu or ""
+        data["transaction_date"] = str(t.transaction_date) if t.transaction_date else ""
+        data["notes"] = t.notes or ""
         return data
 
     @staticmethod
@@ -193,9 +196,9 @@ class FinanceRepository:
         ).order_by(Contract.created_at.desc()).all()
         result = []
         for contract, cust_name, cust_phone in rows:
-            paid = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
+            paid = float(db.query(func.sum(CashflowTransaction.amount)).filter(
                 CashflowTransaction.contract_id == contract.id,
-                CashflowTransaction.loai == "Thu"
+                CashflowTransaction.transaction_type == "Thu"
             ).scalar() or 0)
             total = float(contract.total_value or 0)
             result.append({
@@ -233,21 +236,21 @@ class FinanceRepository:
     @staticmethod
     def list_payables_formatted(db: Session) -> dict:
         rows = db.query(CashflowTransaction).filter(
-            CashflowTransaction.loai == "Chi",
-            CashflowTransaction.hinh_thuc == "Chuyển khoản",
+            CashflowTransaction.transaction_type == "Chi",
+            CashflowTransaction.payment_method == "Chuyển khoản",
             CashflowTransaction.contract_id.is_(None)
         ).order_by(CashflowTransaction.created_at.desc()).all()
-        total = sum(float(r.so_tien or 0) for r in rows)
+        total = sum(float(r.amount or 0) for r in rows)
         from src.finance.serializers import serialize_cashflow_bulk
         return {"total_payable": total, "transactions": serialize_cashflow_bulk(rows, db)}
 
     @staticmethod
     def list_advances_formatted(db: Session) -> list:
         rows = db.query(CashflowTransaction).filter(
-            CashflowTransaction.loai == "Chi",
-            or_(CashflowTransaction.hang_muc.ilike("%tạm ứng%"),
-                CashflowTransaction.dien_giai.ilike("%tạm ứng%")),
-            CashflowTransaction.trang_thai != "Đã quyết toán"
+            CashflowTransaction.transaction_type == "Chi",
+            or_(CashflowTransaction.category_code.ilike("%tạm ứng%"),
+                CashflowTransaction.description.ilike("%tạm ứng%")),
+            CashflowTransaction.status != "Đã quyết toán"
         ).order_by(CashflowTransaction.created_at.desc()).all()
         from src.finance.serializers import serialize_cashflow_bulk
         return serialize_cashflow_bulk(rows, db)
@@ -340,23 +343,23 @@ class FinanceRepository:
     @staticmethod
     def list_worker_wages_formatted(db: Session, project_id: Optional[str] = None) -> dict:
         q = db.query(CashflowTransaction).filter(
-            CashflowTransaction.loai == "Chi",
-            or_(CashflowTransaction.hang_muc.ilike("%lương khoán%"),
-                CashflowTransaction.dien_giai.ilike("%lương khoán%"))
+            CashflowTransaction.transaction_type == "Chi",
+            or_(CashflowTransaction.category_code.ilike("%lương khoán%"),
+                CashflowTransaction.description.ilike("%lương khoán%"))
         )
         if project_id:
             q = q.filter(CashflowTransaction.project_id == project_id)
         rows = q.order_by(CashflowTransaction.created_at.desc()).all()
-        total = sum(float(r.so_tien or 0) for r in rows)
+        total = sum(float(r.amount or 0) for r in rows)
         from src.finance.serializers import serialize_cashflow_bulk
         return {"total_wages": total, "transactions": serialize_cashflow_bulk(rows, db)}
 
     @staticmethod
     def list_worker_wage_records_formatted(db: Session, month: Optional[str] = None) -> list:
         q = db.query(CashflowTransaction).filter(
-            CashflowTransaction.loai == "Chi",
-            or_(CashflowTransaction.hang_muc.ilike("%lương khoán%"),
-                CashflowTransaction.dien_giai.ilike("%lương khoán%"))
+            CashflowTransaction.transaction_type == "Chi",
+            or_(CashflowTransaction.category_code.ilike("%lương khoán%"),
+                CashflowTransaction.description.ilike("%lương khoán%"))
         )
         if month:
             try:
@@ -371,111 +374,116 @@ class FinanceRepository:
         rows = q.order_by(CashflowTransaction.created_at.desc()).all()
         details = []
         for r in rows:
-            note = (r.dien_giai or "").replace("Lương khoán:", "").strip()
+            note = (r.description or "").replace("Lương khoán:", "").strip()
             details.append({
-                "Nhân sự": r.nguoi_nhan_nop or "Tổ thợ",
-                "Mã hồ sơ": r.project_id or "Chưa gắn",
-                "Công đoạn khoán": note or "Nghiệm thu công việc",
-                "Số tiền khoán": float(r.so_tien or 0),
-                "Phụ cấp": 0.0,
-                "Thưởng/Phạt": 0.0,
-                "Tổng nhận": float(r.so_tien or 0),
-                "Ngày chốt": r.ngay.strftime("%d/%m/%y") if r.ngay else (r.created_at.strftime("%d/%m/%y") if r.created_at else "")
+                "employee_name": r.payer_payee_name or "Staff",
+                "task_id": r.project_id or "Unassigned",
+                "piece_rate_stage": note or "Work Acceptance",
+                "piece_rate_amount": float(r.amount or 0),
+                "allowance": 0.0,
+                "bonus_penalty": 0.0,
+                "total_received": float(r.amount or 0),
+                "closing_date": r.transaction_date.strftime("%Y-%m-%d") if r.transaction_date else (r.created_at.strftime("%Y-%m-%d") if r.created_at else "")
             })
         return details
 
     @staticmethod
     def get_summary_report(db: Session) -> Dict:
-        tien_mat = FinanceRepository.get_running_balance(db, "Tiền mặt")
-        ngan_hang = FinanceRepository.get_running_balance(db, "Chuyển khoản")
-        tam_ung_net = float(db.query(func.sum(CashflowTransaction.so_tien)).filter(
-            CashflowTransaction.loai == "Chi",
-            or_(CashflowTransaction.hang_muc.ilike("%tạm ứng%"),
-                CashflowTransaction.dien_giai.ilike("%tạm ứng%")),
-            CashflowTransaction.hang_muc != "Chi thực tế từ tạm ứng",
-            CashflowTransaction.trang_thai != "Đã quyết toán",
+        cash_balance = FinanceRepository.get_running_balance(db, "Tiền mặt")
+        bank_balance = FinanceRepository.get_running_balance(db, "Chuyển khoản")
+        net_advance = float(db.query(func.sum(CashflowTransaction.amount)).filter(
+            CashflowTransaction.transaction_type == "Chi",
+            or_(CashflowTransaction.category_code.ilike("%tạm ứng%"),
+                CashflowTransaction.description.ilike("%tạm ứng%")),
+            CashflowTransaction.category_code != "Chi thực tế từ tạm ứng",
+            CashflowTransaction.status != "Đã quyết toán",
             CashflowTransaction.scope == "Công ty"
         ).scalar() or 0)
 
         # Monthly trend
         monthly_raw = db.query(
-            extract("year", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))).label("yr"),
-            extract("month", func.coalesce(CashflowTransaction.ngay, func.date(CashflowTransaction.created_at))).label("mo"),
-            CashflowTransaction.loai,
-            func.sum(CashflowTransaction.so_tien).label("total")
+            extract("year", func.coalesce(CashflowTransaction.transaction_date, func.date(CashflowTransaction.created_at))).label("yr"),
+            extract("month", func.coalesce(CashflowTransaction.transaction_date, func.date(CashflowTransaction.created_at))).label("mo"),
+            CashflowTransaction.transaction_type,
+            func.sum(CashflowTransaction.amount).label("total")
         ).filter(
             CashflowTransaction.scope == "Công ty",
-            CashflowTransaction.hang_muc != "Chi phí tạm ứng",
-            CashflowTransaction.hang_muc != "Quyết toán hoàn ứng"
-        ).group_by("yr", "mo", CashflowTransaction.loai).order_by("yr", "mo").all()
+            CashflowTransaction.category_code != "Chi phí tạm ứng",
+            CashflowTransaction.category_code != "Quyết toán hoàn ứng"
+        ).group_by("yr", "mo", CashflowTransaction.transaction_type).order_by("yr", "mo").all()
 
         mm: dict = {}
         for r in monthly_raw:
             if not r.yr: continue
             k = f"{int(r.yr):04d}-{int(r.mo):02d}"
-            if k not in mm: mm[k] = {"month": k, "thu": 0, "chi": 0}
-            mm[k]["thu" if r.loai == "Thu" else "chi"] = float(r.total)
+            if k not in mm: mm[k] = {"month": k, "income": 0, "expenditure": 0}
+            val = float(r.total)
+            if r.transaction_type == "Thu":
+                mm[k]["income"] = val
+            else:
+                mm[k]["expenditure"] = val
         monthly = sorted(mm.values(), key=lambda x: x["month"])[-12:]
 
         # Profit by contract
-        thu_by_c = db.query(
+        income_by_c = db.query(
             CashflowTransaction.contract_id,
-            func.sum(CashflowTransaction.so_tien).label("t")
-        ).filter(CashflowTransaction.loai == "Thu",
+            func.sum(CashflowTransaction.amount).label("t")
+        ).filter(CashflowTransaction.transaction_type == "Thu",
                  CashflowTransaction.contract_id.isnot(None),
                  CashflowTransaction.scope == "Công ty"
         ).group_by(CashflowTransaction.contract_id).all()
 
-        chi_by_p = db.query(
+        expense_by_p = db.query(
             CashflowTransaction.project_id,
-            func.sum(CashflowTransaction.so_tien).label("t")
+            func.sum(CashflowTransaction.amount).label("t")
         ).filter(
-            CashflowTransaction.loai == "Chi",
+            CashflowTransaction.transaction_type == "Chi",
             CashflowTransaction.project_id.isnot(None),
             CashflowTransaction.scope == "Công ty",
-            CashflowTransaction.hang_muc != "Chi phí tạm ứng",
-            CashflowTransaction.hang_muc != "Quyết toán hoàn ứng"
+            CashflowTransaction.category_code != "Chi phí tạm ứng",
+            CashflowTransaction.category_code != "Quyết toán hoàn ứng"
         ).group_by(CashflowTransaction.project_id).all()
 
         pc_map = {p.id: p.contract_id for p in
                   db.query(ServiceLine).filter(ServiceLine.contract_id.isnot(None)).all()}
-        thu_map = {r.contract_id: float(r[1]) for r in thu_by_c}
-        chi_map: dict = {}
-        for r in chi_by_p:
+        income_map = {r.contract_id: float(r[1]) for r in income_by_c}
+        expense_map: dict = {}
+        for r in expense_by_p:
             cid = pc_map.get(r.project_id)
             if cid:
-                chi_map[cid] = chi_map.get(cid, 0) + float(r[1])
+                expense_map[cid] = expense_map.get(cid, 0) + float(r[1])
 
         # Lương khoán gắn project → quy về contract
-        luong_by_p = db.query(
+        wage_by_p = db.query(
             CashflowTransaction.project_id,
-            func.sum(CashflowTransaction.so_tien).label("t")
-        ).filter(CashflowTransaction.loai == "Chi",
-                 or_(CashflowTransaction.hang_muc.ilike("%lương khoán%"),
-                     CashflowTransaction.dien_giai.ilike("%lương khoán%")),
+            func.sum(CashflowTransaction.amount).label("t")
+        ).filter(CashflowTransaction.transaction_type == "Chi",
+                 or_(CashflowTransaction.category_code.ilike("%lương khoán%"),
+                     CashflowTransaction.description.ilike("%lương khoán%")),
                  CashflowTransaction.project_id.isnot(None)
         ).group_by(CashflowTransaction.project_id).all()
-        luong_map: dict = {}
-        for r in luong_by_p:
+        wage_map: dict = {}
+        for r in wage_by_p:
             cid = pc_map.get(r.project_id)
             if cid:
-                luong_map[cid] = luong_map.get(cid, 0) + float(r[1])
+                wage_map[cid] = wage_map.get(cid, 0) + float(r[1])
 
         profit_list = [
             {
-                "contract_id": cid, "thu": thu,
-                "chi": chi_map.get(cid, 0),
-                "luong_khoan": luong_map.get(cid, 0),
-                "profit": thu - chi_map.get(cid, 0) - luong_map.get(cid, 0)
+                "contract_id": cid,
+                "income": income_val,
+                "expense": expense_map.get(cid, 0),
+                "piece_rate_wage": wage_map.get(cid, 0),
+                "profit": income_val - expense_map.get(cid, 0) - wage_map.get(cid, 0)
             }
-            for cid, thu in thu_map.items()
+            for cid, income_val in income_map.items()
         ]
         profit_list.sort(key=lambda x: x["profit"], reverse=True)
 
         return {
-            "tien_mat": tien_mat,
-            "ngan_hang": ngan_hang,
-            "tam_ung_net": tam_ung_net,
+            "cash_balance": cash_balance,
+            "bank_balance": bank_balance,
+            "net_advance": net_advance,
             "monthly": monthly,
             "profit_by_contract": profit_list[:20]
         }
@@ -495,7 +503,7 @@ class FinanceRepository:
 
     @staticmethod
     def get_fund_balances_history(db: Session) -> List[FundOpeningBalance]:
-        return db.query(FundOpeningBalance).order_by(FundOpeningBalance.ngay_ap_dung.desc(), FundOpeningBalance.id.desc()).all()
+        return db.query(FundOpeningBalance).order_by(FundOpeningBalance.effective_date.desc(), FundOpeningBalance.id.desc()).all()
 
     @staticmethod
     def get_monthly_dashboard(db: Session, month: str) -> dict:
@@ -508,16 +516,17 @@ class FinanceRepository:
 
         # Filter transactions in this month
         txs = db.query(CashflowTransaction).filter(
-            extract("year", CashflowTransaction.ngay) == year,
-            extract("month", CashflowTransaction.ngay) == m_num,
+            extract("year", CashflowTransaction.transaction_date) == year,
+            extract("month", CashflowTransaction.transaction_date) == m_num,
             CashflowTransaction.scope == "Công ty",
-            CashflowTransaction.hang_muc != "Chi phí tạm ứng",
-            CashflowTransaction.hang_muc != "Quyết toán hoàn ứng"
+            CashflowTransaction.category_code != "Chi phí tạm ứng",
+            CashflowTransaction.category_code != "Quyết toán hoàn ứng"
         ).all()
 
         # Calculate overall totals
-        tong_thu = sum(float(t.so_tien or 0.0) for t in txs if t.loai == "Thu")
-        tong_chi = sum(float(t.so_tien or 0.0) for t in txs if t.loai == "Chi")
+        total_income = sum(float(t.amount or 0.0) for t in txs if t.transaction_type == "Thu")
+        total_expenditure = sum(float(t.amount or 0.0) for t in txs if t.transaction_type == "Chi")
+        net_difference = total_income - total_expenditure
 
         # Define standard categories to show
         standard_categories = [
@@ -529,11 +538,11 @@ class FinanceRepository:
         ]
 
         # Map categories
-        cat_map = {c: {"thu": 0.0, "chi": 0.0} for c in standard_categories}
+        cat_map = {c: {"income": 0.0, "expenditure": 0.0} for c in standard_categories}
         
         # Map any categories not in standard list
         for t in txs:
-            cat = t.hang_muc or "Khác"
+            cat = t.category_code or "Khác"
             normalized_cat = cat
             for sc in standard_categories:
                 if sc.lower() in cat.lower() or cat.lower() in sc.lower():
@@ -541,33 +550,41 @@ class FinanceRepository:
                     break
             
             if normalized_cat not in cat_map:
-                cat_map[normalized_cat] = {"thu": 0.0, "chi": 0.0}
+                cat_map[normalized_cat] = {"income": 0.0, "expenditure": 0.0}
                 
-            amt = float(t.so_tien or 0.0)
-            if t.loai == "Thu":
-                cat_map[normalized_cat]["thu"] += amt
+            amt = float(t.amount or 0.0)
+            if t.transaction_type == "Thu":
+                cat_map[normalized_cat]["income"] += amt
             else:
-                cat_map[normalized_cat]["chi"] += amt
+                cat_map[normalized_cat]["expenditure"] += amt
 
         categories_list = [
-            {"name": k, "thu": v["thu"], "chi": v["chi"]}
+            {
+                "name": k,
+                "income": v["income"],
+                "expenditure": v["expenditure"]
+            }
             for k, v in cat_map.items()
         ]
 
         # Map departments (Phòng ban/Dự án)
         dept_map = {}
         for t in txs:
-            dept = t.du_an_phong_ban or "Khác / Văn phòng"
+            dept = t.department_code or "Khác / Văn phòng"
             if dept not in dept_map:
-                dept_map[dept] = {"thu": 0.0, "chi": 0.0}
-            amt = float(t.so_tien or 0.0)
-            if t.loai == "Thu":
-                dept_map[dept]["thu"] += amt
+                dept_map[dept] = {"income": 0.0, "expenditure": 0.0}
+            amt = float(t.amount or 0.0)
+            if t.transaction_type == "Thu":
+                dept_map[dept]["income"] += amt
             else:
-                dept_map[dept]["chi"] += amt
+                dept_map[dept]["expenditure"] += amt
 
         departments_list = [
-            {"name": k, "thu": v["thu"], "chi": v["chi"]}
+            {
+                "name": k,
+                "income": v["income"],
+                "expenditure": v["expenditure"]
+            }
             for k, v in dept_map.items()
         ]
 
@@ -575,9 +592,9 @@ class FinanceRepository:
             "status": "success",
             "month": m_num,
             "year": year,
-            "tong_thu": tong_thu,
-            "tong_chi": tong_chi,
-            "chenh_lech": tong_thu - tong_chi,
+            "total_income": total_income,
+            "total_expenditure": total_expenditure,
+            "net_difference": net_difference,
             "categories": categories_list,
             "departments": departments_list
         }

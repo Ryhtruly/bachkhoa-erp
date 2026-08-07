@@ -12,7 +12,7 @@ from src.services.storage_service import upload_file, ensure_bucket, file_exists
 from src.services.wiki_rag_service import index_document, delete_document_chunks
 from src.core.auth import require_permission, User
 
-router = APIRouter(prefix="/api/wiki", tags=["Tri Thức Doanh Nghiệp"])
+router = APIRouter(prefix="/api/wiki", tags=["09. Knowledge Base & Wiki"])
 
 class DocumentSchema(BaseModel):
     id: str

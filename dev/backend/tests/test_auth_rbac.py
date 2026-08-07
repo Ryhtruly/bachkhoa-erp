@@ -56,8 +56,8 @@ def test_finance_clerk_rbac_and_audit_propagation(client, finance_clerk_user, db
         "category": "Thu test audit",
         "payer_payee": "Khách hàng Audit Pytest",
         "payment_method": "Tiền mặt",
-        "ngay": "2026-07-28",
-        "dien_giai": "Test audit log propagation in pytest",
+        "transaction_date": "2026-07-28",
+        "description": "Test audit log propagation in pytest",
         "scope": "Công ty"
     }
 

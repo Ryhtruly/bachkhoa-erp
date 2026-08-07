@@ -11,7 +11,7 @@ from src.core.auth import check_user_permission, require_permission, User
 from src.db.models import Contract, Customer, ServiceLine, ServicePackage, TaskType
 from src.contracts import (
     ContractService,
-    HopdongCreateSchema,
+    ContractCreateSchema,
     ContractGenerateSchema,
     get_contract_cache_status,
     get_contract_read_model,
@@ -25,7 +25,7 @@ from src.contracts.workflow_runtime import (
     save_workflow_draft,
 )
 
-router = APIRouter(tags=["Hợp Đồng"])
+router = APIRouter(tags=["03. Contracts & Workflows"])
 
 
 class WorkflowRevisionPayload(BaseModel):
@@ -127,7 +127,7 @@ def contract_cache_status(
 
 
 @router.get("/")
-def list_hopdong(
+def list_contracts(
     response: Response,
     month: str = Query(None),
     year: str = Query(None),
@@ -812,8 +812,8 @@ def update_task_node_assignments(
 
 
 @router.post("/")
-def create_hopdong(
-    payload: HopdongCreateSchema,
+def create_contract(
+    payload: ContractCreateSchema,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("contract", "create")),
 ):

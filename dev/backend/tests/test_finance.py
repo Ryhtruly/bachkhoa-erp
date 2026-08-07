@@ -20,8 +20,8 @@ def test_create_and_void_cashflow(client, finance_clerk_user, db):
         "category": "Thu tiền dịch vụ test",
         "payer_payee": "Khách hàng Test Pytest",
         "payment_method": "Tiền mặt",
-        "ngay": datetime.now().strftime("%Y-%m-%d"),
-        "dien_giai": "Test cashflow creation flow",
+        "transaction_date": datetime.now().strftime("%Y-%m-%d"),
+        "description": "Test cashflow creation flow",
         "scope": "Công ty"
     }
 

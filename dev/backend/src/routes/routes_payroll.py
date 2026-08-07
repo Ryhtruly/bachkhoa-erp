@@ -25,7 +25,7 @@ from src.db.models import (
 )
 
 
-router = APIRouter(prefix="/api/payroll", tags=["Lương khoán"])
+router = APIRouter(prefix="/api/payroll", tags=["07. Payroll & Piece Rates"])
 
 ZERO = Decimal("0")
 FINAL_CANCELLED_STATUSES = {"Hủy", "Đã hủy"}

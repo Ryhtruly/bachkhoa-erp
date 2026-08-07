@@ -5,15 +5,15 @@ from src.db.database import get_db
 from src.db.models import Contract, Receivable, Customer, CashflowTransaction
 from src.core.auth import require_authenticated_user, User
 
-router = APIRouter(prefix="/api", tags=["Dashboard & Config"])
+router = APIRouter(prefix="/api", tags=["02. Dashboard & Analytics"])
 
-@router.get("/dashboard/summary")
+@router.get("/dashboard/summary", summary="Get Executive Dashboard Summary", description="Retrieve high-level KPIs, active tasks, revenue, and receivables summary.")
 def get_dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(require_authenticated_user)
 ):
     try:
-        total_hoso = db.execute(text("select count(*) from public.service_lines")).scalar_one()
+        total_tasks = db.execute(text("select count(*) from public.service_lines")).scalar_one()
         completed = db.execute(text(
             "select count(*) from public.workflow_instances where status = 'completed'"
         )).scalar_one()
@@ -32,7 +32,7 @@ def get_dashboard(
         total_collected = db.query(func.sum(Receivable.paid_amount)).scalar() or 0.0
         debt = total_val - total_collected
 
-        recent_hoso = [dict(row) for row in db.execute(text("""
+        recent_tasks = [dict(row) for row in db.execute(text("""
             select sl.id,
                    coalesce(tt.name, sl.service_type, '') as service_type,
                    coalesce(wi.status, 'not_started') as status,
@@ -52,7 +52,7 @@ def get_dashboard(
 
         return {
             "stats": {
-                "total_hoso": total_hoso,
+                "total_tasks": total_tasks,
                 "in_progress": in_progress,
                 "completed": completed,
                 "overdue": overdue,
@@ -61,7 +61,7 @@ def get_dashboard(
                 "debt_val": debt,
                 "revenue": total_collected
             },
-            "recent_hoso": recent_hoso
+            "recent_tasks": recent_tasks
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -121,12 +121,12 @@ def get_dashboard_charts(
             for row in status_rows
         ]
         
-        cashflow = db.query(CashflowTransaction).filter(CashflowTransaction.loai == "Chi").all()
+        cashflow = db.query(CashflowTransaction).filter(CashflowTransaction.transaction_type == "Chi").all()
         expense_cats = {}
         for tc in cashflow:
-            cat = tc.hang_muc or "Khác"
+            cat = tc.category_code or "Khác"
             if not cat.strip(): cat = "Khác"
-            expense_cats[cat] = expense_cats.get(cat, 0) + float(tc.so_tien or 0)
+            expense_cats[cat] = expense_cats.get(cat, 0) + float(tc.amount or 0)
             
         pie_expense_data = [{"name": k, "value": v} for k, v in expense_cats.items() if v > 0]
         pie_expense_data.sort(key=lambda x: x["value"], reverse=True)

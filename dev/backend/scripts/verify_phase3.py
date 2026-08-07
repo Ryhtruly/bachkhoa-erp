@@ -165,8 +165,8 @@ def run_phase3_verification():
                 "category": "Thu tiền dịch vụ",
                 "payer_payee": "Khách hàng Test Audit",
                 "payment_method": "Chuyển khoản",
-                "ngay": datetime.now().strftime("%Y-%m-%d"),
-                "dien_giai": "Test audit log propagation",
+                "transaction_date": datetime.now().strftime("%Y-%m-%d"),
+                "description": "Test audit log propagation",
                 "scope": "Công ty"
             }
 

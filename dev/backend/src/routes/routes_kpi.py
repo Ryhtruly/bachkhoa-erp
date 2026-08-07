@@ -4,7 +4,7 @@ from core import kpi_engine
 from src.db.database import get_db
 from src.core.auth import require_permission, User
 
-router = APIRouter(prefix="/api/kpi", tags=["Nhân Sự & KPI"])
+router = APIRouter(prefix="/api/kpi", tags=["07. Payroll & Piece Rates"])
 
 @router.get("/scores")
 def get_kpi_scores(

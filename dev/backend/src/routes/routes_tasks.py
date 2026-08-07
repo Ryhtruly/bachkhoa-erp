@@ -20,7 +20,7 @@ from datetime import datetime, date
 from pydantic import BaseModel
 from typing import Optional
 
-router = APIRouter(tags=["Hồ Sơ"])
+router = APIRouter(tags=["04. Tasks & Workflow Nodes"])
 
 
 FINAL_STATUSES = ("Hoàn thành", "Hủy", "Đã hủy")
@@ -56,7 +56,7 @@ def _task_result(task: ProjectTask) -> str:
 
 
 @router.get("/stats")
-def get_hoso_stats(
+def get_task_stats(
     month: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow", "read")),
@@ -86,7 +86,7 @@ def get_hoso_stats(
     }
 
 @router.get("/")
-def list_hoso(
+def list_tasks(
     month: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow", "read")),
@@ -125,15 +125,19 @@ def list_hoso(
             ProjectTask.start_date.desc().nullslast(),
             ProjectTask.created_at.desc(),
         ).all()
-        stake_rates = db.execute(
-            text(
-                """
-                select stake_type, rate_per_unit, effective_from, effective_to
-                from stake_rates
-                order by effective_from desc
-                """
-            )
-        ).mappings().all()
+        try:
+            stake_rates = db.execute(
+                text(
+                    """
+                    select stake_type, rate_per_unit, effective_from, effective_to
+                    from stake_rates
+                    order by effective_from desc
+                    """
+                )
+            ).mappings().all()
+        except Exception:
+            db.rollback()
+            stake_rates = []
         result = []
         today = date.today()
         
@@ -168,57 +172,54 @@ def list_hoso(
             stake_allowance = float(t.stake_count or 0) * stake_rate
             
             result.append({
-                "Mã hồ sơ": t.id,
-                "Mã ServiceLine": service_line.id if service_line else "",
-                "Service Package": service_package.name if service_package else (service_line.service_package if service_line else ""),
-                "Service Package ID": service_package.id if service_package else (service_line.service_package_id if service_line else ""),
-                "Tên khách hàng": customer.full_name if customer else "Khách vãng lai",
-                "SĐT": customer.phone if customer else "",
-                "Khu vực/Phường": t.ward or (customer.address if customer else ""),
-                "Loại dịch vụ": task_type.name if task_type else (t.task_name or (contract.service_type if contract else "N/A")),
-                "Mã hợp đồng": t.contract_id,
-                "Phòng ban": getattr(t, 'department', '') or 'Chưa phân phòng',
-                "Phòng ban ID": t.department_id,
-                "Ưu tiên": getattr(t, 'priority', None) or 'Trung bình',
-                "Phụ trách chính": (
+                "id": t.id,
+                "service_line_id": service_line.id if service_line else "",
+                "service_package": service_package.name if service_package else (service_line.service_package if service_line else ""),
+                "service_package_id": service_package.id if service_package else (service_line.service_package_id if service_line else ""),
+                "customer_name": customer.full_name if customer else "Guest Customer",
+                "phone": customer.phone if customer else "",
+                "ward": t.ward or (customer.address if customer else ""),
+                "service_type": task_type.name if task_type else (t.task_name or (contract.service_type if contract else "N/A")),
+                "contract_id": t.contract_id,
+                "department": getattr(t, 'department', '') or 'Unassigned',
+                "department_id": t.department_id,
+                "priority": getattr(t, 'priority', None) or 'Medium',
+                "assignee_name": (
                     assignee_employee.full_name
                     if assignee_employee and assignee_employee.full_name
-                    else (assignee.username if assignee else "Chưa phân công")
+                    else (assignee.username if assignee else "Unassigned")
                 ),
-                "Phụ trách chính ID": t.assignee_id,
-                "Phụ đo": (
+                "assignee_id": t.assignee_id,
+                "support_name": (
                     support_employee_row.full_name
                     if support_employee_row and support_employee_row.full_name
                     else (support.username if support else "")
                 ),
-                "Phụ đo ID": t.support_id,
-                "Hạng mục ID": t.task_type_id or "",
-                "Tên hạng mục": t.task_name or "",
-                "Ngày giao": t.start_date.strftime("%Y-%m-%d") if t.start_date else "",
-                "Ngày đo": t.start_date.strftime("%Y-%m-%d") if t.start_date else "",
-                "Deadline": t.deadline.strftime("%Y-%m-%d") if t.deadline else "",
-                "Số ngày còn lại": days_left,
-                "Cảnh báo": warning,
-                "Quá hạn?": bool(
+                "support_id": t.support_id,
+                "task_type_id": t.task_type_id or "",
+                "task_name": t.task_name or "",
+                "start_date": t.start_date.strftime("%Y-%m-%d") if t.start_date else "",
+                "deadline": t.deadline.strftime("%Y-%m-%d") if t.deadline else "",
+                "days_left": days_left,
+                "warning": warning,
+                "is_overdue": bool(
                     t.deadline
                     and t.deadline < today
                     and t.status not in FINAL_STATUSES
                 ),
-                "Trạng thái": t.status or "Mới tiếp nhận",
-                "Trạng thái đo": t.status or "Mới tiếp nhận",
-                "Kết quả": _task_result(t),
-                "Kết quả hiện trường": _task_result(t),
-                "Phụ cấp": stake_allowance,
-                "Đơn giá phụ cấp": stake_rate,
-                "Số cọc": t.stake_count,
-                "Loại cọc": t.stake_type or "",
-                "Ngày hoàn thành": (
+                "status": t.status or "New",
+                "result": _task_result(t),
+                "stake_allowance": stake_allowance,
+                "stake_rate": stake_rate,
+                "stake_count": t.stake_count,
+                "stake_type": t.stake_type or "",
+                "completion_date": (
                     t.completion_date.strftime("%Y-%m-%d")
                     if t.completion_date
                     else ""
                 ),
-                "Ghi chú": t.review_note or "",
-                "Ngày tạo": t.created_at.strftime("%Y-%m-%d") if t.created_at else "",
+                "review_note": t.review_note or "",
+                "created_at": t.created_at.strftime("%Y-%m-%d") if t.created_at else "",
             })
         return {"status": "success", "data": result}
     except Exception as e:
@@ -485,7 +486,7 @@ def lookup_contracts(
         result.append(entry)
     return {"status": "success", "data": result}
 
-class HosoCreateSchema(BaseModel):
+class TaskCreateSchema(BaseModel):
     contract_id: str
     service_package_id: str
     task_type_id: str
@@ -502,8 +503,10 @@ class HosoCreateSchema(BaseModel):
     status: str = "Mới tiếp nhận"
     review_note: Optional[str] = None
 
-class HosoUpdateSchema(HosoCreateSchema):
+class TaskUpdateSchema(TaskCreateSchema):
     pass
+
+
 
 
 def _resolve_task_package(db: Session, task_type_id: str, service_package_id: str):
@@ -553,13 +556,13 @@ def _find_service_line_id(
     return package_line[0] if package_line else None
 
 class StatusUpdateSchema(BaseModel):
-    Mã_hồ_sơ: str
-    Trạng_thái: str
+    task_id: str
+    status: str
 
 
 @router.post("/")
-def create_hoso(
-    payload: HosoCreateSchema,
+def create_task(
+    payload: TaskCreateSchema,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow", "create"))
 ):
@@ -630,9 +633,9 @@ def create_hoso(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{task_id}")
-def update_hoso_full(
+def update_task_full(
     task_id: str,
-    payload: HosoUpdateSchema,
+    payload: TaskUpdateSchema,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("task_node", "update"))
 ):
@@ -707,25 +710,27 @@ def update_hoso_full(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/update-status")
-def update_hoso_status(
+def update_task_status(
     payload: StatusUpdateSchema,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("task_node", "update"))
 ):
     try:
-        task = db.query(ProjectTask).filter(ProjectTask.id == payload.Mã_hồ_sơ).first()
+        task_id = payload.task_id
+        status_val = payload.status
+        
+        task = db.query(ProjectTask).filter(ProjectTask.id == task_id).first()
         if not task:
-            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ")
+            raise HTTPException(status_code=404, detail="Task not found")
             
-        task.status = payload.Trạng_thái
-        if payload.Trạng_thái == "Hoàn thành":
+        task.status = status_val
+        if status_val == "Hoàn thành":
             task.completion_date = date.today()
 
         db.add(AuditLog(
             actor_id=user.id,
             action="UPDATE_STATUS",
             object_type="projects_tasks",
-            payload_json={"id": payload.Mã_hồ_sơ, "status": payload.Trạng_thái}
         ))
 
         db.commit()

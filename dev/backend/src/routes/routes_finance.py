@@ -12,7 +12,7 @@ from src.finance import (
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee
 )
 
-router = APIRouter(prefix="/api/finance", tags=["Finance ERP"])
+router = APIRouter(prefix="/api/finance", tags=["06. Finance & Cashflow"])
 
 # ══════════════════════════════════════════════════════════════
 # 1. DÒNG TIỀN — Cashflow
@@ -56,8 +56,8 @@ def cashflow_by_contract(
         "contract_id": contract_id,
         "customer_name": res["customer_name"],
         "total_value": float(res["contract"].total_value or 0),
-        "tong_thu": res["tong_thu"],
-        "tong_chi": res["tong_chi"],
+        "total_income": res["total_income"],
+        "total_expenditure": res["total_expenditure"],
         "transactions": serialize_cashflow_bulk(res["transactions"], db),
     }
 
@@ -74,8 +74,8 @@ def cashflow_by_project(
         "project_id": project_id,
         "task_name": res["task_name"],
         "contract_id": res["contract_id"],
-        "tong_thu": res["tong_thu"],
-        "tong_chi": res["tong_chi"],
+        "total_income": res["total_income"],
+        "total_expenditure": res["total_expenditure"],
         "transactions": serialize_cashflow_bulk(res["transactions"], db),
     }
 
@@ -99,13 +99,13 @@ def cashflow_cash(
         project_id=project_id, contract_id=contract_id, scope=scope
     )
     
-    filtered_thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
-    filtered_chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu")
+    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi")
 
     return {
         "balance": balance,
-        "tong_thu": initial_income + filtered_thu,
-        "tong_chi": initial_expense + filtered_chi,
+        "total_income": initial_income + filtered_thu,
+        "total_expenditure": initial_expense + filtered_chi,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
 
@@ -129,13 +129,13 @@ def cashflow_bank(
         project_id=project_id, contract_id=contract_id, scope=scope
     )
     
-    filtered_thu = sum(float(r.so_tien or 0) for r in rows if r.loai == "Thu")
-    filtered_chi = sum(float(r.so_tien or 0) for r in rows if r.loai == "Chi")
+    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu")
+    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi")
 
     return {
         "balance": balance,
-        "tong_thu": initial_income + filtered_thu,
-        "tong_chi": initial_expense + filtered_chi,
+        "total_income": initial_income + filtered_thu,
+        "total_expenditure": initial_expense + filtered_chi,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
 
@@ -355,23 +355,23 @@ def save_finance_settings(
 
 @router.get("/fund-balances/calculate")
 def calculate_system_balance(
-    hinh_thuc: str = Query(..., description="'Tiền mặt' hoặc 'Chuyển khoản'"),
-    ngay_chot: str = Query(..., description="Mốc thời gian chốt (ISO string)"),
+    payment_method: str = Query(..., description="'Tiền mặt' hoặc 'Chuyển khoản'"),
+    closing_date: str = Query(..., description="Mốc thời gian chốt (ISO string)"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
     try:
-        dt_chot = datetime.fromisoformat(ngay_chot.replace("Z", "+00:00"))
+        dt_chot = datetime.fromisoformat(closing_date.replace("Z", "+00:00"))
         tz_vietnam = timezone(timedelta(hours=7))
         dt_chot = dt_chot.astimezone(tz_vietnam)
     except ValueError:
         try:
-            dt_chot = datetime.strptime(ngay_chot, "%Y-%m-%d %H:%M:%S")
+            dt_chot = datetime.strptime(closing_date, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
 
-    bal = FinanceRepository.get_running_balance(db, hinh_thuc, up_to_datetime=dt_chot)
-    return {"status": "success", "so_du_he_thong": bal}
+    bal = FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=dt_chot)
+    return {"status": "success", "system_balance": bal}
 
 @router.get("/fund-balances/history")
 def get_fund_balances_history(
@@ -382,14 +382,19 @@ def get_fund_balances_history(
     res = []
     for h in history:
         tz_vn = timezone(timedelta(hours=7))
-        dt_local = h.ngay_ap_dung.astimezone(tz_vn) if h.ngay_ap_dung.tzinfo else h.ngay_ap_dung.replace(tzinfo=timezone.utc).astimezone(tz_vn)
+        raw_date = h.effective_date
+        if raw_date:
+            dt_local = raw_date.astimezone(tz_vn) if raw_date.tzinfo else raw_date.replace(tzinfo=timezone.utc).astimezone(tz_vn)
+            date_str = dt_local.strftime("%d/%m/%Y %H:%M")
+        else:
+            date_str = ""
         res.append({
             "id": h.id,
-            "hinh_thuc": h.hinh_thuc,
-            "so_tien_dau_ky": float(h.so_tien_dau_ky),
-            "ngay_ap_dung": dt_local.strftime("%d/%m/%Y %H:%M"),
-            "nguoi_chot": h.nguoi_chot,
-            "ghi_chu": h.ghi_chu
+            "payment_method": h.payment_method,
+            "opening_balance": float(h.opening_balance or 0),
+            "effective_date": date_str,
+            "closing_user": h.closing_user,
+            "notes": h.notes
         })
     return res
 

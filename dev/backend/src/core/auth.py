@@ -62,6 +62,13 @@ def get_current_user(
 def require_authenticated_user(user: User = Depends(get_current_user)) -> User:
     return user
 
+RESOURCE_ALIASES = {
+    "legal_submission": ["legal_submission", "hoso"],
+    "legal_submissions": ["legal_submissions", "hoso"],
+    "tasks": ["tasks", "workflow"],
+    "contracts": ["contracts", "contract"],
+}
+
 def check_user_permission(db: Session, user: User, resource: str, action: str) -> bool:
     if not user or not user.is_active:
         return False
@@ -84,12 +91,14 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
     if not hasattr(RolePermission, permission_column):
         return False
 
+    valid_resources = RESOURCE_ALIASES.get(resource, [resource])
+
     perm = (
         db.query(RolePermission)
         .join(UserRole, UserRole.role_id == RolePermission.role_id)
         .filter(
             UserRole.user_id == user.id,
-            RolePermission.resource == resource,
+            RolePermission.resource.in_(valid_resources),
             getattr(RolePermission, permission_column) == True
         )
         .first()

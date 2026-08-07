@@ -1,42 +1,53 @@
 from sqlalchemy.orm import Session
 from src.db.models import CashflowTransaction, Contract, Customer, ServiceLine, Employee
 
-def serialize_cashflow(t: CashflowTransaction, db: Session = None) -> dict:
-    """Serialize 1 cashflow transaction."""
-    contract_label = t.contract_id or ""
-    project_label = t.project_id or ""
-
-    if db is not None:
-        if t.contract_id:
-            c = db.query(Contract).filter(Contract.id == t.contract_id).first()
-            if c:
+def serialize_cashflow(t: CashflowTransaction, db: Session) -> dict:
+    """Serialize 1 cashflow transaction, including labels."""
+    contract_label = ""
+    if t.contract_id:
+        c = db.query(Contract).filter(Contract.id == t.contract_id).first()
+        if c:
+            cust_name = ""
+            if c.customer_id:
                 cust = db.query(Customer).filter(Customer.id == c.customer_id).first()
-                cust_name = cust.full_name if cust else ""
-                contract_label = f"{t.contract_id}" + (f" — {cust_name}" if cust_name else "")
-        if t.project_id:
-            p = db.query(ServiceLine).filter(ServiceLine.id == t.project_id).first()
-            if p and p.service_type:
-                project_label = f"{t.project_id} — {p.service_type}"
+                if cust:
+                    cust_name = cust.full_name or ""
+            contract_label = f"{c.id} — {cust_name}".strip(" —")
+
+    project_label = ""
+    if t.project_id:
+        p = db.query(ServiceLine).filter(ServiceLine.id == t.project_id).first()
+        if p:
+            project_label = f"{p.id} — {p.service_type or ''}".strip(" —")
+
+    raw_type = t.transaction_type or ""
+    raw_amount = float(t.amount or 0)
+    raw_desc = t.description or ""
+    raw_cat = t.category_code or "Other"
+    raw_partner = t.payer_payee_name or ""
+    raw_method = t.payment_method or ""
+    raw_date = t.transaction_date
+    date_str = raw_date.strftime("%Y-%m-%d") if raw_date else (t.created_at.strftime("%Y-%m-%d") if t.created_at else "")
 
     return {
         "id": t.id,
-        "type": t.loai,
-        "Ngày": t.ngay.strftime("%d/%m/%y") if t.ngay else (t.created_at.strftime("%d/%m/%y") if t.created_at else ""),
-        "Hạng mục": t.hang_muc or "Khác",
-        "Diễn giải": t.dien_giai or "",
-        "Danh mục": f"{t.hang_muc}: {t.dien_giai}" if t.hang_muc and t.dien_giai else (t.hang_muc or t.dien_giai or ""),
-        "Đối tác": t.nguoi_nhan_nop or "",
-        "Hình thức": t.hinh_thuc or "",
-        "Dự án": project_label,
-        "Hợp đồng": contract_label,
-        "amount": float(t.so_tien or 0),
+        "transaction_type": raw_type,
+        "type": raw_type,
+        "date": date_str,
+        "category": raw_cat,
+        "description": raw_desc,
+        "partner": raw_partner,
+        "payment_method": raw_method,
+        "project": project_label,
+        "contract": contract_label,
+        "amount": raw_amount,
         "contract_id": t.contract_id,
         "project_id": t.project_id,
-        "so_du_sau_gd": float(t.so_du_sau_gd or 0),
-        "so_du_tien_mat": float(t.so_du_tien_mat or 0),
-        "so_du_ck": float(t.so_du_ck or 0),
-        "trang_thai": t.trang_thai or "",
-        "scope": getattr(t, "scope", "Công ty") or "Công ty"
+        "balance_after": float(t.balance_after or 0),
+        "cash_balance_after": float(t.cash_balance_after or 0),
+        "bank_balance_after": float(t.bank_balance_after or 0),
+        "status": t.status or "",
+        "scope": t.scope or "Công ty"
     }
 
 def serialize_cashflow_bulk(rows, db: Session) -> list:
@@ -51,48 +62,56 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
         c.id: c for c in db.query(Contract).filter(Contract.id.in_(contract_ids)).all()
     } if contract_ids else {}
     
-    customer_ids = {c.customer_id for c in contracts.values() if c.customer_id}
-    customers = {
-        cu.id: cu for cu in db.query(Customer).filter(Customer.id.in_(customer_ids)).all()
-    } if customer_ids else {}
-    
     projects = {
         p.id: p for p in db.query(ServiceLine).filter(ServiceLine.id.in_(project_ids)).all()
     } if project_ids else {}
 
+    customer_ids = {c.customer_id for c in contracts.values() if c.customer_id}
+    customers = {
+        c.id: c for c in db.query(Customer).filter(Customer.id.in_(customer_ids)).all()
+    } if customer_ids else {}
+
     result = []
     for t in rows:
-        contract_label = t.contract_id or ""
-        project_label = t.project_id or ""
+        contract_label = ""
         if t.contract_id and t.contract_id in contracts:
             c = contracts[t.contract_id]
-            cust = customers.get(c.customer_id)
-            cust_name = cust.full_name if cust else ""
-            contract_label = f"{t.contract_id}" + (f" — {cust_name}" if cust_name else "")
+            cust_name = customers[c.customer_id].full_name if c.customer_id and c.customer_id in customers else ""
+            contract_label = f"{c.id} — {cust_name}".strip(" —")
+
+        project_label = ""
         if t.project_id and t.project_id in projects:
             p = projects[t.project_id]
-            if p.service_type:
-                project_label = f"{t.project_id} — {p.service_type}"
+            project_label = f"{p.id} — {p.service_type or ''}".strip(" —")
+
+        raw_type = t.transaction_type or ""
+        raw_amount = float(t.amount or 0)
+        raw_desc = t.description or ""
+        raw_cat = t.category_code or "Other"
+        raw_partner = t.payer_payee_name or ""
+        raw_method = t.payment_method or ""
+        raw_date = t.transaction_date
+        date_str = raw_date.strftime("%Y-%m-%d") if raw_date else (t.created_at.strftime("%Y-%m-%d") if t.created_at else "")
 
         result.append({
             "id": t.id,
-            "type": t.loai,
-            "Ngày": t.ngay.strftime("%d/%m/%y") if t.ngay else (t.created_at.strftime("%d/%m/%y") if t.created_at else ""),
-            "Hạng mục": t.hang_muc or "Khác",
-            "Diễn giải": t.dien_giai or "",
-            "Danh mục": f"{t.hang_muc}: {t.dien_giai}" if t.hang_muc and t.dien_giai else (t.hang_muc or t.dien_giai or ""),
-            "Đối tác": t.nguoi_nhan_nop or "",
-            "Hình thức": t.hinh_thuc or "",
-            "Dự án": project_label,
-            "Hợp đồng": contract_label,
-            "amount": float(t.so_tien or 0),
+            "transaction_type": raw_type,
+            "type": raw_type,
+            "date": date_str,
+            "category": raw_cat,
+            "description": raw_desc,
+            "partner": raw_partner,
+            "payment_method": raw_method,
+            "project": project_label,
+            "contract": contract_label,
+            "amount": raw_amount,
             "contract_id": t.contract_id,
             "project_id": t.project_id,
-            "so_du_sau_gd": float(t.so_du_sau_gd or 0),
-            "so_du_tien_mat": float(t.so_du_tien_mat or 0),
-            "so_du_ck": float(t.so_du_ck or 0),
-            "trang_thai": t.trang_thai or "",
-            "scope": getattr(t, "scope", "Công ty") or "Công ty"
+            "balance_after": float(t.balance_after or 0),
+            "cash_balance_after": float(t.cash_balance_after or 0),
+            "bank_balance_after": float(t.bank_balance_after or 0),
+            "status": t.status or "",
+            "scope": t.scope or "Công ty"
         })
     return result
 
@@ -101,18 +120,15 @@ def serialize_employee(employee: Employee, department_name: str = None) -> dict:
     return {
         "id": employee.id,
         "user_id": employee.user_id,
-        "full_name": employee.full_name or "",
+        "full_name": employee.full_name,
         "department_id": employee.department_id,
         "department": department_name or employee.department or "",
         "job_title": employee.job_title or "",
         "contract_status": employee.contract_status or "Probation",
-        "join_date": employee.join_date.isoformat() if employee.join_date else None,
-        "probation_end_date": (
-            employee.probation_end_date.isoformat()
-            if employee.probation_end_date else None
-        ),
+        "join_date": employee.join_date.strftime("%Y-%m-%d") if employee.join_date else "",
+        "probation_end_date": employee.probation_end_date.strftime("%Y-%m-%d") if employee.probation_end_date else "",
         "base_salary": float(employee.base_salary or 0),
-        "is_active": bool(employee.is_active),
-        "created_at": employee.created_at.isoformat() if employee.created_at else None,
-        "updated_at": employee.updated_at.isoformat() if employee.updated_at else None,
+        "is_active": bool(employee.is_active if employee.is_active is not None else True),
+        "created_at": employee.created_at.strftime("%Y-%m-%d %H:%M:%S") if employee.created_at else "",
+        "updated_at": employee.updated_at.strftime("%Y-%m-%d %H:%M:%S") if employee.updated_at else "",
     }

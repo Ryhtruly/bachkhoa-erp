@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 import httpx
 
-router = APIRouter(prefix="/api/settings", tags=["Cài đặt Hệ thống"])
+router = APIRouter(prefix="/api/settings", tags=["11. System & Webhooks"])
 
 class SettingItem(BaseModel):
     key: str

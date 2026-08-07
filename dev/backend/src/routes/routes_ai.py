@@ -9,7 +9,7 @@ from src.core.chatbot_engine import ask_chatbot
 from src.services.wiki_rag_service import search_chunks as wiki_search
 from src.core.auth import require_authenticated_user, User
 
-router = APIRouter(prefix="/api/ai", tags=["AI Quy Hoạch"])
+router = APIRouter(prefix="/api/ai", tags=["10. AI Assistant"])
 
 @router.post("/analyze-planning")
 async def analyze_planning(

@@ -13,7 +13,7 @@ from src.db.models import LeadPipeline, Customer, ServiceLine, Contract, AuditLo
 from src.contracts import sync_contract_read_model_after_write
 from src.core.auth import require_permission, User
 
-router = APIRouter(prefix="/api/crm", tags=["CRM & Pipeline"])
+router = APIRouter(prefix="/api/crm", tags=["08. CRM & Quotations"])
 
 class LeadCreateSchema(BaseModel):
     customer_name: str
