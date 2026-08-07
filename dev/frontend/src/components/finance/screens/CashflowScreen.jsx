@@ -12,7 +12,7 @@ import CashflowDetailModal from '../modals/CashflowDetailModal';
 
 export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth }) {
   const [data, setData] = useState([]);
-  const [balance, setBalance] = useState({ tien_mat: 0, ngan_hang: 0, balance: 0, tong_thu: 0, tong_chi: 0 });
+  const [balance, setBalance] = useState({ cash_balance: 0, bank_balance: 0, balance: 0, total_income: 0, total_expenditure: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ type: 'All', payment_method: 'All' });
@@ -44,7 +44,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
 
   const load = useCallback(async () => {
     setLoading(true);
-    setBalance({ tien_mat: 0, ngan_hang: 0, balance: 0, tong_thu: 0, tong_chi: 0 });
+    setBalance({ cash_balance: 0, bank_balance: 0, balance: 0, total_income: 0, total_expenditure: 0 });
     setData([]);
     try {
       const p = new URLSearchParams();
@@ -60,33 +60,34 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         // 🔥 Gọi song song: 1 cái lấy danh sách trans theo bộ lọc, 1 cái bốc số dư realtime từ DB
         const [resData, resBal] = await Promise.all([
           fetch(`${API}/api/finance/cashflow/cash?${p}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Tiền mặt')}&closing_date=${encodeURIComponent(bayGio)}`)
         ]);
 
         const d = await resData.json();
         const b = await resBal.json();
 
-        // Cập nhật: Danh sách trans giữ nguyên, nhưng số dư lấy từ hàm calculate chuẩn
+        const sysBal = b.system_balance || 0;
         setBalance({
           ...d,
-          balance: b.so_du_he_thong || 0,
-          tien_mat: b.so_du_he_thong || 0
+          balance: sysBal,
+          cash_balance: sysBal
         });
         setData(d.transactions || []);
 
       } else if (mode === 'bank') {
         const [resData, resBal] = await Promise.all([
           fetch(`${API}/api/finance/cashflow/bank?${p}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Chuyển khoản')}&closing_date=${encodeURIComponent(bayGio)}`)
         ]);
 
         const d = await resData.json();
         const b = await resBal.json();
 
+        const sysBal = b.system_balance || 0;
         setBalance({
           ...d,
-          balance: b.so_du_he_thong || 0,
-          ngan_hang: b.so_du_he_thong || 0
+          balance: sysBal,
+          bank_balance: sysBal
         });
         setData(d.transactions || []);
 
@@ -94,27 +95,26 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         // Màn hình 'all' (Tổng cả 2 quỹ)
         const [resData, resBalTM, resBalCK] = await Promise.all([
           fetch(`${API}/api/finance/cashflow?${p}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Tiền mặt')}&ngay_chot=${encodeURIComponent(bayGio)}`),
-          fetch(`${API}/api/finance/fund-balances/calculate?hinh_thuc=${encodeURIComponent('Chuyển khoản')}&ngay_chot=${encodeURIComponent(bayGio)}`)
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Tiền mặt')}&closing_date=${encodeURIComponent(bayGio)}`),
+          fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Chuyển khoản')}&closing_date=${encodeURIComponent(bayGio)}`)
         ]);
 
         const transactionsList = await resData.json();
         const bTM = await resBalTM.json();
         const bCK = await resBalCK.json();
 
-        const tm = bTM.so_du_he_thong || 0;
-        const ck = bCK.so_du_he_thong || 0;
+        const tm = bTM.system_balance || 0;
+        const ck = bCK.system_balance || 0;
 
-        // 🔥 SỬA TẠI ĐÂY: Tính trực tiếp từ dữ liệu vừa nhận về để tránh crash render
         const inlineThu = transactionsList.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
         const inlineChi = transactionsList.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
 
         setBalance({
-          tien_mat: tm,
-          ngan_hang: ck,
-          balance: tm + ck,
-          tong_thu: inlineThu,
-          tong_chi: inlineChi
+          total_income: inlineThu,
+          total_expenditure: inlineChi,
+          cash_balance: tm,
+          bank_balance: ck,
+          balance: tm + ck
         });
         setData(transactionsList);
       }
@@ -130,8 +130,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const filtered = data.filter(t => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (t['Danh mục'] || '').toLowerCase().includes(q) ||
-      (t['Đối tác'] || '').toLowerCase().includes(q) ||
+    return (t.category || '').toLowerCase().includes(q) ||
+      (t.partner || '').toLowerCase().includes(q) ||
       (t.id || '').toLowerCase().includes(q);
   });
   const sortedFiltered = sort === 'asc' ? [...filtered].reverse() : filtered;
@@ -167,13 +167,13 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           />
           <BalanceCard
             title="Tổng Thu"
-            amount={balance.tong_thu}
+            amount={balance.total_income}
             icon="↑"
             forcePositive
           />
           <BalanceCard
             title="Tổng Chi"
-            amount={balance.tong_chi}
+            amount={balance.total_expenditure}
             icon="↓"
             forceNegative
           />

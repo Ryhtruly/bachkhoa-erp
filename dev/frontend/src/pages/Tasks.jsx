@@ -18,7 +18,7 @@ import {
   WarningBadge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
-import HosoFormModal from './HosoFormModal';
+import TaskFormModal from './TaskFormModal';
 import { StatusBadge } from '../components/ui';
 
 const API = '';
@@ -44,7 +44,7 @@ function displayDepartment(value) {
 
 
 
-export default function Hoso() {
+export default function Tasks() {
   const { addToast } = useToast();
   const [hosoList, setHosoList] = useState([]);
   const [contractsList, setContractsList] = useState([]);
@@ -123,7 +123,8 @@ export default function Hoso() {
     try {
       setModalLoading(true);
       const isEdit = !!editingHoso;
-      const url = isEdit ? `${API}/api/tasks/${editingHoso['Mã hồ sơ']}` : `${API}/api/tasks/`;
+      const hosoId = editingHoso?.id || editingHoso?.task_id;
+      const url = isEdit ? `${API}/api/tasks/${hosoId}` : `${API}/api/tasks/`;
       const method = isEdit ? 'PUT' : 'POST';
       const response = await fetch(url, {
         method,
@@ -147,10 +148,10 @@ export default function Hoso() {
   const departmentOptions = useMemo(() => {
     const counts = new Map();
     hosoList.forEach((row) => {
-      const id = row['Phòng ban ID'] || 'unassigned';
+      const id = row.department_id || 'unassigned';
       const current = counts.get(id) || {
         id,
-        label: displayDepartment(row['Phòng ban']),
+        label: displayDepartment(row.department_name || row.department),
         count: 0,
       };
       current.count += 1;
@@ -164,20 +165,21 @@ export default function Hoso() {
   const filteredList = hosoList.filter((row) => {
     const normalizedSearch = searchTerm.toLowerCase();
     const matchSearch = [
-      row['Mã hợp đồng'],
-      row['Service Package'],
-      row['Phụ trách chính'],
-      row['Phụ đo'],
-      row['Mã hồ sơ'],
-      row['Tên khách hàng'],
-      row['SĐT'],
-      row['Loại dịch vụ'],
+      row.contract_id,
+      row.service_package,
+      row.assignee_name,
+      row.support_name,
+      row.id || row.task_id,
+      row.customer_name,
+      row.phone,
+      row.service_type,
     ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
-    const departmentId = row['Phòng ban ID'] || 'unassigned';
+    const departmentId = row.department_id || 'unassigned';
     const matchDepartment = activeDepartment === 'all' || departmentId === activeDepartment;
-    const matchStatus = filterValues.status === 'All' || row['Trạng thái'] === filterValues.status;
-    const matchWarning = filterValues.warning === 'All' || row['Cảnh báo'] === filterValues.warning;
-    const rowPriority = row['Ưu tiên'] || 'Trung bình';
+    const rowStatus = row.status;
+    const matchStatus = filterValues.status === 'All' || rowStatus === filterValues.status;
+    const matchWarning = filterValues.warning === 'All' || row.warning;
+    const rowPriority = row.priority || 'Trung bình';
     const matchPriority = filterValues.priority === 'All' || rowPriority === filterValues.priority;
     return matchDepartment && matchSearch && matchStatus && matchWarning && matchPriority;
   });
@@ -186,15 +188,15 @@ export default function Hoso() {
 
   const columns = [
     {
-      key: 'Mã hợp đồng',
+      key: 'contract_id',
       label: 'MÃ HỢP ĐỒNG',
       width: 140,
       render: (value, row) => (
         <div className="hoso-identity">
-          <strong>{value || 'Chưa có HĐ'}</strong>
-          <span className="hoso-contract-priority" title={`Ưu tiên: ${row['Ưu tiên'] || 'Trung bình'}`}>
-            <i className={`hoso-priority-dot hoso-priority-dot--${priorityVariant(row['Ưu tiên'])}`} />
-            HS: {row['Mã hồ sơ']}
+          <strong>{value || row.contract_id || 'Chưa có HĐ'}</strong>
+          <span className="hoso-contract-priority" title={`Ưu tiên: ${row.priority || 'Trung bình'}`}>
+            <i className={`hoso-priority-dot hoso-priority-dot--${priorityVariant(row.priority)}`} />
+            HS: {row.id || row.task_id}
           </span>
         </div>
       ),
@@ -398,7 +400,7 @@ export default function Hoso() {
         compact
       />
 
-      <HosoFormModal
+      <TaskFormModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         initialData={editingHoso}

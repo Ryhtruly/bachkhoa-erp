@@ -1199,7 +1199,7 @@ function EmployeeDirectory() {
 // ════════════════════════════════════════════════════════════════════════════
 // Main Component
 // ════════════════════════════════════════════════════════════════════════════
-export default function Luong() {
+export default function Payroll() {
   const [activeTab, setActiveTab] = useState('payroll-worker');
 
   return (

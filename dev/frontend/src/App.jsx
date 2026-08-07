@@ -3,12 +3,12 @@ import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import Dashboard from './pages/Dashboard';
 import CRM from './pages/CRM';
-import Hoso from './pages/Hoso';
-import Phaply from './pages/Phaply';
+import Tasks from './pages/Tasks';
+import LegalSubmissions from './pages/LegalSubmissions';
 import Settings from './pages/Settings';
-import Hopdong from './pages/Hopdong';
-import Thuchi from './pages/Thuchi';
-import Luong from './pages/Luong';
+import Contracts from './pages/Contracts';
+import Cashflow from './pages/Cashflow';
+import Payroll from './pages/Payroll';
 import KPI from './pages/KPI';
 import Wiki from './pages/Wiki';
 import Login from './pages/Login';
@@ -32,12 +32,12 @@ function App() {
   const TABS = [
     { key: 'dashboard', Component: Dashboard },
     { key: 'crm', Component: CRM },
-    { key: 'hoso', Component: Hoso },
-    { key: 'phaply', Component: Phaply },
+    { key: 'tasks', Component: Tasks },
+    { key: 'legal', Component: LegalSubmissions },
     { key: 'settings', Component: Settings },
-    { key: 'hopdong', Component: Hopdong },
-    { key: 'thuchi', Component: Thuchi },
-    { key: 'luong', Component: Luong },
+    { key: 'contracts', Component: Contracts },
+    { key: 'cashflow', Component: Cashflow },
+    { key: 'payroll', Component: Payroll },
     { key: 'kpi', Component: KPI },
     { key: 'wiki', Component: Wiki },
   ];
@@ -50,8 +50,8 @@ function App() {
     <ToastProvider>
       <div className="app">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-        <main className={`main${activeTab === 'hopdong' ? ' main--contract' : ''}`}>
-          {activeTab !== 'hopdong' && <TopHeader onLogout={handleLogout} />}
+        <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}`}>
+          {activeTab !== 'contracts' && <TopHeader onLogout={handleLogout} />}
           {TABS.map(({ key, Component }) => (
             <div key={key} style={{ display: activeTab === key ? 'block' : 'none' }}>
               <Component />

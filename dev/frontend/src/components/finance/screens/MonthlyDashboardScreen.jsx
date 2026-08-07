@@ -48,15 +48,28 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   const d = data || {
     month: 7,
     year: 2026,
-    tong_thu: 0,
-    tong_chi: 0,
-    chenh_lech: 0,
+    total_income: 0,
+    total_expenditure: 0,
+    net_difference: 0,
     categories: [],
     departments: []
   };
 
-  const chartCategoriesData = d.categories.filter(c => c.thu > 0 || c.chi > 0);
-  const chartDepartmentsData = d.departments.filter(dept => dept.thu > 0 || dept.chi > 0);
+  const totalIncome = d.total_income || 0;
+  const totalExpenditure = d.total_expenditure || 0;
+  const netDifference = d.net_difference || 0;
+
+  const chartCategoriesData = d.categories.map(c => ({
+    name: c.name,
+    income: c.income || 0,
+    expense: c.expense || 0
+  })).filter(c => c.income > 0 || c.expense > 0);
+
+  const chartDepartmentsData = d.departments.map(dept => ({
+    name: dept.name,
+    income: dept.income || 0,
+    expense: dept.expense || 0
+  })).filter(dept => dept.income > 0 || dept.expense > 0);
 
   return (
     <div style={{ padding: '16px 0', fontFamily: 'system-ui, sans-serif' }}>
@@ -118,7 +131,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tổng Thu</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', marginTop: 4 }}>
-              {fmt(d.tong_thu)}
+              {fmt(totalIncome)}
             </div>
           </div>
         </div>
@@ -130,19 +143,19 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tổng Chi</div>
             <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace', marginTop: 4 }}>
-              {fmt(d.tong_chi)}
+              {fmt(totalExpenditure)}
             </div>
           </div>
         </div>
 
-        <div style={{ background: d.chenh_lech >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 16, padding: '20px 24px', border: `1px solid ${d.chenh_lech >= 0 ? '#bbf7d0' : '#fecaca'}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: d.chenh_lech >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
+        <div style={{ background: netDifference >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 16, padding: '20px 24px', border: `1px solid ${netDifference >= 0 ? '#bbf7d0' : '#fecaca'}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: netDifference >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
             ⚖️
           </div>
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Chênh Lệch</div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: d.chenh_lech >= 0 ? '#10b981' : '#ef4444', fontFamily: 'monospace', marginTop: 4 }}>
-              {d.chenh_lech >= 0 ? '+' : ''}{fmt(d.chenh_lech)}
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: netDifference >= 0 ? '#10b981' : '#ef4444', fontFamily: 'monospace', marginTop: 4 }}>
+              {netDifference >= 0 ? '+' : ''}{fmt(netDifference)}
             </div>
           </div>
         </div>
@@ -169,21 +182,25 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                   </tr>
                 </thead>
                 <tbody>
-                  {d.categories.map((cat, idx) => (
-                    <tr key={idx} style={{ 
-                      borderBottom: '1px solid #f1f5f9',
-                      background: (cat.thu > 0 || cat.chi > 0) ? '#f0fdf4' : 'transparent',
-                      fontWeight: (cat.thu > 0 || cat.chi > 0) ? 600 : 400
-                    }}>
-                      <td style={{ padding: '10px 12px', color: '#1e293b' }}>{cat.name}</td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', color: cat.thu > 0 ? '#10b981' : '#94a3b8' }}>
-                        {cat.thu > 0 ? fmt(cat.thu) : '0'}
-                      </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right', color: cat.chi > 0 ? '#ef4444' : '#94a3b8' }}>
-                        {cat.chi > 0 ? fmt(cat.chi) : '0'}
-                      </td>
-                    </tr>
-                  ))}
+                  {d.categories.map((cat, idx) => {
+                    const inc = cat.income ?? cat.thu ?? 0;
+                    const exp = cat.expense ?? cat.chi ?? 0;
+                    return (
+                      <tr key={idx} style={{ 
+                        borderBottom: '1px solid #f1f5f9',
+                        background: (inc > 0 || exp > 0) ? '#f0fdf4' : 'transparent',
+                        fontWeight: (inc > 0 || exp > 0) ? 600 : 400
+                      }}>
+                        <td style={{ padding: '10px 12px', color: '#1e293b' }}>{cat.name}</td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: inc > 0 ? '#10b981' : '#94a3b8' }}>
+                          {inc > 0 ? fmt(inc) : '0'}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: exp > 0 ? '#ef4444' : '#94a3b8' }}>
+                          {exp > 0 ? fmt(exp) : '0'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -207,8 +224,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                     <YAxis tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} tick={{ fontSize: 10 }} stroke="#94a3b8" />
                     <Tooltip formatter={(value) => [fmt(value), '']} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="thu" name="Thu" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="chi" name="Chi" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="income" name="Thu" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expense" name="Chi" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -242,21 +259,25 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                       </td>
                     </tr>
                   ) : (
-                    d.departments.map((dept, idx) => (
-                      <tr key={idx} style={{ 
-                        borderBottom: '1px solid #f1f5f9',
-                        background: (dept.thu > 0 || dept.chi > 0) ? '#f0fdf4' : 'transparent',
-                        fontWeight: (dept.thu > 0 || dept.chi > 0) ? 600 : 400
-                      }}>
-                        <td style={{ padding: '10px 12px', color: '#1e293b' }}>{dept.name}</td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', color: dept.thu > 0 ? '#10b981' : '#94a3b8' }}>
-                          {dept.thu > 0 ? fmt(dept.thu) : '0'}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', color: dept.chi > 0 ? '#ef4444' : '#94a3b8' }}>
-                          {dept.chi > 0 ? fmt(dept.chi) : '0'}
-                        </td>
-                      </tr>
-                    ))
+                    d.departments.map((dept, idx) => {
+                      const inc = dept.income ?? dept.thu ?? 0;
+                      const exp = dept.expense ?? dept.chi ?? 0;
+                      return (
+                        <tr key={idx} style={{ 
+                          borderBottom: '1px solid #f1f5f9',
+                          background: (inc > 0 || exp > 0) ? '#f0fdf4' : 'transparent',
+                          fontWeight: (inc > 0 || exp > 0) ? 600 : 400
+                        }}>
+                          <td style={{ padding: '10px 12px', color: '#1e293b' }}>{dept.name}</td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', color: inc > 0 ? '#10b981' : '#94a3b8' }}>
+                            {inc > 0 ? fmt(inc) : '0'}
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right', color: exp > 0 ? '#ef4444' : '#94a3b8' }}>
+                            {exp > 0 ? fmt(exp) : '0'}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -281,8 +302,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                     <YAxis tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} tick={{ fontSize: 10 }} stroke="#94a3b8" />
                     <Tooltip formatter={(value) => [fmt(value), '']} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="thu" name="Thu" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="chi" name="Chi" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="income" name="Thu" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expense" name="Chi" fill="#6366f1" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

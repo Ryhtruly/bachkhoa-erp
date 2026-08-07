@@ -8,7 +8,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
-    total_hoso: 0,
+    total_tasks: 0,
     in_progress: 0,
     overdue: 0,
     revenue: 0,
@@ -17,7 +17,7 @@ export default function Dashboard() {
     debt_val: 0
   });
 
-  const [recentHoso, setRecentHoso] = useState([]);
+  const [recentTasks, setRecentTasks] = useState([]);
   const [chartData, setChartData] = useState({
     lineData: [],
     barData: [],
@@ -40,7 +40,7 @@ export default function Dashboard() {
         if (resSummary.ok) {
           const data = await resSummary.json();
           setStats(data.stats);
-          setRecentHoso(data.recent_hoso);
+          setRecentTasks(data.recent_tasks || data.recent_hoso || []);
         }
         if (resCharts.ok) {
           const data = await resCharts.json();
@@ -93,7 +93,7 @@ export default function Dashboard() {
       <StatsGrid>
         <StatCard
           label="Tổng hồ sơ"
-          value={stats.total_hoso}
+          value={stats.total_tasks || stats.total_hoso || 0}
           icon={<Files size={24} />}
           iconVariant="purple"
           loading={loading}
@@ -313,12 +313,12 @@ export default function Dashboard() {
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Đang tải dữ liệu...</td>
                 </tr>
-              ) : recentHoso.length === 0 ? (
+              ) : recentTasks.length === 0 ? (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Chưa có dữ liệu</td>
                 </tr>
               ) : (
-                recentHoso.map((hs, i) => (
+                recentTasks.map((hs, i) => (
                   <tr key={i}>
                     <td><strong>{hs.id}</strong></td>
                     <td>{hs.customer_name}</td>

@@ -8,7 +8,7 @@ const ContractWorkspace = React.lazy(() => import('../components/contracts/Contr
 
 const CONTRACT_GROUPS_PER_PAGE = 15;
 function getContractId(contract) {
-  return contract?.['Mã hợp đồng'] || contract?.id || '';
+  return contract?.id || contract?.contract_id || '';
 }
 
 function EllipsisCell({ value }) {
@@ -33,7 +33,7 @@ function getPaginationItems(currentPage, totalPages) {
     }, []);
 }
 
-export default function Hopdong() {
+export default function Contracts() {
   const [contracts, setContracts] = useState([]);
   const [config, setConfig] = useState({ personnel: [], services: [] });
   const [loading, setLoading] = useState(true);
@@ -56,9 +56,9 @@ export default function Hopdong() {
   });
 
   const [formData, setFormData] = useState({
-    SO_HOP_DONG: '', TEN_KHACH_HANG: '', SO_DIEN_THOAI: '',
-    KHACH_HANG_EMAIL: 'admin@nhadatbachkhoa.com', LOAI_DICH_VU: '',
-    DIA_CHI: '', GIA_TRI_HOP_DONG: '', NGAY_KY: '', NGAY_HET_HAN: '', Sale_nguồn: ''
+    contract_id: '', customer_name: '', phone: '',
+    customer_email: 'admin@nhadatbachkhoa.com', service_type: '',
+    address: '', contract_value: '', date_signed: '', due_date: '', sales_source: ''
   });
 
   const fetchConfig = useCallback(async () => {
@@ -112,12 +112,12 @@ export default function Hopdong() {
     const today = d.toISOString().split('T')[0];
     d.setDate(d.getDate() + 7);
     const nextWeek = d.toISOString().split('T')[0];
-    setFormData(prev => ({ ...prev, NGAY_KY: today, NGAY_HET_HAN: nextWeek }));
+    setFormData(prev => ({ ...prev, date_signed: today, due_date: nextWeek }));
   }, [fetchContracts]);
 
   const handleGenerateContract = async (e) => {
     e.preventDefault();
-    const val = parseFloat(formData.GIA_TRI_HOP_DONG);
+    const val = parseFloat(formData.contract_value);
     if (!val || val <= 0) {
       addToast('Nhập giá trị hợp đồng hợp lệ', 'error');
       return;
@@ -127,7 +127,7 @@ export default function Hopdong() {
       const res = await fetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, GIA_TRI_HOP_DONG: val })
+        body: JSON.stringify({ ...formData, contract_value: val })
       });
       if (res.ok) {
         const data = await res.json();
@@ -135,7 +135,7 @@ export default function Hopdong() {
         if (data.download_url) {
           window.open(data.download_url);
         }
-        setFormData(prev => ({ ...prev, SO_HOP_DONG: '', GIA_TRI_HOP_DONG: '' }));
+        setFormData(prev => ({ ...prev, contract_id: '', contract_value: '' }));
         setIsModalOpen(false);
         if (page === 1) fetchContracts();
         else setPage(1);
@@ -206,7 +206,7 @@ export default function Hopdong() {
       key: 'status',
       label: 'Trạng thái',
       width: 120,
-      render: (value) => <StatusBadge status={value || 'Chưa cập nhật'} domain="hopdong" />
+      render: (value) => <StatusBadge status={value || 'Chưa cập nhật'} domain="contracts" />
     },
     {
       key: 'file_link',
@@ -316,7 +316,7 @@ export default function Hopdong() {
                 <header>
                   <div className="contract-detail-pane__document"><FileText size={24} /></div>
                   <div><span>Hợp đồng đang chọn</span><h3>{getContractId(selectedContract)}</h3></div>
-                  <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="hopdong" />
+                  <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="contracts" />
                 </header>
                 <div className="contract-detail-pane__content">
                   <div className="contract-detail-field"><UserRound size={17} /><div><span>Khách hàng</span><strong>{selectedContract.customer_name || 'Chưa cập nhật'}</strong></div></div>
@@ -374,34 +374,34 @@ export default function Hopdong() {
         <form id="hopdong-form" onSubmit={handleGenerateContract}>
           <FormGrid cols={2}>
             <FormRow label="Mã hợp đồng" required>
-              <input className="form-control" required value={formData.SO_HOP_DONG} onChange={e => setFormData({ ...formData, SO_HOP_DONG: e.target.value })} type="text" placeholder="128/BK-2026" />
+              <input className="form-control" required value={formData.contract_id} onChange={e => setFormData({ ...formData, contract_id: e.target.value })} type="text" placeholder="128/BK-2026" />
             </FormRow>
             <FormRow label="Tên khách hàng" required>
-              <input className="form-control" required value={formData.TEN_KHACH_HANG} onChange={e => setFormData({ ...formData, TEN_KHACH_HANG: e.target.value })} type="text" />
+              <input className="form-control" required value={formData.customer_name} onChange={e => setFormData({ ...formData, customer_name: e.target.value })} type="text" />
             </FormRow>
             <FormRow label="Số điện thoại" required>
-              <input className="form-control" required value={formData.SO_DIEN_THOAI} onChange={e => setFormData({ ...formData, SO_DIEN_THOAI: e.target.value })} type="text" />
+              <input className="form-control" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} type="text" />
             </FormRow>
             <FormRow label="Địa chỉ BĐS" required cols={2}>
-              <input className="form-control" required value={formData.DIA_CHI} onChange={e => setFormData({ ...formData, DIA_CHI: e.target.value })} type="text" />
+              <input className="form-control" required value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} type="text" />
             </FormRow>
             <FormRow label="Dịch vụ" required>
-              <select className="form-control" required value={formData.LOAI_DICH_VU} onChange={e => setFormData({ ...formData, LOAI_DICH_VU: e.target.value })}>
+              <select className="form-control" required value={formData.service_type} onChange={e => setFormData({ ...formData, service_type: e.target.value })}>
                 <option value="">— Chọn Dịch Vụ —</option>
                 {config.services.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </FormRow>
             <FormRow label="Sale / Nguồn" required>
-              <input className="form-control" required value={formData.Sale_nguồn} onChange={e => setFormData({ ...formData, Sale_nguồn: e.target.value })} type="text" placeholder="Tên sale" />
+              <input className="form-control" required value={formData.sales_source} onChange={e => setFormData({ ...formData, sales_source: e.target.value })} type="text" placeholder="Tên sale" />
             </FormRow>
             <FormRow label="Giá trị HĐ (VNĐ)" required>
-              <input className="form-control" required value={formData.GIA_TRI_HOP_DONG} onChange={e => setFormData({ ...formData, GIA_TRI_HOP_DONG: e.target.value })} type="number" placeholder="15000000" />
+              <input className="form-control" required value={formData.contract_value} onChange={e => setFormData({ ...formData, contract_value: e.target.value })} type="number" placeholder="15000000" />
             </FormRow>
             <FormRow label="Ngày ký" required>
-              <input className="form-control" required value={formData.NGAY_KY} onChange={e => setFormData({ ...formData, NGAY_KY: e.target.value })} type="date" />
+              <input className="form-control" required value={formData.date_signed} onChange={e => setFormData({ ...formData, date_signed: e.target.value })} type="date" />
             </FormRow>
             <FormRow label="Hạn hoàn thành" required>
-              <input className="form-control" required value={formData.NGAY_HET_HAN} onChange={e => setFormData({ ...formData, NGAY_HET_HAN: e.target.value })} type="date" />
+              <input className="form-control" required value={formData.due_date} onChange={e => setFormData({ ...formData, due_date: e.target.value })} type="date" />
             </FormRow>
           </FormGrid>
 

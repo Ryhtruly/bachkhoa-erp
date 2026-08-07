@@ -64,8 +64,8 @@ export const docSoTiengViet = (number) => {
 };
 
 export const CATEGORY_AUTO_MAPPING = {
-  "Văn phòng phẩm": { phong_ban: "Phòng Kỹ Thuật", doi_tac: "Hằng", nguoi_lap: "Hằng", nguoi_duyet: "Giám đốc" },
-  "In ấn - Photocopy": { phong_ban: "Phòng Pháp Lý", doi_tac: "Nguyễn Thị A", nguoi_lap: "Nguyễn Thị A", nguoi_duyet: "Giám đốc" },
-  "Chi quầy tiếp nhận": { phong_ban: "Phòng Marketing", doi_tac: "Nhân viên Marketing", nguoi_lap: "Nhân viên Marketing", nguoi_duyet: "Giám đốc" },
-  "Chi thụ lý bản vẽ": { phong_ban: "Phòng Kỹ Thuật", doi_tac: "Lê Văn Dựng", nguoi_lap: "Lê Văn Dựng", nguoi_duyet: "Giám đốc" }
+  "Văn phòng phẩm": { department_code: "Phòng Kỹ Thuật", payer_payee: "Hằng", created_by: "Hằng", approved_by: "Giám đốc" },
+  "In ấn - Photocopy": { department_code: "Phòng Pháp Lý", payer_payee: "Nguyễn Thị A", created_by: "Nguyễn Thị A", approved_by: "Giám đốc" },
+  "Chi quầy tiếp nhận": { department_code: "Phòng Marketing", payer_payee: "Nhân viên Marketing", created_by: "Nhân viên Marketing", approved_by: "Giám đốc" },
+  "Chi thụ lý bản vẽ": { department_code: "Phòng Kỹ Thuật", payer_payee: "Lê Văn Dựng", created_by: "Lê Văn Dựng", approved_by: "Giám đốc" }
 };

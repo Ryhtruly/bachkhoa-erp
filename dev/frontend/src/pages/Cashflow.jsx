@@ -29,7 +29,7 @@ const THUCHI_TABS = [
   { id: 'cashflow-settings', label: 'Thiết Lập', icon: <Settings size={16} /> }
 ];
 
-export default function Finance() {
+export default function Cashflow() {
   const [activeMenu, setActiveMenu] = useState('monthly-dashboard');
   const [globalMonth, setGlobalMonth] = useState(() => new Date().toISOString().slice(0, 7));
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, FormRow, FormGrid } from '../components/ui';
 
-export default function HosoFormModal({
+export default function TaskFormModal({
   isOpen,
   onClose,
   initialData,
@@ -33,22 +33,22 @@ export default function HosoFormModal({
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
-        const initialTaskType = taskTypes.find(tt => tt.id === initialData['Hạng mục ID']);
+        const initialTaskType = taskTypes.find(tt => tt.id === (initialData.task_type_id || initialData.task_type));
         setFormData({
-          contract_id: initialData['Mã hợp đồng'] || '',
-          service_package_id: initialData['Service Package ID'] || initialTaskType?.service_package_id || '',
-          task_type_id: initialData['Hạng mục ID'] || '',
-          department_id: initialData['Phòng ban ID'] || '',
-          priority: initialData['Ưu tiên'] || 'Trung bình',
-          assignee_id: initialData['Phụ trách chính ID'] || '',
-          support_id: initialData['Phụ đo ID'] || '',
-          deadline: initialData['Deadline'] || '',
-          start_date: initialData['Ngày giao'] || '',
-          ward: initialData['Khu vực/Phường'] || '',
-          stake_count: initialData['Số cọc'] || '',
-          stake_type: initialData['Loại cọc'] || '',
-          status: initialData['Trạng thái'] || 'Mới tiếp nhận',
-          review_note: initialData['Ghi chú'] || ''
+          contract_id: initialData.contract_id || '',
+          service_package_id: initialData.service_package_id || initialTaskType?.service_package_id || '',
+          task_type_id: initialData.task_type_id || '',
+          department_id: initialData.department_id || '',
+          priority: initialData.priority || 'Trung bình',
+          assignee_id: initialData.assignee_id || '',
+          support_id: initialData.support_id || '',
+          deadline: initialData.deadline || '',
+          start_date: initialData.start_date || '',
+          ward: initialData.ward || '',
+          stake_count: initialData.stake_count || '',
+          stake_type: initialData.stake_type || '',
+          status: initialData.status || 'Mới tiếp nhận',
+          review_note: initialData.review_note || ''
         });
       } else {
         setFormData({

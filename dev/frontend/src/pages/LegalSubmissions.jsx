@@ -57,7 +57,7 @@ const formatDate = (val) => {
   }
 };
 
-export default function Phaply() {
+export default function LegalSubmissions() {
   const { addToast } = useToast();
 
   // ── States ──────────────────────────────────────────────────────────────────
@@ -201,7 +201,7 @@ export default function Phaply() {
   // ── Create Submission ─────────────────────────────────────────────────────
   const handleOpenCreateModal = () => {
     setCreateForm({
-      task_id: tasksList[0]?.['Mã hồ sơ'] || tasksList[0]?.id || '',
+      task_id: tasksList[0]?.id || tasksList[0]?.task_id || '',
       receipt_code: '',
       submitted_by: '',
       submission_date: new Date().toISOString().slice(0, 10),
@@ -614,9 +614,9 @@ export default function Phaply() {
                 onChange={(e) => setCreateForm({ ...createForm, task_id: e.target.value })}
               >
                 {tasksList.map(task => {
-                  const taskId = task.id || task['Mã hồ sơ'];
-                  const name = task.task_name || task['Mã hồ sơ'] || taskId;
-                  const cust = task.customer_name || task['Tên khách hàng'] || '';
+                  const taskId = task.id || task.task_id;
+                  const name = task.task_name || taskId;
+                  const cust = task.customer_name || '';
                   return (
                     <option key={taskId} value={taskId}>
                       {name} {cust ? `(${cust})` : ''}

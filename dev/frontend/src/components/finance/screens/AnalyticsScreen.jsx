@@ -11,7 +11,7 @@ import CashflowDetailModal from '../modals/CashflowDetailModal';
 
 
 export default function AnalyticsScreen({ mode = 'dashboard' }) {
-  const [summary, setSummary] = useState({ tien_mat: 0, ngan_hang: 0, tam_ung_net: 0, monthly: [], profit_by_contract: [] });
+  const [summary, setSummary] = useState({ cash_balance: 0, bank_balance: 0, net_advance: 0, monthly: [], profit_by_contract: [] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,6 +19,10 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
   }, []);
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải dữ liệu...</div>;
+
+  const cashBal = summary.cash_balance ?? summary.tien_mat ?? 0;
+  const bankBal = summary.bank_balance ?? summary.ngan_hang ?? 0;
+  const netAdv = summary.net_advance ?? summary.tam_ung_net ?? 0;
 
   if (mode === 'dashboard') return (
     <div>
@@ -29,9 +33,9 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
 
       {/* 3 Balance Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        <BalanceCard title="Quỹ Tiền Mặt" amount={summary.tien_mat} icon="💵" subtitle="Thu TM − Chi TM" />
-        <BalanceCard title="Số Dư Ngân Hàng" amount={summary.ngan_hang} icon="🏦" subtitle="Thu CK − Chi CK" />
-        <BalanceCard title="Tạm Ứng Chưa Hoàn" amount={summary.tam_ung_net} icon="⏳" subtitle="Tạm ứng − Hoàn ứng" />
+        <BalanceCard title="Quỹ Tiền Mặt" amount={cashBal} icon="💵" subtitle="Thu TM − Chi TM" />
+        <BalanceCard title="Số Dư Ngân Hàng" amount={bankBal} icon="🏦" subtitle="Thu CK − Chi CK" />
+        <BalanceCard title="Tạm Ứng Chưa Hoàn" amount={netAdv} icon="⏳" subtitle="Tạm ứng − Hoàn ứng" />
       </div>
 
       {/* Bar Chart */}
@@ -49,8 +53,8 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11 }} tickFormatter={v => fmtShort(v)} width={60} />
                 <Tooltip formatter={v => fmt(v)} cursor={{ fill: 'rgba(255,255,255,0.04)' }} contentStyle={{ borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--bg-card)' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                <Bar name="Tổng Thu" dataKey="thu" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={40} />
-                <Bar name="Tổng Chi" dataKey="chi" fill="#ef4444" radius={[5, 5, 0, 0]} maxBarSize={40} />
+                <Bar name="Tổng Thu" dataKey="income" fill="#10b981" radius={[5, 5, 0, 0]} maxBarSize={40} />
+                <Bar name="Tổng Chi" dataKey="expense" fill="#ef4444" radius={[5, 5, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -84,15 +88,18 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
               {summary.profit_by_contract.length === 0 ? (
                 <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)' }}>Chưa có dữ liệu lợi nhuận</td></tr>
               ) : summary.profit_by_contract.map((row, i) => {
-                const margin = row.thu > 0 ? Math.round((row.profit / row.thu) * 100) : 0;
+                const inc = row.income || 0;
+                const exp = row.expense || 0;
+                const wage = row.piece_rate_wage || 0;
+                const margin = inc > 0 ? Math.round((row.profit / inc) * 100) : 0;
                 const isPos = row.profit >= 0;
                 return (
                   <tr key={i}>
                     <td style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>{i + 1}</td>
                     <td><strong style={{ fontFamily: 'var(--font-mono)' }}>{row.contract_id}</strong></td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#10b981', fontWeight: 600 }}>+{fmt(row.thu)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#ef4444' }}>−{fmt(row.chi)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#f59e0b' }}>−{fmt(row.luong_khoan)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#10b981', fontWeight: 600 }}>+{fmt(inc)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#ef4444' }}>−{fmt(exp)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: '#f59e0b' }}>−{fmt(wage)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 800, color: isPos ? '#10b981' : '#ef4444' }}>
                       {isPos ? '+' : ''}{fmt(row.profit)}
                     </td>

@@ -31,7 +31,11 @@ export function Badge({ children, variant = 'neutral', dot = false, size = 'md' 
  *   domain?: 'hoso' | 'hopdong' | 'lead' | 'default'
  */
 const STATUS_MAPS = {
-  hoso: {
+  tasks: {
+    'completed': 'success',
+    'in_progress': 'info',
+    'pending': 'warning',
+    'cancelled': 'neutral',
     'Hoàn thành': 'success',
     'Nộp thành công - Chờ kết quả': 'success',
     'Đang xử lý': 'info',
@@ -40,7 +44,32 @@ const STATUS_MAPS = {
     'Trễ hạn': 'danger',
     'Đã hủy': 'neutral',
   },
+  hoso: {
+    'completed': 'success',
+    'in_progress': 'info',
+    'pending': 'warning',
+    'cancelled': 'neutral',
+    'Hoàn thành': 'success',
+    'Nộp thành công - Chờ kết quả': 'success',
+    'Đang xử lý': 'info',
+    'Mới tiếp nhận': 'info',
+    'Sắp đến hạn': 'warning',
+    'Trễ hạn': 'danger',
+    'Đã hủy': 'neutral',
+  },
+  contracts: {
+    'settled': 'success',
+    'pending': 'warning',
+    'overdue': 'danger',
+    'Đã tất toán': 'success',
+    'Chờ thanh toán': 'warning',
+    'Còn nợ': 'warning',
+    'Quá hạn': 'danger',
+  },
   hopdong: {
+    'settled': 'success',
+    'pending': 'warning',
+    'overdue': 'danger',
     'Đã tất toán': 'success',
     'Chờ thanh toán': 'warning',
     'Còn nợ': 'warning',

@@ -8,12 +8,12 @@ import { parseAmt, docSoTiengViet } from '../utils';
 function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
   const [detail, setDetail] = useState(null);
   const [form, setForm] = useState({
-    hang_muc: '',
-    nguoi_nhan_nop: '',
-    hinh_thuc: 'Tiền mặt',
-    so_tien: '',
-    ngay: '',
-    dien_giai: '',
+    category: '',
+    payer_payee: '',
+    payment_method: 'Tiền mặt',
+    amount: '',
+    transaction_date: '',
+    description: '',
     contract_id: ''
   });
   const [contracts, setContracts] = useState([]);
@@ -24,7 +24,7 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
   const [autofillNotice, setAutofillNotice] = useState('');
   const { addToast } = useToast();
 
-  const isReadOnly = detail?.trang_thai === 'Hoàn thành' || detail?.trang_thai === 'Đã duyệt';
+  const isReadOnly = detail?.status === 'Hoàn thành' || detail?.status === 'Đã duyệt';
 
   useEffect(() => {
     if (open && transactionId) {
@@ -38,18 +38,18 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
         .then(r => r.json())
         .then(d => {
           setDetail(d);
-          let parsedDate = d.ngay;
+          let parsedDate = d.date || d.transaction_date;
           if (parsedDate && parsedDate.includes('/')) {
             const [dd, mm, yy] = parsedDate.split('/');
             parsedDate = `20${yy}-${mm}-${dd}`;
           }
           setForm({
-            hang_muc: d['Hạng mục'] || '',
-            nguoi_nhan_nop: d['Đối tác'] || '',
-            hinh_thuc: d['Hình thức'] || 'Tiền mặt',
-            so_tien: String(d.amount || ''),
-            ngay: parsedDate || '',
-            dien_giai: d['Diễn giải'] || '',
+            category: d.category || '',
+            payer_payee: d.partner || d.payer_payee || d.payer_payee_name || '',
+            payment_method: d.payment_method || 'Tiền mặt',
+            amount: String(d.amount || ''),
+            transaction_date: parsedDate || '',
+            description: d.description || '',
             contract_id: d.contract_id || ''
           });
           setLoading(false);
@@ -70,15 +70,15 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
   const handleContractChange = (cid) => {
     setDirty(true);
 
-    let newPayer = form.nguoi_nhan_nop;
+    let newPayer = form.payer_payee;
     let notice = '';
 
     if (cid) {
       const c = contracts.find(x => x.id === cid);
       if (c && c.customer_name) {
-        if (!form.nguoi_nhan_nop) {
+        if (!form.payer_payee) {
           newPayer = c.customer_name;
-        } else if (form.nguoi_nhan_nop !== c.customer_name) {
+        } else if (form.payer_payee !== c.customer_name) {
           newPayer = c.customer_name;
           notice = 'Đã tự điền theo hồ sơ — bạn có thể chỉnh lại';
         }
@@ -86,7 +86,7 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
     }
 
     setAutofillNotice(notice);
-    setForm(prev => ({ ...prev, contract_id: cid, nguoi_nhan_nop: newPayer }));
+    setForm(prev => ({ ...prev, contract_id: cid, payer_payee: newPayer }));
   };
 
   const handleChange = (field, val) => {
@@ -103,18 +103,18 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const amount = parseAmt(form.so_tien);
-    if (!isReadOnly && !amount) { setError('Nhập số tiền hợp lệ'); return; }
+    const amountVal = parseAmt(form.amount);
+    if (!isReadOnly && !amountVal) { setError('Nhập số tiền hợp lệ'); return; }
 
     setSubmitting(true); setError('');
     try {
       const payload = {
-        hang_muc: form.hang_muc,
-        nguoi_nhan_nop: form.nguoi_nhan_nop,
-        hinh_thuc: form.hinh_thuc,
-        so_tien: amount,
-        ngay: form.ngay,
-        dien_giai: form.dien_giai,
+        category: form.category,
+        payer_payee: form.payer_payee,
+        payment_method: form.payment_method,
+        amount: amountVal,
+        transaction_date: form.transaction_date,
+        description: form.description,
         contract_id: form.contract_id || null
       };
 
@@ -137,10 +137,9 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
 
   if (!open) return null;
 
-  const isThu = detail?.type === 'Thu';
+  const isThu = detail?.type === 'Thu' || detail?.transaction_type === 'Thu';
   const accent = isThu ? '#10b981' : '#ef4444';
   const brandAccent = '#eb4a23';
-  const selectedContract = form.contract_id ? contracts.find(c => c.id === form.contract_id) || detail?.contract_info : null;
 
   return (
     <Modal open={open} onClose={handleClose} size="lg" hideClose={true} closeOnOverlay={!dirty}>
@@ -175,29 +174,29 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
                 </td>
                 <td style={{ fontWeight: 'bold', width: '15%' }}>Ngày</td>
                 <td style={{ width: '35%' }}>
-                  <input type="date" disabled={isReadOnly} value={form.ngay} onChange={e => handleChange('ngay', e.target.value)} style={{ fontFamily: 'monospace' }} required />
+                  <input type="date" disabled={isReadOnly} value={form.transaction_date} onChange={e => handleChange('transaction_date', e.target.value)} style={{ fontFamily: 'monospace' }} required />
                 </td>
               </tr>
 
               <tr>
                 <td style={{ fontWeight: 'bold' }}>Diễn giải</td>
                 <td>
-                  <input type="text" disabled={isReadOnly} value={form.dien_giai} onChange={e => handleChange('dien_giai', e.target.value)} placeholder="Nhập diễn giải chi tiết..." required />
+                  <input type="text" disabled={isReadOnly} value={form.description} onChange={e => handleChange('description', e.target.value)} placeholder="Nhập diễn giải chi tiết..." required />
                 </td>
                 <td style={{ fontWeight: 'bold' }}>Hạng mục</td>
                 <td>
-                  <input type="text" disabled={isReadOnly} value={form.hang_muc} onChange={e => handleChange('hang_muc', e.target.value)} required />
+                  <input type="text" disabled={isReadOnly} value={form.category} onChange={e => handleChange('category', e.target.value)} required />
                 </td>
               </tr>
 
               <tr>
                 <td style={{ fontWeight: 'bold' }}>{isThu ? 'Người nộp' : 'Người nhận'}</td>
                 <td>
-                  <input type="text" disabled={isReadOnly} value={form.nguoi_nhan_nop} onChange={e => handleChange('nguoi_nhan_nop', e.target.value)} placeholder={isThu ? 'Họ tên người nộp tiền...' : 'Họ tên người nhận tiền...'} required />
+                  <input type="text" disabled={isReadOnly} value={form.payer_payee} onChange={e => handleChange('payer_payee', e.target.value)} placeholder={isThu ? 'Họ tên người nộp tiền...' : 'Họ tên người nhận tiền...'} required />
                 </td>
                 <td style={{ fontWeight: 'bold' }}>Hình thức</td>
                 <td>
-                  <select disabled={isReadOnly} value={form.hinh_thuc} onChange={e => handleChange('hinh_thuc', e.target.value)}>
+                  <select disabled={isReadOnly} value={form.payment_method} onChange={e => handleChange('payment_method', e.target.value)}>
                     <option value="Chuyển khoản">🏦 Chuyển khoản</option>
                     <option value="Tiền mặt">💵 Tiền mặt</option>
                   </select>
@@ -207,15 +206,15 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
               <tr>
                 <td style={{ fontWeight: 'bold' }}>Phòng ban</td>
                 <td>
-                  <input type="text" disabled value={detail?.du_an_phong_ban || 'Kế toán'} placeholder="Kế toán, Kỹ thuật, Công trường..." />
+                  <input type="text" disabled value={detail?.department_code || 'Kế toán'} placeholder="Kế toán, Kỹ thuật, Công trường..." />
                 </td>
                 <td style={{ fontWeight: 'bold' }}>Số tiền</td>
                 <td>
                   <input
                     type="text"
                     disabled={isReadOnly}
-                    value={form.so_tien ? Number(form.so_tien).toLocaleString('vi-VN') : ''}
-                    onChange={e => handleChange('so_tien', e.target.value.replace(/[^\d]/g, ''))}
+                    value={form.amount ? Number(form.amount).toLocaleString('vi-VN') : ''}
+                    onChange={e => handleChange('amount', e.target.value.replace(/[^\d]/g, ''))}
                     placeholder="0"
                     style={{ fontWeight: 'bold', textAlign: 'right', color: accent, fontSize: '1.1rem' }}
                     required
@@ -240,7 +239,7 @@ function CashflowDetailModal({ open, transactionId, onClose, onSuccess }) {
                 <td colSpan={4} style={{ padding: '10px' }}>
                   <span style={{ fontWeight: 'bold' }}>Số tiền (bằng chữ): </span>
                   <i style={{ color: 'var(--text-secondary)' }}>
-                    {form.so_tien ? docSoTiengViet(form.so_tien) : 'Không đồng'}
+                    {form.amount ? docSoTiengViet(form.amount) : 'Không đồng'}
                   </i>
                 </td>
               </tr>

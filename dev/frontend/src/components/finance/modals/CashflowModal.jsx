@@ -9,10 +9,10 @@ import { AlertCircle, PlusCircle, MinusCircle, Check } from 'lucide-react';
 export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
   const [type, setType] = useState(defaultType);
   const [amtDisplay, setAmtDisplay] = useState('');
-  const [form, setForm] = useState({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', du_an_phong_ban: '', nguoi_lap: '', nguoi_duyet: '' });
+  const [form, setForm] = useState({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', department_code: '', created_by: '', approved_by: '' });
   const [hangMuc, setHangMuc] = useState('Sinh hoạt gia đình');
   const [customHangMuc, setCustomHangMuc] = useState('');
-  const [dienGiai, setDienGiai] = useState('');
+  const [description, setDescription] = useState('');
   const [projects, setProjects] = useState([]);
   const [contracts, setContracts] = useState([]);
   const [error, setError] = useState('');
@@ -23,10 +23,10 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     if (open) {
       setType(defaultType);
       setAmtDisplay('');
-      setForm({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', du_an_phong_ban: '', nguoi_lap: '', nguoi_duyet: '' });
+      setForm({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', department_code: '', created_by: '', approved_by: '' });
       setHangMuc('Sinh hoạt gia đình');
       setCustomHangMuc('');
-      setDienGiai('');
+      setDescription('');
       setError('');
       fetch(`${API}/api/finance/projects`)
         .then(r => r.json())
@@ -44,7 +44,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     const amount = parseAmt(amtDisplay);
     if (!amount) { setError('Nhập số tiền hợp lệ'); return; }
 
-    const finalCategory = (hangMuc === 'Khác' ? (customHangMuc.trim() || 'Khác') : hangMuc) + ': ' + dienGiai.trim();
+    const finalCategory = (hangMuc === 'Khác' ? (customHangMuc.trim() || 'Khác') : hangMuc) + ': ' + description.trim();
 
     // Validation constraint for "Chi thụ lý bản vẽ"
     if (hangMuc === 'Chi thụ lý bản vẽ' && !form.contract_id && !form.project_id) {
@@ -61,11 +61,12 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           amount,
           ...form,
           category: finalCategory,
+          description: description.trim(),
           contract_id: form.contract_id || null,
           project_id: form.project_id || null,
-          du_an_phong_ban: form.du_an_phong_ban || null,
-          nguoi_lap: form.nguoi_lap || null,
-          nguoi_duyet: form.nguoi_duyet || null
+          department_code: form.department_code || null,
+          created_by: form.created_by || null,
+          approved_by: form.approved_by || null
         })
       });
       if (res.ok) {
@@ -147,10 +148,10 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
                 if (mapping) {
                   setForm(prev => ({
                     ...prev,
-                    payer_payee: mapping.doi_tac,
-                    du_an_phong_ban: mapping.phong_ban,
-                    nguoi_lap: mapping.nguoi_lap,
-                    nguoi_duyet: mapping.nguoi_duyet
+                    payer_payee: mapping.payer_payee,
+                    department_code: mapping.department_code,
+                    created_by: mapping.created_by,
+                    approved_by: mapping.approved_by
                   }));
                 }
               }}
@@ -194,8 +195,8 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
             </FormRow>
           )}
           <FormRow label="Diễn giải chi tiết" required cols={hangMuc === 'Khác' ? 2 : 1}>
-            <input required className="form-control" value={dienGiai}
-              onChange={e => setDienGiai(e.target.value)}
+            <input required className="form-control" value={description}
+              onChange={e => setDescription(e.target.value)}
               placeholder="Nhập chi tiết diễn giải giao dịch..." />
           </FormRow>
           <FormRow label="Hợp đồng liên kết" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.project_id}>
@@ -226,4 +227,5 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     </Modal>
   );
 }
+
 

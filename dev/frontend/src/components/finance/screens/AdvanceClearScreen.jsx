@@ -23,7 +23,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   const { addToast } = useToast();
 
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ payment_method: 'All', trang_thai: 'All' }); // Khởi tạo All để bộ lọc chuẩn
+  const [filters, setFilters] = useState({ payment_method: 'All', status: 'All' });
   const [localMonth, setLocalMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const month = propMonth !== undefined ? propMonth : localMonth;
   const setMonth = propSetMonth !== undefined ? propSetMonth : setLocalMonth;
@@ -37,7 +37,6 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   };
   useEffect(() => { load(); }, []);
 
-  // 🔥 LOGIC SỬA LỖI: Định nghĩa sortedFiltered để lọc dữ liệu thực tế
   const sortedFiltered = useMemo(() => {
     if (!advances || !Array.isArray(advances)) return [];
 
@@ -47,35 +46,41 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
         const matchSearch = search.trim() === '' ||
           item.id?.toLowerCase().includes(search.toLowerCase()) ||
           item.payer_payee?.toLowerCase().includes(search.toLowerCase()) ||
-          item['Đối tác']?.toLowerCase().includes(search.toLowerCase()) ||
-          item.dien_giai?.toLowerCase().includes(search.toLowerCase());
+          item.partner?.toLowerCase().includes(search.toLowerCase()) ||
+          (item.description || '')?.toLowerCase().includes(search.toLowerCase());
 
         // 2. Bộ lọc hình thức thanh toán
-        const matchMethod = filters.payment_method === 'All' || item.payment_method === filters.payment_method || item.hinh_thuc === filters.payment_method;
+        const matchMethod = filters.payment_method === 'All' || item.payment_method === filters.payment_method;
 
         // 3. Bộ lọc trạng thái phiếu
-        const matchStatus = filters.trang_thai === 'All' || item.trang_thai === filters.trang_thai;
+        const itemStatus = item.status || '';
+        const matchStatus = filters.status === 'All' || itemStatus === filters.status;
 
-        // 4. Bộ lọc tháng (nếu database của bạn có trường ngay/created_at)
-        const itemMonth = item.ngay ? item.ngay.slice(0, 7) : item.created_at?.slice(0, 7);
+        // 4. Bộ lọc tháng (nếu database của bạn có trường date/created_at)
+        const itemMonth = item.date ? item.date.slice(0, 7) : item.created_at?.slice(0, 7);
         const matchMonth = !month || itemMonth === month;
 
         return matchSearch && matchMethod && matchStatus && matchMonth;
       })
       .sort((a, b) => {
-        // Sắp xếp theo ngày
-        const dateA = new Date(a.ngay || a.created_at || 0);
-        const dateB = new Date(b.ngay || b.created_at || 0);
-        return sort === 'desc' ? dateB - dateA : dateA - dateB;
+        const dA = a.date || a.created_at || '';
+        const dB = b.date || b.created_at || '';
+        return sort === 'desc' ? dB.localeCompare(dA) : dA.localeCompare(dB);
       });
   }, [advances, search, filters, month, sort]);
 
-  const openClear = (row) => { setSelected(row); setActualDisplay(''); setNote(''); setResult(null); setError(''); setModal(true); };
+  const openClear = (adv) => {
+    setSelected(adv);
+    setActualStr(String(adv.amount || ''));
+    setActualDisplay('');
+    setNote(''); setError(''); setResult(null); setModal(true);
+  };
 
   const handleClear = async (e) => {
     e.preventDefault();
     const actual = parseAmt(actualDisplay);
-    if (!actual) { setError('Nhập số tiền thực chi'); return; }
+    if (!actual) { setError('Nhập số tiền chi thực tế hợp lệ'); return; }
+
     setSubmitting(true); setError('');
     try {
       const res = await fetch(`${API}/api/finance/advance/clear`, {
@@ -85,7 +90,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
       if (res.ok) {
         const d = await res.json();
         setResult(d);
-        addToast(' Quyết toán thành công — phiếu bù đã tạo tự động', 'success');
+        addToast('✅ Đã quyết toán thành công!', 'success');
         load();
       } else {
         const err = await res.json();
@@ -97,7 +102,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
 
   const cols = [
     ...CF_COLS.slice(0, 5),
-    { key: 'amount', label: 'Tạm ứng', width: 130, align: 'right', render: (v, row) => <span style={{ fontFamily: 'var(--font-mono)', color: '#ef4444', fontWeight: 700 }}>−{fmt(v || row.so_tien)}</span> },
+    { key: 'amount', label: 'Tạm ứng', width: 130, align: 'right', render: (v, row) => <span style={{ fontFamily: 'var(--font-mono)', color: '#ef4444', fontWeight: 700 }}>−{fmt(v || row.amount)}</span> },
     { key: '_action', label: '', width: 120, render: (_, row) => <button className="btn btn-secondary" style={{ height: 30, fontSize: '0.78rem', padding: '0 12px' }} onClick={() => openClear(row)}>Quyết toán</button> }
   ];
 
@@ -114,11 +119,11 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
         searchPlaceholder="Tìm số phiếu, đối tác, dự án..."
         filters={[
           { key: 'payment_method', label: 'Hình thức', type: 'select', width: 160, options: [{ value: 'All', label: 'Tất cả hình thức' }, { value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] },
-          { key: 'trang_thai', label: 'Trạng thái', type: 'select', width: 140, options: [{ value: 'All', label: 'Tất cả trạng thái' }, { value: 'Hoàn thành', label: 'Hoàn thành' }, { value: 'Chờ duyệt', label: 'Chờ duyệt' }] }
+          { key: 'status', label: 'Trạng thái', type: 'select', width: 140, options: [{ value: 'All', label: 'Tất cả trạng thái' }, { value: 'Hoàn thành', label: 'Hoàn thành' }, { value: 'Chờ duyệt', label: 'Chờ duyệt' }] }
         ]}
         values={filters}
         onFilterChange={(k, v) => setFilters(p => ({ ...p, [k]: v }))}
-        onReset={() => { setSearch(''); setFilters({ payment_method: 'All', trang_thai: 'All' }); setMonth(() => new Date().toISOString().slice(0, 7)); setSort('desc'); }}
+        onReset={() => { setSearch(''); setFilters({ payment_method: 'All', status: 'All' }); setMonth(() => new Date().toISOString().slice(0, 7)); setSort('desc'); }}
         month={month}
         onMonthChange={setMonth}
         sort={sort}
@@ -129,11 +134,10 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
         <SummaryStrip 
           countText={`${sortedFiltered.length} đề xuất`} 
           totalText="Tổng tạm ứng" 
-          totalAmount={sortedFiltered.reduce((s, t) => s + (t.amount || t.so_tien || 0), 0)} 
+          totalAmount={sortedFiltered.reduce((s, t) => s + (t.amount || 0), 0)} 
         />
       )}
 
-      {/* 🔥 ĐÃ ĐỔI: Truyền dữ liệu đã lọc sạch (sortedFiltered) vào DataTable thay vì mảng thô (advances) */}
       <DataTable columns={cols} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng cần quyết toán" pageSize={15} />
 
       <Modal open={modal} onClose={() => setModal(false)} size="sm" title="🔄 Quyết Toán Tạm Ứng">
@@ -160,8 +164,8 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
           <form onSubmit={handleClear}>
             <div style={{ background: 'var(--bg-deep)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: '0.85rem' }}>
               <div style={{ fontWeight: 600 }}>Phiếu: {selected?.id}</div>
-              <div>Đối tác: {selected?.['Đối tác'] || selected?.payer_payee}</div>
-              <div>Tạm ứng: <strong style={{ color: '#ef4444' }}>−{fmt(selected?.amount || selected?.so_tien)}</strong></div>
+              <div>Đối tác: {selected?.payer_payee || selected?.partner}</div>
+              <div>Tạm ứng: <strong style={{ color: '#ef4444' }}>−{fmt(selected?.amount)}</strong></div>
             </div>
             <FormGrid cols={1}>
               <FormRow label="Số tiền thực chi (từ hóa đơn)" required>

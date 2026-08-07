@@ -1,19 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Building2,
-  CheckCircle2,
-  ExternalLink,
-  FileArchive,
-  FileCheck2,
   FileText,
-  FolderOpen,
-  LoaderCircle,
-  MapPin,
-  PackageCheck,
-  Phone,
-  TriangleAlert,
   UserRound,
+  Phone,
+  MapPin,
+  FolderOpen,
+  PackageCheck,
+  TriangleAlert,
+  LoaderCircle,
   Workflow,
+  ShieldCheck,
+  DollarSign
 } from 'lucide-react';
 import ContractWorkflowDesigner from './ContractWorkflowDesigner';
 import {
@@ -22,7 +19,7 @@ import {
   workflowLabel,
 } from './workflowLabels';
 
-const getContractId = contract => contract?.['Mã hợp đồng'] || contract?.id || '';
+const getContractId = contract => contract?.id || contract?.contract_id || '';
 
 const formatVND = value => `${new Intl.NumberFormat('vi-VN').format(Number(value) || 0)}₫`;
 
@@ -73,99 +70,24 @@ function ServiceLinesTab({ workspace, selectedId, onSelect }) {
             className={line.id === selected?.id ? 'active' : ''}
             onClick={() => onSelect(line.id)}
           >
-            <span>{String(index + 1).padStart(2, '0')}</span>
-            <div><strong>{line.task_type || line.service_type || 'Hạng mục chưa đặt tên'}</strong><small>{line.service_package || 'Chưa xác định gói'}</small></div>
+            <span>{index + 1}</span>
+            <div>
+              <strong>{line.task_type || line.service_type}</strong>
+              <small>{line.workflow ? workflowLabel(WORKFLOW_INSTANCE_STATUS_LABELS, line.workflow.status, 'Chưa thiết lập') : 'Chưa thiết lập'}</small>
+            </div>
           </button>
         ))}
       </aside>
-      <div className="service-line-detail">
-        <div className="service-line-detail__hero">
-          <div className="service-line-detail__icon"><Building2 size={24} /></div>
-          <div>
-            <span>{selected.service_package || 'Gói dịch vụ'}</span>
-            <h3>{selected.task_type || selected.service_type}</h3>
-            <p>{selected.target_property || workspace.contract.service_location || 'Chưa nhập bất động sản mục tiêu'}</p>
-          </div>
-          <div className="service-line-detail__price"><span>Giá Hạng mục</span><strong>{formatVND(selected.price)}</strong></div>
-        </div>
-        <div className="service-line-detail__cards">
-          <article>
-            <span>Tình trạng workflow</span>
-            <strong>{workflowLabel(WORKFLOW_INSTANCE_STATUS_LABELS, selected.workflow?.status, 'Chưa thiết lập')}</strong>
-            <p>{selected.workflow ? `Bản chỉnh sửa ${selected.workflow.revision_no || '—'} · ${workflowLabel(WORKFLOW_REVISION_STATUS_LABELS, selected.workflow.revision_status, 'Chưa kích hoạt')}` : 'Giám đốc cần thiết lập quy trình cho Hạng mục này.'}</p>
-          </article>
-          <article>
-            <span>Quy trình mẫu</span>
-            <strong>{selected.workflow?.template?.name || 'Tự thiết kế'}</strong>
-            <p>{selected.workflow?.template ? `${selected.workflow.template.code} · Version ${selected.workflow.template.version}` : 'Có thể bắt đầu từ K01–K09 hoặc chọn template.'}</p>
-          </article>
-          <article>
-            <span>Tiến độ thực thi</span>
-            <strong>{selected.workflow?.execution_nodes?.filter(node => node.status === 'accepted').length || 0}/{selected.workflow?.execution_nodes?.length || 0} Node</strong>
-            <p>Chỉ Node đã nghiệm thu mới được tính hoàn thành và sinh khoản khoán.</p>
-          </article>
-        </div>
-      </div>
     </div>
   );
 }
 
 function DocumentsTab({ workspace }) {
-  const hasTechnical = ['true', '1', 'yes', 'có', 'co'].includes(
-    String(workspace.contract.has_technical || '').trim().toLowerCase()
-  );
-  const documents = [
-    {
-      key: 'contract',
-      icon: FileText,
-      title: 'Hợp đồng đã ký',
-      description: workspace.contract.document_type || 'Bản hợp đồng chính',
-      link: workspace.contract.file_link,
-      state: workspace.contract.file_link ? 'available' : 'missing',
-    },
-    {
-      key: 'customer',
-      icon: FileArchive,
-      title: 'Giấy tờ khách hàng',
-      description: 'CCCD, giấy chứng nhận và giấy tờ pháp lý khách cung cấp',
-      state: 'unsupported',
-    },
-    {
-      key: 'technical',
-      icon: FileCheck2,
-      title: 'Tài liệu kỹ thuật',
-      description: 'Bản vẽ, file scan, biên nhận và minh chứng theo checklist',
-      state: hasTechnical ? 'declared' : 'unsupported',
-    },
-  ];
-
   return (
-    <div className="contract-documents">
-      <div className="contract-documents__intro">
-        <div><span className="eyebrow">Kho tài liệu</span><h3>Hồ sơ của {workspace.contract.id}</h3></div>
-        <div className="capability-chip"><TriangleAlert size={14} /> Chưa có bảng contract_documents</div>
-      </div>
-      <div className="contract-document-grid">
-        {documents.map(document => {
-          const Icon = document.icon;
-          return (
-            <article key={document.key} className={`contract-document-card contract-document-card--${document.state}`}>
-              <div className="contract-document-card__icon"><Icon size={22} /></div>
-              <div><strong>{document.title}</strong><p>{document.description}</p></div>
-              {document.link ? (
-                <a href={document.link} target="_blank" rel="noreferrer">Mở file <ExternalLink size={14} /></a>
-              ) : document.state === 'declared' ? (
-                <span><CheckCircle2 size={14} /> Đã khai báo</span>
-              ) : (
-                <span>Chưa có dữ liệu</span>
-              )}
-            </article>
-          );
-        })}
-      </div>
+    <div className="contract-documents-tab">
       <div className="contract-documents__notice">
         <TriangleAlert size={18} />
-        <div><strong>Database hiện chỉ có `contracts.file_link`.</strong><p>Muốn upload nhiều giấy tờ, phân loại file và gắn vào Hạng mục/Node cần bổ sung bảng tài liệu ở phase database tiếp theo.</p></div>
+        <div><strong>Tài liệu Hợp đồng: {workspace.contract?.file_link || 'Chưa đính kèm file'}</strong></div>
       </div>
     </div>
   );
@@ -178,15 +100,6 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
   const [selectedServiceLineId, setSelectedServiceLineId] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const contractId = getContractId(contract);
-  const selectableContracts = useMemo(() => {
-    const seen = new Set();
-    return [contract, ...contracts].filter(item => {
-      const id = getContractId(item);
-      if (!id || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-  }, [contract, contracts]);
 
   useEffect(() => {
     if (!contractId || tab === 'contracts') return undefined;
@@ -213,6 +126,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
         if (fetchError.name !== 'AbortError') setError(fetchError.message);
       })
       .finally(() => setLoading(false));
+
     return () => controller.abort();
   }, [contractId, tab, refreshKey]);
 
@@ -232,22 +146,6 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
           <span className="eyebrow">Không gian vận hành hợp đồng</span>
           <h2>{contractId}</h2>
         </div>
-        <label>
-          <span>Đang xem hợp đồng</span>
-          <select
-            className="form-control"
-            value={contractId}
-            onChange={event => onContractChange(
-              selectableContracts.find(item => getContractId(item) === event.target.value)
-            )}
-          >
-            {selectableContracts.map(item => (
-              <option key={getContractId(item)} value={getContractId(item)}>
-                {getContractId(item)} — {item.customer_name || item['Tên khách hàng'] || 'Khách hàng'}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
 
       {loading ? (

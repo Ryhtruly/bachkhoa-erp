@@ -5,11 +5,11 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   const menuItems = [
     { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard },
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter },
-    { id: 'hoso', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban },
-    { id: 'phaply', label: 'Hồ Sơ Pháp Lý', icon: FileCheck },
-    { id: 'hopdong', label: 'Hợp Đồng', icon: FileText },
-    { id: 'thuchi', label: 'Thu Chi Sổ Quỹ', icon: Wallet },
-    { id: 'luong', label: 'Lương Khoán 3P', icon: Coins },
+    { id: 'tasks', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban },
+    { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck },
+    { id: 'contracts', label: 'Hợp Đồng', icon: FileText },
+    { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet },
+    { id: 'payroll', label: 'Lương Khoán 3P', icon: Coins },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2 },
     { id: 'wiki', label: 'Đào Tạo & ISO', icon: BookOpen },
   ];
