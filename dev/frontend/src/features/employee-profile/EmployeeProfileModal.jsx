@@ -7,7 +7,6 @@ import {
   Clock3,
   FileText,
   Mail,
-  ShieldCheck,
   UserRound,
 } from 'lucide-react'
 

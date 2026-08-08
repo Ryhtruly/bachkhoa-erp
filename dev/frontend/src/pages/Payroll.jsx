@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, Banknote, CheckCircle2, Hammer, Pencil, Plus, Trash2, UserPlus, Users } from 'lucide-react';
 import { SubTabs, DataTable, Badge, FilterBar, Modal, FormGrid, FormRow } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
+import EmployeeProfileModal from '../features/employee-profile/EmployeeProfileModal';
+import { apiFetch } from '../lib/api';
 
 const API = '';
 const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) + '₫';
@@ -747,6 +749,7 @@ function EmployeeDirectory() {
     active_status: 'All',
   });
   const [modalOpen, setModalOpen] = useState(false);
+  const [selectedProfileEmployeeId, setSelectedProfileEmployeeId] = useState(null);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [form, setForm] = useState(emptyEmployeeForm);
@@ -754,16 +757,9 @@ function EmployeeDirectory() {
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const [employeeResponse, departmentResponse] = await Promise.all([
-        fetch(`${API}/api/finance/employees`),
-        fetch(`${API}/api/finance/employees/departments`),
-      ]);
-      if (!employeeResponse.ok || !departmentResponse.ok) {
-        throw new Error('Không thể tải dữ liệu nhân sự');
-      }
       const [employeeData, departmentData] = await Promise.all([
-        employeeResponse.json(),
-        departmentResponse.json(),
+        apiFetch('/api/finance/employees'),
+        apiFetch('/api/finance/employees/departments'),
       ]);
       setEmployees(Array.isArray(employeeData) ? employeeData : []);
       setDepartments(Array.isArray(departmentData) ? departmentData : []);
@@ -800,15 +796,6 @@ function EmployeeDirectory() {
     setModalOpen(true);
   };
 
-  const parseError = async (response, fallback) => {
-    try {
-      const body = await response.json();
-      return typeof body.detail === 'string' ? body.detail : fallback;
-    } catch {
-      return fallback;
-    }
-  };
-
   const submitEmployee = async (event) => {
     event.preventDefault();
     setSaving(true);
@@ -825,19 +812,16 @@ function EmployeeDirectory() {
     };
 
     try {
-      const response = await fetch(
+      await apiFetch(
         editingEmployee
-          ? `${API}/api/finance/employees/${editingEmployee.id}`
-          : `${API}/api/finance/employees`,
+          ? `/api/finance/employees/${editingEmployee.id}`
+          : '/api/finance/employees',
         {
           method: editingEmployee ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         },
       );
-      if (!response.ok) {
-        throw new Error(await parseError(response, 'Không thể lưu nhân sự'));
-      }
       addToast(
         editingEmployee ? 'Đã cập nhật nhân sự' : 'Đã thêm nhân sự mới',
         'success',
@@ -855,13 +839,10 @@ function EmployeeDirectory() {
     if (!deleteTarget) return;
     setSaving(true);
     try {
-      const response = await fetch(
-        `${API}/api/finance/employees/${deleteTarget.id}`,
+      await apiFetch(
+        `/api/finance/employees/${deleteTarget.id}`,
         { method: 'DELETE' },
       );
-      if (!response.ok) {
-        throw new Error(await parseError(response, 'Không thể xóa nhân sự'));
-      }
       addToast('Đã xóa nhân sự', 'success');
       setDeleteTarget(null);
       await loadEmployees();
@@ -954,7 +935,10 @@ function EmployeeDirectory() {
           <button
             type="button"
             className="btn btn-icon btn-sm btn-ghost"
-            onClick={() => openEditModal(employee)}
+            onClick={(event) => {
+              event.stopPropagation();
+              openEditModal(employee);
+            }}
             title="Sửa nhân sự"
             aria-label={`Sửa ${employee.full_name}`}
           >
@@ -963,7 +947,10 @@ function EmployeeDirectory() {
           <button
             type="button"
             className="btn btn-icon btn-sm btn-ghost"
-            onClick={() => setDeleteTarget(employee)}
+            onClick={(event) => {
+              event.stopPropagation();
+              setDeleteTarget(employee);
+            }}
             title="Xóa nhân sự"
             aria-label={`Xóa ${employee.full_name}`}
             style={{ color: 'var(--red-500)' }}
@@ -1038,6 +1025,13 @@ function EmployeeDirectory() {
         rowKey="id"
         emptyText="Chưa có nhân sự"
         pageSize={15}
+        onRowClick={(employee) => setSelectedProfileEmployeeId(employee.id)}
+      />
+
+      <EmployeeProfileModal
+        open={Boolean(selectedProfileEmployeeId)}
+        employeeId={selectedProfileEmployeeId}
+        onClose={() => setSelectedProfileEmployeeId(null)}
       />
 
       <Modal
