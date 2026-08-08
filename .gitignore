@@ -30,5 +30,6 @@ dev/backend/static/generated_contracts/
 /.agents
 /.claude
 /mdfiles
+.worktrees/
 CLAUDE.md
 AGENTS.md
