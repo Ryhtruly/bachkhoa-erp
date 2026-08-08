@@ -29,6 +29,7 @@ from src.routes.routes_legal_submissions import router as legal_submissions_rout
 from src.routes.routes_cashflow import router as cashflow_router
 from src.routes.routes_settings import router as settings_router
 from src.routes.routes_auth import router as auth_router
+from src.routes.routes_employee_portal import router as employee_portal_router
 
 from src.db.database import engine, Base, SessionLocal
 from src.services.storage_service import ensure_bucket, set_bucket_public
@@ -164,6 +165,7 @@ app.add_middleware(
 
 # Include routers - Pure 100% Standardized English REST APIs
 app.include_router(auth_router)
+app.include_router(employee_portal_router)
 app.include_router(dashboard_router)
 app.include_router(contracts_router, prefix="/api/contracts")
 app.include_router(tasks_router, prefix="/api/tasks")
