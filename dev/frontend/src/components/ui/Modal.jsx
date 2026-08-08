@@ -12,6 +12,7 @@ import { X } from 'lucide-react';
  *   footer?: ReactNode               — slot footer tùy chỉnh
  *   hideClose?: boolean              — ẩn nút X
  *   closeOnOverlay?: boolean         — đóng khi click ngoài (mặc định true)
+ *   overlayClassName?: string        — class bổ sung cho lớp nền
  *   id?: string                      — để aria-labelledby
  *   children: ReactNode
  */
@@ -23,6 +24,7 @@ export default function Modal({
   footer,
   hideClose = false,
   closeOnOverlay = true,
+  overlayClassName = '',
   id = 'modal',
   children,
 }) {
@@ -44,7 +46,7 @@ export default function Modal({
 
   return (
     <div
-      className={`modal-overlay${open ? ' open' : ''}`}
+      className={`modal-overlay${open ? ' open' : ''}${overlayClassName ? ` ${overlayClassName}` : ''}`}
       onClick={closeOnOverlay ? (e) => e.target === e.currentTarget && onClose?.() : undefined}
       role="dialog"
       aria-modal="true"

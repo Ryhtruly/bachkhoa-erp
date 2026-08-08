@@ -50,6 +50,16 @@ describe('EmployeeProfileModal', () => {
     expect(apiFetch).toHaveBeenCalledWith('/api/employee-portal/employees/emp-1')
   })
 
+  it('renders the dialog at the document root with a dedicated dark backdrop', async () => {
+    apiFetch.mockResolvedValue(profile)
+
+    render(<EmployeeProfileModal open employeeId="emp-1" onClose={vi.fn()} />)
+
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.parentElement).toBe(document.body)
+    expect(dialog).toHaveClass('employee-profile-overlay')
+  })
+
   it('renders a permission error without showing profile data', async () => {
     apiFetch.mockRejectedValue(new ApiError(403, 'Không đủ quyền xem hồ sơ nhân sự.'))
 

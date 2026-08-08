@@ -1,4 +1,5 @@
 .employee-profile { min-height: 420px; color: var(--text-primary); }
+.employee-profile-overlay { z-index: 1000; background: rgba(8, 15, 29, 0.68); backdrop-filter: blur(4px); }
 .employee-profile__tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border-default); margin-bottom: 20px; }
 .employee-profile__tabs button { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-tertiary); padding: 10px 12px; white-space: nowrap; font: inherit; font-weight: 700; cursor: pointer; }
 .employee-profile__tabs button.is-active { color: var(--orange-600); border-bottom-color: var(--orange-500); }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   BriefcaseBusiness,
   CalendarDays,
@@ -174,9 +175,17 @@ export default function EmployeeProfileModal({ open, employeeId, onClose }) {
     body = <><nav className="employee-profile__tabs" aria-label="Nội dung hồ sơ">{profileTabs.map((tab) => <button type="button" key={tab.id} className={activeTab === tab.id ? 'is-active' : ''} onClick={() => setActiveTab(tab.id)}>{tab.label}</button>)}</nav>{tabs[activeTab]}</>
   }
 
-  return (
-    <Modal open={open} onClose={onClose} size="full" title={<span><FileText size={19} /> Hồ sơ nhân viên</span>} id="employee-profile-modal">
+  return createPortal(
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="full"
+      title={<span><FileText size={19} /> Hồ sơ nhân viên</span>}
+      id="employee-profile-modal"
+      overlayClassName="employee-profile-overlay"
+    >
       <div className="employee-profile">{body}</div>
-    </Modal>
+    </Modal>,
+    document.body,
   )
 }
