@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, Coins, BarChart2, BookOpen, Settings2 } from 'lucide-react';
 
-export default function Sidebar({ activeTab, setActiveTab }) {
+export default function Sidebar({ activeTab, setActiveTab, mode = 'management' }) {
   const menuItems = [
     { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard },
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter },
@@ -13,6 +13,10 @@ export default function Sidebar({ activeTab, setActiveTab }) {
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2 },
     { id: 'wiki', label: 'Đào Tạo & ISO', icon: BookOpen },
   ];
+
+  const visibleMenuItems = mode === 'employee'
+    ? [{ id: 'employee-dashboard', label: 'Không gian nhân viên', icon: LayoutDashboard }]
+    : menuItems;
 
   return (
     <aside className="sidebar">
@@ -26,7 +30,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       </div>
       <nav className="nav">
         <div className="nav-label">Điều hướng</div>
-        {menuItems.map(item => {
+        {visibleMenuItems.map(item => {
           const Icon = item.icon;
           return (
             <button
@@ -39,14 +43,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
             </button>
           );
         })}
-        <div className="nav-label" style={{ marginTop: '16px' }}>Hệ thống</div>
-        <button
-          className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          <Settings2 size={18} />
-          <span>Cấu Hình</span>
-        </button>
+        {mode === 'management' && <><div className="nav-label" style={{ marginTop: '16px' }}>Hệ thống</div><button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}><Settings2 size={18} /><span>Cấu Hình</span></button></>}
       </nav>
       <div className="sidebar-footer">
         <div className="avatar">LD</div>
