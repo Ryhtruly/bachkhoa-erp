@@ -2,8 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from src.db.database import get_db
-from src.db.models import User
-from src.core.auth import verify_password, create_access_token, get_current_user, seed_default_admin
+from src.db.models import Employee, User
+from src.core.auth import (
+    check_user_permission,
+    create_access_token,
+    get_current_user,
+    seed_default_admin,
+    verify_password,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["01. Authentication & Security"])
 
@@ -29,10 +35,23 @@ def login(body: LoginSchema, db: Session = Depends(get_db)):
     )
 
 @router.get("/me", summary="Get Current User Profile", description="Retrieve profile details for the authenticated user.")
-def get_me(user: User = Depends(get_current_user)):
+def get_me(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    employee = (
+        db.query(Employee)
+        .filter(Employee.user_id == user.id, Employee.is_active == True)
+        .first()
+    )
+    is_management_user = check_user_permission(db, user, "hr", "read")
+    default_workspace = "management" if is_management_user or not employee else "employee"
+
     return {
         "id": user.id,
         "username": user.username,
         "email": user.email,
         "is_active": user.is_active,
+        "employee_id": employee.id if employee else None,
+        "default_workspace": default_workspace,
     }

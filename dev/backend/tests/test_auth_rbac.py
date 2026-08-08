@@ -1,16 +1,18 @@
+import uuid
+
 import pytest
-from src.db.models import AuditLog
+from src.core.auth import create_access_token, hash_password
+from src.db.models import AuditLog, Employee, User
 
 
 def test_unauthenticated_access_returns_401(client):
     protected_urls = [
         "/api/finance/cashflow",
-        "/api/hopdong/",
+        "/api/contracts/",
         "/api/payroll/options",
         "/api/crm/leads",
         "/api/settings",
         "/api/wiki/",
-        "/api/hoso/",
     ]
     for url in protected_urls:
         res = client.get(url)
@@ -21,12 +23,11 @@ def test_unprivileged_user_returns_403(client, unprivileged_user):
     user, headers = unprivileged_user
     protected_urls = [
         "/api/finance/cashflow",
-        "/api/hopdong/",
+        "/api/contracts/",
         "/api/payroll/options",
         "/api/crm/leads",
         "/api/settings",
         "/api/wiki/",
-        "/api/hoso/",
     ]
     for url in protected_urls:
         res = client.get(url, headers=headers)
@@ -36,6 +37,43 @@ def test_unprivileged_user_returns_403(client, unprivileged_user):
 def test_admin_superuser_access(client, admin_headers):
     res = client.get("/api/finance/cashflow", headers=admin_headers)
     assert res.status_code == 200
+
+
+def test_auth_me_resolves_employee_workspace(client, db, admin_headers):
+    username = f"employee_workspace_{uuid.uuid4().hex[:8]}"
+    user = User(
+        id=str(uuid.uuid4()),
+        username=username,
+        password_hash=hash_password("password123"),
+        email=f"{username}@test.local",
+        is_active=True,
+    )
+    employee = Employee(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        full_name="Employee Workspace Test",
+        is_active=True,
+    )
+    db.add_all([user, employee])
+    db.commit()
+
+    try:
+        employee_headers = {
+            "Authorization": f"Bearer {create_access_token(user.id)}",
+        }
+        employee_res = client.get("/api/auth/me", headers=employee_headers)
+        admin_res = client.get("/api/auth/me", headers=admin_headers)
+
+        assert employee_res.status_code == 200
+        assert employee_res.json()["employee_id"] == employee.id
+        assert employee_res.json()["default_workspace"] == "employee"
+        assert admin_res.status_code == 200
+        assert admin_res.json()["default_workspace"] == "management"
+    finally:
+        db.delete(employee)
+        db.flush()
+        db.delete(user)
+        db.commit()
 
 
 def test_finance_clerk_rbac_and_audit_propagation(client, finance_clerk_user, db):
