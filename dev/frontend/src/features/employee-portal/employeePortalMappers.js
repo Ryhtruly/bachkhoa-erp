@@ -37,3 +37,31 @@ export const mapTasksToCalendarEvents = (tasks = []) => tasks
       extendedProps: { task },
     }
   })
+
+// FullCalendar places overlapping timed events side by side.  The employee
+// timetable deliberately presents tasks with the same display interval as a
+// single full-width block whose task cards are stacked vertically instead.
+export const groupConcurrentCalendarEvents = (events = []) => {
+  const sortedEvents = [...events].sort((left, right) => left.start - right.start)
+  const groups = []
+
+  sortedEvents.forEach((event) => {
+    const currentGroup = groups[groups.length - 1]
+    if (!currentGroup || event.start >= currentGroup.end) {
+      groups.push({ event, end: event.end, tasks: [event.extendedProps.task] })
+      return
+    }
+
+    currentGroup.tasks.push(event.extendedProps.task)
+    if (event.end > currentGroup.end) currentGroup.end = event.end
+  })
+
+  return groups.map(({ event, tasks }) => ({
+    ...event,
+    // A group renders its cards vertically. Allocate one display-card window
+    // per task so status, checklist and assignees remain readable.
+    end: new Date(event.start.getTime() + TIMETABLE_CARD_DURATION_MS * tasks.length),
+    id: `stack:${tasks.map((task) => task.id).join(':')}`,
+    extendedProps: { tasks },
+  }))
+}

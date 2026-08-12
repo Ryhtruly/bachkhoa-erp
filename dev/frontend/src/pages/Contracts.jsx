@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSignature, Printer, Download, Plus, MoveHorizontal, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow, FormGrid, DataTable, StatusBadge, FilterBar } from '../components/ui';
+import LocationPicker from '../components/location/LocationPicker';
 import '../components/contracts/contracts.css';
 
 const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
@@ -78,6 +79,9 @@ export default function Contracts() {
     customer_email: 'admin@nhadatbachkhoa.com', service_type: '',
     address: '', contract_value: '', date_signed: '', due_date: '', sales_source: ''
   });
+  const [addressLocation, setAddressLocation] = useState({
+    provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '',
+  });
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -120,7 +124,18 @@ export default function Contracts() {
     }
   }, [addToast, filterValues.service, page, searchTerm, signedDate, sort]);
 
-  const openContractModal = () => {
+  const openContractModal = async () => {
+    try {
+      const response = await fetch('/api/contracts/next-code');
+      if (response.ok) {
+        const { contract_id: contractId } = await response.json();
+        setFormData(previous => ({ ...previous, contract_id: contractId }));
+      } else {
+        addToast('Không thể tạo mã hợp đồng mới', 'error');
+      }
+    } catch {
+      addToast('Không thể kết nối để tạo mã hợp đồng mới', 'error');
+    }
     setIsModalOpen(true);
   };
 
@@ -158,7 +173,8 @@ export default function Contracts() {
         if (data.download_url) {
           window.open(data.download_url);
         }
-        setFormData(prev => ({ ...prev, contract_id: '', contract_value: '' }));
+        setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
+        setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
         setIsModalOpen(false);
         if (page === 1) fetchContracts();
         else setPage(1);
@@ -386,7 +402,7 @@ export default function Contracts() {
         <form id="hopdong-form" onSubmit={handleGenerateContract}>
           <FormGrid cols={2}>
             <FormRow label="Mã hợp đồng" required>
-              <input className="form-control" required value={formData.contract_id} onChange={e => setFormData({ ...formData, contract_id: e.target.value })} type="text" placeholder="128/BK-2026" />
+              <input className="form-control" required readOnly value={formData.contract_id} type="text" placeholder="001/BK-2026" />
             </FormRow>
             <FormRow label="Tên khách hàng" required>
               <input className="form-control" required value={formData.customer_name} onChange={e => setFormData({ ...formData, customer_name: e.target.value })} type="text" />
@@ -395,7 +411,13 @@ export default function Contracts() {
               <input className="form-control" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} type="text" />
             </FormRow>
             <FormRow label="Địa chỉ BĐS" required cols={2}>
-              <input className="form-control" required value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} type="text" />
+              <LocationPicker
+                value={addressLocation}
+                onChange={(nextLocation) => {
+                  setAddressLocation(nextLocation);
+                  setFormData(current => ({ ...current, address: nextLocation.displayAddress }));
+                }}
+              />
             </FormRow>
             <FormRow label="Dịch vụ" required>
               <select className="form-control" required value={formData.service_type} onChange={e => setFormData({ ...formData, service_type: e.target.value })}>

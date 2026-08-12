@@ -6,7 +6,8 @@ import viLocale from '@fullcalendar/core/locales/vi'
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock, ExternalLink, MinusCircle, Paperclip, Play, Send, UploadCloud, UserRound, XCircle } from 'lucide-react'
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch } from '../../lib/api'
-import { mapTasksToCalendarEvents } from './employeePortalMappers'
+import AvatarImage from '../../components/AvatarImage'
+import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './employeePortalMappers'
 import { WORKFLOW_NODE_STATUS_LABELS } from '../../components/contracts/workflowLabels'
 import Modal from '../../components/ui/Modal'
 
@@ -64,13 +65,51 @@ function AssigneeAvatars({ assignees = [] }) {
   }
   const visible = assignees.slice(0, 3)
   return <div className="employee-workspace-assignees" aria-label={`${assignees.length} người được phân công`}>
-    {visible.map(assignee => assignee.avatar_url ? (
-      <img key={assignee.employee_id} src={assignee.avatar_url} alt={assignee.full_name} title={assignee.full_name} />
-    ) : (
-      <span key={assignee.employee_id} title={`${assignee.full_name} chưa có ảnh đại diện`}><UserRound size={12} /></span>
+    {visible.map(assignee => (
+      <AvatarImage key={assignee.employee_id} src={assignee.avatar_url} name={assignee.full_name} title={assignee.full_name} />
     ))}
     {assignees.length > visible.length && <em>+{assignees.length - visible.length}</em>}
   </div>
+}
+
+function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
+  const checklistCount = task.checklist?.length || 0
+  const visibleChecklist = (task.checklist || []).slice(0, 3)
+  const hiddenChecklistCount = Math.max(0, checklistCount - visibleChecklist.length)
+  const narrowHiddenChecklistCount = Math.max(0, checklistCount - 2)
+
+  return <article
+    className={`employee-workspace-node-card${expanded ? ' is-expanded' : ''}${task.is_overdue ? ' is-overdue' : ''}`}
+    data-timetable-node-card={task.id}
+    style={{ '--node-status-color': statusColor }}
+    onClick={expanded ? undefined : onSelect}
+  >
+    <button
+      type="button"
+      className="employee-workspace-node-card__header"
+      onClick={(event) => {
+        event.stopPropagation()
+        onSelect()
+      }}
+      aria-expanded={expanded}
+    >
+      <strong>{task.name || task.node_code}</strong>
+      <span className={`employee-workspace-node-card__remaining${task.is_overdue ? ' is-overdue' : ''}`}>
+        {task.is_overdue && <AlertTriangle size={11} />}
+        {remainingTimeLabel(task.deadline_at)}
+      </span>
+    </button>
+    <div className="employee-workspace-node-card__checklist">
+      {visibleChecklist.map(item => <div key={item.id || item.key}>
+        <span title={item.name}>{item.name}</span>
+        <ChecklistStatusIcon status={item.status} size={14} />
+      </div>)}
+      {hiddenChecklistCount > 0 && <small className="employee-workspace-node-card__more">+{hiddenChecklistCount} mục khác</small>}
+      {narrowHiddenChecklistCount > 0 && <small className="employee-workspace-node-card__more-narrow">+{narrowHiddenChecklistCount} mục khác</small>}
+      {checklistCount === 0 && <small>Node không có checklist</small>}
+    </div>
+    <footer><AssigneeAvatars assignees={task.assignees || []} /></footer>
+  </article>
 }
 
 const remainingTimeLabel = (deadlineAt) => {
@@ -249,7 +288,10 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [weekLabel, setWeekLabel] = useState('')
 
-  const events = useMemo(() => mapTasksToCalendarEvents(tasks), [tasks])
+  const events = useMemo(
+    () => groupConcurrentCalendarEvents(mapTasksToCalendarEvents(tasks)),
+    [tasks],
+  )
   const selectedTask = useMemo(
     () => tasks.find(task => task.id === selectedTaskId) || null,
     [tasks, selectedTaskId],
@@ -334,6 +376,7 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
         slotMinTime={slotBounds.min}
         slotMaxTime={slotBounds.max}
         slotDuration="00:30:00"
+        slotEventOverlap={false}
         slotLabelFormat={{ hour: '2-digit', minute: '2-digit', hour12: false }}
         slotLabelContent={(arg) => {
           if (arg.date.getHours() === 7 && arg.date.getMinutes() === 0) return 'Sáng'
@@ -354,52 +397,22 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
         }}
         events={events}
         eventClassNames={(arg) => [
-          selectedTaskId === arg.event.id ? 'is-node-expanded' : '',
-          arg.event.extendedProps.task?.is_overdue ? 'is-node-overdue' : '',
+          arg.event.extendedProps.tasks.some((task) => task.id === selectedTaskId) ? 'is-node-expanded' : '',
+          arg.event.extendedProps.tasks.some((task) => task.is_overdue) ? 'is-node-overdue' : '',
         ].filter(Boolean)}
         eventContent={(arg) => {
-          const task = arg.event.extendedProps.task
-          const checklistCount = task.checklist?.length || 0
-          const expanded = selectedTaskId === task.id
-          const visibleChecklist = (task.checklist || []).slice(0, 3)
-          const hiddenChecklistCount = Math.max(0, checklistCount - visibleChecklist.length)
-          const narrowHiddenChecklistCount = Math.max(0, checklistCount - 2)
-          return <article
-            className={`employee-workspace-node-card${expanded ? ' is-expanded' : ''}${task.is_overdue ? ' is-overdue' : ''}`}
-            data-timetable-node-card={task.id}
-            style={{ '--node-status-color': arg.event.backgroundColor }}
-            onClick={expanded ? undefined : () => setSelectedTaskId(task.id)}
-          >
-            <button
-              type="button"
-              className="employee-workspace-node-card__header"
-              onClick={(event) => {
-                event.stopPropagation()
-                setSelectedTaskId(expanded ? null : task.id)
-              }}
-              aria-expanded={expanded}
-            >
-              <strong>{arg.event.title}</strong>
-              <span className={`employee-workspace-node-card__remaining${task.is_overdue ? ' is-overdue' : ''}`}>
-                {task.is_overdue && <AlertTriangle size={11} />}
-                {remainingTimeLabel(task.deadline_at)}
-              </span>
-            </button>
-
-            <>
-              <div className="employee-workspace-node-card__checklist">
-                {visibleChecklist.map(item => <div key={item.id || item.key}>
-                  <span title={item.name}>{item.name}</span>
-                  <ChecklistStatusIcon status={item.status} size={14} />
-                </div>)}
-                {hiddenChecklistCount > 0 && <small className="employee-workspace-node-card__more">+{hiddenChecklistCount} mục khác</small>}
-                {narrowHiddenChecklistCount > 0 && <small className="employee-workspace-node-card__more-narrow">+{narrowHiddenChecklistCount} mục khác</small>}
-                {checklistCount === 0 && <small>Node không có checklist</small>}
-              </div>
-              <footer><AssigneeAvatars assignees={task.assignees || []} /></footer>
-            </>
-
-          </article>
+          return <div className="employee-workspace-node-stack">
+            {arg.event.extendedProps.tasks.map((task) => {
+              const expanded = selectedTaskId === task.id
+              return <TimetableNodeCard
+                key={task.id}
+                task={task}
+                statusColor={arg.event.backgroundColor}
+                expanded={expanded}
+                onSelect={() => setSelectedTaskId(expanded ? null : task.id)}
+              />
+            })}
+          </div>
         }}
       />
     </div>

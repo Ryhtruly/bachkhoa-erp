@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
+from types import SimpleNamespace
 
 logger = logging.getLogger(__name__)
 
@@ -528,22 +529,28 @@ class FinanceService:
         if not employee:
             raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
 
-        department = validate_employee_payload(payload, db)
-        employee.user_id = payload.user_id
-        employee.full_name = payload.full_name
-        employee.department_id = payload.department_id
-        employee.department = department.name if department else None
-        employee.job_title = payload.job_title
-        employee.contract_status = payload.contract_status
-        employee.join_date = payload.join_date or employee.join_date or date.today()
-        employee.probation_end_date = payload.probation_end_date
-        employee.base_salary = payload.base_salary
-        employee.is_active = payload.is_active
-        employee.email = payload.email
-        employee.phone = payload.phone
-        employee.gender = payload.gender
-        employee.date_of_birth = payload.date_of_birth
-        employee.place_of_birth = payload.place_of_birth
+        allowed_fields = {
+            "full_name", "department_id", "job_title", "contract_status",
+            "join_date", "probation_end_date", "base_salary", "is_active",
+            "email", "phone", "gender", "date_of_birth", "place_of_birth",
+        }
+        updates = {
+            field: value
+            for field, value in payload.model_dump(exclude_unset=True).items()
+            if field in allowed_fields
+        }
+        validation_payload = SimpleNamespace(
+            join_date=updates.get("join_date", employee.join_date),
+            probation_end_date=updates.get("probation_end_date", employee.probation_end_date),
+            department_id=updates.get("department_id", employee.department_id),
+            user_id=None,
+        )
+        department = validate_employee_payload(validation_payload, db)
+
+        for field, value in updates.items():
+            setattr(employee, field, value)
+        if "department_id" in updates:
+            employee.department = department.name if department else None
         employee.updated_at = datetime.now(timezone.utc)
 
         try:

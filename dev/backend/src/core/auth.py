@@ -1,3 +1,4 @@
+import logging
 import os
 import jwt
 from datetime import datetime, timedelta, timezone
@@ -5,8 +6,10 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from src.db.database import get_db
 from src.db.models import User, Role, UserRole, RolePermission
+from src.core.permissions import evaluate_normalized_permission
 from src.config.settings import settings
 
 SECRET_KEY = settings.SECRET_KEY
@@ -14,6 +17,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 bearer_scheme = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 import bcrypt
 
@@ -108,7 +112,32 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
         )
         .first()
     )
-    return perm is not None
+    legacy_allowed = perm is not None
+
+    # The normalized RBAC tables are evaluated in shadow mode until their grant
+    # matrix is fully provisioned.  They cannot alter this legacy decision.
+    try:
+        normalized = evaluate_normalized_permission(
+            db,
+            user_id=user.id,
+            resource_codes=valid_resources,
+            action=action,
+        )
+        if normalized is not None and normalized.allowed != legacy_allowed:
+            logger.warning(
+                "RBAC shadow mismatch resource=%s action=%s permission=%s legacy_allowed=%s normalized_allowed=%s",
+                resource,
+                action,
+                normalized.permission_code,
+                legacy_allowed,
+                normalized.allowed,
+            )
+    except SQLAlchemyError:
+        # Some deployments may not have the normalized tables yet.  Legacy
+        # authorization must remain available during the compatibility window.
+        logger.info("RBAC shadow evaluator unavailable resource=%s action=%s", resource, action)
+
+    return legacy_allowed
 
 def require_permission(resource: str, action: str):
     def dependency(

@@ -10,10 +10,13 @@ describe('EmployeeDirectory', () => {
     vi.clearAllMocks()
   })
 
-  it('selects an employee into the detail panel and toggles edit mode', async () => {
-    vi.stubGlobal('fetch', vi.fn((url) => {
+  it('selects an employee into the detail panel, edits it, and does not send user_id in the PUT body', async () => {
+    const fetchMock = vi.fn((url, options = {}) => {
       if (String(url).includes('/api/finance/employees/departments')) {
         return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      }
+      if (String(url).includes('/api/finance/employees/emp-1') && options.method === 'PUT') {
+        return Promise.resolve(new Response(JSON.stringify({ id: 'emp-1' }), { status: 200 }))
       }
       if (String(url).includes('/api/finance/employees')) {
         return Promise.resolve(new Response(JSON.stringify([{
@@ -24,7 +27,8 @@ describe('EmployeeDirectory', () => {
         }]), { status: 200 }))
       }
       return Promise.resolve(new Response(JSON.stringify({ data: { departments: [] } }), { status: 200 }))
-    }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     render(<ToastProvider><EmployeeDirectory /></ToastProvider>)
 
@@ -36,12 +40,19 @@ describe('EmployeeDirectory', () => {
 
     // View mode: detail panel header shows the selected employee, no inputs yet.
     const hero = document.querySelector('.hr-detail__hero')
-    await waitFor(() => expect(within(hero).getByText('emp-1')).toBeInTheDocument())
+    await waitFor(() => expect(within(hero).getByRole('heading', { name: 'Nguyễn Văn A' })).toBeInTheDocument())
     expect(screen.queryByPlaceholderText('Nguyễn Văn A')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /sửa/i }))
 
     // Edit mode: the full name field becomes an editable input pre-filled with the current value.
     await waitFor(() => expect(screen.getByDisplayValue('Nguyễn Văn A')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /^lưu$/i }))
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(([_url, options]) => options?.method === 'PUT')
+      expect(putCall).toBeTruthy()
+      expect(JSON.parse(putCall[1].body)).not.toHaveProperty('user_id')
+    })
   })
 })

@@ -78,6 +78,10 @@ _CURRENT_PAYROLL_QUERY = text(
     with period as (
       select cast(:period_start as date) as start_date,
              (cast(:period_start as date) + interval '1 month')::date as end_date
+    ), employee_base as (
+      select base_salary
+      from public.employees
+      where id = :employee_id
     ), base as (
       select base_salary
       from public.employee_compensation_terms, period
@@ -102,7 +106,7 @@ _CURRENT_PAYROLL_QUERY = text(
         and effective_date >= period.start_date
         and effective_date < period.end_date
     )
-    select coalesce((select base_salary from base), 0) as base_salary,
+    select coalesce((select base_salary from base), (select base_salary from employee_base), 0) as base_salary,
            (select tasks_completed from piece) as tasks_completed,
            (select piece_amount from piece) as piece_amount,
            (select adjustment_amount from adjustments) as adjustment_amount

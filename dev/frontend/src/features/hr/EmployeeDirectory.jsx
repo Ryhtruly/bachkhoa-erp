@@ -7,7 +7,8 @@ import {
 import { Badge, Divider, FormGrid, FormRow, Modal } from '../../components/ui';
 import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../lib/api';
-import { avatarColorFor, initialsOf } from '../../lib/avatar';
+import { initialsOf } from '../../lib/avatar';
+import AvatarImage from '../../components/AvatarImage';
 import './humanResources.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -35,24 +36,7 @@ const formatDate = (value) => value
 const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) + '₫';
 
 function Avatar({ name, avatarUrl, size = 40 }) {
-  if (avatarUrl) {
-    return (
-      <img
-        className="hr-avatar"
-        src={avatarUrl}
-        alt={name}
-        style={{ width: size, height: size, objectFit: 'cover' }}
-      />
-    );
-  }
-  return (
-    <div
-      className="hr-avatar"
-      style={{ width: size, height: size, fontSize: size * 0.4, background: avatarColorFor(name) }}
-    >
-      {initialsOf(name)}
-    </div>
-  );
+  return <AvatarImage className="hr-avatar" src={avatarUrl} name={name} style={{ width: size, height: size, objectFit: 'cover', fontSize: size * 0.4 }} />;
 }
 
 function Field({ label, value }) {
@@ -410,8 +394,14 @@ export default function EmployeeDirectory() {
 
             <div className="hr-detail__hero">
               <div className="hr-detail__hero-avatar-wrap">
-                {mode !== 'create' && selectedEmployee.avatar_url ? (
-                  <img className="hr-detail__hero-avatar hr-detail__hero-avatar--img" src={selectedEmployee.avatar_url} alt={selectedEmployee.full_name} />
+                {mode !== 'create' ? (
+                  <AvatarImage
+                    className="hr-detail__hero-avatar hr-detail__hero-avatar--img"
+                    fallbackClassName="hr-detail__hero-avatar"
+                    src={selectedEmployee.avatar_url}
+                    name={selectedEmployee.full_name}
+                    fallbackStyle={{ background: 'linear-gradient(135deg, var(--orange-400), var(--orange-600))' }}
+                  />
                 ) : (
                   <div
                     className="hr-detail__hero-avatar"

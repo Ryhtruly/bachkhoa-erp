@@ -15,6 +15,16 @@ export function initialsOf(name) {
     : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+export function avatarUrlFor(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function avatarColorFor(seed) {
   const str = String(seed || '');
   let hash = 0;

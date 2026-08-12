@@ -1,8 +1,9 @@
 import uuid
+import re
 from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from src.db.models import (
@@ -18,6 +19,19 @@ from src.db.models import (
 from src.services import telegram_service
 from src.core import doc_generator
 from src.contracts.read_model import sync_contract_read_model_after_write
+
+
+CONTRACT_CODE_PATTERN = re.compile(r"^(?P<sequence>\d+)/BK-\d{4}$")
+
+
+def next_contract_code(contract_ids, *, year: int | None = None) -> str:
+    """Return the next global contract sequence with a minimum width of three."""
+    highest_sequence = max((
+        int(match.group("sequence"))
+        for contract_id in contract_ids
+        if (match := CONTRACT_CODE_PATTERN.match((contract_id or "").strip()))
+    ), default=0)
+    return f"{highest_sequence + 1:03d}/BK-{year or datetime.now().year}"
 
 
 def _create_initial_service_line(
@@ -63,10 +77,20 @@ def _create_initial_service_line(
 class ContractService:
 
     @staticmethod
+    def get_next_contract_code(db: Session) -> str:
+        if db.bind and db.bind.dialect.name == "postgresql":
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                {"lock_key": 2_026_081_201},
+            )
+        contract_ids = (contract_id for contract_id, in db.query(Contract.id).all())
+        return next_contract_code(contract_ids)
+
+    @staticmethod
     def create_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
             cust_name = payload.customer_name
-            contract_id = payload.contract_id
+            contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             service_type = payload.service_type
             contract_val = float(payload.contract_value or 0)
             paid_val = float(payload.paid_amount or 0)
@@ -136,7 +160,9 @@ class ContractService:
     @staticmethod
     def generate_and_save_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
+            contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             contract_data = payload.model_dump()
+            contract_data["contract_id"] = contract_id
             success_gen, download_url, full_path = doc_generator.generate_document(
                 data=contract_data, 
                 template_name="mau_hop_dong.docx", 
@@ -149,7 +175,6 @@ class ContractService:
             cust_name = payload.customer_name
             phone = payload.phone
             address = payload.address
-            contract_id = payload.contract_id
             service_type = payload.service_type
             contract_val = float(payload.contract_value or 0)
             date_signed_str = payload.date_signed

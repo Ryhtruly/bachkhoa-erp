@@ -30,10 +30,12 @@
 .employee-workspace-calendar .fc-timegrid-slot-lane { background-image: linear-gradient(to bottom, transparent 27px, var(--border-subtle) 28px); background-size: 100% 28px; }
 .employee-workspace-calendar .employee-workspace-calendar__afternoon { border-top: 2px solid #f1d1d1; }
 .employee-workspace-calendar .fc-timegrid-divider { padding: 2px 0; background: #fff7f7; border-top: 2px solid #f1d1d1; border-bottom: 2px solid #f1d1d1; }
-.employee-workspace-calendar .fc-timegrid-event-harness, .employee-workspace-calendar .fc-timegrid-event { overflow: visible; }
+.employee-workspace-calendar .fc-timegrid-event-harness, .employee-workspace-calendar .fc-timegrid-event { overflow: hidden; }
 .employee-workspace-calendar .fc-event { border: 0 !important; background: transparent !important; cursor: pointer; box-shadow: none; }
 .employee-workspace-calendar .fc-event.is-node-expanded { z-index: 30 !important; }
-.employee-workspace-calendar .fc-event-main { height: 100%; overflow: visible; color: var(--text-primary); }
+.employee-workspace-calendar .fc-event-main { height: 100%; overflow: hidden; color: var(--text-primary); }
+.employee-workspace-node-stack { display: flex; flex-direction: column; gap: 4px; height: 100%; padding: 2px; overflow: hidden; }
+.employee-workspace-node-stack > .employee-workspace-node-card { flex: 1 1 0; min-height: 0; }
 .employee-workspace-node-card { container-type: inline-size; position: relative; display: flex; flex-direction: column; min-height: 100%; border: 1px solid color-mix(in srgb, var(--border-default) 72%, #94a3b8); border-top: 3px solid var(--node-status-color, #64748b); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); box-shadow: 0 3px 9px rgba(15,23,42,.12); }
 .employee-workspace-node-card.is-overdue { border-color: #ef4444; box-shadow: 0 0 0 1px rgba(239,68,68,.12), 0 4px 12px rgba(127,29,29,.15); }
 .employee-workspace-node-card__header { display: grid; place-items: center; gap: 3px; width: 100%; min-height: 29px; padding: 5px 7px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 6px 6px 0 0; background: color-mix(in srgb, var(--bg-card) 92%, #f1f5f9); color: inherit; font: inherit; text-align: center; cursor: pointer; }

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from core import pricing_engine
+from src.core.auth import User, require_authenticated_user
 
 router = APIRouter(tags=["08. CRM & Quotations"])
 
@@ -11,7 +12,10 @@ class QuoteRequestSchema(BaseModel):
     location_zone: int
 
 @router.post("/calculate")
-def generate_quote(payload: QuoteRequestSchema):
+def generate_quote(
+    payload: QuoteRequestSchema,
+    user: User = Depends(require_authenticated_user),
+):
     try:
         # 1. Tính giá
         final_price = pricing_engine.calculate_quote(

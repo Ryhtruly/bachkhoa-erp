@@ -1,9 +1,10 @@
 import io
+import logging
 import re
-import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import text
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -16,7 +17,8 @@ from src.core.auth import check_user_permission, get_current_user
 from src.db.database import get_db
 from src.db.models import Employee, User
 from src.employee_portal.service import EmployeePortalService
-from src.services.storage_service import ensure_bucket, upload_file
+from src.files.references import FileReference
+from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.services.timeline_realtime import publish_timeline_change
 
 
@@ -28,6 +30,7 @@ router = APIRouter(prefix="/api/employee-portal", tags=["Employee Portal"])
 
 ALLOWED_EVIDENCE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"}
 MAX_EVIDENCE_BYTES = 10 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 
 def _active_employee_for_user(db: Session, user_id: str) -> Employee | None:
@@ -36,6 +39,21 @@ def _active_employee_for_user(db: Session, user_id: str) -> Employee | None:
         .filter(Employee.user_id == user_id, Employee.is_active == True)
         .first()
     )
+
+
+def evidence_file_reference(db: Session, task_node_id: str, filename: str) -> FileReference:
+    task_node = db.execute(
+        text("""
+            select n.id, n.service_line_id, sl.contract_id
+            from public.task_nodes n
+            join public.service_lines sl on sl.id = n.service_line_id
+            where n.id = :task_node_id
+        """),
+        {"task_node_id": task_node_id},
+    ).mappings().first()
+    if not task_node:
+        raise HTTPException(status_code=404, detail="Không tìm thấy công việc để lưu file minh chứng.")
+    return FileReference.from_task_node(task_node, filename)
 
 
 @router.get("/me")
@@ -86,6 +104,7 @@ async def submit_checklist_evidence(
 
     evidence_url = None
     safe_name = None
+    object_name = None
     if file:
         if file.content_type not in ALLOWED_EVIDENCE_TYPES:
             raise HTTPException(status_code=422, detail="Chỉ chấp nhận ảnh JPEG/PNG/WEBP/GIF hoặc PDF.")
@@ -96,20 +115,28 @@ async def submit_checklist_evidence(
         ensure_bucket()
         safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", file.filename or "evidence")
         safe_name = re.sub(r"_+", "_", safe_name).strip("_")
-        object_name = f"checklist-evidence/{task_node_id}_{checklist_result_id}_{uuid.uuid4().hex[:8]}_{safe_name}"
+        object_name = evidence_file_reference(db, task_node_id, safe_name).object_key
         evidence_url = upload_file(io.BytesIO(file_bytes), object_name)
 
-    result = EmployeePortalService.submit_checklist_evidence(
-        db,
-        employee,
-        task_node_id,
-        checklist_result_id,
-        evidence_url,
-        safe_name,
-        note,
-        late_reason,
-        datetime.now(timezone.utc),
-    )
+    try:
+        result = EmployeePortalService.submit_checklist_evidence(
+            db,
+            employee,
+            task_node_id,
+            checklist_result_id,
+            evidence_url,
+            safe_name,
+            note,
+            late_reason,
+            datetime.now(timezone.utc),
+        )
+    except Exception:
+        if object_name:
+            try:
+                delete_file(object_name)
+            except Exception:
+                logger.exception("Unable to compensate evidence upload for task node %s", task_node_id)
+        raise
     publish_timeline_change("checklist_submitted", entity_id=checklist_result_id)
     return result
 

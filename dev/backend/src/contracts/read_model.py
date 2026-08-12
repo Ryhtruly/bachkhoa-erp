@@ -208,7 +208,7 @@ def get_contract_read_model(db: Session):
 
     logger.info("Contract read model cache MISS (fallback to DB refresh)")
     rows = refresh_contract_read_model(db)
-    return rows, "supabase"
+    return rows, "db-fallback"
 
 
 def query_contract_read_model(

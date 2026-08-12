@@ -17,6 +17,7 @@ import {
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
 import { avatarColorFor, initialsOf } from '../lib/avatar';
+import { isTerminalSurveyStatus } from '../lib/dossierStatus';
 import './surveyRecords.css';
 
 const API = '';
@@ -200,6 +201,7 @@ export default function Tasks() {
         fetchStats();
       } else {
         addToast(data.detail || 'Cập nhật thất bại', 'error');
+        if (res.status === 409) openDetail(selectedId);
       }
     } catch {
       addToast('Lỗi máy chủ khi cập nhật', 'error');
@@ -438,7 +440,12 @@ export default function Tasks() {
             </section>
 
             <div className="survey-detail__footer">
-              {editing ? (
+              {isTerminalSurveyStatus(detailData?.status || editForm.status) ? (
+                <>
+                  <span className="survey-muted" role="status">Hồ sơ đã hoàn tất và không thể chỉnh sửa.</span>
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>
+                </>
+              ) : editing ? (
                 <>
                   <button type="button" className="btn btn-secondary" disabled={saving}
                     onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>

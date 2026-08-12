@@ -1,6 +1,6 @@
 import pytest
 import uuid
-from src.db.models import Customer, Contract, Receivable, ProjectTask
+from src.db.models import Customer, Contract, Receivable
 
 
 def test_contract_cache_status(client, admin_headers):
@@ -36,7 +36,6 @@ def test_create_contract(client, admin_headers, db):
 
     # Cleanup
     db.query(Receivable).filter(Receivable.contract_id == contract_code).delete()
-    db.query(ProjectTask).filter(ProjectTask.id == task_code).delete()
     c = db.query(Contract).filter(Contract.id == contract_code).first()
     if c:
         db.delete(c)

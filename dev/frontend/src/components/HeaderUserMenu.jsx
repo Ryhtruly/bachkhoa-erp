@@ -1,14 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, LogOut, Settings, UserRound } from 'lucide-react';
-import { initialsOf, avatarColorFor } from '../lib/avatar';
+import { initialsOf, avatarColorFor, avatarUrlFor } from '../lib/avatar';
 import { useDropdownPosition } from '../lib/useDropdownPosition';
 
 export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const style = useDropdownPosition(open, triggerRef, panelRef, 220);
   const name = user?.full_name || user?.username || 'Đang tải...';
+  const avatarUrl = avatarUrlFor(user?.avatar_url);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -26,10 +28,10 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
     <div className="header-user-menu">
       <button ref={triggerRef} type="button" className="header-user-menu__trigger" onClick={() => onOpenChange?.(!open)}>
         {/* Có ảnh thật thì dùng ảnh; chữ cái đầu chỉ là phương án dự phòng. */}
-        {user?.avatar_url ? (
-          <img className="header-user-menu__avatar header-user-menu__avatar--img" src={user.avatar_url} alt={name} />
+        {avatarUrl && !avatarFailed ? (
+          <img className="header-user-menu__avatar header-user-menu__avatar--img" src={avatarUrl} alt={name} onError={() => setAvatarFailed(true)} />
         ) : (
-          <span className="header-user-menu__avatar" style={{ background: avatarColorFor(name) }}>
+          <span className="header-user-menu__avatar" style={{ background: avatarColorFor(name) }} aria-label={`Ảnh đại diện dự phòng của ${name}`}>
             {initialsOf(name)}
           </span>
         )}

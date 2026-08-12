@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { apiFetch } from '../../lib/api';
-import { avatarColorFor, initialsOf } from '../../lib/avatar';
+import AvatarImage from '../AvatarImage';
 import {
   DEFAULT_WORKFLOW_LABELS,
   WORKFLOW_NODE_STATUS_LABELS,
@@ -78,6 +78,8 @@ const CANCELLATION_OPTIONS = [
   ['SCOPE_CHANGED', 'Thay đổi phạm vi dịch vụ'],
   ['OTHER', 'Lý do khác'],
 ];
+
+const EMPTY_CATALOG = [];
 
 const formatMoney = value => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))}đ`;
 const formatDateTime = value => value
@@ -137,23 +139,15 @@ function WorkflowNode({ data, selected }) {
             const name = assignment.full_name || 'Nhân viên';
             const role = roleLabel(assignment.role_code || 'MAIN');
             const tooltip = `${name} · ${role}`;
-            return assignment.avatar_url ? (
-              <img
+            return (
+              <AvatarImage
                 key={`${assignment.employee_id || name}-${index}`}
                 className="workflow-node__avatar workflow-node__avatar--img"
+                fallbackClassName="workflow-node__avatar"
                 src={assignment.avatar_url}
-                alt={name}
+                name={name}
                 title={tooltip}
               />
-            ) : (
-              <span
-                key={`${assignment.employee_id || name}-${index}`}
-                className="workflow-node__avatar"
-                style={{ background: avatarColorFor(assignment.employee_id || name) }}
-                title={tooltip}
-              >
-                {initialsOf(name)}
-              </span>
             );
           })}
           {data.assignments.length > 4 && (
@@ -512,7 +506,7 @@ function changedActiveWorkNodes(activeGraph, draftGraph, executionNodes = []) {
 
 export default function ContractWorkflowDesigner({
   serviceLine,
-  catalog = [],
+  catalog = EMPTY_CATALOG,
   templates = [],
   employees = [],
   workItems = [],
@@ -562,6 +556,7 @@ export default function ContractWorkflowDesigner({
   const [editMode, setEditMode] = useState(!isWorkflowTerminal && (!hasActiveRuntime || hasDraftAmendment));
   const [changeReason, setChangeReason] = useState(workflow?.change_reason || '');
   const [flowInstance, setFlowInstance] = useState(null);
+  const [activationConfirmation, setActivationConfirmation] = useState(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancellationCode, setCancellationCode] = useState('CUSTOMER_REQUEST');
@@ -1021,7 +1016,12 @@ export default function ContractWorkflowDesigner({
     const message = hasUnassignedNode
       ? `Một số Node chưa được phân công. Bạn vẫn muốn ${actionLabel.toLowerCase()}?`
       : `${actionLabel} sẽ lưu một Revision có lịch sử riêng.${compensationMessage}\nTiếp tục?`;
-    if (!window.confirm(message)) return;
+    setActivationConfirmation({ amendmentReason, message });
+  };
+
+  const confirmWorkflowActivation = async () => {
+    if (!activationConfirmation || !serviceLine?.id || activating) return;
+    const { amendmentReason } = activationConfirmation;
 
     if (hasActiveRuntime) {
       const draftGraph = currentPayload(amendmentReason).graph;
@@ -1058,6 +1058,7 @@ export default function ContractWorkflowDesigner({
       );
       setEditMode(false);
       setChangeReason('');
+      setActivationConfirmation(null);
       await onPersisted?.();
     } catch (error) {
       addToast?.(error.message, 'error');
@@ -1357,13 +1358,13 @@ export default function ContractWorkflowDesigner({
                 <div className="workflow-review-card">
                   <div className="workflow-review-card__title"><Clock3 size={14} /> Chờ duyệt nghiệm thu</div>
                   <label>
-                    Outcome
+                    Kết quả xử lý
                     <select
                       className="form-control"
                       value={reviewOutcome}
                       onChange={event => setReviewOutcome(event.target.value)}
                     >
-                      <option value="">— Chọn outcome —</option>
+                      <option value="">— Chọn kết quả —</option>
                       {Object.keys(selectedNode.data.transitions || {}).map(code => (
                         <option key={code} value={code}>{workflowLabels.outcomes[code] || code}</option>
                       ))}
@@ -1851,6 +1852,37 @@ export default function ContractWorkflowDesigner({
           )}
         </aside>
       </div>
+
+      <Modal
+        open={Boolean(activationConfirmation)}
+        onClose={() => { if (!activating) setActivationConfirmation(null); }}
+        closeOnOverlay={!activating}
+        title="Xác nhận kích hoạt quy trình"
+        id="workflow-activation-modal"
+        footer={(
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={activating}
+              onClick={() => setActivationConfirmation(null)}
+            >
+              Quay lại
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary workflow-activation-confirm"
+              disabled={activating}
+              onClick={confirmWorkflowActivation}
+            >
+              {activating ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}
+              Kích hoạt
+            </button>
+          </>
+        )}
+      >
+        <p style={{ margin: 0, whiteSpace: 'pre-line' }}>{activationConfirmation?.message}</p>
+      </Modal>
 
       <Modal
         open={cancelOpen}

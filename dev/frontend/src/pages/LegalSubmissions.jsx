@@ -17,6 +17,7 @@ import {
   Badge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
+import { isTerminalLegalStatus } from '../lib/dossierStatus';
 import './legalSubmissions.css';
 
 const API = '';
@@ -189,6 +190,7 @@ export default function LegalSubmissions() {
         fetchStats();
       } else {
         addToast(data.detail || 'Cập nhật thất bại', 'error');
+        if (res.status === 409) handleOpenDetailModal(selectedSubmissionId);
       }
     } catch {
       addToast('Lỗi máy chủ khi cập nhật', 'error');
@@ -470,7 +472,14 @@ export default function LegalSubmissions() {
             </section>
 
             <div className="legal-detail__footer">
-              {editing ? (
+              {isTerminalLegalStatus(detailData?.gov_status || editForm.gov_status) ? (
+                <>
+                  <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }} role="status">
+                    Hồ sơ đã hoàn tất và không thể chỉnh sửa.
+                  </span>
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>Đóng</button>
+                </>
+              ) : editing ? (
                 <>
                   <button type="button" className="btn btn-secondary" disabled={saving}
                     onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>

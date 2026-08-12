@@ -17,6 +17,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { apiFetch, getAccessToken } from '../lib/api';
+import AvatarImage from '../components/AvatarImage';
 import { WORKFLOW_NODE_STATUS_LABELS } from '../components/contracts/workflowLabels';
 import './contractTimeline.css';
 
@@ -89,6 +90,16 @@ function formatDuration(daysValue, hoursValue) {
   if (days) parts.push(`${days} ngày`);
   if (hours) parts.push(`${hours} giờ`);
   return parts.length ? parts.join(' ') : 'Chưa đặt thời hạn';
+}
+
+export function timelineMilestones(node) {
+  return [
+    ['Sẵn sàng', node.ready_at],
+    ['Bắt đầu', node.started_at],
+    ...((node.submissions || []).map((item) => [`Nộp #${item.attempt_no}`, item.submitted_at])),
+    ['Hoàn tất', node.completed_at],
+    ['Hạn xử lý', node.deadline_at],
+  ].filter(([, value]) => Boolean(value)).map(([label, value]) => ({ label, value }));
 }
 
 function nodeStatusClass(node) {
@@ -174,19 +185,12 @@ function assignLanes(nodes) {
 }
 
 function RealAvatar({ assignee, size = 24 }) {
-  if (!assignee?.avatar_url) {
-    return (
-      <span className="contract-timeline__avatar contract-timeline__avatar--empty" style={{ width: size, height: size }}>
-        <UserRound size={Math.max(12, size - 10)} />
-      </span>
-    );
-  }
   return (
-    <img
+    <AvatarImage
       className="contract-timeline__avatar"
-      src={assignee.avatar_url}
-      alt={assignee.full_name || 'Nhân viên'}
-      title={assignee.full_name || 'Nhân viên'}
+      src={assignee?.avatar_url}
+      name={assignee?.full_name || 'Nhân viên'}
+      title={assignee?.full_name || 'Nhân viên'}
       style={{ width: size, height: size }}
     />
   );
@@ -221,6 +225,7 @@ function NodeTooltip({ hover }) {
         <div><dt>Thời lượng Node</dt><dd>{formatDuration(node.duration_days, node.duration_hours)}</dd></div>
         <div><dt>Thời gian</dt><dd>{node.started_at ? `${formatDate(node.display_start)} → ${formatDate(node.display_end)}` : 'Chưa bắt đầu'}</dd></div>
         <div><dt>Hạn xử lý</dt><dd>{node.started_at ? formatDateTime(node.deadline_at) : 'Tính từ lúc nhân viên bắt đầu'}</dd></div>
+        {timelineMilestones(node).map((milestone) => <div key={milestone.label}><dt>{milestone.label}</dt><dd>{formatDateTime(milestone.value)}</dd></div>)}
         {serviceLine.has_draft && (
           <div><dt>Bản sửa tạm #{serviceLine.draft_revision_no}</dt><dd>{formatDuration(node.draft_duration_days, node.draft_duration_hours)}</dd></div>
         )}
@@ -256,6 +261,10 @@ function NodeDetailModal({ selection, onClose, onNavigate }) {
           <div><span>Kết thúc / hiện tại</span><strong>{node.started_at ? formatDateTime(node.display_end) : '—'}</strong></div>
           <div className="is-wide"><span>Deadline</span><strong className={node.is_overdue ? 'is-danger' : ''}>{node.started_at ? formatDateTime(node.deadline_at) : 'Sẽ tính khi nhân viên bắt đầu'}</strong></div>
           {serviceLine.has_draft && <div className="is-wide"><span>Bản sửa tạm #{serviceLine.draft_revision_no}</span><strong>{formatDuration(node.draft_duration_days, node.draft_duration_hours)}</strong></div>}
+        </div>
+        <div className="contract-timeline__modal-section">
+          <h3>Các mốc thực tế</h3>
+          {timelineMilestones(node).map((milestone) => <div className="contract-timeline__person" key={milestone.label}><span><strong>{milestone.label}</strong><small>{formatDateTime(milestone.value)}</small></span></div>)}
         </div>
         <div className="contract-timeline__modal-section">
           <h3>Người phụ trách</h3>

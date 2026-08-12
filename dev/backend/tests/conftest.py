@@ -3,6 +3,8 @@ import sys
 import uuid
 import pytest
 from datetime import datetime
+from sqlalchemy.orm import Session
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 # Setup Python path
 backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -15,9 +17,69 @@ if src_dir not in sys.path:
 os.environ["CONTRACT_CACHE_REFRESH_SECONDS"] = "0"
 os.environ["TESTING"] = "1"
 
+
+def normalize_database_target(database_url):
+    """Return a credential-free identity for comparing database targets."""
+    parsed = urlsplit(database_url)
+    driver = parsed.scheme.lower().split("+", 1)[0]
+    host = parsed.hostname.lower() if parsed.hostname else ""
+    port = parsed.port or (5432 if driver == "postgresql" else None)
+    database = unquote(parsed.path.lstrip("/"))
+    query = tuple(sorted(parse_qsl(parsed.query, keep_blank_values=True)))
+    return driver, host, port, database, query
+
+
+def test_target_is_disposable(database_url):
+    """Fail closed: only local PostgreSQL *_test databases or local SQLite are safe."""
+    try:
+        driver, host, _, database, _ = normalize_database_target(database_url)
+    except (TypeError, ValueError):
+        return False
+
+    if host.endswith(".supabase.co") or host.endswith(".supabase.com"):
+        return False
+
+    if driver == "sqlite":
+        return not host
+
+    return (
+        driver == "postgresql"
+        and host in {"localhost", "127.0.0.1", "::1"}
+        and database.endswith("_test")
+    )
+
+
+APPLICATION_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip()
+
+if not TEST_DATABASE_URL:
+    raise pytest.UsageError(
+        "TEST_DATABASE_URL is required for backend tests; refusing to fall back to DATABASE_URL."
+    )
+
+try:
+    test_target = normalize_database_target(TEST_DATABASE_URL)
+    application_target = normalize_database_target(APPLICATION_DATABASE_URL)
+except (TypeError, ValueError) as exc:
+    raise pytest.UsageError("TEST_DATABASE_URL must be a valid database URL.") from exc
+
+if test_target == application_target:
+    raise pytest.UsageError(
+        "TEST_DATABASE_URL resolves to DATABASE_URL; refusing to use the application database."
+    )
+
+if not test_target_is_disposable(TEST_DATABASE_URL):
+    raise pytest.UsageError(
+        "TEST_DATABASE_URL must be a local disposable target; Supabase and shared databases are forbidden."
+    )
+
+# src.db.database reads DATABASE_URL at import time. Point it at the separately
+# configured disposable test target only after the safety checks above pass.
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL
+
 from fastapi.testclient import TestClient
 from src.index import app
-from src.db.database import SessionLocal, engine, Base
+from src.db.database import engine, Base, get_db
 from src.db.models import User, Role, UserRole, RolePermission, AuditLog
 from src.core.auth import hash_password, create_access_token
 
@@ -28,13 +90,19 @@ def client():
         yield c
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="function", autouse=True)
 def db():
-    session = SessionLocal()
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection)
+    app.dependency_overrides[get_db] = lambda: session
     try:
         yield session
     finally:
+        app.dependency_overrides.pop(get_db, None)
         session.close()
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture(scope="function")

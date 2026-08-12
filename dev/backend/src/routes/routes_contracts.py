@@ -26,6 +26,7 @@ from src.contracts.workflow_runtime import (
     review_task_node_acceptance,
     save_workflow_draft,
 )
+from src.contracts.timeline import project_node_timeline
 from src.services.timeline_realtime import publish_timeline_change, timeline_event_stream
 
 router = APIRouter(tags=["03. Contracts & Workflows"])
@@ -393,6 +394,18 @@ def get_contract_timeline(
         order by a.task_node_id, a.is_primary desc, a.created_at
     """)).mappings().all()
 
+    event_rows = db.execute(text("""
+        select task_node_id, event_type, to_status, created_at
+        from public.task_node_events
+        order by task_node_id, created_at
+    """)).mappings().all()
+    acceptance_rows = db.execute(text("""
+        select task_node_id, attempt_no, created_at as submitted_at,
+               status, reviewed_at, review_note
+        from public.task_node_acceptances
+        order by task_node_id, attempt_no, created_at
+    """)).mappings().all()
+
     assignments_by_node: dict[str, list[dict]] = {}
     for assignment in assignment_rows:
         assignments_by_node.setdefault(assignment["task_node_id"], []).append({
@@ -402,6 +415,13 @@ def get_contract_timeline(
             "role_code": assignment["role_code"],
             "is_primary": bool(assignment["is_primary"]),
         })
+
+    events_by_node: dict[str, list] = {}
+    for event in event_rows:
+        events_by_node.setdefault(event["task_node_id"], []).append(event)
+    acceptances_by_node: dict[str, list] = {}
+    for acceptance in acceptance_rows:
+        acceptances_by_node.setdefault(acceptance["task_node_id"], []).append(acceptance)
 
     raw_nodes_by_workflow: dict[str, list] = {}
     for node in node_rows:
@@ -488,6 +508,11 @@ def get_contract_timeline(
                 "is_overdue": bool(node["is_overdue"]),
                 "blocked_reason": node["blocked_reason"],
                 "assignees": assignments_by_node.get(node["id"], []),
+                **project_node_timeline(
+                    node,
+                    events=events_by_node.get(node["id"], []),
+                    acceptances=acceptances_by_node.get(node["id"], []),
+                ),
             })
         execution_nodes.sort(key=lambda item: (item["sequence_index"], item["occurrence_no"] or 1))
         contract["service_lines"].append({
@@ -1204,6 +1229,14 @@ def create_contract(
     user: User = Depends(require_permission("contract", "create")),
 ):
     return ContractService.create_contract(db, payload, actor_id=user.id)
+
+
+@router.get("/next-code")
+def get_next_contract_code(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("contract", "create")),
+):
+    return {"contract_id": ContractService.get_next_contract_code(db)}
 
 
 @router.post("/generate")

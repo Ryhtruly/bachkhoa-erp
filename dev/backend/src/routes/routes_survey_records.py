@@ -7,6 +7,7 @@ from typing import Optional
 from src.core.auth import check_user_permission, get_current_user, require_permission
 from src.db.database import get_db
 from src.db.models import User
+from src.dossiers.lifecycle import assert_dossier_mutable
 
 router = APIRouter(prefix="/api/survey-records", tags=["Survey Records"])
 
@@ -66,6 +67,22 @@ class SurveyRecordUpdateSchema(BaseModel):
     priority: Optional[str] = None
     status: Optional[str] = None
     note: Optional[str] = None
+
+
+@router.get("/wards/provinces")
+def list_provinces(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("survey_record", "read")),
+):
+    rows = db.execute(
+        text("""
+            select distinct province_code as code, province_name as name
+            from public.wards
+            where is_active
+            order by province_name
+        """)
+    ).mappings().all()
+    return {"status": "success", "data": [dict(row) for row in rows]}
 
 
 @router.get("/wards")
@@ -188,6 +205,14 @@ def update_survey_record(
     if not check_user_permission(db, user, "survey_record", "update"):
         raise HTTPException(status_code=403, detail="Không có quyền cập nhật hồ sơ đo vẽ")
 
+    status_row = db.execute(
+        text("select status from public.survey_records where id = :record_id"),
+        {"record_id": record_id},
+    ).first()
+    if not status_row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ đo vẽ")
+    assert_dossier_mutable(status_row[0])
+
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Không có trường nào để cập nhật")
@@ -201,11 +226,13 @@ def update_survey_record(
     result = db.execute(
         text(f"""
             update public.survey_records set {set_clause}, updated_at = now()
-            where id = :record_id returning id
+            where id = :record_id
+              and coalesce(status, '') not in ('Hoàn thành', 'Nộp thành công')
+            returning id
         """),
         updates,
     ).first()
     if not result:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ đo vẽ")
+        raise HTTPException(status_code=409, detail="Hồ sơ đã hoàn tất và không thể chỉnh sửa.")
     db.commit()
     return {"status": "success", "data": {"id": record_id}}

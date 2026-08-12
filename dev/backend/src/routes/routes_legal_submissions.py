@@ -7,6 +7,7 @@ from typing import Optional
 from src.core.auth import check_user_permission, get_current_user, require_permission
 from src.db.database import get_db
 from src.db.models import User
+from src.dossiers.lifecycle import assert_dossier_mutable
 
 router = APIRouter(prefix="/api/legal-submissions", tags=["Legal Submissions"])
 
@@ -122,6 +123,14 @@ def update_legal_submission(
     if not check_user_permission(db, user, "legal_submission", "update"):
         raise HTTPException(status_code=403, detail="Không có quyền cập nhật hồ sơ pháp lý")
 
+    status_row = db.execute(
+        text("select gov_status from public.legal_submissions where id = :submission_id"),
+        {"submission_id": submission_id},
+    ).first()
+    if not status_row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ pháp lý")
+    assert_dossier_mutable(status_row[0])
+
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Không có trường nào để cập nhật")
@@ -135,11 +144,12 @@ def update_legal_submission(
             update public.legal_submissions
             set {set_clause}, updated_at = now()
             where id = :submission_id
+              and coalesce(gov_status, '') not in ('Hoàn thành', 'Nộp thành công')
             returning id
         """),
         updates,
     ).first()
     if not result:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ pháp lý")
+        raise HTTPException(status_code=409, detail="Hồ sơ đã hoàn tất và không thể chỉnh sửa.")
     db.commit()
     return {"status": "success", "data": {"id": submission_id}}

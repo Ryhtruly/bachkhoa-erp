@@ -1,4 +1,5 @@
 import io
+import logging
 import re
 import uuid
 
@@ -8,7 +9,7 @@ from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
 from src.core.auth import require_permission, User
-from src.services.storage_service import ensure_bucket, upload_file
+from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
@@ -21,6 +22,7 @@ ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(prefix="/api/finance", tags=["06. Finance & Cashflow"])
+logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════════
 # 1. DÒNG TIỀN — Cashflow
@@ -313,7 +315,14 @@ async def upload_employee_avatar(
     object_name = f"avatars/{employee_id}_{uuid.uuid4().hex[:8]}_{safe_name}"
     avatar_url = upload_file(io.BytesIO(file_bytes), object_name)
 
-    return FinanceService.set_employee_avatar(db, employee_id, avatar_url)
+    try:
+        return FinanceService.set_employee_avatar(db, employee_id, avatar_url)
+    except Exception:
+        try:
+            delete_file(object_name)
+        except Exception:
+            logger.exception("Unable to compensate avatar upload for employee %s", employee_id)
+        raise
 
 @router.get("/payroll")
 def list_payroll(

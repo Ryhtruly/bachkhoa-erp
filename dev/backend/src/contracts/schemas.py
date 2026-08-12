@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class ContractCreateSchema(BaseModel):
-    contract_id: str
+    contract_id: str = ""
     task_id: str
     customer_name: str
     service_type: str
@@ -12,7 +12,7 @@ class ContractCreateSchema(BaseModel):
     notes: Optional[str] = ""
 
 class ContractGenerateSchema(BaseModel):
-    contract_id: str
+    contract_id: str = ""
     task_id: Optional[str] = ""
     customer_name: str
     phone: str
