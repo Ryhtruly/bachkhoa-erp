@@ -1,0 +1,109 @@
+/* ── Hồ Sơ Đo Vẽ ─────────────────────────────────────────────────────────────
+   Tiền tố .survey-* dùng riêng cho màn này, không đụng specificity với
+   .form-row/.form-grid dùng chung ở nơi khác.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.survey-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.survey-page-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.3rem; font-weight: 700; }
+.survey-page-heading h2 svg { color: var(--orange-500); }
+.survey-page-heading p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 0.85rem; }
+
+/* ── Ô trong bảng ── */
+.survey-cell-stack { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.survey-cell-stack strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.survey-cell-stack span { display: inline-flex; align-items: center; gap: 4px; color: var(--text-tertiary); font-size: 0.76rem; }
+.survey-muted { color: var(--text-tertiary); }
+
+.survey-assignees { display: flex; min-width: 0; align-items: center; gap: 8px; }
+
+.survey-avatar {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.survey-avatar--img { object-fit: cover; background: var(--bg-surface); }
+
+.survey-detail-button { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Modal chi tiết ── */
+.survey-modal-title { display: flex; align-items: center; gap: 8px; }
+.survey-modal-title svg { color: var(--orange-500); }
+.survey-loading { padding: 24px 0; color: var(--text-tertiary); text-align: center; }
+
+.survey-detail__identity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.survey-detail__code {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.survey-detail__code span { font-family: var(--font-sans, inherit); font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
+.survey-detail__name { margin-top: 3px; color: var(--text-secondary); font-size: 0.85rem; }
+.survey-detail__badges { display: flex; flex-shrink: 0; gap: 6px; }
+
+.survey-detail__section { margin-top: 18px; }
+.survey-detail__section h4 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.survey-detail__section h4::before { content: ''; width: 3px; height: 12px; border-radius: 2px; background: var(--orange-500); }
+
+.survey-detail__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 22px; }
+
+.survey-field { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.survey-field--wide { grid-column: 1 / -1; }
+.survey-field__label { color: var(--text-tertiary); font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.survey-field__value { min-width: 0; color: var(--text-primary); font-size: 0.88rem; font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+.survey-field__value--muted { color: var(--text-tertiary); font-weight: 400; }
+
+.survey-detail__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border-subtle);
+}
+.survey-detail__footer .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 640px) {
+  .survey-detail__grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Thanh cảnh báo hạn ở mép trái dòng ──────────────────────────────────────
+   Điểm nhấn duy nhất của bảng: hạn xử lý là thứ quyết định phải làm gì trước.
+   Dùng inset box-shadow thay vì border-left để không làm xô lệch chiều rộng cột. */
+.survey-row td:first-child { position: relative; }
+.survey-row--danger td:first-child { box-shadow: inset 3px 0 0 var(--red-500); }
+.survey-row--warning td:first-child { box-shadow: inset 3px 0 0 var(--amber-500, #f59e0b); }
+.survey-row--danger td:first-child strong { color: var(--red-500); }
+
+/* Nhịp bảng siết lại cho khớp tab Hợp Đồng. */
+.hoso-page .dt-wrapper--compact tbody td { padding: 9px 14px; }
+.hoso-page thead th { padding: 10px 14px; }

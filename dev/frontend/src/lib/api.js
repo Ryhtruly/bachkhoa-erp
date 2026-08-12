@@ -12,6 +12,10 @@ export function clearAccessToken() {
   window.localStorage.removeItem(ACCESS_TOKEN_KEY)
 }
 
+export function getAccessToken() {
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
 export async function apiFetch(path, options = {}) {
   const { headers: callerHeaders, ...fetchOptions } = options
   const headers = { ...(callerHeaders || {}) }

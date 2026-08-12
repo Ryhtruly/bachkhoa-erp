@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
+  ArrowLeft,
   FileText,
   UserRound,
   Phone,
@@ -10,7 +11,8 @@ import {
   LoaderCircle,
   Workflow,
   ShieldCheck,
-  DollarSign
+  DollarSign,
+  Ruler
 } from 'lucide-react';
 import ContractWorkflowDesigner from './ContractWorkflowDesigner';
 import {
@@ -39,6 +41,7 @@ function ContractSummary({ contract }) {
       <div><span>Khách hàng</span><strong><UserRound size={15} /> {contract.customer_name || 'Chưa có'}</strong></div>
       <div><span>Điện thoại</span><strong><Phone size={15} /> {contract.customer_phone || 'Chưa có'}</strong></div>
       <div><span>Địa điểm dịch vụ</span><strong><MapPin size={15} /> {contract.service_location || 'Chưa có'}</strong></div>
+      <div><span>Diện tích</span><strong><Ruler size={15} /> {contract.service_area ? `${new Intl.NumberFormat('vi-VN').format(Number(contract.service_area))} m²` : 'Chưa có'}</strong></div>
       <div><span>Giá trị hợp đồng</span><strong>{formatVND(contract.total_value)}</strong></div>
     </div>
   );
@@ -93,7 +96,7 @@ function DocumentsTab({ workspace }) {
   );
 }
 
-export default function ContractWorkspace({ tab, contract, contracts, onContractChange, addToast }) {
+export default function ContractWorkspace({ tab, contract, contracts, onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce }) {
   const [workspace, setWorkspace] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -101,33 +104,80 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
   const [refreshKey, setRefreshKey] = useState(0);
   const contractId = getContractId(contract);
 
+  // Điều hướng từ chuông thông báo chỉ áp dụng 1 lần khi có mục tiêu mới —
+  // không khoá người dùng vào Hạng mục đó mãi mỗi lần polling làm mới dữ liệu.
+  // Mở lại theo từng LẦN BẤM (nonce) chứ không theo giá trị mục tiêu — nếu theo giá trị,
+  // bấm lại đúng thông báo cũ sẽ bị coi là "đã dùng rồi" và không điều hướng nữa.
+  const targetConsumedRef = useRef(false);
+  useEffect(() => {
+    targetConsumedRef.current = false;
+  }, [targetServiceLineId, targetNonce]);
+
+  // Chỉ đánh dấu "đã nạp xong" khi dữ liệu THỰC SỰ về tới nơi. Nếu đánh dấu sớm ngay lúc
+  // gọi fetch, lần chạy effect thứ hai của StrictMode (mount→cleanup→mount) sẽ tưởng đã nạp
+  // rồi nên chuyển sang nạp ngầm, khiến cờ loading bật ở lần một không bao giờ được tắt.
+  const loadedContextRef = useRef(null);
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
     if (!contractId || tab === 'contracts') return undefined;
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    fetch(`/api/contracts/workspace?contract_id=${encodeURIComponent(contractId)}`, { signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload.detail || 'Không tải được workspace hợp đồng');
-        }
-        return response.json();
-      })
-      .then(payload => {
-        setWorkspace(payload);
-        setSelectedServiceLineId(current => (
-          payload.service_lines.some(item => item.id === current)
-            ? current
-            : payload.service_lines[0]?.id || ''
-        ));
-      })
-      .catch(fetchError => {
-        if (fetchError.name !== 'AbortError') setError(fetchError.message);
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const contextKey = `${contractId}:${tab}`;
 
-    return () => controller.abort();
+    const loadWorkspace = (showLoading) => {
+      const controller = new AbortController();
+      const requestId = (requestIdRef.current += 1);
+      if (showLoading) {
+        setLoading(true);
+        setError('');
+      }
+      fetch(`/api/contracts/workspace?contract_id=${encodeURIComponent(contractId)}`, { signal: controller.signal })
+        .then(async response => {
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            throw new Error(payload.detail || 'Không tải được workspace hợp đồng');
+          }
+          return response.json();
+        })
+        .then(payload => {
+          if (cancelled) return;
+          loadedContextRef.current = contextKey;
+          setWorkspace(payload);
+          const shouldApplyTarget = targetServiceLineId && !targetConsumedRef.current
+            && payload.service_lines.some(item => item.id === targetServiceLineId);
+          if (targetServiceLineId) targetConsumedRef.current = true;
+          setSelectedServiceLineId(current => (
+            shouldApplyTarget
+              ? targetServiceLineId
+              : payload.service_lines.some(item => item.id === current)
+                ? current
+                : payload.service_lines[0]?.id || ''
+          ));
+        })
+        .catch(fetchError => {
+          if (!cancelled && fetchError.name !== 'AbortError' && showLoading) setError(fetchError.message);
+        })
+        .finally(() => {
+          // Tắt cờ loading kể cả khi request bị huỷ, miễn là không có request mới hơn
+          // đang chạy — nếu không, một lần huỷ giữa chừng sẽ treo spinner vĩnh viễn.
+          if (showLoading && requestIdRef.current === requestId) setLoading(false);
+        });
+      return controller;
+    };
+
+    // Chỉ bật spinner khi thật sự đổi hợp đồng/tab. Nếu chỉ là làm mới sau khi lưu
+    // (refreshKey), phải nạp NGẦM — bật spinner sẽ unmount cả cây designer bên dưới,
+    // xoá sạch state cục bộ đang sửa dở (checklist vừa thêm, node đang chọn, chế độ sửa).
+    const initialController = loadWorkspace(loadedContextRef.current !== contextKey);
+    // Cập nhật ngầm — không bật lại loading/spinner, giữ nguyên lựa chọn đang xem.
+    // 5s để khớp nhịp với chuông thông báo, admin thấy việc cần duyệt gần như tức thì.
+    const pollId = setInterval(() => loadWorkspace(false), 5000);
+
+    return () => {
+      cancelled = true;
+      initialController.abort();
+      clearInterval(pollId);
+    };
   }, [contractId, tab, refreshKey]);
 
   const selectedServiceLine = useMemo(
@@ -142,15 +192,37 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
   return (
     <div className={`contract-workspace contract-workspace--${tab}`}>
       <div className="contract-workspace__header">
-        <div>
-          <span className="eyebrow">Không gian vận hành hợp đồng</span>
-          <h2>{contractId}</h2>
-        </div>
+        {tab === 'workflow' ? (
+          <div className="contract-page-heading__title-row">
+            {onBack && (
+              <button
+                type="button"
+                className="contract-page-heading__back"
+                onClick={onBack}
+                title="Quay lại danh sách"
+                aria-label="Quay lại danh sách"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            )}
+            <h2>
+              <Workflow size={20} />
+              {`Thiết lập quy trình · ${contractId}`}
+            </h2>
+          </div>
+        ) : (
+          <div>
+            <span className="eyebrow">Không gian vận hành hợp đồng</span>
+            <h2>{contractId}</h2>
+          </div>
+        )}
       </div>
 
-      {loading ? (
+      {/* Chỉ che bằng spinner khi CHƯA có dữ liệu nào. Đã có workspace thì luôn hiển thị,
+          không để một cờ loading kẹt lại làm mất trắng cả màn hình quy trình. */}
+      {loading && !workspace ? (
         <div className="contract-workspace-loading"><LoaderCircle size={24} className="spin" /> Đang tải Hạng mục và workflow…</div>
-      ) : error ? (
+      ) : error && !workspace ? (
         <WorkspaceEmpty icon={TriangleAlert} title="Không tải được dữ liệu" description={error} />
       ) : !workspace ? null : (
         <>
@@ -196,10 +268,12 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
                   employees={workspace.assignment_options}
                   workItems={workspace.work_item_catalog}
                   contractDateSigned={workspace.contract.date_signed}
-                  contractDriveUrl={workspace.contract.file_link}
-                  capabilities={workspace.capabilities}
+              capabilities={workspace.capabilities}
                   addToast={addToast}
                   onPersisted={() => setRefreshKey(current => current + 1)}
+                  targetNodeKey={selectedServiceLine?.id === targetServiceLineId ? targetNodeKey : undefined}
+                  targetType={selectedServiceLine?.id === targetServiceLineId ? targetType : undefined}
+                  targetNonce={selectedServiceLine?.id === targetServiceLineId ? targetNonce : undefined}
                 />
               </div>
             )

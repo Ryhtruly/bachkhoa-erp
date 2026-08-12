@@ -69,6 +69,11 @@ class EmployeeUpsertIn(BaseModel):
     probation_end_date: Optional[date] = None
     base_salary: float = Field(default=0, ge=0)
     is_active: bool = True
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    gender: Optional[Literal["male", "female", "other"]] = None
+    date_of_birth: Optional[date] = None
+    place_of_birth: Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -78,7 +83,7 @@ class EmployeeUpsertIn(BaseModel):
             raise ValueError("Full name cannot be empty")
         return value
 
-    @field_validator("user_id", "department_id", "job_title", mode="before")
+    @field_validator("user_id", "department_id", "job_title", "email", "phone", "place_of_birth", mode="before")
     @classmethod
     def normalize_optional_text(cls, value):
         if value is None:

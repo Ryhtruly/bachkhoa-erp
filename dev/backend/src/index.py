@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 # Add app directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from src.routes.routes_tasks import router as tasks_router
 from src.routes.routes_contracts import router as contracts_router
 from src.routes.routes_dashboard import router as dashboard_router
 from src.routes.routes_webhook import router as webhook_router
@@ -23,13 +22,14 @@ from src.routes.routes_crm import router as crm_router
 from src.routes.routes_kpi import router as kpi_router
 from src.routes.routes_wiki import router as wiki_router
 from src.routes.routes_finance import router as finance_router
-from src.routes.routes_payroll import router as payroll_router
-from src.routes.routes_piece_rates import router as piece_rates_router
-from src.routes.routes_legal_submissions import router as legal_submissions_router
 from src.routes.routes_cashflow import router as cashflow_router
 from src.routes.routes_settings import router as settings_router
 from src.routes.routes_auth import router as auth_router
 from src.routes.routes_employee_portal import router as employee_portal_router
+from src.routes.routes_user_admin import router as user_admin_router
+from src.routes.routes_notifications import router as notifications_router
+from src.routes.routes_legal_submissions import router as legal_submissions_router
+from src.routes.routes_survey_records import router as survey_records_router
 
 from src.db.database import engine, Base, SessionLocal
 from src.services.storage_service import ensure_bucket, set_bucket_public
@@ -165,15 +165,12 @@ app.add_middleware(
 
 # Include routers - Pure 100% Standardized English REST APIs
 app.include_router(auth_router)
+app.include_router(user_admin_router)
 app.include_router(employee_portal_router)
 app.include_router(dashboard_router)
 app.include_router(contracts_router, prefix="/api/contracts")
-app.include_router(tasks_router, prefix="/api/tasks")
-app.include_router(legal_submissions_router, prefix="/api/legal-submissions")
 app.include_router(finance_router)
 app.include_router(cashflow_router)
-app.include_router(payroll_router)
-app.include_router(piece_rates_router, prefix="/api/piece-rates")
 app.include_router(crm_router)
 app.include_router(quotations_router, prefix="/api/quotations")
 app.include_router(wiki_router)
@@ -181,6 +178,9 @@ app.include_router(ai_router)
 app.include_router(webhook_router)
 app.include_router(settings_router)
 app.include_router(kpi_router)
+app.include_router(notifications_router)
+app.include_router(legal_submissions_router)
+app.include_router(survey_records_router)
 
 @app.get("/")
 def read_root():

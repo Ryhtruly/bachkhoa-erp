@@ -5,7 +5,13 @@ export default function EmployeeWorkspaceHero({ employee }) {
 
   return <section className="employee-workspace-hero">
     <div className="employee-workspace-hero__identity">
-      <div className="employee-workspace-hero__avatar" aria-hidden="true"><UserRound size={34} /></div>
+      {/* Nhân viên đã tải ảnh đại diện thì hiện ảnh, không dùng biểu tượng chung chung. */}
+      {employee.avatar_url ? (
+        <img className="employee-workspace-hero__avatar employee-workspace-hero__avatar--img"
+          src={employee.avatar_url} alt={employee.full_name || 'Ảnh đại diện'} />
+      ) : (
+        <div className="employee-workspace-hero__avatar" aria-hidden="true"><UserRound size={34} /></div>
+      )}
       <div>
         <h1>Chào buổi sáng, {employee.full_name || 'nhân viên'}</h1>
         <p><span className={active ? 'is-online' : 'is-inactive'} />Trạng thái: {active ? 'Đang làm việc (Online)' : 'Không hoạt động'} - {employee.job_title || 'Chưa có dữ liệu'}</p>

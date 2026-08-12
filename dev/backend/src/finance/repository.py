@@ -262,8 +262,9 @@ class FinanceRepository:
     @staticmethod
     def list_employees(db: Session) -> List[tuple]:
         return (
-            db.query(Employee, Department.name)
+            db.query(Employee, Department.name, User)
             .outerjoin(Department, Department.id == Employee.department_id)
+            .outerjoin(User, User.id == Employee.user_id)
             .order_by(Employee.full_name.asc(), Employee.created_at.desc())
             .all()
         )
@@ -271,8 +272,9 @@ class FinanceRepository:
     @staticmethod
     def get_employee_by_id(db: Session, employee_id: str) -> Optional[tuple]:
         return (
-            db.query(Employee, Department.name)
+            db.query(Employee, Department.name, User)
             .outerjoin(Department, Department.id == Employee.department_id)
+            .outerjoin(User, User.id == Employee.user_id)
             .filter(Employee.id == employee_id)
             .first()
         )
@@ -291,8 +293,8 @@ class FinanceRepository:
         period_month = period_month or date.today().replace(day=1)
         rows = db.execute(text("""
             with period as (
-              select :period_month::date as start_date,
-                     (:period_month::date + interval '1 month')::date as end_date
+              select cast(:period_month as date) as start_date,
+                     (cast(:period_month as date) + interval '1 month')::date as end_date
             ), base as (
               select distinct on (employee_id) employee_id, base_salary
               from public.employee_compensation_terms, period

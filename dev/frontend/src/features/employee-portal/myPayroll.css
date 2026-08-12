@@ -1,0 +1,55 @@
+/* ── Lương của tôi ───────────────────────────────────────────────────────────
+   Trang chỉ đọc cho nhân viên. Số tiền là thứ duy nhất đáng để mắt dừng lại,
+   nên tổng kỳ được đặt to và tách khỏi phần chi tiết bên dưới.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.my-payroll { display: grid; gap: 14px; max-width: 620px; }
+
+.my-payroll__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.my-payroll__heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.25rem; font-weight: 700; }
+.my-payroll__heading h2 svg { color: var(--orange-500); }
+.my-payroll__heading p { margin: 3px 0 0; color: var(--text-tertiary); font-size: 0.85rem; }
+
+.my-payroll__period {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--orange-500) 10%, transparent);
+  color: var(--orange-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.my-payroll__total {
+  display: grid;
+  gap: 4px;
+  padding: 18px 20px;
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--orange-500);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+.my-payroll__total span { color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.my-payroll__total strong { color: var(--text-primary); font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+.my-payroll__total small { color: var(--text-tertiary); font-size: 0.76rem; }
+
+.my-payroll__breakdown { display: grid; gap: 8px; }
+
+.my-payroll__line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 11px;
+  background: var(--bg-card);
+}
+.my-payroll__line-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 9px; color: var(--orange-600); background: color-mix(in srgb, var(--orange-500) 10%, transparent); }
+.my-payroll__line strong { display: block; color: var(--text-primary); font-size: 0.88rem; font-weight: 600; }
+.my-payroll__line small { color: var(--text-tertiary); font-size: 0.76rem; }
+.my-payroll__line b { color: var(--text-primary); font-size: 0.95rem; font-weight: 700; white-space: nowrap; }
+.my-payroll__line b.is-negative { color: var(--red-500); }
+
+.my-payroll__note { margin: 0; color: var(--text-tertiary); font-size: 0.78rem; }
+.my-payroll__state { padding: 28px 0; color: var(--text-tertiary); text-align: center; }

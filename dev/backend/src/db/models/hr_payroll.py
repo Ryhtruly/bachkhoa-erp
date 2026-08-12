@@ -1,4 +1,4 @@
-"""HR & Payroll models: Department, Employee, KpiPayroll, PayrollPeriod, PayrollAdjustment, Attendance, LeaveRecord."""
+"""HR & Payroll models: Department, Employee, PayrollPeriod, Attendance, LeaveRecord."""
 
 from src.db.models._base import *
 
@@ -27,27 +27,12 @@ class Employee(Base):
     contract_status = Column(String(30), nullable=True, default="Probation")
     join_date = Column(Date, nullable=True, default=datetime.date.today)
     probation_end_date = Column(Date, nullable=True)
-
-
-class KpiPayroll(Base):
-    __tablename__ = "kpi_payroll"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    employee_id = Column(String, ForeignKey("employees.id"))
-    month = Column(Date, nullable=True)
-    tasks_completed = Column(Integer, default=0)
-    kpi_score = Column(Numeric, default=0)
-    bonus = Column(Numeric, default=0)
-    total_salary = Column(Numeric, default=0)
-    created_at = Column(DateTime(timezone=True), default=get_utc_now)
-    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
-    base_salary_computed = Column(Numeric(15, 2), nullable=True, default=0)
-    piece_rate_main = Column(Numeric(15, 2), nullable=True, default=0)
-    piece_rate_support = Column(Numeric(15, 2), nullable=True, default=0)
-    allowance = Column(Numeric(15, 2), nullable=True, default=0)
-    penalty = Column(Numeric(15, 2), nullable=True, default=0)
-    referral_commission = Column(Numeric(15, 2), nullable=True, default=0)
-    holiday_bonus = Column(Numeric(15, 2), nullable=True, default=0)
-    department_id = Column(String, ForeignKey("departments.id"), nullable=True)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    gender = Column(Text, nullable=True)
+    date_of_birth = Column(Date, nullable=True)
+    place_of_birth = Column(String, nullable=True)
+    avatar_url = Column(Text, nullable=True)
 
 
 class PayrollPeriod(Base):
@@ -57,20 +42,6 @@ class PayrollPeriod(Base):
     status = Column(String(20), nullable=True, default="Open")
     locked_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
-
-
-class PayrollAdjustment(Base):
-    __tablename__ = "payroll_adjustments"
-    id = Column(String, primary_key=True, default=lambda: f"pa_{uuid.uuid4().hex[:12]}")
-    employee_id = Column(String, ForeignKey("employees.id"), nullable=True)
-    payroll_month = Column(Date, nullable=True)
-    adjustment_type = Column(String(30), nullable=True)
-    amount = Column(Numeric(15, 2), nullable=True, default=0)
-    reason = Column(Text, nullable=True)
-    task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=True)
-    status = Column(String(20), nullable=True, default="Approved")
-    approved_by = Column(String, ForeignKey("users.id"), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=get_utc_now)
 
 
 class Attendance(Base):

@@ -3,7 +3,7 @@ import { SubTabs } from '../components/ui';
 import {
   Receipt, Banknote, Building2,
   FileText, RotateCcw, BarChart2,
-  PlusCircle, Settings
+  PlusCircle, Settings, Hammer, UsersRound
 } from 'lucide-react';
 
 // Nhập các màn hình (screens) đã được bóc tách
@@ -17,6 +17,9 @@ import ContractsScreen from '../components/finance/screens/ContractsScreen';
 import ReceivablesScreen from '../components/finance/screens/ReceivablesScreen';
 import PayablesScreen from '../components/finance/screens/PayablesScreen';
 import AnalyticsScreen from '../components/finance/screens/AnalyticsScreen';
+import LuongKhoan3PScreen from '../components/finance/screens/LuongKhoan3PScreen';
+import BangGiaKhoanScreen from '../components/finance/screens/BangGiaKhoanScreen';
+import PayrollOfficeScreen from '../components/finance/screens/PayrollOfficeScreen';
 
 const THUCHI_TABS = [
   { id: 'monthly-dashboard', label: 'Báo Cáo', icon: <BarChart2 size={16} /> },
@@ -26,7 +29,10 @@ const THUCHI_TABS = [
   { id: 'cashflow-print', label: 'Chứng Từ', icon: <FileText size={16} /> },
   { id: 'advance-request', label: 'Tạm Ứng', icon: <PlusCircle size={16} /> },
   { id: 'advance-clear', label: 'Quyết Toán', icon: <RotateCcw size={16} /> },
-  { id: 'cashflow-settings', label: 'Thiết Lập', icon: <Settings size={16} /> }
+  { id: 'cashflow-settings', label: 'Thiết Lập', icon: <Settings size={16} /> },
+  { id: 'payroll-worker', label: 'Lương Khoán Nhiệm Vụ', icon: <Hammer size={16} /> },
+  { id: 'bang-gia', label: 'Bảng Giá Khoán', icon: <Banknote size={16} /> },
+  { id: 'payroll-office', label: 'Lương VP & Hoa Hồng', icon: <UsersRound size={16} /> }
 ];
 
 export default function Cashflow() {
@@ -43,6 +49,9 @@ export default function Cashflow() {
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'cashflow-settings': return <SettingsScreen />;
+      case 'payroll-worker': return <LuongKhoan3PScreen />;
+      case 'bang-gia': return <BangGiaKhoanScreen />;
+      case 'payroll-office': return <PayrollOfficeScreen />;
 
       // Các màn hình dưới đây đã được bóc tách và sẵn sàng để sử dụng 
       // nếu bạn muốn chuyển đổi UI sang dạng Sidebar (Phương án A)

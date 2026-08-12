@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSignature, Table, Printer, Download, Plus, MoveHorizontal, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSignature, Printer, Download, Plus, MoveHorizontal, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow, FormGrid, DataTable, StatusBadge, FilterBar } from '../components/ui';
 import '../components/contracts/contracts.css';
@@ -40,7 +40,25 @@ export default function Contracts() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [contractView, setContractView] = useState('list');
   const [selectedContract, setSelectedContract] = useState(null);
+  const [navTarget, setNavTarget] = useState(null);
+  const navTargetContractRef = useRef(null);
   const { addToast } = useToast();
+
+  // Điều hướng từ chuông thông báo — bấm 1 mục là nhảy thẳng tới đúng hợp đồng/Hạng mục/Node.
+  useEffect(() => {
+    const handler = (event) => {
+      const { contractId, serviceLineId, nodeKey, type, nonce } = event.detail || {};
+      if (!contractId) return;
+      // Ghim lại hợp đồng đích: danh sách có phân trang, hợp đồng cần tới có thể không nằm
+      // trong trang đang tải nên vòng fetch sau đó sẽ đá về hợp đồng đầu trang nếu không ghim.
+      navTargetContractRef.current = contractId;
+      setSelectedContract(current => (getContractId(current) === contractId ? current : { id: contractId }));
+      setNavTarget({ serviceLineId, nodeKey, type, nonce });
+      setContractView('workflow');
+    };
+    window.addEventListener('bachkhoa:navigate-to-node', handler);
+    return () => window.removeEventListener('bachkhoa:navigate-to-node', handler);
+  }, []);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterValues, setFilterValues] = useState({ service: 'All' });
@@ -85,9 +103,14 @@ export default function Contracts() {
         const payload = await res.json();
         const rows = Array.isArray(payload) ? payload : payload.data || [];
         setContracts(rows);
-        setSelectedContract(current => (
-          rows.find(item => getContractId(item) === getContractId(current)) || rows[0] || null
-        ));
+        setSelectedContract(current => {
+          const matched = rows.find(item => getContractId(item) === getContractId(current));
+          if (matched) return matched;
+          // Đang được điều hướng tới 1 hợp đồng cụ thể mà nó không có trong trang này:
+          // giữ nguyên, tuyệt đối không đá về hợp đồng đầu trang.
+          if (navTargetContractRef.current && getContractId(current) === navTargetContractRef.current) return current;
+          return rows[0] || null;
+        });
         if (payload.pagination) setPagination(payload.pagination);
       }
     } catch {
@@ -224,20 +247,6 @@ export default function Contracts() {
 
   return (
     <section className={`tab-pane active contract-page${contractView === 'list' ? ' contract-page--list' : ''}`} id="tab-hopdong">
-      <div className={`contract-page-heading contract-page-heading--${contractView}`}>
-        <div>
-          <h2>
-            {contractView === 'workflow' ? <WorkflowIcon size={22} /> : <Table size={23} />}
-            {contractView === 'workflow' ? `Thiết lập quy trình · ${getContractId(selectedContract)}` : 'Quản Lý Hợp Đồng'}
-          </h2>
-        </div>
-        {contractView === 'workflow' && (
-          <button type="button" className="btn btn-secondary" onClick={() => setContractView('list')}>
-            <ArrowLeft size={16} /> Quay lại danh sách
-          </button>
-        )}
-      </div>
-
       {contractView === 'list' ? (
         <div className="contract-master-detail">
           <section className="contract-master-pane">
@@ -330,11 +339,9 @@ export default function Contracts() {
                     {selectedContract.file_link && <a href={selectedContract.file_link} target="_blank" rel="noreferrer"><Download size={15} /> Mở tài liệu</a>}
                   </div>
                 </div>
-                <footer>
-                  <button type="button" className="btn btn-primary" onClick={() => setContractView('workflow')}>
-                    <WorkflowIcon size={17} /> Thiết lập quy trình Hạng mục hợp đồng
-                  </button>
-                </footer>
+                <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
+                  <WorkflowIcon size={17} /> Quy trình
+                </button>
               </>
             ) : (
               <div className="contract-detail-pane__empty">
@@ -352,7 +359,12 @@ export default function Contracts() {
             contract={selectedContract}
             contracts={contracts}
             onContractChange={setSelectedContract}
+            onBack={() => setContractView('list')}
             addToast={addToast}
+            targetServiceLineId={navTarget?.serviceLineId}
+            targetNodeKey={navTarget?.nodeKey}
+            targetType={navTarget?.type}
+            targetNonce={navTarget?.nonce}
           />
         </React.Suspense>
       )}

@@ -102,11 +102,12 @@ export default function Modal({
  *   hint?: string
  *   error?: string
  *   cols?: 1 | 2         — chiếm 1 hay 2 cột (mặc định 1)
+ *   align?: 'center' | 'left'  — canh label + input cùng lúc (mặc định 'center')
  *   children: ReactNode
  */
-export function FormRow({ label, required, hint, error, cols = 1, children }) {
+export function FormRow({ label, required, hint, error, cols = 1, align = 'center', children }) {
   return (
-    <div className={`form-row${cols === 2 ? ' form-row--wide' : ''}${error ? ' form-row--error' : ''}`}>
+    <div className={`form-row${cols === 2 ? ' form-row--wide' : ''}${error ? ' form-row--error' : ''}${align === 'left' ? ' form-row--left' : ''}`}>
       <label>
         {label}
         {required && <span className="form-required">*</span>}

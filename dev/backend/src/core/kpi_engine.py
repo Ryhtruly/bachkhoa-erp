@@ -20,14 +20,14 @@ def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
           select a.employee_id,
                  count(distinct n.id) as total_completed,
                  count(distinct n.id) filter (
-                   where n.planned_end is null or n.completed_at <= n.planned_end
+                   where n.deadline_at is null or n.completed_at <= n.deadline_at
                  ) as on_time_count,
                  avg(extract(epoch from (n.completed_at - n.started_at)) / 86400.0)
                    filter (where n.started_at is not null) as avg_time
           from public.task_node_assignments a
           join public.task_nodes n on n.id = a.task_node_id
           cross join period p
-          where n.status = 'completed'
+          where n.status = 'accepted'
             and n.completed_at >= p.start_date
             and n.completed_at < p.end_date
             and a.assignment_status in ('assigned', 'accepted', 'completed')

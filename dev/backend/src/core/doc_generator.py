@@ -1,14 +1,15 @@
 import os
 from docx import Document
 
-OUTPUT_DIR = os.path.join(os.getcwd(), "src", "static", "generated_docs")
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+OUTPUT_DIR = os.path.join(BACKEND_DIR, "static", "generated_docs")
 
 def generate_document(data, template_name="mau_hop_dong.docx", output_prefix="Doc"):
     """
     Generate a .docx file by replacing placeholders in the template.
     data: dictionary containing placeholder values
     """
-    template_path = os.path.join(os.getcwd(), "src", "templates", template_name)
+    template_path = os.path.join(BACKEND_DIR, "src", "templates", template_name)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     try:

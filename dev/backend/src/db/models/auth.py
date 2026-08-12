@@ -10,13 +10,22 @@ class User(Base):
     password_hash = Column(String)
     email = Column(String, unique=True, index=True, nullable=True)
     is_active = Column(Boolean, default=True)
+    invite_token_hash = Column(String, nullable=True)
+    invite_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    email_verified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
 class Role(Base):
     __tablename__ = "roles"
-    id = Column(Integer, primary_key=True, index=True, autoincrement=False)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     role_name = Column(String, unique=True)
+    display_name = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    is_system = Column(Boolean, nullable=False, default=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
 class UserRole(Base):
     __tablename__ = "user_roles"
@@ -32,6 +41,60 @@ class RolePermission(Base):
     can_update = Column(Boolean, nullable=True, default=False)
     can_delete = Column(Boolean, nullable=True, default=False)
     can_approve = Column(Boolean, nullable=True, default=False)
+
+
+class PermissionResource(Base):
+    __tablename__ = "permission_resources"
+    code = Column(Text, primary_key=True)
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=100)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+
+class Permission(Base):
+    __tablename__ = "permissions"
+    code = Column(Text, primary_key=True)
+    resource_code = Column(Text, ForeignKey("permission_resources.code", ondelete="CASCADE"), nullable=False)
+    action_code = Column(Text, nullable=False)
+    scope_code = Column(Text, nullable=False, default="all")
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+
+class RolePermissionGrant(Base):
+    __tablename__ = "role_permission_grants"
+    role_id = Column(Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    permission_code = Column(Text, ForeignKey("permissions.code", ondelete="CASCADE"), primary_key=True)
+    granted_by = Column(String, ForeignKey("users.id"), nullable=True)
+    granted_at = Column(DateTime(timezone=True), default=get_utc_now)
+    note = Column(Text, nullable=True)
+
+
+class UserPermissionOverride(Base):
+    __tablename__ = "user_permission_overrides"
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    permission_code = Column(Text, ForeignKey("permissions.code", ondelete="CASCADE"), primary_key=True)
+    effect = Column(Text, nullable=False)
+    reason = Column(Text, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+
+class RoleScopeRule(Base):
+    __tablename__ = "role_scope_rules"
+    role_id = Column(Integer, ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+    resource_code = Column(Text, ForeignKey("permission_resources.code", ondelete="CASCADE"), primary_key=True)
+    scope_code = Column(Text, primary_key=True)
+    rules = Column(JSONB, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
 class AuthToken(Base):
     __tablename__ = "auth_tokens"

@@ -24,8 +24,8 @@ def get_dashboard(
         overdue = db.execute(text("""
             select count(*)
             from public.task_nodes
-            where planned_end < now()
-              and status not in ('completed', 'skipped', 'cancelled')
+            where deadline_at < now()
+              and status not in ('accepted', 'skipped', 'cancelled')
         """)).scalar_one()
         
         total_val = db.query(func.sum(Contract.total_value)).scalar() or 0.0
@@ -164,4 +164,3 @@ def get_dashboard_charts(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

@@ -115,8 +115,8 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
         })
     return result
 
-def serialize_employee(employee: Employee, department_name: str = None) -> dict:
-    """Serialize 1 employee."""
+def serialize_employee(employee: Employee, department_name: str = None, account=None) -> dict:
+    """Serialize 1 employee. `account` is the linked User row, if any."""
     return {
         "id": employee.id,
         "user_id": employee.user_id,
@@ -131,4 +131,14 @@ def serialize_employee(employee: Employee, department_name: str = None) -> dict:
         "is_active": bool(employee.is_active if employee.is_active is not None else True),
         "created_at": employee.created_at.strftime("%Y-%m-%d %H:%M:%S") if employee.created_at else "",
         "updated_at": employee.updated_at.strftime("%Y-%m-%d %H:%M:%S") if employee.updated_at else "",
+        "email": employee.email,
+        "phone": employee.phone,
+        "gender": employee.gender,
+        "date_of_birth": employee.date_of_birth.strftime("%Y-%m-%d") if employee.date_of_birth else "",
+        "place_of_birth": employee.place_of_birth,
+        "avatar_url": employee.avatar_url,
+        "account_username": account.username if account else None,
+        "account_email": account.email if account else None,
+        "account_is_active": bool(account.is_active) if account else None,
+        "account_email_verified": bool(account.email_verified) if account else None,
     }

@@ -82,7 +82,7 @@ export default function Dashboard() {
     <section className="tab-pane active" id="tab-dashboard">
       
       {/* Welcome Banner */}
-      <div className="card glass-card" style={{ marginBottom: '24px', padding: '28px', background: 'linear-gradient(135deg, rgba(235, 74, 35, 0.05), rgba(249, 115, 22, 0.15))', border: '1px solid rgba(235, 74, 35, 0.2)', position: 'relative', overflow: 'hidden' }}>
+      <div className="card glass-card" style={{ marginBottom: '16px', padding: '20px', background: 'linear-gradient(135deg, rgba(235, 74, 35, 0.05), rgba(249, 115, 22, 0.15))', border: '1px solid rgba(235, 74, 35, 0.2)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--orange-600)', marginBottom: '6px' }}>Chào buổi {new Date().getHours() < 12 ? 'sáng' : 'chiều'}, Lê Văn Dựng! 👋</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: 500 }}>Dưới đây là bức tranh tài chính và tiến độ công việc tổng quan của công ty. Mọi thứ đang trong tầm kiểm soát!</p>
@@ -123,7 +123,7 @@ export default function Dashboard() {
       </StatsGrid>
 
 
-      <div className="balance-strip card" style={{ marginBottom: '24px' }}>
+      <div className="balance-strip card" style={{ marginBottom: '16px' }}>
         <div className="balance-item">
           <span>Giá trị HĐ</span>
           <h4>{loading ? '—' : formatVND(stats.contract_val)}</h4>
@@ -139,7 +139,7 @@ export default function Dashboard() {
       </div>
 
       {/* CHARTS SECTION */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '12px', marginBottom: '16px' }}>
         
         {/* Line Chart */}
         <div className="card glass-card" style={{ padding: '20px', gridColumn: '1 / -1' }}>
@@ -287,8 +287,8 @@ export default function Dashboard() {
       </div>
 
       {/* RECENT HOSO TABLE */}
-      <div className="card glass-card" style={{ padding: '24px' }}>
-        <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div className="card glass-card" style={{ padding: '18px' }}>
+        <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Clock size={16} color="var(--purple-400)" />
             Hồ sơ mới tiếp nhận

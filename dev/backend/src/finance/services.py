@@ -504,6 +504,11 @@ class FinanceService:
             probation_end_date=payload.probation_end_date,
             base_salary=payload.base_salary,
             is_active=payload.is_active,
+            email=payload.email,
+            phone=payload.phone,
+            gender=payload.gender,
+            date_of_birth=payload.date_of_birth,
+            place_of_birth=payload.place_of_birth,
         )
         try:
             db.add(employee)
@@ -534,6 +539,11 @@ class FinanceService:
         employee.probation_end_date = payload.probation_end_date
         employee.base_salary = payload.base_salary
         employee.is_active = payload.is_active
+        employee.email = payload.email
+        employee.phone = payload.phone
+        employee.gender = payload.gender
+        employee.date_of_birth = payload.date_of_birth
+        employee.place_of_birth = payload.place_of_birth
         employee.updated_at = datetime.now(timezone.utc)
 
         try:
@@ -566,6 +576,17 @@ class FinanceService:
                     "Hãy chuyển trạng thái sang Ngừng hoạt động."
                 ),
             ) from exc
+
+    @staticmethod
+    def set_employee_avatar(db: Session, employee_id: str, avatar_url: str) -> dict:
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
+        employee.avatar_url = avatar_url
+        employee.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(employee)
+        return serialize_employee(employee)
 
     @staticmethod
     def close_fund(db: Session, payload) -> dict:

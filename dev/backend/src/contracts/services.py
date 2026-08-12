@@ -2,12 +2,63 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.db.models import Contract, Customer, Receivable, AuditLog, User
+from src.db.models import (
+    AuditLog,
+    Contract,
+    Customer,
+    Receivable,
+    ServiceLine,
+    ServicePackage,
+    TaskType,
+    User,
+)
 from src.services import telegram_service
 from src.core import doc_generator
 from src.contracts.read_model import sync_contract_read_model_after_write
+
+
+def _create_initial_service_line(
+    db: Session,
+    *,
+    contract_id: str,
+    service_type: str,
+    price: float,
+    address: str | None = None,
+) -> ServiceLine:
+    """Create the first contract item from the create-contract form."""
+    normalized_service = (service_type or "").strip()
+    task_type = None
+    service_package = None
+    if normalized_service:
+        task_type = (
+            db.query(TaskType)
+            .filter(func.lower(TaskType.name) == normalized_service.lower())
+            .first()
+        )
+        if task_type and task_type.service_package_id:
+            service_package = (
+                db.query(ServicePackage)
+                .filter(ServicePackage.id == task_type.service_package_id)
+                .first()
+            )
+
+    service_line = ServiceLine(
+        id=str(uuid.uuid4()),
+        contract_id=contract_id,
+        service_package_id=task_type.service_package_id if task_type else None,
+        service_package=service_package.name if service_package else None,
+        task_type_id=task_type.id if task_type else None,
+        service_type=task_type.name if task_type else normalized_service,
+        target_property=address or None,
+        property_address=address or None,
+        price=price,
+    )
+    db.add(service_line)
+    return service_line
+
 
 class ContractService:
 
@@ -34,6 +85,13 @@ class ContractService:
                 date_signed=datetime.now().date()
             )
             db.add(new_hd)
+
+            service_line = _create_initial_service_line(
+                db,
+                contract_id=new_hd.id,
+                service_type=service_type,
+                price=contract_val,
+            )
             
             rec = Receivable(
                 id=str(uuid.uuid4()),
@@ -66,7 +124,11 @@ class ContractService:
                 "service_type": service_type,
                 "contract_value": contract_val
             })
-            return {"status": "success", "id": new_hd.id}
+            return {
+                "status": "success",
+                "id": new_hd.id,
+                "service_line_id": service_line.id,
+            }
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
@@ -117,6 +179,14 @@ class ContractService:
                 file_link=download_url
             )
             db.add(new_hd)
+
+            service_line = _create_initial_service_line(
+                db,
+                contract_id=new_hd.id,
+                service_type=service_type,
+                price=contract_val,
+                address=address,
+            )
             
             rec = Receivable(
                 id=str(uuid.uuid4()),
@@ -149,7 +219,12 @@ class ContractService:
                 "service_type": service_type,
                 "contract_value": contract_val
             })
-            return {"status": "success", "download_url": download_url}
+            return {
+                "status": "success",
+                "id": new_hd.id,
+                "service_line_id": service_line.id,
+                "download_url": download_url,
+            }
         except HTTPException:
             raise
         except Exception as e:

@@ -1,416 +1,465 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Edit2,
-  AlertTriangle,
-  Building2,
-  CheckCircle,
-  ChevronDown,
-  Clock,
-  FolderOpen,
-  Plus,
-  Sparkles,
+  FolderKanban,
+  Eye,
+  Phone,
+  RefreshCw,
+  Pencil,
+  ScrollText,
 } from 'lucide-react';
 import {
   DataTable,
-  FilterBar,
+  Modal,
   StatCard,
   StatsGrid,
-  WarningBadge,
+  FilterBar,
+  Badge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
-import TaskFormModal from './TaskFormModal';
-import { StatusBadge } from '../components/ui';
+import { avatarColorFor, initialsOf } from '../lib/avatar';
+import './surveyRecords.css';
 
 const API = '';
 
-const terminalStatuses = new Set(['Hoàn thành', 'Hủy', 'Đã hủy']);
+const STATUS_OPTIONS = ['Đang thực hiện', 'Hoàn thành', 'Nộp thành công', 'Huỷ'];
 
-const formatDate = (value) => value
-  ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`))
-  : '—';
+const STATUS_VARIANTS = {
+  'Đang thực hiện': 'info',
+  'Hoàn thành': 'success',
+  'Nộp thành công': 'primary',
+  'Huỷ': 'neutral',
+};
 
-const formatMoney = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value) || 0)}đ`;
+const PRIORITY_OPTIONS = [
+  { value: 'HIGH', label: 'Cao' },
+  { value: 'NORMAL', label: 'Trung bình' },
+  { value: 'LOW', label: 'Thấp' },
+];
 
-function priorityVariant(value) {
-  if (value === 'Cao') return 'high';
-  if (value === 'Thấp') return 'low';
-  return 'normal';
+const priorityLabel = (value) => PRIORITY_OPTIONS.find((item) => item.value === value)?.label || value;
+
+// Ngưỡng "sắp đến hạn": 2 ngày trước hạn. Cảnh báo luôn TÍNH lúc hiển thị, không lưu DB —
+// nếu lưu thì giá trị chết cứng tại thời điểm ghi và sai ngay hôm sau.
+const DUE_SOON_DAYS = 2;
+
+function computeWarning(record) {
+  if (record.status === 'Huỷ') return { label: 'Đã huỷ', variant: 'neutral' };
+  if (record.accepted_at || record.status === 'Hoàn thành') return { label: 'Xong', variant: 'success' };
+  if (!record.deadline_at) return { label: 'Chưa đặt hạn', variant: 'neutral' };
+  const remainingMs = new Date(record.deadline_at).getTime() - Date.now();
+  if (remainingMs < 0) return { label: 'Trễ hạn', variant: 'danger' };
+  if (remainingMs <= DUE_SOON_DAYS * 86_400_000) return { label: 'Sắp đến hạn', variant: 'warning' };
+  return { label: 'Trong hạn', variant: 'success' };
 }
 
-function displayDepartment(value) {
-  if (!value) return 'Chưa phân phòng';
-  return value === 'Kỹ thuật' ? 'Phòng Đo đạc' : value;
+const formatDate = (value) => {
+  if (!value) return '';
+  try {
+    return new Intl.DateTimeFormat('vi-VN').format(new Date(value));
+  } catch {
+    return value;
+  }
+};
+
+function Avatar({ name, url }) {
+  if (!name) return null;
+  return url
+    ? <img className="survey-avatar survey-avatar--img" src={url} alt={name} title={name} />
+    : <span className="survey-avatar" style={{ background: avatarColorFor(name) }} title={name}>{initialsOf(name)}</span>;
 }
 
+function Field({ label, wide, editing, value, empty = 'Chưa có', children }) {
+  const isEmpty = value === null || value === undefined || value === '';
+  return (
+    <div className={`survey-field${wide ? ' survey-field--wide' : ''}`}>
+      <span className="survey-field__label">{label}</span>
+      {editing ? children : (
+        <div className={`survey-field__value${isEmpty ? ' survey-field__value--muted' : ''}`}>
+          {isEmpty ? empty : value}
+        </div>
+      )}
+    </div>
+  );
+}
 
+const toEditForm = (data) => ({
+  dossier_name: data.dossier_name || '',
+  ward_code: data.ward_code || '',
+  priority: data.priority || 'NORMAL',
+  status: data.status || 'Đang thực hiện',
+  note: data.note || '',
+});
 
 export default function Tasks() {
   const { addToast } = useToast();
-  const [hosoList, setHosoList] = useState([]);
-  const [contractsList, setContractsList] = useState([]);
-  const [taskTypes, setTaskTypes] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingHoso, setEditingHoso] = useState(null);
-  const [modalLoading, setModalLoading] = useState(false);
-  const [assignmentOptions, setAssignmentOptions] = useState([]);
-  const [stats, setStats] = useState({ total: 0, completed: 0, in_progress: 0, overdue: 0 });
+
+  const [records, setRecords] = useState([]);
+  const [stats, setStats] = useState({ total: 0 });
+  const [wards, setWards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [assignmentLoading, setAssignmentLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterValues, setFilterValues] = useState({
-    status: 'All',
-    warning: 'All',
-    priority: 'All',
-  });
-  const [activeDepartment, setActiveDepartment] = useState('all');
-  const [month, setMonth] = useState('');
-  const [sort, setSort] = useState('desc');
+  const [filters, setFilters] = useState({ status: 'All', priority: 'All', ward_code: 'All' });
 
-  const fetchAssignmentOptions = useCallback(async () => {
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const fetchStats = useCallback(async () => {
     try {
-      setAssignmentLoading(true);
-      const [assignmentRes, contractsRes, taskTypesRes] = await Promise.all([
-        fetch(`${API}/api/tasks/assignment-options`),
-        fetch(`${API}/api/tasks/contracts-lookup`),
-        fetch(`${API}/api/tasks/task-types`),
-      ]);
-      const [assignmentData, contractsData, taskTypesData] = await Promise.all([
-        assignmentRes.ok ? assignmentRes.json() : { data: [] },
-        contractsRes.ok ? contractsRes.json() : { data: [] },
-        taskTypesRes.ok ? taskTypesRes.json() : { data: [] },
-      ]);
-      setAssignmentOptions(assignmentData.data || []);
-      setContractsList(contractsData.data || []);
-      setTaskTypes(taskTypesData.data || []);
-    } catch (error) {
-      console.error(error);
-      addToast('Lỗi khi tải danh sách phụ trợ', 'error');
-    } finally {
-      setAssignmentLoading(false);
-    }
-  }, [addToast]);
+      const res = await fetch(`${API}/api/survey-records/stats`);
+      if (res.ok) setStats((await res.json()).data || { total: 0 });
+    } catch { /* im lặng — số liệu tổng hợp không chặn thao tác chính */ }
+  }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchWards = useCallback(async () => {
     try {
-      setLoading(true);
-      const params = month ? `?month=${month}` : '';
-      const [hosoRes, statsRes] = await Promise.all([
-        fetch(`${API}/api/tasks/${params}`),
-        fetch(`${API}/api/tasks/stats${params}`),
-      ]);
-      if (!hosoRes.ok || !statsRes.ok) throw new Error('Không tải được dữ liệu hồ sơ');
+      const res = await fetch(`${API}/api/survey-records/wards`);
+      if (res.ok) setWards((await res.json()).data || []);
+    } catch { /* im lặng */ }
+  }, []);
 
-      const [hosoData, statsData] = await Promise.all([hosoRes.json(), statsRes.json()]);
-      setHosoList(hosoData.data || []);
-      setStats(statsData.data || {});
-    } catch (error) {
-      console.error(error);
-      addToast(error.message, 'error');
+  const fetchRecords = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (searchTerm) params.set('search', searchTerm);
+      if (filters.status !== 'All') params.set('status', filters.status);
+      if (filters.priority !== 'All') params.set('priority', filters.priority);
+      if (filters.ward_code !== 'All') params.set('ward_code', filters.ward_code);
+
+      const res = await fetch(`${API}/api/survey-records/?${params}`);
+      if (res.ok) {
+        const payload = await res.json();
+        setRecords(payload.data || []);
+        if (payload.meta) {
+          setPagination({ total: payload.meta.total || 0, total_pages: payload.meta.total_pages || 1 });
+        }
+      } else if (showLoading) {
+        addToast('Lỗi khi tải danh sách hồ sơ đo vẽ', 'error');
+      }
+    } catch {
+      if (showLoading) addToast('Không thể kết nối đến máy chủ', 'error');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
-  }, [addToast, month]);
+  }, [addToast, limit, page, searchTerm, filters]);
+
+  useEffect(() => { fetchStats(); fetchWards(); }, [fetchStats, fetchWards]);
 
   useEffect(() => {
-    fetchAssignmentOptions();
-  }, [fetchAssignmentOptions]);
+    fetchRecords(true);
+    const pollId = setInterval(() => fetchRecords(false), 8000);
+    return () => clearInterval(pollId);
+  }, [fetchRecords]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const handleModalSubmit = async (payload) => {
+  const openDetail = async (recordId) => {
+    setSelectedId(recordId);
+    setIsDetailOpen(true);
+    setDetailLoading(true);
+    setEditing(false);
     try {
-      setModalLoading(true);
-      const isEdit = !!editingHoso;
-      const hosoId = editingHoso?.id || editingHoso?.task_id;
-      const url = isEdit ? `${API}/api/tasks/${hosoId}` : `${API}/api/tasks/`;
-      const method = isEdit ? 'PUT' : 'POST';
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || 'Không lưu được hồ sơ');
-      addToast(isEdit ? 'Đã cập nhật hồ sơ' : 'Đã tạo hồ sơ mới', 'success');
-      setIsModalOpen(false);
-      setEditingHoso(null);
-      fetchData();
-    } catch (error) {
-      console.error(error);
-      addToast(error.message, 'error');
+      const res = await fetch(`${API}/api/survey-records/${recordId}`);
+      if (res.ok) {
+        const data = (await res.json()).data;
+        setDetailData(data);
+        setEditForm(toEditForm(data));
+      } else {
+        addToast('Không lấy được chi tiết hồ sơ', 'error');
+      }
+    } catch {
+      addToast('Lỗi kết nối khi tải chi tiết', 'error');
     } finally {
-      setModalLoading(false);
+      setDetailLoading(false);
     }
   };
 
-  const departmentOptions = useMemo(() => {
-    const counts = new Map();
-    hosoList.forEach((row) => {
-      const id = row.department_id || 'unassigned';
-      const current = counts.get(id) || {
-        id,
-        label: displayDepartment(row.department_name || row.department),
-        count: 0,
-      };
-      current.count += 1;
-      counts.set(id, current);
-    });
-    return Array.from(counts.values()).sort((a, b) => (
-      b.count - a.count || a.label.localeCompare(b.label, 'vi')
-    ));
-  }, [hosoList]);
-
-  const filteredList = hosoList.filter((row) => {
-    const normalizedSearch = searchTerm.toLowerCase();
-    const matchSearch = [
-      row.contract_id,
-      row.service_package,
-      row.assignee_name,
-      row.support_name,
-      row.id || row.task_id,
-      row.customer_name,
-      row.phone,
-      row.service_type,
-    ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
-    const departmentId = row.department_id || 'unassigned';
-    const matchDepartment = activeDepartment === 'all' || departmentId === activeDepartment;
-    const rowStatus = row.status;
-    const matchStatus = filterValues.status === 'All' || rowStatus === filterValues.status;
-    const matchWarning = filterValues.warning === 'All' || row.warning;
-    const rowPriority = row.priority || 'Trung bình';
-    const matchPriority = filterValues.priority === 'All' || rowPriority === filterValues.priority;
-    return matchDepartment && matchSearch && matchStatus && matchWarning && matchPriority;
-  });
-
-  const sortedList = sort === 'asc' ? [...filteredList].reverse() : filteredList;
+  const handleSave = async (event) => {
+    event.preventDefault();
+    if (!selectedId || !editForm) return;
+    try {
+      setSaving(true);
+      const res = await fetch(`${API}/api/survey-records/${selectedId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...editForm, ward_code: editForm.ward_code || null }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        addToast('Đã cập nhật hồ sơ đo vẽ', 'success');
+        setEditing(false);
+        setIsDetailOpen(false);
+        fetchRecords(true);
+        fetchStats();
+      } else {
+        addToast(data.detail || 'Cập nhật thất bại', 'error');
+      }
+    } catch {
+      addToast('Lỗi máy chủ khi cập nhật', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const columns = [
     {
-      key: 'contract_id',
-      label: 'MÃ HỢP ĐỒNG',
-      width: 140,
+      key: 'dossier_name',
+      label: 'TÊN HỒ SƠ',
+      width: 210,
       render: (value, row) => (
-        <div className="hoso-identity">
-          <strong>{value || row.contract_id || 'Chưa có HĐ'}</strong>
-          <span className="hoso-contract-priority" title={`Ưu tiên: ${row.priority || 'Trung bình'}`}>
-            <i className={`hoso-priority-dot hoso-priority-dot--${priorityVariant(row.priority)}`} />
-            HS: {row.id || row.task_id}
-          </span>
+        <div className="survey-cell-stack">
+          <strong>{value || 'Chưa đặt tên'}</strong>
+          <span>{row.contract_id} · {row.service_line_name}</span>
         </div>
       ),
     },
     {
-      key: 'Service Package',
-      label: 'GÓI DỊCH VỤ',
-      width: 160,
-      sortable: true,
-      render: (value) => <strong className="hoso-service">{value || '—'}</strong>,
+      key: 'has_legal',
+      label: 'PHÁP LÝ',
+      width: 90,
+      align: 'center',
+      render: (value) => value
+        ? <Badge variant="primary">Có</Badge>
+        : <span className="survey-muted">—</span>,
     },
     {
-      key: 'Loại dịch vụ',
-      label: 'HẠNG MỤC',
+      key: 'ward_name',
+      label: 'PHƯỜNG',
+      width: 150,
+      render: (value) => value || <span className="survey-muted">Chưa có</span>,
+    },
+    {
+      key: 'customer_name',
+      label: 'KHÁCH HÀNG',
+      width: 190,
+      render: (value, row) => (
+        <div className="survey-cell-stack">
+          <span>{value || 'Chưa có'}</span>
+          {row.customer_phone && <span><Phone size={11} /> {row.customer_phone}</span>}
+        </div>
+      ),
+    },
+    {
+      key: 'main_assignee_name',
+      label: 'PHỤ TRÁCH',
       width: 180,
-      sortable: true,
-      render: (value) => <span>{value || '—'}</span>,
+      render: (value, row) => (
+        <div className="survey-assignees">
+          <Avatar name={value} url={row.main_assignee_avatar} />
+          <div className="survey-cell-stack">
+            <span>{value || 'Chưa phân công'}</span>
+            {row.assistant_name && <span>Phụ đo: {row.assistant_name}</span>}
+          </div>
+        </div>
+      ),
     },
     {
-      key: 'Phụ trách chính',
-      label: 'NHÂN VIÊN CHÍNH',
-      width: 150,
-      render: (value) => <span>{value || 'Chưa phân công'}</span>,
+      key: 'priority',
+      label: 'ƯU TIÊN',
+      width: 110,
+      render: (value) => (
+        <Badge variant={value === 'HIGH' ? 'danger' : value === 'LOW' ? 'neutral' : 'info'}>
+          {priorityLabel(value)}
+        </Badge>
+      ),
     },
     {
-      key: 'Phụ đo',
-      label: 'NHÂN VIÊN PHỤ',
-      width: 150,
-      render: (value) => <span>{value || 'Không cần'}</span>,
-    },
-    {
-      key: 'Trạng thái',
+      key: 'status',
       label: 'TRẠNG THÁI',
       width: 140,
-      render: (value) => <StatusBadge status={value} />,
+      render: (value) => <Badge variant={STATUS_VARIANTS[value] || 'neutral'}>{value}</Badge>,
     },
     {
+      key: 'warning',
+      label: 'CẢNH BÁO',
+      width: 120,
+      render: (_value, row) => {
+        const warning = computeWarning(row);
+        return <Badge variant={warning.variant}>{warning.label}</Badge>;
+      },
+    },
+    { key: 'started_at', label: 'BẮT ĐẦU', width: 105, render: (value) => formatDate(value) || <span className="survey-muted">—</span> },
+    { key: 'deadline_at', label: 'HẠN XỬ LÝ', width: 105, render: (value) => formatDate(value) || <span className="survey-muted">—</span> },
+    { key: 'submitted_at', label: 'NGÀY NỘP', width: 105, render: (value) => formatDate(value) || <span className="survey-muted">—</span> },
+    { key: 'accepted_at', label: 'NGÀY HT', width: 105, render: (value) => formatDate(value) || <span className="survey-muted">—</span> },
+    {
       key: 'actions',
-      label: '',
-      width: 35,
-      stickyRight: true,
-      render: (_, row) => (
-        <button
-          className="btn btn-ghost btn-icon"
-          onClick={() => {
-            setEditingHoso(row);
-            setIsModalOpen(true);
-          }}
-          title="Chỉnh sửa"
-        >
-          <Edit2 size={16} />
+      label: 'THAO TÁC',
+      width: 110,
+      align: 'center',
+      render: (_value, row) => (
+        <button type="button" className="btn btn-sm btn-secondary survey-detail-button" onClick={() => openDetail(row.id)}>
+          <Eye size={14} /> Chi tiết
         </button>
-      )
-    }
+      ),
+    },
   ];
 
   return (
-    <section className="tab-pane active hoso-page" id="tab-hoso">
-      <StatsGrid>
-        <StatCard
-          label="Tổng Hồ Sơ"
-          value={stats.total || 0}
-          icon={<FolderOpen size={24} />}
-          iconVariant="purple"
-          loading={loading}
-        />
-        <StatCard
-          label="Đang Xử Lý"
-          value={stats.in_progress || 0}
-          icon={<Clock size={24} />}
-          iconVariant="orange"
-          loading={loading}
-        />
-        <StatCard
-          label="Trễ Hạn (Cần Xử Lý)"
-          value={stats.overdue || 0}
-          icon={<AlertTriangle size={24} />}
-          iconVariant="red"
-          loading={loading}
-        />
-        <StatCard
-          label="Đã Hoàn Thành"
-          value={stats.completed || 0}
-          icon={<CheckCircle size={24} />}
-          iconVariant="green"
-          loading={loading}
-        />
-      </StatsGrid>
-
-      <div className="hoso-department-filter">
-        <label htmlFor="hoso-department">
-          <Building2 size={17} />
-          Phòng ban
-        </label>
-        <div className="hoso-department-filter__select">
-          <select
-            id="hoso-department"
-            value={activeDepartment}
-            onChange={(event) => setActiveDepartment(event.target.value)}
-            aria-label="Chọn phòng ban để lọc hồ sơ"
-          >
-            <option value="all">Tất cả phòng ban ({hosoList.length})</option>
-            {departmentOptions.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.label} ({department.count})
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={15} aria-hidden="true" />
+    <section className="tab-pane active hoso-page list-page-frame" id="tab-hoso">
+      <div className="list-page-frame__toolbar">
+        <div className="survey-page-heading">
+          <div>
+            <h2><FolderKanban size={22} /> Hồ Sơ Đo Vẽ</h2>
+            <p>Tự sinh khi nhân viên bắt đầu bước đo vẽ — không tạo tay</p>
+          </div>
         </div>
-        <span>
-          Hiển thị {filteredList.length} hồ sơ
-        </span>
+
+        <StatsGrid cols={5}>
+          <StatCard label="Tổng hồ sơ" value={stats.total || 0} icon={FolderKanban} />
+          {STATUS_OPTIONS.map((status) => (
+            <StatCard key={status} label={status} value={stats[status] || 0} />
+          ))}
+        </StatsGrid>
+
+        <FilterBar
+          search={searchTerm}
+          onSearchChange={(value) => { setSearchTerm(value); setPage(1); }}
+          searchPlaceholder="Tìm theo tên hồ sơ, mã hợp đồng, khách hàng, hạng mục..."
+          filters={[
+            { key: 'status', label: 'Trạng thái', type: 'select', width: 170, options: STATUS_OPTIONS.map((s) => ({ value: s, label: s })) },
+            { key: 'priority', label: 'Độ ưu tiên', type: 'select', width: 150, options: PRIORITY_OPTIONS },
+            { key: 'ward_code', label: 'Phường', type: 'select', width: 190, options: wards.map((w) => ({ value: w.code, label: w.name })) },
+          ]}
+          values={filters}
+          onFilterChange={(key, value) => { setFilters((current) => ({ ...current, [key]: value || 'All' })); setPage(1); }}
+          onReset={() => { setSearchTerm(''); setFilters({ status: 'All', priority: 'All', ward_code: 'All' }); setPage(1); }}
+          actions={(
+            <button type="button" className="btn btn-ghost" title="Làm mới" onClick={() => { fetchRecords(true); fetchStats(); }}>
+              <RefreshCw size={16} />
+            </button>
+          )}
+        />
       </div>
 
-      <FilterBar
-        search={searchTerm}
-        onSearchChange={setSearchTerm}
-        searchPlaceholder="Tìm hợp đồng, service line, gói dịch vụ, nhân sự..."
-        filters={[
-          {
-            key: 'status',
-            label: 'Lọc theo Trạng thái',
-            type: 'select',
-            width: 220,
-            options: [
-              { value: 'Mới tiếp nhận', label: 'Mới tiếp nhận' },
-              { value: 'Chờ khảo sát', label: 'Chờ khảo sát' },
-              { value: 'Đang đo đạc', label: 'Đang đo đạc' },
-              { value: 'Đang xử lý nội nghiệp', label: 'Đang xử lý nội nghiệp' },
-              { value: 'Nộp thành công - Chờ kết quả', label: 'Nộp thành công - Chờ kết quả' },
-              { value: 'Hoàn thành', label: 'Hoàn thành' },
-              { value: 'Hủy', label: 'Hủy' },
-            ],
-          },
-          {
-            key: 'warning',
-            label: 'Lọc theo Cảnh báo',
-            type: 'select',
-            width: 200,
-            options: [
-              { value: 'Hoàn thành', label: 'Hoàn thành' },
-              { value: 'Trong hạn', label: 'Trong hạn' },
-              { value: 'Sắp đến hạn', label: 'Sắp đến hạn' },
-              { value: 'Trễ hạn', label: 'Trễ hạn' },
-            ],
-          },
-          {
-            key: 'priority',
-            label: 'Lọc theo Độ ưu tiên',
-            type: 'select',
-            width: 200,
-            options: [
-              { value: 'Cao', label: '🔴 Cao' },
-              { value: 'Trung bình', label: '🟠 Trung bình' },
-              { value: 'Thấp', label: '🟢 Thấp' },
-            ],
-          },
-        ]}
-        values={filterValues}
-        onFilterChange={(key, value) => setFilterValues((current) => ({ ...current, [key]: value }))}
-        onReset={() => {
-          setSearchTerm('');
-          setFilterValues({ status: 'All', warning: 'All', priority: 'All' });
-          setActiveDepartment('all');
-          setMonth('');
-          setSort('desc');
-        }}
-        month={month}
-        onMonthChange={setMonth}
-        sort={sort}
-        onSortChange={setSort}
-        actions={(
-          <button className="btn btn-primary" style={{ height: 38, marginLeft: 8 }} onClick={() => { setEditingHoso(null); setIsModalOpen(true); }}>
-            <Plus size={16} /> Tạo Hồ Sơ Mới
-          </button>
+      <div className="list-page-frame__table">
+        <DataTable
+          columns={columns}
+          data={records}
+          loading={loading}
+          rowKey="id"
+          emptyText="Chưa có hồ sơ đo vẽ nào — hồ sơ sẽ tự sinh khi nhân viên bắt đầu bước đo vẽ"
+          pageSize={0}
+          compact
+          // Mức khẩn của hạn xử lý là lý do tồn tại của màn này — đưa ra mép trái dòng
+          // để quét mắt thấy ngay, thay vì lẫn trong một cột badge giữa bảng.
+          rowClassName={(row) => `survey-row survey-row--${computeWarning(row).variant}`}
+        />
+        <div className="contract-server-pagination">
+          <span>{records.length ? `${(page - 1) * limit + 1}–${(page - 1) * limit + records.length}` : '0'} / {pagination.total} hồ sơ</span>
+          <div className="contract-server-pagination__controls">
+            <button type="button" className="contract-page-button" disabled={page <= 1} onClick={() => setPage(1)}>«</button>
+            <button type="button" className="contract-page-button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹</button>
+            <span className="contract-page-button contract-page-button--active">{page}</span>
+            <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages} onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}>›</button>
+            <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages} onClick={() => setPage(pagination.total_pages)}>»</button>
+          </div>
+        </div>
+      </div>
+
+      <Modal
+        open={isDetailOpen}
+        onClose={() => !saving && setIsDetailOpen(false)}
+        size="md"
+        closeOnOverlay={!saving}
+        title={<span className="survey-modal-title"><ScrollText size={20} /> Chi tiết Hồ Sơ Đo Vẽ</span>}
+      >
+        {detailLoading || !editForm ? (
+          <div className="survey-loading">Đang tải…</div>
+        ) : (
+          <form onSubmit={handleSave}>
+            <div className="survey-detail__identity">
+              <div>
+                <div className="survey-detail__code">
+                  {detailData?.contract_id}
+                  <span>{detailData?.service_line_name}</span>
+                </div>
+                <div className="survey-detail__name">{editForm.dossier_name || 'Chưa đặt tên hồ sơ'}</div>
+              </div>
+              <div className="survey-detail__badges">
+                <Badge variant={STATUS_VARIANTS[editForm.status] || 'neutral'}>{editForm.status}</Badge>
+                {detailData?.has_legal && <Badge variant="primary">Có pháp lý</Badge>}
+              </div>
+            </div>
+
+            <section className="survey-detail__section">
+              <h4>Hồ sơ</h4>
+              <div className="survey-detail__grid">
+                <Field label="Tên hồ sơ" wide editing={editing} value={editForm.dossier_name}>
+                  <input className="form-control" value={editForm.dossier_name}
+                    onChange={(e) => setEditForm({ ...editForm, dossier_name: e.target.value })} />
+                </Field>
+                <Field label="Phường / Xã" editing={editing} value={detailData?.ward_name}>
+                  <select className="form-control" value={editForm.ward_code}
+                    onChange={(e) => setEditForm({ ...editForm, ward_code: e.target.value })}>
+                    <option value="">— Chọn phường —</option>
+                    {wards.map((w) => <option key={w.code} value={w.code}>{w.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Độ ưu tiên" editing={editing} value={priorityLabel(editForm.priority)}>
+                  <select className="form-control" value={editForm.priority}
+                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
+                    {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Khách hàng" value={detailData?.customer_name} />
+                <Field label="Số điện thoại" value={detailData?.customer_phone} />
+                <Field label="Phụ trách chính" value={detailData?.main_assignee_name} empty="Chưa phân công" />
+                <Field label="Phụ đo" value={detailData?.assistant_name} empty="Không có" />
+              </div>
+            </section>
+
+            <section className="survey-detail__section">
+              <h4>Tiến độ</h4>
+              <div className="survey-detail__grid">
+                <Field label="Trạng thái" editing={editing} value={editForm.status}>
+                  <select className="form-control" value={editForm.status}
+                    onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
+                    {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </Field>
+                <Field label="Cảnh báo" value={detailData ? computeWarning(detailData).label : ''} />
+                <Field label="Ngày bắt đầu" value={formatDate(detailData?.started_at)} empty="Chưa bắt đầu" />
+                <Field label="Hạn xử lý" value={formatDate(detailData?.deadline_at)} empty="Chưa đặt hạn" />
+                <Field label="Ngày nộp nghiệm thu" value={formatDate(detailData?.submitted_at)} empty="Chưa nộp" />
+                <Field label="Ngày hoàn thành" value={formatDate(detailData?.accepted_at)} empty="Chưa xong" />
+                <Field label="Ghi chú" wide editing={editing} value={editForm.note}>
+                  <input className="form-control" value={editForm.note}
+                    onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} />
+                </Field>
+              </div>
+            </section>
+
+            <div className="survey-detail__footer">
+              {editing ? (
+                <>
+                  <button type="button" className="btn btn-secondary" disabled={saving}
+                    onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>
+                    Huỷ
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>
+                  <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
+                    <Pencil size={15} /> Sửa
+                  </button>
+                </>
+              )}
+            </div>
+          </form>
         )}
-      />
-
-      <div className="hoso-table-note">
-        <div className="hoso-priority-legend" aria-label="Chú thích mức độ ưu tiên">
-          <span>Ưu tiên:</span>
-          <span><i className="hoso-priority-dot hoso-priority-dot--high" /> Cao</span>
-          <span><i className="hoso-priority-dot hoso-priority-dot--normal" /> Trung bình</span>
-          <span><i className="hoso-priority-dot hoso-priority-dot--low" /> Thấp</span>
-        </div>
-        <div className="hoso-assignment-note">
-          <Sparkles size={15} />
-          Gợi ý nhân sự dựa trên phòng ban, kinh nghiệm cùng dịch vụ và số việc đang mở.
-        </div>
-      </div>
-
-      <DataTable
-        onRowClick={(row) => { setEditingHoso(row); setIsModalOpen(true); }}
-        columns={columns}
-        data={sortedList}
-        loading={loading}
-        rowKey="Mã hồ sơ"
-        emptyText="Không có hồ sơ nào phù hợp"
-        pageSize={15}
-        compact
-      />
-
-      <TaskFormModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        initialData={editingHoso}
-        onSubmit={handleModalSubmit}
-        assignmentOptions={assignmentOptions}
-        departmentOptions={departmentOptions}
-        contractsList={contractsList}
-        taskTypes={taskTypes}
-        loading={modalLoading}
-      />
+      </Modal>
     </section>
   );
 }

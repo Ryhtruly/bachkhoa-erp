@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 
 ROLE_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+APPROVER_ROLE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 OUTCOME_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 PAY_SCOPES = {"ONCE_PER_WORKFLOW", "PER_OCCURRENCE", "MANUAL"}
 CANCELLATION_CODES = {
@@ -52,17 +53,10 @@ def _normalize_assignment(raw: dict[str, Any], node_key: str) -> dict[str, Any]:
     if not ROLE_CODE_RE.fullmatch(role_code):
         raise WorkflowValidationError(f"Node {node_key}: mã vai trò {role_code!r} không hợp lệ")
 
-    planned_start = _parse_datetime(raw.get("planned_start"), "Thời gian bắt đầu")
-    planned_end = _parse_datetime(raw.get("planned_end"), "Thời gian kết thúc")
-    if planned_start and planned_end and planned_end < planned_start:
-        raise WorkflowValidationError(f"Node {node_key}: thời gian kết thúc phải sau thời gian bắt đầu")
-
     return {
         "employee_id": employee_id,
         "role_code": role_code,
         "is_primary": bool(raw.get("is_primary")),
-        "planned_start": planned_start,
-        "planned_end": planned_end,
         "notes": str(raw.get("notes") or "").strip() or None,
     }
 
@@ -85,17 +79,84 @@ def _current_work_item_rates(db: Session) -> dict[str, dict[str, dict[str, Any]]
     return result
 
 
+def _checklist_evidence_data(item: dict[str, Any], *, include_files: bool) -> dict[str, Any]:
+    data = {
+        "required": bool(item.get("require_evidence")),
+        "description": item.get("evidence_description") or "",
+        "drive_folder_url": item.get("drive_folder_url"),
+    }
+    if include_files:
+        data["files"] = []
+    return data
+
+
+def _ensure_manual_checklist_assignment(
+    db: Session,
+    *,
+    checklist_result_id: str,
+    checklist_item: dict[str, Any],
+    node_assignments: list[dict[str, Any]],
+    actor_id: str,
+    reason: str,
+) -> None:
+    """Persist the manually selected checklist owner without duplicating pay rows."""
+    employee_id = checklist_item.get("assignee_employee_id")
+    if not employee_id:
+        return
+    node_assignment = next(
+        (item for item in node_assignments if item.get("employee_id") == employee_id),
+        None,
+    )
+    if not node_assignment:
+        return
+    exists = db.execute(
+        text("""
+            select 1 from public.task_node_checklist_assignments
+            where checklist_result_id = :checklist_result_id
+              and employee_id = :employee_id
+              and pay_slot = 'WORK'
+              and status not in ('replaced', 'cancelled')
+            limit 1
+        """),
+        {"checklist_result_id": checklist_result_id, "employee_id": employee_id},
+    ).first()
+    if exists:
+        return
+    db.execute(
+        text("""
+            insert into public.task_node_checklist_assignments
+                (checklist_result_id, employee_id, role_code, pay_slot,
+                 share_percent, status, assigned_by, reason)
+            values
+                (:checklist_result_id, :employee_id, :role_code, 'WORK',
+                 100, 'assigned', :actor_id, :reason)
+        """),
+        {
+            "checklist_result_id": checklist_result_id,
+            "employee_id": employee_id,
+            "role_code": node_assignment.get("role_code") or "MAIN",
+            "actor_id": actor_id,
+            "reason": reason,
+        },
+    )
+
+
 def _validate_drive_url(value: Any, *, node_key: str, checklist_name: str) -> str | None:
+    """Normalize an optional legacy evidence link.
+
+    New checklist evidence is uploaded to MinIO at execution time.  Older graph
+    revisions can still contain a Drive URL (or a MinIO/public object URL), so
+    keep the field readable without making a Google hostname an activation
+    requirement.
+    """
     url = str(value or "").strip()
     if not url:
         return None
     parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
-        "drive.google.com", "docs.google.com"
-    }:
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise WorkflowValidationError(
             f"Node {node_key}: link minh chứng của checklist {checklist_name!r} "
-            "phải là link Google Drive hợp lệ"
+            "phải là URL HTTP/HTTPS hợp lệ"
         )
     return url
 
@@ -199,12 +260,26 @@ def validate_workflow_graph(
                     "pay_group_key": str(raw_compensation.get("pay_group_key") or work_item_id).strip(),
                 }
 
-            normalized_checklist.append({
+            require_evidence = bool(
+                raw_item.get("require_evidence", raw_item.get("evidence_required", False))
+            )
+            approver_role = str(raw_item.get("approver_role") or "admin").strip().lower()
+            if not APPROVER_ROLE_RE.fullmatch(approver_role):
+                raise WorkflowValidationError(
+                    f"Node {node_key}: vai trò duyệt của checklist {checklist_name!r} không hợp lệ"
+                )
+            assignee_employee_id = str(raw_item.get("assignee_employee_id") or "").strip() or None
+            if assignee_employee_id:
+                employee_ids.add(assignee_employee_id)
+
+            normalized_item = {
                 **raw_item,
                 "key": checklist_key,
                 "name": checklist_name,
                 "required": raw_item.get("required") is not False,
-                "evidence_required": bool(raw_item.get("evidence_required")),
+                "require_evidence": require_evidence,
+                "approver_role": approver_role,
+                "assignee_employee_id": assignee_employee_id,
                 "evidence_description": str(raw_item.get("evidence_description") or "").strip(),
                 "drive_folder_url": _validate_drive_url(
                     raw_item.get("drive_folder_url"),
@@ -212,7 +287,9 @@ def validate_workflow_graph(
                     checklist_name=checklist_name,
                 ),
                 "compensation": compensation,
-            })
+            }
+            normalized_item.pop("evidence_required", None)
+            normalized_checklist.append(normalized_item)
 
         raw_assignments = raw_node.get("assignments") or []
         if not isinstance(raw_assignments, list):
@@ -228,24 +305,18 @@ def validate_workflow_graph(
             assignment_keys.add(key)
             employee_ids.add(assignment["employee_id"])
             primary_count += int(assignment["is_primary"])
-            json_assignments.append({
-                **assignment,
-                "planned_start": assignment["planned_start"].isoformat() if assignment["planned_start"] else None,
-                "planned_end": assignment["planned_end"].isoformat() if assignment["planned_end"] else None,
-            })
+            json_assignments.append(assignment)
         if primary_count > 1:
             raise WorkflowValidationError(f"Node {node_key}: chỉ được có một người phụ trách chính")
-        if minimum_start_date:
-            for assignment in assignments:
-                for field_name, value in (
-                    ("Ngày bắt đầu", assignment["planned_start"]),
-                    ("Ngày kết thúc", assignment["planned_end"]),
-                ):
-                    if value and value.date() < minimum_start_date:
-                        raise WorkflowValidationError(
-                            f"Node {node_key}: {field_name} không được trước ngày ký hợp đồng "
-                            f"{minimum_start_date.isoformat()}"
-                        )
+
+        assigned_employee_ids = {item["employee_id"] for item in json_assignments}
+        for checklist_item in normalized_checklist:
+            assignee_employee_id = checklist_item.get("assignee_employee_id")
+            if assignee_employee_id and assignee_employee_id not in assigned_employee_ids:
+                raise WorkflowValidationError(
+                    f"Node {node_key}: người phụ trách checklist {checklist_item['name']!r} "
+                    "phải nằm trong danh sách người thực hiện của Node"
+                )
 
         for checklist_item in normalized_checklist:
             compensation = checklist_item["compensation"]
@@ -276,7 +347,7 @@ def validate_workflow_graph(
                     f"{', '.join(duplicated_roles)}; hãy chọn một người cho mỗi vai trò"
                 )
 
-        normalized_nodes[node_key] = {
+        normalized_node = {
             **raw_node,
             "task_code": node_code,
             "name": str(raw_node.get("name") or node_code).strip(),
@@ -285,6 +356,8 @@ def validate_workflow_graph(
             "assignments": json_assignments,
             "transitions": normalized_transitions,
         }
+        normalized_node.pop("evidence_required", None)
+        normalized_nodes[node_key] = normalized_node
 
     if employee_ids:
         active_employee_ids = {
@@ -449,7 +522,8 @@ def _apply_workflow_amendment(
     graph_nodes = revision["graph"]["nodes"]
     runtime_rows = db.execute(
         text("""
-            select id, node_key, node_code, status, occurrence_no
+            select id, node_key, node_code, status, occurrence_no,
+                   defined_by_revision_id, started_at
             from public.task_nodes
             where workflow_instance_id = :instance_id
               and status <> 'cancelled'
@@ -465,7 +539,7 @@ def _apply_workflow_amendment(
     removed_keys = sorted(set(runtime_by_key) - set(graph_nodes))
     for node_key in removed_keys:
         row = runtime_by_key[node_key]
-        if row["status"] not in {"pending", "ready"}:
+        if row["status"] not in {"pending", "ready"} or row["started_at"] is not None:
             raise WorkflowValidationError(
                 f"Không thể xóa Node {node_key!r} vì công việc đã bắt đầu hoặc đã có kết quả"
             )
@@ -536,7 +610,6 @@ def _apply_workflow_amendment(
                 "payload": json.dumps({"revision_id": revision["id"]}),
             },
         )
-
     added_keys = [key for key in graph_nodes if key not in runtime_by_key]
     has_live_node = any(
         row["status"] in {"ready", "in_progress", "submitted", "rework_required", "blocked"}
@@ -546,15 +619,51 @@ def _apply_workflow_amendment(
     work_item_rates = _current_work_item_rates(db)
     checklist_count = 0
     assignment_count = 0
+    rebased_node_count = 0
     compensation_assignment_count = 0
     projected_compensation_amount = 0.0
+    provisioned_records: dict[str, str] = {}
 
     # Pending/ready Nodes may receive revised checklist definitions. Started Nodes keep
     # their original execution snapshot so evidence and acceptance history never move.
     for node_key in sorted(set(runtime_by_key) & set(graph_nodes)):
         runtime_node = runtime_by_key[node_key]
         desired_node = graph_nodes[node_key]
-        if runtime_node["status"] not in {"pending", "ready"}:
+        desired_assignments = desired_node.get("assignments") or []
+        active_assignments = db.execute(
+            text("""
+                select employee_id, role_code, is_primary, notes
+                from public.task_node_assignments
+                where task_node_id = :task_node_id
+                  and assignment_status in ('proposed', 'assigned', 'accepted')
+            """),
+            {"task_node_id": runtime_node["id"]},
+        ).mappings().all()
+        current_assignment_signature = sorted(
+            (
+                str(item["employee_id"]),
+                str(item["role_code"]),
+                bool(item["is_primary"]),
+                str(item["notes"] or "").strip(),
+            )
+            for item in active_assignments
+        )
+        desired_assignment_signature = sorted(
+            (
+                str(item["employee_id"]),
+                str(item["role_code"]),
+                bool(item.get("is_primary")),
+                str(item.get("notes") or "").strip(),
+            )
+            for item in desired_assignments
+        )
+        assignments_changed = current_assignment_signature != desired_assignment_signature
+
+        is_unstarted = (
+            runtime_node["status"] in {"pending", "ready"}
+            and runtime_node["started_at"] is None
+        )
+        if not is_unstarted:
             existing_keys = {
                 row[0] for row in db.execute(
                     text("""
@@ -571,6 +680,21 @@ def _apply_workflow_amendment(
                 raise WorkflowValidationError(
                     f"Không thể thêm/xóa checklist của Node {node_key!r} vì công việc đã bắt đầu"
                 )
+            if assignments_changed:
+                assignment_result = replace_node_assignments(
+                    db,
+                    task_node_id=str(runtime_node["id"]),
+                    assignments=desired_assignments,
+                    replacement_reason=f"Áp dụng Revision {revision['revision_no']}",
+                    actor_id=actor_id,
+                )
+                assignment_count += assignment_result["assignment_count"]
+                compensation_assignment_count += assignment_result[
+                    "compensation_assignment_count"
+                ]
+                projected_compensation_amount += assignment_result[
+                    "projected_compensation_amount"
+                ]
             continue
         existing_rows = db.execute(
             text("""
@@ -588,7 +712,7 @@ def _apply_workflow_amendment(
 
         for checklist_key in set(existing_by_key) - set(desired_by_key):
             current = existing_by_key[checklist_key]
-            if current["status"] in {"passed", "failed"}:
+            if current["status"] in {"approved", "late_approved", "failed"}:
                 raise WorkflowValidationError(
                     f"Không thể xóa checklist {checklist_key!r} vì đã có kết quả"
                 )
@@ -617,18 +741,21 @@ def _apply_workflow_amendment(
                 },
             )
 
-        assignments = desired_node.get("assignments") or []
+        assignments = desired_assignments
         for item in desired_by_key.values():
             current = existing_by_key.get(item["key"])
-            if current and current["status"] in {"passed", "failed"}:
+            if current and current["status"] in {"approved", "late_approved", "failed"}:
                 continue
+            if current and current["status"] in {"pending_approval", "late_pending_approval"}:
+                raise WorkflowValidationError(
+                    f"Không thể sửa checklist {item['key']!r} khi đang chờ duyệt"
+                )
             compensation = item.get("compensation") or {"is_payable": False}
             is_payable = bool(compensation.get("is_payable"))
-            evidence_definition = json.dumps({
-                "required": bool(item.get("evidence_required")),
-                "description": item.get("evidence_description") or "",
-                "drive_folder_url": item.get("drive_folder_url"),
-            }, ensure_ascii=False)
+            evidence_definition = json.dumps(
+                _checklist_evidence_data(item, include_files=False),
+                ensure_ascii=False,
+            )
             if current:
                 checklist_result_id = current["id"]
                 # Close the old pay assignment while the old checklist/rate pair still matches.
@@ -650,6 +777,10 @@ def _apply_workflow_amendment(
                         set checklist_name = :checklist_name,
                             is_required = :is_required,
                             status = 'pending',
+                            require_evidence = :require_evidence,
+                            approver_role = :approver_role,
+                            is_overdue = false,
+                            late_reason = null,
                             evidence_data = coalesce(evidence_data, '{}'::jsonb)
                               || cast(:evidence_definition as jsonb),
                             work_item_id = :work_item_id,
@@ -664,6 +795,8 @@ def _apply_workflow_amendment(
                         "checklist_id": checklist_result_id,
                         "checklist_name": item["name"],
                         "is_required": item.get("required") is not False,
+                        "require_evidence": bool(item.get("require_evidence")),
+                        "approver_role": item.get("approver_role") or "admin",
                         "evidence_definition": evidence_definition,
                         "work_item_id": compensation.get("work_item_id") if is_payable else None,
                         "is_payable": is_payable,
@@ -677,10 +810,12 @@ def _apply_workflow_amendment(
                     text("""
                         insert into public.task_node_checklist_results
                             (task_node_id, checklist_key, checklist_name, is_required,
-                             status, evidence_data, work_item_id, is_payable,
+                             status, require_evidence, approver_role, evidence_data,
+                             work_item_id, is_payable,
                              pay_group_key, pay_scope, pay_key, condition_result)
                         values (:task_node_id, :checklist_key, :checklist_name, :is_required,
-                                'pending', cast(:evidence_data as jsonb), :work_item_id, :is_payable,
+                                'pending', :require_evidence, :approver_role,
+                                cast(:evidence_data as jsonb), :work_item_id, :is_payable,
                                 :pay_group_key, :pay_scope, :pay_key, '{}'::jsonb)
                         returning id
                     """),
@@ -689,12 +824,12 @@ def _apply_workflow_amendment(
                         "checklist_key": item["key"],
                         "checklist_name": item["name"],
                         "is_required": item.get("required") is not False,
-                        "evidence_data": json.dumps({
-                            "required": bool(item.get("evidence_required")),
-                            "description": item.get("evidence_description") or "",
-                            "drive_folder_url": item.get("drive_folder_url"),
-                            "files": [],
-                        }, ensure_ascii=False),
+                        "require_evidence": bool(item.get("require_evidence")),
+                        "approver_role": item.get("approver_role") or "admin",
+                        "evidence_data": json.dumps(
+                            _checklist_evidence_data(item, include_files=True),
+                            ensure_ascii=False,
+                        ),
                         "work_item_id": compensation.get("work_item_id") if is_payable else None,
                         "is_payable": is_payable,
                         "pay_group_key": compensation.get("pay_group_key") if is_payable else None,
@@ -732,6 +867,71 @@ def _apply_workflow_amendment(
                     compensation_assignment_count += 1
                     projected_compensation_amount += float(rate["amount"] or 0)
 
+            _ensure_manual_checklist_assignment(
+                db,
+                checklist_result_id=checklist_result_id,
+                checklist_item=item,
+                node_assignments=assignments,
+                actor_id=actor_id,
+                reason=f"Phân công checklist theo Revision {revision['revision_no']}",
+            )
+
+        # Node chưa bắt đầu phải theo đúng Revision vừa được áp dụng. Nếu giữ
+        # defined_by_revision_id cũ, lúc nhân viên bấm Bắt đầu hệ thống sẽ đọc
+        # duration/checklist của bản cũ và tính deadline sai.
+        if runtime_node["defined_by_revision_id"] != revision["id"]:
+            db.execute(
+                text("""
+                    update public.task_nodes
+                    set defined_by_revision_id = :revision_id,
+                        notes = :notes,
+                        updated_at = now()
+                    where id = :task_node_id
+                      and status in ('pending', 'ready')
+                      and started_at is null
+                """),
+                {
+                    "task_node_id": runtime_node["id"],
+                    "revision_id": revision["id"],
+                    "notes": desired_node.get("description") or None,
+                },
+            )
+            db.execute(
+                text("""
+                    insert into public.task_node_events
+                        (task_node_id, event_type, from_status, to_status,
+                         actor_user_id, payload)
+                    values
+                        (:task_node_id, 'REBASED_BY_REVISION', :status, :status,
+                         :actor_id, cast(:payload as jsonb))
+                """),
+                {
+                    "task_node_id": runtime_node["id"],
+                    "status": runtime_node["status"],
+                    "actor_id": actor_id,
+                    "payload": json.dumps({
+                        "from_revision_id": runtime_node["defined_by_revision_id"],
+                        "to_revision_id": revision["id"],
+                        "revision_no": revision["revision_no"],
+                    }),
+                },
+            )
+            rebased_node_count += 1
+
+        if assignments_changed:
+            # Checklist runtime rows above already use the assignment set from this
+            # Revision. Replace only Node-level records here so the unified apply
+            # action does not create a second set of active pay assignments.
+            assignment_result = replace_node_assignments(
+                db,
+                task_node_id=str(runtime_node["id"]),
+                assignments=desired_assignments,
+                replacement_reason=f"Áp dụng Revision {revision['revision_no']}",
+                actor_id=actor_id,
+                sync_checklist_assignments=False,
+            )
+            assignment_count += assignment_result["assignment_count"]
+
     for node_key in added_keys:
         node = graph_nodes[node_key]
         occurrence_no = db.execute(
@@ -743,8 +943,6 @@ def _apply_workflow_amendment(
             {"instance_id": instance["id"], "node_key": node_key},
         ).scalar_one()
         assignments = node.get("assignments") or []
-        planned_starts = [_parse_datetime(item.get("planned_start"), "Thời gian bắt đầu") for item in assignments]
-        planned_ends = [_parse_datetime(item.get("planned_end"), "Thời gian kết thúc") for item in assignments]
         status = (
             "ready"
             if node_key == revision["graph"]["start_node"] and not has_live_node
@@ -754,9 +952,9 @@ def _apply_workflow_amendment(
             text("""
                 insert into public.task_nodes
                     (workflow_instance_id, defined_by_revision_id, node_key, node_code,
-                     occurrence_no, status, execution_data, planned_start, planned_end, notes)
+                     occurrence_no, status, execution_data, notes)
                 values (:instance_id, :revision_id, :node_key, :node_code, :occurrence_no, :status,
-                        '{}'::jsonb, :planned_start, :planned_end, :notes)
+                        '{}'::jsonb, :notes)
                 returning id
             """),
             {
@@ -766,8 +964,6 @@ def _apply_workflow_amendment(
                 "node_code": node["task_code"],
                 "occurrence_no": occurrence_no,
                 "status": status,
-                "planned_start": min((v for v in planned_starts if v), default=None),
-                "planned_end": max((v for v in planned_ends if v), default=None),
                 "notes": node.get("description") or None,
             },
         ).scalar_one()
@@ -779,10 +975,12 @@ def _apply_workflow_amendment(
                 text("""
                     insert into public.task_node_checklist_results
                         (task_node_id, checklist_key, checklist_name, is_required,
-                         status, evidence_data, work_item_id, is_payable,
+                         status, require_evidence, approver_role, evidence_data,
+                         work_item_id, is_payable,
                          pay_group_key, pay_scope, pay_key, condition_result)
                     values (:task_node_id, :checklist_key, :checklist_name, :is_required,
-                            'pending', cast(:evidence_data as jsonb), :work_item_id, :is_payable,
+                            'pending', :require_evidence, :approver_role,
+                            cast(:evidence_data as jsonb), :work_item_id, :is_payable,
                             :pay_group_key, :pay_scope, :pay_key, '{}'::jsonb)
                     returning id
                 """),
@@ -791,12 +989,12 @@ def _apply_workflow_amendment(
                     "checklist_key": item["key"],
                     "checklist_name": item["name"],
                     "is_required": item.get("required") is not False,
-                    "evidence_data": json.dumps({
-                        "required": bool(item.get("evidence_required")),
-                        "description": item.get("evidence_description") or "",
-                        "drive_folder_url": item.get("drive_folder_url"),
-                        "files": [],
-                    }, ensure_ascii=False),
+                    "require_evidence": bool(item.get("require_evidence")),
+                    "approver_role": item.get("approver_role") or "admin",
+                    "evidence_data": json.dumps(
+                        _checklist_evidence_data(item, include_files=True),
+                        ensure_ascii=False,
+                    ),
                     "work_item_id": compensation.get("work_item_id") if is_payable else None,
                     "is_payable": is_payable,
                     "pay_group_key": compensation.get("pay_group_key") if is_payable else None,
@@ -833,22 +1031,29 @@ def _apply_workflow_amendment(
                     compensation_assignment_count += 1
                     projected_compensation_amount += float(rate["amount"] or 0)
 
+            _ensure_manual_checklist_assignment(
+                db,
+                checklist_result_id=checklist_result_id,
+                checklist_item=item,
+                node_assignments=assignments,
+                actor_id=actor_id,
+                reason="Phân công checklist cho Node mới trong bản sửa đổi workflow",
+            )
+
         for assignment in assignments:
             db.execute(
                 text("""
-                    insert into public.task_node_assignments
-                        (task_node_id, employee_id, role_code, is_primary,
-                         assignment_status, planned_start, planned_end, assigned_by, notes)
-                    values (:task_node_id, :employee_id, :role_code, :is_primary,
-                            'assigned', :planned_start, :planned_end, :actor_id, :notes)
+                insert into public.task_node_assignments
+                    (task_node_id, employee_id, role_code, is_primary,
+                     assignment_status, assigned_by, notes)
+                values (:task_node_id, :employee_id, :role_code, :is_primary,
+                        'assigned', :actor_id, :notes)
                 """),
                 {
                     "task_node_id": task_node_id,
                     "employee_id": assignment["employee_id"],
                     "role_code": assignment["role_code"],
                     "is_primary": assignment.get("is_primary", False),
-                    "planned_start": _parse_datetime(assignment.get("planned_start"), "Thời gian bắt đầu"),
-                    "planned_end": _parse_datetime(assignment.get("planned_end"), "Thời gian kết thúc"),
                     "actor_id": actor_id,
                     "notes": assignment.get("notes"),
                 },
@@ -868,6 +1073,10 @@ def _apply_workflow_amendment(
                 "payload": json.dumps({"revision_id": revision["id"]}),
             },
         )
+        if status == "ready":
+            provisioned_records.update(_ensure_node_module_records(
+                db, task_node_id=task_node_id, actor_id=actor_id
+            ))
 
     return {
         "instance_id": instance["id"],
@@ -879,8 +1088,10 @@ def _apply_workflow_amendment(
         "removed_node_count": len(removed_keys),
         "checklist_count": checklist_count,
         "assignment_count": assignment_count,
+        "rebased_node_count": rebased_node_count,
         "compensation_assignment_count": compensation_assignment_count,
         "projected_compensation_amount": projected_compensation_amount,
+        **provisioned_records,
     }
 
 
@@ -953,19 +1164,15 @@ def activate_workflow(
     projected_compensation_amount = 0.0
     for node_key, node in graph_nodes.items():
         assignments = node.get("assignments") or []
-        planned_starts = [_parse_datetime(item.get("planned_start"), "Thời gian bắt đầu") for item in assignments]
-        planned_ends = [_parse_datetime(item.get("planned_end"), "Thời gian kết thúc") for item in assignments]
-        planned_start = min((value for value in planned_starts if value), default=None)
-        planned_end = max((value for value in planned_ends if value), default=None)
         status = "ready" if node_key == start_node else "pending"
         task_node_id = db.execute(
             text("""
                 insert into public.task_nodes
                     (workflow_instance_id, defined_by_revision_id, node_key, node_code,
-                     occurrence_no, status, execution_data, planned_start, planned_end, notes)
+                     occurrence_no, status, execution_data, notes)
                 values
                     (:instance_id, :revision_id, :node_key, :node_code,
-                     1, :status, '{}'::jsonb, :planned_start, :planned_end, :notes)
+                     1, :status, '{}'::jsonb, :notes)
                 returning id
             """),
             {
@@ -974,8 +1181,6 @@ def activate_workflow(
                 "node_key": node_key,
                 "node_code": node["task_code"],
                 "status": status,
-                "planned_start": planned_start,
-                "planned_end": planned_end,
                 "notes": node.get("description") or None,
             },
         ).scalar_one()
@@ -988,11 +1193,13 @@ def activate_workflow(
                 text("""
                     insert into public.task_node_checklist_results
                         (task_node_id, checklist_key, checklist_name, is_required,
-                         status, evidence_data, work_item_id, is_payable,
+                         status, require_evidence, approver_role, evidence_data,
+                         work_item_id, is_payable,
                          pay_group_key, pay_scope, pay_key, condition_result)
                     values
                         (:task_node_id, :checklist_key, :checklist_name, :is_required,
-                         'pending', cast(:evidence_data as jsonb), :work_item_id, :is_payable,
+                         'pending', :require_evidence, :approver_role,
+                         cast(:evidence_data as jsonb), :work_item_id, :is_payable,
                          :pay_group_key, :pay_scope, :pay_key, '{}'::jsonb)
                     returning id
                 """),
@@ -1001,12 +1208,12 @@ def activate_workflow(
                     "checklist_key": item["key"],
                     "checklist_name": item["name"],
                     "is_required": item.get("required") is not False,
-                    "evidence_data": json.dumps({
-                        "required": bool(item.get("evidence_required")),
-                        "description": item.get("evidence_description") or "",
-                        "drive_folder_url": item.get("drive_folder_url"),
-                        "files": [],
-                    }, ensure_ascii=False),
+                    "require_evidence": bool(item.get("require_evidence")),
+                    "approver_role": item.get("approver_role") or "admin",
+                    "evidence_data": json.dumps(
+                        _checklist_evidence_data(item, include_files=True),
+                        ensure_ascii=False,
+                    ),
                     "work_item_id": compensation.get("work_item_id") if is_payable else None,
                     "is_payable": is_payable,
                     "pay_group_key": compensation.get("pay_group_key") if is_payable else None,
@@ -1045,23 +1252,30 @@ def activate_workflow(
                     compensation_assignment_count += 1
                     projected_compensation_amount += float(rate["amount"] or 0)
 
+            _ensure_manual_checklist_assignment(
+                db,
+                checklist_result_id=checklist_result_id,
+                checklist_item=item,
+                node_assignments=assignments,
+                actor_id=actor_id,
+                reason="Phân công checklist khi kích hoạt workflow",
+            )
+
         for assignment in assignments:
             db.execute(
                 text("""
                     insert into public.task_node_assignments
                         (task_node_id, employee_id, role_code, is_primary,
-                         assignment_status, planned_start, planned_end, assigned_by, notes)
+                         assignment_status, assigned_by, notes)
                     values
                         (:task_node_id, :employee_id, :role_code, :is_primary,
-                         'assigned', :planned_start, :planned_end, :actor_id, :notes)
+                         'assigned', :actor_id, :notes)
                 """),
                 {
                     "task_node_id": task_node_id,
                     "employee_id": assignment["employee_id"],
                     "role_code": assignment["role_code"],
                     "is_primary": assignment.get("is_primary", False),
-                    "planned_start": _parse_datetime(assignment.get("planned_start"), "Thời gian bắt đầu"),
-                    "planned_end": _parse_datetime(assignment.get("planned_end"), "Thời gian kết thúc"),
                     "actor_id": actor_id,
                     "notes": assignment.get("notes"),
                 },
@@ -1088,6 +1302,9 @@ def activate_workflow(
             },
         )
 
+    provisioned_records = _ensure_node_module_records(
+        db, task_node_id=created_node_ids[start_node], actor_id=actor_id
+    )
     return {
         "instance_id": instance["id"],
         "revision_id": revision["id"],
@@ -1098,6 +1315,7 @@ def activate_workflow(
         "assignment_count": assignment_count,
         "compensation_assignment_count": compensation_assignment_count,
         "projected_compensation_amount": projected_compensation_amount,
+        **provisioned_records,
     }
 
 
@@ -1108,6 +1326,7 @@ def replace_node_assignments(
     assignments: list[dict[str, Any]],
     replacement_reason: str | None,
     actor_id: str,
+    sync_checklist_assignments: bool = True,
 ) -> dict[str, Any]:
     """Replace active node assignments and append an immutable audit event."""
     node = db.execute(
@@ -1128,16 +1347,6 @@ def replace_node_assignments(
         raise WorkflowValidationError("Không thể đổi phân công khi Node đã gửi duyệt hoặc đã kết thúc")
 
     normalized = [_normalize_assignment(item, str(task_node_id)) for item in assignments]
-    if node["date_signed"]:
-        for assignment in normalized:
-            for field_name, value in (
-                ("Ngày bắt đầu", assignment["planned_start"]),
-                ("Ngày kết thúc", assignment["planned_end"]),
-            ):
-                if value and value.date() < node["date_signed"]:
-                    raise WorkflowValidationError(
-                        f"{field_name} không được trước ngày ký hợp đồng {node['date_signed'].isoformat()}"
-                    )
     duplicate_keys = [(item["employee_id"], item["role_code"]) for item in normalized]
     if len(duplicate_keys) != len(set(duplicate_keys)):
         raise WorkflowValidationError("Một nhân viên không được giao trùng cùng vai trò")
@@ -1159,7 +1368,9 @@ def replace_node_assignments(
         text("""
             select id, checklist_name, work_item_id
             from public.task_node_checklist_results
-            where task_node_id = :task_node_id and is_payable
+            where task_node_id = :task_node_id
+              and is_payable
+              and status <> 'not_applicable'
             for update
         """),
         {"task_node_id": task_node_id},
@@ -1221,18 +1432,49 @@ def replace_node_assignments(
             text("""
                 insert into public.task_node_assignments
                     (task_node_id, employee_id, role_code, is_primary,
-                     assignment_status, planned_start, planned_end, assigned_by, notes)
+                     assignment_status, assigned_by, notes)
                 values
                     (:task_node_id, :employee_id, :role_code, :is_primary,
-                     'assigned', :planned_start, :planned_end, :actor_id, :notes)
+                     'assigned', :actor_id, :notes)
                 returning id
             """),
             {**assignment, "task_node_id": task_node_id, "actor_id": actor_id},
         ).scalar_one())
 
+    # legal_submissions is provisioned when the Node becomes ready, which can
+    # happen before a director assigns/reassigns the submitter. Keep that
+    # operational contact in sync until the authority has issued a receipt;
+    # after that point it is historical data and must not be rewritten.
+    primary_assignment = next(
+        (item for item in normalized if item["is_primary"]),
+        normalized[0] if normalized else None,
+    )
+    legal_assignee_id = primary_assignment["employee_id"] if primary_assignment else None
+    legal_contact_phone = None
+    if legal_assignee_id:
+        legal_contact_phone = db.execute(
+            text("select phone from public.employees where id = :employee_id"),
+            {"employee_id": legal_assignee_id},
+        ).scalar()
+    db.execute(
+        text("""
+            update public.legal_submissions
+            set assigned_employee_id = :employee_id,
+                contact_phone = :contact_phone,
+                updated_at = now()
+            where task_node_id = :task_node_id
+              and receipt_code is null
+        """),
+        {
+            "task_node_id": task_node_id,
+            "employee_id": legal_assignee_id,
+            "contact_phone": legal_contact_phone,
+        },
+    )
+
     compensation_assignment_count = 0
     projected_compensation_amount = 0.0
-    if payable_checklists:
+    if payable_checklists and sync_checklist_assignments:
         checklist_ids = [item["id"] for item in payable_checklists]
         db.execute(
             text("""
@@ -1275,20 +1517,6 @@ def replace_node_assignments(
                 compensation_assignment_count += 1
                 projected_compensation_amount += float(rate["amount"] or 0)
 
-    starts = [item["planned_start"] for item in normalized if item["planned_start"]]
-    ends = [item["planned_end"] for item in normalized if item["planned_end"]]
-    db.execute(
-        text("""
-            update public.task_nodes
-            set planned_start = :planned_start, planned_end = :planned_end, updated_at = now()
-            where id = :task_node_id
-        """),
-        {
-            "task_node_id": task_node_id,
-            "planned_start": min(starts) if starts else None,
-            "planned_end": max(ends) if ends else None,
-        },
-    )
     db.execute(
         text("""
             insert into public.task_node_events
@@ -1316,6 +1544,630 @@ def replace_node_assignments(
         "compensation_assignment_count": compensation_assignment_count,
         "projected_compensation_amount": projected_compensation_amount,
     }
+
+
+def _require_node_assignment(db: Session, *, task_node_id: str, employee_id: str) -> None:
+    assigned = db.execute(
+        text("""
+            select 1 from public.task_node_assignments
+            where task_node_id = :task_node_id and employee_id = :employee_id
+              and assignment_status not in ('replaced', 'declined')
+        """),
+        {"task_node_id": task_node_id, "employee_id": employee_id},
+    ).first()
+    if not assigned:
+        raise WorkflowValidationError("Bạn không được phân công cho công việc này")
+
+
+LEGAL_PACKAGE_ID = "sp_002"
+
+_NODE_START_CONTEXT_QUERY = text("""
+    select sl.id as service_line_id, sl.contract_id,
+           sl.survey_drive_folder_url, sl.task_type_id,
+           tt.service_package_id,
+           cu.full_name as customer_name, cu.phone as customer_phone
+    from public.workflow_instances wi
+    join public.service_lines sl on sl.id = wi.service_line_id
+    join public.contracts c on c.id = sl.contract_id
+    left join public.task_types tt on tt.id = sl.task_type_id
+    left join public.customers cu on cu.id = c.customer_id
+    where wi.id = :workflow_instance_id
+""")
+
+_NODE_PRIMARY_ASSIGNEE_QUERY = text("""
+    select e.id as employee_id, e.phone
+    from public.task_node_assignments a
+    join public.employees e on e.id = a.employee_id
+    where a.task_node_id = :task_node_id
+      and a.assignment_status not in ('replaced', 'declined')
+    order by a.is_primary desc, a.created_at asc
+    limit 1
+""")
+
+
+def _node_definition(db: Session, task_node: dict) -> dict | None:
+    """Định nghĩa của Node trong graph của Revision đang áp dụng."""
+    graph_row = db.execute(
+        text("""
+            select graph from public.workflow_instance_revisions
+            where workflow_instance_id = :instance_id and id = :revision_id
+        """),
+        {
+            "instance_id": task_node["workflow_instance_id"],
+            "revision_id": task_node["defined_by_revision_id"],
+        },
+    ).mappings().first()
+    return (graph_row["graph"]["nodes"] or {}).get(task_node["node_key"]) if graph_row else None
+
+
+def _apply_node_duration(db: Session, *, task_node_id: str, node_def: dict) -> None:
+    """Hạn xử lý = thời điểm bắt đầu + thời lượng giám đốc cấu hình cho Node.
+
+    Cấu hình thời lượng thay cho việc chọn mốc ngày tuyệt đối: không ai biết trước
+    nhân viên sẽ bấm bắt đầu lúc nào, nên hạn đặt sẵn thường lệch thực tế."""
+    days = int(node_def.get("duration_days") or 0)
+    hours = int(node_def.get("duration_hours") or 0)
+    if days <= 0 and hours <= 0:
+        return
+    db.execute(
+        text("""
+            update public.task_nodes
+            set deadline_at = started_at + make_interval(days => :days, hours => :hours),
+                updated_at = now()
+            where id = :task_node_id and started_at is not null
+        """),
+        {"task_node_id": task_node_id, "days": days, "hours": hours},
+    )
+
+
+def _maybe_create_legal_submission(
+    db: Session, *, task_node: dict, node_def: dict, context: dict, actor_id: str
+) -> str | None:
+    """Node có cờ requires_gov_submission -> tự sinh 1 dòng legal_submissions.
+
+    Ràng buộc: chỉ Hạng mục thuộc gói Pháp Lý mới sinh hồ sơ. Gói Đo Vẽ dù có kèm
+    'hỗ trợ nộp' (trả 350k cho nhân viên) cũng KHÔNG theo dõi vòng đời hồ sơ — chặn
+    ở đây để người dùng tick nhầm cờ cũng không tạo ra hồ sơ rác."""
+    if not node_def.get("requires_gov_submission"):
+        return None
+    if context.get("service_package_id") != LEGAL_PACKAGE_ID:
+        return None
+
+    existing_id = db.execute(
+        text("""
+            select id from public.legal_submissions
+            where task_node_id = :task_node_id
+            order by created_at, id
+            limit 1
+        """),
+        {"task_node_id": task_node["id"]},
+    ).scalar()
+    if existing_id:
+        return existing_id
+
+    assignee = db.execute(
+        _NODE_PRIMARY_ASSIGNEE_QUERY, {"task_node_id": task_node["id"]}
+    ).mappings().first()
+
+    return db.execute(
+        text("""
+            insert into public.legal_submissions
+                (task_node_id, service_line_id, contract_id, dossier_name, case_description,
+                 assigned_employee_id, contact_phone, linked_survey_folder_url, created_by)
+            values
+                (:task_node_id, :service_line_id, :contract_id, :dossier_name, :case_description,
+                 :assigned_employee_id, :contact_phone, :linked_survey_folder_url, :created_by)
+            returning id
+        """),
+        {
+            "task_node_id": task_node["id"],
+            "service_line_id": context["service_line_id"],
+            "contract_id": context["contract_id"],
+            "dossier_name": context["customer_name"],
+            "case_description": node_def.get("name"),
+            "assigned_employee_id": assignee["employee_id"] if assignee else None,
+            # SĐT bên Pháp lý là của NHÂN VIÊN đi nộp (in trên biên nhận để cơ quan liên hệ),
+            # khác với tab Đo vẽ dùng SĐT khách hàng.
+            "contact_phone": assignee["phone"] if assignee else None,
+            "linked_survey_folder_url": context["survey_drive_folder_url"],
+            "created_by": actor_id,
+        },
+    ).scalar()
+
+
+def _maybe_create_survey_record(
+    db: Session, *, task_node: dict, node_def: dict, context: dict, actor_id: str
+) -> str | None:
+    """Node có cờ creates_survey_record -> tự sinh 1 dòng hồ sơ Đo vẽ.
+
+    Chỉ lưu phần dữ liệu KHÔNG có sẵn ở nơi khác (tên hồ sơ, phường, độ ưu tiên).
+    Khách hàng, SĐT, người phụ trách, các mốc ngày… đọc thẳng lúc hiển thị để
+    không bao giờ lệch với dữ liệu gốc."""
+    if not node_def.get("creates_survey_record"):
+        return None
+
+    existing_id = db.execute(
+        text("""
+            select id from public.survey_records
+            where task_node_id = :task_node_id
+            limit 1
+        """),
+        {"task_node_id": task_node["id"]},
+    ).scalar()
+    if existing_id:
+        return existing_id
+
+    return db.execute(
+        text("""
+            insert into public.survey_records
+                (task_node_id, service_line_id, contract_id, dossier_name, created_by)
+            values
+                (:task_node_id, :service_line_id, :contract_id, :dossier_name, :created_by)
+            on conflict (task_node_id) do nothing
+            returning id
+        """),
+        {
+            "task_node_id": task_node["id"],
+            "service_line_id": context["service_line_id"],
+            "contract_id": context["contract_id"],
+            "dossier_name": context["customer_name"],
+            "created_by": actor_id,
+        },
+    ).scalar()
+
+
+def _ensure_node_module_records(
+    db: Session, *, task_node_id: str, actor_id: str
+) -> dict[str, str]:
+    """Ensure module rows as soon as a Node enters the ready state.
+
+    The task-node row is locked so transition, retry and employee-start calls
+    cannot create duplicate records concurrently.  Calling this again is safe
+    and returns the existing record IDs.
+    """
+    node = db.execute(
+        text("""
+            select id, status, workflow_instance_id, defined_by_revision_id, node_key
+            from public.task_nodes
+            where id = :task_node_id
+            for update
+        """),
+        {"task_node_id": task_node_id},
+    ).mappings().first()
+    if not node:
+        return {}
+
+    node = dict(node)
+    node_def = _node_definition(db, node)
+    if not node_def:
+        return {}
+    context = db.execute(
+        _NODE_START_CONTEXT_QUERY,
+        {"workflow_instance_id": node["workflow_instance_id"]},
+    ).mappings().first()
+    if not context:
+        return {}
+
+    context = dict(context)
+    result: dict[str, str] = {}
+    legal_submission_id = _maybe_create_legal_submission(
+        db, task_node=node, node_def=node_def, context=context, actor_id=actor_id
+    )
+    if legal_submission_id:
+        result["legal_submission_id"] = legal_submission_id
+    survey_record_id = _maybe_create_survey_record(
+        db, task_node=node, node_def=node_def, context=context, actor_id=actor_id
+    )
+    if survey_record_id:
+        result["survey_record_id"] = survey_record_id
+    return result
+
+
+def start_task_node(db: Session, *, task_node_id: str, employee_id: str, actor_id: str) -> dict[str, Any]:
+    """Employee begins work on a node they are assigned to: ready/rework_required -> in_progress."""
+    _require_node_assignment(db, task_node_id=task_node_id, employee_id=employee_id)
+    node = db.execute(
+        text("""
+            select id, status, workflow_instance_id, defined_by_revision_id, node_key
+            from public.task_nodes
+            where id = :task_node_id
+            for update
+        """),
+        {"task_node_id": task_node_id},
+    ).mappings().first()
+    if not node:
+        raise WorkflowValidationError("Node không tồn tại")
+    if node["status"] not in ("ready", "rework_required"):
+        raise WorkflowValidationError("Node phải ở trạng thái 'Sẵn sàng thực hiện' hoặc 'Cần làm lại' để bắt đầu")
+
+    db.execute(
+        text("""
+            update public.task_nodes
+            set status = 'in_progress', started_at = coalesce(started_at, now()), updated_at = now()
+            where id = :task_node_id
+        """),
+        {"task_node_id": task_node_id},
+    )
+    db.execute(
+        text("""
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values
+                (:task_node_id, 'NODE_STARTED', :from_status, 'in_progress', :actor_id, '{}'::jsonb)
+        """),
+        {"task_node_id": task_node_id, "from_status": node["status"], "actor_id": actor_id},
+    )
+    result = {"task_node_id": task_node_id, "status": "in_progress"}
+    node_def = _node_definition(db, node)
+    if not node_def:
+        return result
+
+    _apply_node_duration(db, task_node_id=task_node_id, node_def=node_def)
+
+    # Fallback cho các workflow được kích hoạt trước khi cơ chế provision-at-ready
+    # được triển khai. Hàm ensure idempotent nên retry/rework không sinh bản ghi mới.
+    result.update(_ensure_node_module_records(
+        db, task_node_id=task_node_id, actor_id=actor_id
+    ))
+    return result
+
+
+def submit_task_node_for_acceptance(
+    db: Session, *, task_node_id: str, employee_id: str, actor_id: str, note: str | None
+) -> dict[str, Any]:
+    """Employee submits a node for manager review: in_progress -> submitted.
+
+    Requires every required checklist item to already be approved/late-approved or not_applicable
+    (evidence is reviewed independently via the checklist endpoints)."""
+    _require_node_assignment(db, task_node_id=task_node_id, employee_id=employee_id)
+    node = db.execute(
+        text("select id, status from public.task_nodes where id = :task_node_id for update"),
+        {"task_node_id": task_node_id},
+    ).mappings().first()
+    if not node:
+        raise WorkflowValidationError("Node không tồn tại")
+    if node["status"] != "in_progress":
+        raise WorkflowValidationError("Node phải ở trạng thái 'Đang thực hiện' để nộp nghiệm thu")
+
+    unresolved = db.execute(
+        text("""
+            select checklist_name from public.task_node_checklist_results
+            where task_node_id = :task_node_id
+              and status not in ('approved', 'late_approved', 'not_applicable')
+            order by checklist_name
+        """),
+        {"task_node_id": task_node_id},
+    ).mappings().all()
+    if unresolved:
+        names = ", ".join(row["checklist_name"] for row in unresolved)
+        raise WorkflowValidationError(f"Còn checklist bắt buộc chưa đạt: {names}")
+
+    attempt_no = (db.execute(
+        text("select coalesce(max(attempt_no), 0) + 1 from public.task_node_acceptances where task_node_id = :task_node_id"),
+        {"task_node_id": task_node_id},
+    ).scalar_one())
+
+    acceptance_id = db.execute(
+        text("""
+            insert into public.task_node_acceptances
+                (task_node_id, attempt_no, status, submitted_by, submission_payload)
+            values
+                (:task_node_id, :attempt_no, 'pending', :actor_id, cast(:payload as jsonb))
+            returning id
+        """),
+        {
+            "task_node_id": task_node_id,
+            "attempt_no": attempt_no,
+            "actor_id": actor_id,
+            "payload": json.dumps({"note": note} if note else {}),
+        },
+    ).scalar_one()
+
+    db.execute(
+        text("""
+            update public.task_nodes
+            set status = 'submitted', submitted_at = now(), updated_at = now()
+            where id = :task_node_id
+        """),
+        {"task_node_id": task_node_id},
+    )
+    db.execute(
+        text("""
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values
+                (:task_node_id, 'NODE_SUBMITTED', 'in_progress', 'submitted', :actor_id,
+                 cast(:payload as jsonb))
+        """),
+        {
+            "task_node_id": task_node_id,
+            "actor_id": actor_id,
+            "payload": json.dumps({"acceptance_id": acceptance_id, "attempt_no": attempt_no}),
+        },
+    )
+    return {"task_node_id": task_node_id, "acceptance_id": acceptance_id, "status": "submitted"}
+
+
+def review_task_node_acceptance(
+    db: Session,
+    *,
+    acceptance_id: str,
+    decision: str,
+    outcome: str | None,
+    review_note: str | None,
+    actor_id: str,
+) -> dict[str, Any]:
+    """Manager reviews a submitted node: accepted (advances the graph) or rework_required."""
+    if decision not in ("accepted", "rework_required"):
+        raise WorkflowValidationError("decision phải là 'accepted' hoặc 'rework_required'")
+
+    acceptance = db.execute(
+        text("""
+            select a.id, a.status, a.task_node_id, n.node_key, n.status as node_status,
+                   n.workflow_instance_id, n.defined_by_revision_id
+            from public.task_node_acceptances a
+            join public.task_nodes n on n.id = a.task_node_id
+            where a.id = :acceptance_id
+            for update of a, n
+        """),
+        {"acceptance_id": acceptance_id},
+    ).mappings().first()
+    if not acceptance:
+        raise WorkflowValidationError("Không tìm thấy lượt nghiệm thu")
+    if acceptance["status"] != "pending":
+        raise WorkflowValidationError("Lượt nghiệm thu này đã được duyệt")
+    if acceptance["node_status"] != "submitted":
+        raise WorkflowValidationError("Node không còn ở trạng thái chờ nghiệm thu")
+
+    task_node_id = acceptance["task_node_id"]
+
+    unresolved = db.execute(
+        text("""
+            select checklist_name
+            from public.task_node_checklist_results
+            where task_node_id = :task_node_id
+              and status not in ('approved', 'late_approved', 'not_applicable')
+            order by checklist_name
+        """),
+        {"task_node_id": task_node_id},
+    ).mappings().all()
+    if unresolved:
+        names = ", ".join(row["checklist_name"] for row in unresolved)
+        raise WorkflowValidationError(
+            f"Không thể nghiệm thu Node vì còn checklist chưa được duyệt: {names}"
+        )
+
+    if decision == "rework_required":
+        db.execute(
+            text("""
+                update public.task_node_acceptances
+                set status = 'rework_required', reviewer_user_id = :actor_id, reviewed_at = now(),
+                    review_note = :note
+                where id = :acceptance_id
+            """),
+            {"acceptance_id": acceptance_id, "actor_id": actor_id, "note": review_note},
+        )
+        db.execute(
+            text("""
+                update public.task_nodes
+                set status = 'rework_required', updated_at = now()
+                where id = :task_node_id
+            """),
+            {"task_node_id": task_node_id},
+        )
+        db.execute(
+            text("""
+                insert into public.task_node_events
+                    (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+                values
+                    (:task_node_id, 'NODE_REJECTED', 'submitted', 'rework_required', :actor_id,
+                     cast(:payload as jsonb))
+            """),
+            {
+                "task_node_id": task_node_id,
+                "actor_id": actor_id,
+                "payload": json.dumps({"acceptance_id": acceptance_id, "review_note": review_note or ""}),
+            },
+        )
+        return {"task_node_id": task_node_id, "status": "rework_required"}
+
+    graph_row = db.execute(
+        text("""
+            select graph from public.workflow_instance_revisions
+            where workflow_instance_id = :instance_id and id = :revision_id
+        """),
+        {
+            "instance_id": acceptance["workflow_instance_id"],
+            "revision_id": acceptance["defined_by_revision_id"],
+        },
+    ).mappings().first()
+    node_def = (graph_row["graph"]["nodes"] or {}).get(acceptance["node_key"]) if graph_row else None
+    transitions = (node_def or {}).get("transitions") or {}
+    if outcome and transitions and outcome not in transitions:
+        raise WorkflowValidationError(f"Outcome '{outcome}' không hợp lệ cho node này")
+    if transitions and not outcome:
+        raise WorkflowValidationError("Cần chọn outcome để xác định bước tiếp theo")
+
+    db.execute(
+        text("""
+            update public.task_node_acceptances
+            set status = 'accepted', reviewer_user_id = :actor_id, reviewed_at = now(),
+                review_note = :note
+            where id = :acceptance_id
+        """),
+        {"acceptance_id": acceptance_id, "actor_id": actor_id, "note": review_note},
+    )
+    db.execute(
+        text("""
+            update public.task_nodes
+            set status = 'accepted', outcome = :outcome, accepted_at = now(), completed_at = now(), updated_at = now()
+            where id = :task_node_id
+        """),
+        {"task_node_id": task_node_id, "outcome": outcome},
+    )
+    db.execute(
+        text("""
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values
+                (:task_node_id, 'NODE_ACCEPTED', 'submitted', 'accepted', :actor_id, cast(:payload as jsonb))
+        """),
+        {
+            "task_node_id": task_node_id,
+            "actor_id": actor_id,
+            "payload": json.dumps({"acceptance_id": acceptance_id, "outcome": outcome}),
+        },
+    )
+
+    entitlement_count, entitlement_amount = _generate_work_pay_entitlements(
+        db,
+        task_node_id=task_node_id,
+        workflow_instance_id=acceptance["workflow_instance_id"],
+        acceptance_id=acceptance_id,
+        actor_id=actor_id,
+    )
+
+    next_node_key = transitions.get(outcome) if outcome else None
+    unlocked_node_id = None
+    if next_node_key:
+        next_node = db.execute(
+            text("""
+                select id, status from public.task_nodes
+                where workflow_instance_id = :instance_id and node_key = :node_key
+                for update
+            """),
+            {"instance_id": acceptance["workflow_instance_id"], "node_key": next_node_key},
+        ).mappings().first()
+        if next_node and next_node["status"] == "pending":
+            db.execute(
+                text("""
+                    update public.task_nodes
+                    set status = 'ready', updated_at = now()
+                    where id = :node_id
+                """),
+                {"node_id": next_node["id"]},
+            )
+            db.execute(
+                text("""
+                    insert into public.task_node_events
+                        (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+                    values
+                        (:node_id, 'NODE_UNLOCKED', 'pending', 'ready', :actor_id,
+                         cast(:payload as jsonb))
+                """),
+                {
+                    "node_id": next_node["id"],
+                    "actor_id": actor_id,
+                    "payload": json.dumps({"unlocked_by_task_node_id": task_node_id}),
+                },
+            )
+            unlocked_node_id = next_node["id"]
+            _ensure_node_module_records(
+                db, task_node_id=next_node["id"], actor_id=actor_id
+            )
+
+    if not next_node_key:
+        remaining = db.execute(
+            text("""
+                select 1 from public.task_nodes
+                where workflow_instance_id = :instance_id
+                  and status not in ('accepted', 'skipped', 'cancelled')
+                limit 1
+            """),
+            {"instance_id": acceptance["workflow_instance_id"]},
+        ).first()
+        if not remaining:
+            db.execute(
+                text("""
+                    update public.workflow_instances
+                    set status = 'completed', completed_at = now(), updated_at = now()
+                    where id = :instance_id and status = 'running'
+                """),
+                {"instance_id": acceptance["workflow_instance_id"]},
+            )
+
+    return {
+        "task_node_id": task_node_id,
+        "status": "accepted",
+        "unlocked_node_id": unlocked_node_id,
+        "entitlement_count": entitlement_count,
+        "entitlement_amount": entitlement_amount,
+    }
+
+
+def _generate_work_pay_entitlements(
+    db: Session, *, task_node_id: str, workflow_instance_id: str, acceptance_id: str, actor_id: str
+) -> tuple[int, float]:
+    """Create idempotent pay entitlements for every approved payable checklist on this node."""
+    payable = db.execute(
+        text("""
+            select r.id as checklist_result_id, r.checklist_name, r.work_item_id
+            from public.task_node_checklist_results r
+            where r.task_node_id = :task_node_id and r.is_payable
+              and r.status in ('approved', 'late_approved')
+        """),
+        {"task_node_id": task_node_id},
+    ).mappings().all()
+    if not payable:
+        return 0, 0.0
+
+    work_item_rates = _current_work_item_rates(db)
+    count = 0
+    total = 0.0
+    for checklist in payable:
+        assignments = db.execute(
+            text("""
+                select id, employee_id, role_code, work_item_rate_id
+                from public.task_node_checklist_assignments
+                where checklist_result_id = :checklist_result_id
+                  and status not in ('replaced', 'cancelled')
+            """),
+            {"checklist_result_id": checklist["checklist_result_id"]},
+        ).mappings().all()
+        for assignment in assignments:
+            rate = work_item_rates.get(checklist["work_item_id"], {}).get(assignment["role_code"])
+            amount = float(rate["amount"]) if rate else None
+            if not amount or amount <= 0:
+                continue
+            idempotency_key = f"{assignment['id']}:{acceptance_id}"
+            exists = db.execute(
+                text("select 1 from public.work_pay_entitlements where idempotency_key = :key"),
+                {"key": idempotency_key},
+            ).first()
+            if exists:
+                continue
+            db.execute(
+                text("""
+                    insert into public.work_pay_entitlements
+                        (workflow_instance_id, task_node_id, checklist_result_id, checklist_assignment_id,
+                         acceptance_id, work_item_rate_id, employee_id, role_code, amount, earned_at,
+                         status, calculation_snapshot, idempotency_key)
+                    values
+                        (:workflow_instance_id, :task_node_id, :checklist_result_id, :checklist_assignment_id,
+                         :acceptance_id, :work_item_rate_id, :employee_id, :role_code, :amount, now(),
+                         'eligible', cast(:snapshot as jsonb), :idempotency_key)
+                """),
+                {
+                    "workflow_instance_id": workflow_instance_id,
+                    "task_node_id": task_node_id,
+                    "checklist_result_id": checklist["checklist_result_id"],
+                    "checklist_assignment_id": assignment["id"],
+                    "acceptance_id": acceptance_id,
+                    "work_item_rate_id": assignment["work_item_rate_id"],
+                    "employee_id": assignment["employee_id"],
+                    "role_code": assignment["role_code"],
+                    "amount": amount,
+                    "snapshot": json.dumps({
+                        "checklist_name": checklist["checklist_name"],
+                        "role_code": assignment["role_code"],
+                        "rate_amount": amount,
+                    }),
+                    "idempotency_key": idempotency_key,
+                },
+            )
+            count += 1
+            total += amount
+    return count, total
 
 
 def cancel_workflow(

@@ -63,8 +63,13 @@ def require_authenticated_user(user: User = Depends(get_current_user)) -> User:
     return user
 
 RESOURCE_ALIASES = {
-    "legal_submission": ["legal_submission", "hoso"],
-    "legal_submissions": ["legal_submissions", "hoso"],
+    # KHÔNG gộp legal_submission/survey_record với 'hoso': cả hai phòng đều có quyền
+    # trên 'hoso', nên nếu để fallback thì nhân viên đo vẽ sẽ đọc được hồ sơ pháp lý
+    # và ngược lại — đúng thứ mà việc tách quyền này cần chặn.
+    "legal_submission": ["legal_submission"],
+    "legal_submissions": ["legal_submission"],
+    "survey_record": ["survey_record"],
+    "survey_records": ["survey_record"],
     "tasks": ["tasks", "workflow"],
     "contracts": ["contracts", "contract"],
 }

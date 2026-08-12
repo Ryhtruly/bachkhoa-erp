@@ -25,7 +25,7 @@ it('renders the employee workspace layout without the prototype navbar', async (
   expect(await screen.findByRole('heading', { name: 'Chào buổi sáng, Nguyễn Văn A' })).toBeInTheDocument()
   expect(screen.getByText('Trạng thái: Đang làm việc (Online) - Kỹ sư')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Check-out / Đã Check-in' })).toBeDisabled()
-  expect(await screen.findByRole('heading', { name: 'Lịch làm việc tuần này' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /^Lịch làm việc ·/ })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Tuần trước' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Hiện tại' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Tuần sau' })).toBeInTheDocument()
@@ -51,7 +51,7 @@ it('changes the displayed calendar week through the navigation control', async (
 
   const { container } = render(<EmployeePortalDashboard />)
 
-  await screen.findByRole('heading', { name: 'Lịch làm việc tuần này' })
+  await screen.findByRole('heading', { name: /^Lịch làm việc ·/ })
   expect(screen.getByText('Sáng')).toBeInTheDocument()
   expect(screen.getByText('Chiều')).toBeInTheDocument()
   const firstDayHeader = container.querySelector('.fc-col-header-cell-cushion')

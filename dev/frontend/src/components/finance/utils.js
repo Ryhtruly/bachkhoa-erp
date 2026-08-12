@@ -2,6 +2,9 @@ export const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) 
 export const fmtShort = (v) => fmt(v);
 export const fmtAmt = (v) => v ? Number(v.replace(/[^\d]/g, '')).toLocaleString('vi-VN') : '';
 export const parseAmt = (v) => parseFloat(String(v).replace(/[^\d]/g, '')) || 0;
+export const formatDate = (value) => value
+  ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`))
+  : '—';
 
 export const getLocalISOTime = () => {
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;

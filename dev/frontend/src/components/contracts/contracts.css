@@ -1,29 +1,27 @@
-.contract-page-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 12px;
+.contract-page-heading__title-row { display: flex; align-items: center; gap: 8px; }
+.contract-page-heading__back {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--duration), color var(--duration);
 }
+.contract-page-heading__back:hover { background: var(--bg-hover); color: var(--text-primary); }
 
-.contract-page-heading > div { display: grid; gap: 5px; }
-.contract-page-heading h2 { display: flex; align-items: center; gap: 9px; font-size: 1.45rem; letter-spacing: -0.025em; }
-.contract-page-heading h2 svg { color: var(--orange-500); }
-.contract-page-heading--list {
-  min-height: 38px;
-  margin-bottom: 8px;
-}
-.contract-page-heading--list > div { gap: 0; }
-.contract-page-heading--list h2 { margin: 0; }
-.contract-page-heading--workflow { min-height: 42px; margin-bottom: 8px; }
-.contract-page-heading--workflow h2 { font-size: 18px; font-weight: 700; line-height: 1.3; }
-.contract-page-heading--workflow .btn { min-height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600; }
-
-.tab-pane.active.contract-page--list {
+/* Neo chiều cao ở gốc <section> — áp dụng cho MỌI chế độ xem (danh sách lẫn quy trình),
+   không chỉ 1 div con bên trong, để đảm bảo trang không bao giờ cuộn dù ở view nào. */
+.tab-pane.active.contract-page {
   display: flex;
-  height: calc(100dvh - 30px);
+  height: calc(100dvh - var(--header-h) - 6px);
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .contract-master-detail {
@@ -32,7 +30,9 @@
   min-height: calc(100vh - 132px);
   overflow: hidden;
   border: 1px solid var(--border-default);
-  border-radius: 18px;
+  /* Khung sát viền (padding .main--contract chỉ 2px) — bo góc không còn chỗ để render mượt,
+     gây chồng chéo vuông/tròn. Bỏ hẳn bo góc, cho vuông toàn bộ. */
+  border-radius: 0;
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
 }
@@ -55,6 +55,7 @@
 
 .contract-pane-title {
   display: flex;
+  flex-shrink: 0;
   min-height: 66px;
   align-items: center;
   justify-content: space-between;
@@ -69,24 +70,26 @@
 .contract-add-button { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 99px; color: #fff; background: linear-gradient(135deg, var(--orange-400), var(--orange-600)); box-shadow: 0 7px 16px rgba(235, 74, 35, 0.25); cursor: pointer; }
 .contract-add-button:hover { transform: translateY(-1px); box-shadow: 0 9px 20px rgba(235, 74, 35, 0.32); }
 
-.contract-master-filters { padding: 14px 14px 0; }
+.contract-master-filters { flex-shrink: 0; padding: 14px 14px 0; }
 .contract-master-filters .filter-bar-modern { margin-bottom: 10px; }
 .contract-master-filters .filter-bar-modern__top,
 .contract-master-filters .filter-bar-modern__controls { flex-wrap: wrap; }
-.contract-master-pane .contract-table-hint { margin: 0 14px 8px; }
+.contract-master-pane .contract-table-hint { flex-shrink: 0; margin: 0 14px 8px; }
 .contract-page--list .contract-master-pane .dt-wrapper {
   min-height: 0;
   flex: 1 1 auto;
   margin: 0 14px;
   overflow: hidden;
-  border-radius: 12px;
+  /* Đồng bộ vuông toàn khung — bo góc ở đây từng chồng chéo với thanh phân trang vuông bên dưới. */
+  border-radius: 0;
 }
 .contract-page--list .contract-master-pane .table-wrap {
   height: auto;
   min-height: 0;
   max-height: none;
   flex: 1 1 auto;
-  border-radius: 12px;
+  overflow-y: auto;
+  border-radius: 0;
 }
 .contract-master-pane .contract-server-pagination {
   flex: 0 0 auto;
@@ -96,12 +99,16 @@
 .contract-detail-pane {
   display: flex;
   min-width: 0;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
 }
 
 .contract-detail-pane > header {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
@@ -115,7 +122,7 @@
 .contract-detail-pane > header span { color: var(--text-tertiary); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .contract-detail-pane > header h3 { margin-top: 4px; overflow: hidden; font-family: var(--font-mono); font-size: 0.98rem; text-overflow: ellipsis; white-space: nowrap; }
 .contract-detail-pane__document { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 12px; color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 11%, transparent); }
-.contract-detail-pane__content { display: grid; align-content: start; gap: 10px; flex: 1; padding: 18px; }
+.contract-detail-pane__content { display: grid; align-content: start; gap: 10px; flex: 1; min-height: 0; padding: 18px; overflow-y: auto; }
 .contract-detail-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 11px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 11px; background: var(--bg-card); }
 .contract-detail-field > svg { color: var(--text-tertiary); }
 .contract-detail-field > div { display: grid; min-width: 0; gap: 3px; }
@@ -124,7 +131,7 @@
 
 .contract-service-summary { display: flex; min-width: 0; align-items: center; gap: 7px; color: var(--text-secondary); }
 .contract-service-summary > svg { flex: 0 0 auto; color: var(--orange-500); }
-.contract-service-summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contract-service-summary > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .contract-service-summary > small { display: grid; width: 21px; height: 21px; flex: 0 0 21px; place-items: center; border-radius: 7px; color: var(--orange-600); background: color-mix(in srgb, var(--orange-500) 11%, transparent); font-size: 0.65rem; font-weight: 800; }
 
 .contract-paper-preview {
@@ -148,8 +155,22 @@
 .contract-paper-preview strong { color: var(--text-primary); font-size: 0.85rem; }
 .contract-paper-preview span { font-size: 0.73rem; }
 .contract-paper-preview a { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; color: var(--orange-500); font-size: 0.75rem; font-weight: 750; text-decoration: none; }
-.contract-detail-pane > footer { display: flex; justify-content: flex-end; padding: 14px 16px; border-top: 1px solid var(--border-subtle); background: var(--bg-card); }
-.contract-detail-pane > footer .btn { min-height: 42px; }
+/* Nút "Quy trình" — thanh hành động dính đáy cột chi tiết, rộng hết cột.
+   Trước đây là nút nổi (position: fixed) lơ lửng góc phải, đè lên nội dung và
+   nằm sát nút chat nên trông rời rạc. Giờ là con cuối của .contract-detail-pane
+   (flex column), phần nội dung ở trên chiếm flex:1 nên nút luôn tự dính đáy. */
+.contract-workflow-action {
+  flex-shrink: 0;
+  /* Thụt 18px và bo 12px cho khớp đúng các thẻ phía trên trong cùng cột
+     (.contract-detail-field bo 11px, .contract-paper-preview bo 12px, cả hai
+     thụt 18px theo padding của .contract-detail-pane__content). Tràn sát mép và
+     vuông góc khiến nút thành thứ duy nhất lạc nhịp trong cột. */
+  margin: 0 18px 18px;
+  min-height: 48px;
+  padding: 0 18px;
+  justify-content: center;
+  border-radius: 12px;
+}
 .contract-detail-pane__empty { display: flex; height: 100%; min-height: 430px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 28px; color: var(--text-tertiary); text-align: center; }
 .contract-detail-pane__empty strong { color: var(--text-primary); }
 .contract-detail-pane__empty span { max-width: 280px; font-size: 0.78rem; line-height: 1.5; }
@@ -220,7 +241,8 @@
 .contract-workspace {
   overflow: hidden;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  /* Đồng bộ với .contract-master-detail — khung sát viền thì vuông toàn bộ, không bo góc. */
+  border-radius: 0;
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
 }
@@ -230,15 +252,22 @@
   --workflow-text-control: 13px;
   --workflow-text-body: 14px;
   --workflow-text-title: 16px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
   font-size: var(--workflow-text-body);
 }
 
 .contract-workspace__header {
+  flex-shrink: 0;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 24px;
-  padding: 22px 24px 18px;
+  gap: 16px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--border-subtle);
   background: linear-gradient(135deg, color-mix(in srgb, var(--orange-500) 8%, var(--bg-card)), var(--bg-card) 55%);
 }
@@ -249,7 +278,16 @@
   padding: 8px 14px;
 }
 .contract-workspace--workflow .contract-workspace__header .eyebrow { display: none; }
-.contract-workspace--workflow .contract-workspace__header h2 { margin: 0; font-size: var(--workflow-text-title); font-weight: 700; line-height: 1.3; }
+.contract-workspace--workflow .contract-workspace__header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--workflow-text-title);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.contract-workspace--workflow .contract-workspace__header h2 svg { flex-shrink: 0; color: var(--orange-500); }
 .contract-workspace--workflow .contract-workspace__header label {
   display: flex;
   min-width: min(410px, 46vw);
@@ -295,7 +333,8 @@
 
 .contract-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex-shrink: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -328,7 +367,7 @@
   white-space: nowrap;
 }
 
-.contract-workspace--workflow .contract-summary-grid > div { gap: 3px; padding: 8px 14px; }
+.contract-workspace--workflow .contract-summary-grid > div { gap: 2px; padding: 6px 12px; }
 .contract-workspace--workflow .contract-summary-grid span { font-size: var(--workflow-text-caption); font-weight: 600; letter-spacing: 0.035em; }
 .contract-workspace--workflow .contract-summary-grid strong { font-size: var(--workflow-text-control); font-weight: 600; line-height: 1.35; }
 
@@ -442,7 +481,7 @@
 .service-line-list button small,
 .contract-workflow-services button small { color: var(--text-tertiary); font-size: var(--workflow-text-caption, 11px); font-weight: 500; line-height: 1.35; }
 
-.service-line-detail { padding: 28px; }
+.service-line-detail { padding: 18px; }
 .service-line-detail__hero {
   display: flex;
   align-items: center;
@@ -468,7 +507,7 @@
 .service-line-detail__hero p { overflow: hidden; color: var(--text-secondary); font-size: 0.82rem; text-overflow: ellipsis; white-space: nowrap; }
 .service-line-detail__price { display: grid; gap: 4px; margin-left: auto; text-align: right; }
 .service-line-detail__price strong { color: var(--orange-500); font-size: 1.2rem; }
-.service-line-detail__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.service-line-detail__cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
 .service-line-detail__cards article {
   min-height: 148px;
   padding: 18px;
@@ -480,8 +519,8 @@
 .service-line-detail__cards strong { display: block; margin: 12px 0 8px; font-size: 1rem; text-transform: capitalize; }
 .service-line-detail__cards p { color: var(--text-secondary); font-size: 0.78rem; line-height: 1.5; }
 
-.contract-documents { padding: 28px; }
-.contract-documents__intro { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+.contract-documents { padding: 18px; }
+.contract-documents__intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .contract-documents__intro h3 { margin-top: 5px; font-size: 1.2rem; }
 .capability-chip {
   display: inline-flex;
@@ -494,7 +533,7 @@
   font-size: 0.75rem;
   font-weight: 700;
 }
-.contract-document-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.contract-document-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .contract-document-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -523,11 +562,12 @@
 }
 .contract-documents__notice p { margin-top: 3px; color: var(--text-secondary); font-size: 0.8rem; }
 
-.contract-workflow-layout { display: grid; grid-template-columns: 205px minmax(0, 1fr); min-height: calc(100vh - 166px); }
-.contract-workflow-services { padding: 12px; }
-.workflow-designer { min-width: 0; }
+.contract-workflow-layout { display: grid; grid-template-columns: 205px minmax(0, 1fr); flex: 1; min-height: 0; height: auto; overflow: hidden; }
+.contract-workflow-services { padding: 12px; overflow-y: auto; }
+.workflow-designer { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow: hidden; }
 .workflow-designer__toolbar {
   display: flex;
+  flex-shrink: 0;
   min-height: 52px;
   align-items: center;
   justify-content: space-between;
@@ -672,7 +712,7 @@
   white-space: nowrap;
 }
 .workflow-cancellation-summary small { color: var(--text-tertiary); font-size: 10px; white-space: nowrap; }
-.workflow-designer__body { display: grid; grid-template-columns: minmax(480px, 1fr) 340px; height: calc(100vh - 275px); min-height: 650px; }
+.workflow-designer__body { display: grid; grid-template-columns: minmax(480px, 1fr) 340px; flex: 1; min-height: 420px; height: auto; overflow: hidden; }
 .workflow-designer__canvas { position: relative; min-width: 0; height: 100%; background: color-mix(in srgb, var(--bg-deep) 75%, var(--bg-card)); --workflow-grid: color-mix(in srgb, var(--text-tertiary) 25%, transparent); }
 .workflow-designer__canvas .react-flow { width: 100%; height: 100%; }
 .workflow-designer__canvas .react-flow__minimap,
@@ -700,6 +740,26 @@
 .workflow-node > p { min-height: 36px; margin: 6px 0 11px; overflow: hidden; color: var(--text-tertiary); font-size: 12px; font-weight: 400; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .workflow-node__meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 9px; border-top: 1px solid var(--border-subtle); color: var(--text-tertiary); font-size: var(--workflow-text-caption); font-weight: 500; line-height: 1.35; }
 .workflow-node__meta span { display: inline-flex; align-items: center; gap: 4px; }
+.workflow-node__deadline { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: var(--text-secondary); font-size: 10px; font-weight: 650; }
+.workflow-node__deadline.is-overdue { color: var(--red-500); }
+.workflow-node__avatars { display: flex; margin-top: 8px; }
+.workflow-node__avatar {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  place-items: center;
+  border: 2px solid var(--bg-card);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+}
+.workflow-node__avatar--img { object-fit: cover; background: var(--bg-surface); }
+.workflow-node__avatar:first-child { margin-left: 0; }
+.workflow-node__avatar--more { background: var(--text-tertiary) !important; }
 .workflow-node__handle { width: 10px; height: 10px; border: 2px solid var(--bg-card); background: var(--orange-500); }
 .workflow-empty-canvas { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; pointer-events: none; color: var(--text-tertiary); }
 
@@ -756,6 +816,11 @@
 .workflow-start-button { width: 100%; min-height: 40px; }
 .workflow-start-button.active { border-color: color-mix(in srgb, var(--green-500) 45%, var(--border-default)); color: var(--green-500); background: color-mix(in srgb, var(--green-500) 8%, transparent); }
 .workflow-checklist-card { display: grid; gap: 9px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 11px; background: var(--bg-surface); }
+.workflow-node-deadline-banner { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--blue-500) 25%, var(--border-default)); border-radius: 10px; color: var(--text-secondary); background: color-mix(in srgb, var(--blue-500) 5%, var(--bg-card)); }
+.workflow-node-deadline-banner strong { grid-column: 2; color: var(--text-primary); font-size: var(--workflow-text-control); }
+.workflow-node-deadline-banner.is-overdue { border-color: color-mix(in srgb, var(--red-500) 35%, var(--border-default)); color: var(--red-500); background: color-mix(in srgb, var(--red-500) 6%, var(--bg-card)); }
+.workflow-checklist-card__heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.workflow-checklist-card__heading .danger-icon-button { width: 38px; height: 38px; }
 .workflow-checklist-evidence {
   display: grid;
   gap: 9px;
@@ -788,6 +853,26 @@
 .workflow-evidence-files > span:first-child { color: var(--text-secondary); font-size: var(--workflow-text-caption); font-weight: 700; }
 .workflow-evidence-files > span:not(:first-child) { display: inline-flex; align-items: center; gap: 5px; font-size: var(--workflow-text-caption); }
 .workflow-evidence-files small { color: var(--text-tertiary); font-size: 11px; line-height: 1.45; }
+.workflow-evidence-review { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px dashed var(--amber-500, #f59e0b); border-radius: 8px; background: color-mix(in srgb, var(--amber-500, #f59e0b) 8%, transparent); }
+.workflow-evidence-review > span { display: inline-flex; align-items: center; gap: 5px; color: var(--amber-600, #b45309); font-size: var(--workflow-text-caption); font-weight: 700; }
+.workflow-evidence-review__actions { display: flex; gap: 8px; }
+.workflow-evidence-review__actions .btn { flex: 1 1 auto; justify-content: center; }
+.workflow-evidence-decision { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: var(--workflow-text-caption); font-weight: 650; }
+.workflow-evidence-decision--passed { color: #22a06b; }
+.workflow-evidence-decision--failed { color: #ef4444; }
+.workflow-status-pill { display: inline-flex; align-items: center; width: fit-content; margin-top: 2px; padding: 2px 9px; border-radius: 999px; color: var(--text-secondary); background: var(--bg-page); font-size: 11px; font-style: normal; font-weight: 700; line-height: 1.6; }
+.workflow-status-pill--in_progress { color: #b45309; background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.workflow-status-pill--submitted { color: #b45309; background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.workflow-status-pill--accepted { color: #22a06b; background: color-mix(in srgb, #22a06b 14%, transparent); }
+.workflow-status-pill--rework_required { color: #ef4444; background: color-mix(in srgb, #ef4444 12%, transparent); }
+.workflow-status-pill--blocked { color: #ef4444; background: color-mix(in srgb, #ef4444 12%, transparent); }
+.workflow-status-pill--ready { color: #0891b2; background: color-mix(in srgb, #0891b2 12%, transparent); }
+
+.workflow-review-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber-500, #f59e0b); border-radius: 10px; background: var(--bg-surface); }
+.workflow-review-card__title { display: flex; align-items: center; gap: 6px; color: #b45309; font-size: var(--workflow-text-caption); font-weight: 700; }
+.workflow-review-card label { display: grid; gap: 4px; margin: 0; font-size: var(--workflow-text-caption); font-weight: 650; }
+.workflow-review-card__actions { display: flex; gap: 8px; }
+.workflow-review-card__actions .btn { flex: 1 1 0; justify-content: center; min-width: 0; }
 .workflow-checklist-pay {
   display: grid;
   gap: 9px;
@@ -884,7 +969,6 @@
 .workflow-assignment-card__pay strong { color: var(--green-600, #15803d); font-size: var(--workflow-text-body); }
 .workflow-assignment-card__pay small { color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
 .workflow-assignment-card__pay em { color: var(--text-tertiary); font-size: 10px; font-style: normal; line-height: 1.4; }
-.workflow-assignment-save { width: 100%; min-height: 40px; }
 
 .workflow-cancellation-modal { display: grid; gap: 16px; }
 .workflow-cancellation-modal > label {
@@ -991,8 +1075,12 @@
 }
 
 @media (max-width: 960px) {
-  .tab-pane.active.contract-page--list { height: auto; min-height: calc(100dvh - 30px); }
-  .contract-page--list .contract-master-detail { min-height: calc(100dvh - 82px); }
+  .tab-pane.active.contract-page { height: auto; min-height: calc(100dvh - var(--header-h) - 24px); overflow: visible; }
+  .contract-workspace--workflow { height: auto; overflow: visible; }
+  .contract-page--list .contract-master-detail { min-height: calc(100dvh - var(--header-h) - 82px); }
+  .contract-page--list .contract-master-pane .table-wrap { overflow-y: visible; }
+  .contract-detail-pane { overflow: visible; }
+  .contract-detail-pane__content { overflow-y: visible; }
   .contract-master-detail { grid-template-columns: 1fr; }
   .contract-master-pane { border-right: 0; border-bottom: 1px solid var(--border-default); }
   .contract-detail-pane { min-height: 560px; }
@@ -1025,3 +1113,11 @@
   .workflow-designer__toolbar-actions { flex-wrap: wrap; }
   .workflow-designer__canvas { height: 460px; }
 }
+
+/* Thời hạn xử lý cấu hình theo thời lượng (ngày + giờ), thay cho chọn mốc ngày tuyệt đối. */
+.workflow-duration { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-surface); }
+.workflow-duration__label { color: var(--text-secondary); font-size: var(--workflow-text-caption); font-weight: 600; line-height: 1.4; }
+.workflow-duration__inputs { display: flex; gap: 10px; }
+.workflow-duration__inputs label { display: flex; flex: 1; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: var(--workflow-text-caption); }
+.workflow-duration__inputs .form-control { min-width: 0; text-align: center; }
+.workflow-duration small { color: var(--text-tertiary); font-size: 11px; }

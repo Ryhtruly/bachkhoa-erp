@@ -1,9 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+import io
+import re
+import uuid
+
+from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
 from src.core.auth import require_permission, User
+from src.services.storage_service import ensure_bucket, upload_file
 from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
@@ -11,6 +16,9 @@ from src.finance import (
     WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn,
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee
 )
+
+ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(prefix="/api/finance", tags=["06. Finance & Cashflow"])
 
@@ -247,7 +255,7 @@ def list_employees(
     user: User = Depends(require_permission("hr", "read"))
 ):
     rows = FinanceRepository.list_employees(db)
-    return [serialize_employee(employee, department_name) for employee, department_name in rows]
+    return [serialize_employee(employee, department_name, account) for employee, department_name, account in rows]
 
 @router.get("/employees/{employee_id}")
 def get_employee(
@@ -258,7 +266,7 @@ def get_employee(
     row = FinanceRepository.get_employee_by_id(db, employee_id)
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
-    return serialize_employee(row[0], row[1])
+    return serialize_employee(row[0], row[1], row[2])
 
 @router.post("/employees", status_code=201)
 def create_employee(
@@ -284,6 +292,28 @@ def delete_employee(
     user: User = Depends(require_permission("hr", "delete"))
 ):
     return FinanceService.delete_employee(db, employee_id)
+
+@router.post("/employees/{employee_id}/avatar")
+async def upload_employee_avatar(
+    employee_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "update"))
+):
+    if file.content_type not in ALLOWED_AVATAR_TYPES:
+        raise HTTPException(status_code=422, detail="Chỉ chấp nhận ảnh JPEG, PNG, WEBP hoặc GIF.")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=422, detail="Ảnh không được vượt quá 5MB.")
+
+    ensure_bucket()
+    safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", file.filename or "avatar")
+    safe_name = re.sub(r"_+", "_", safe_name).strip("_")
+    object_name = f"avatars/{employee_id}_{uuid.uuid4().hex[:8]}_{safe_name}"
+    avatar_url = upload_file(io.BytesIO(file_bytes), object_name)
+
+    return FinanceService.set_employee_avatar(db, employee_id, avatar_url)
 
 @router.get("/payroll")
 def list_payroll(
