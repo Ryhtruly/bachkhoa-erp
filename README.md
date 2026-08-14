@@ -1,6 +1,6 @@
 # Bách Khoa ERP System
 
-Hệ thống Quản trị Doanh nghiệp (ERP) thiết kế chuyên biệt cho Công ty Đo đạc Bách Khoa.
+Hệ thống Quản trị Doanh nghiệp (ERP) thiết kế chuyên biệt cho Công Ty TNHH Kiến Trúc Xây Dựng và Đo Đạc Bản Đồ Bách Khoa.
 Dự án được xây dựng với kiến trúc API hiện đại, giao diện React tương tác thời gian thực và tự động hóa quy trình nghiệp vụ (CRM, Kế toán, Sản xuất, AI).
 
 ## Công nghệ sử dụng
