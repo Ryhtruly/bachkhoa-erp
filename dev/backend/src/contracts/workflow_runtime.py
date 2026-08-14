@@ -1743,14 +1743,16 @@ def _maybe_create_legal_submission(
     if context.get("service_package_id") != LEGAL_PACKAGE_ID:
         return None
 
+    # Cùng lý do như hồ sơ đo vẽ: một hạng mục một hồ sơ nộp, không phải một
+    # hồ sơ cho mỗi bước có cờ.
     existing_id = db.execute(
         text("""
             select id from public.legal_submissions
-            where task_node_id = :task_node_id
+            where service_line_id = :service_line_id
             order by created_at, id
             limit 1
         """),
-        {"task_node_id": task_node["id"]},
+        {"service_line_id": context["service_line_id"]},
     ).scalar()
     if existing_id:
         return existing_id
@@ -1829,13 +1831,18 @@ def _maybe_create_survey_record(
     if not node_def.get("creates_survey_record"):
         return None
 
+    # Một HẠNG MỤC chỉ có MỘT hồ sơ đo vẽ, dù bao nhiêu bước trong quy trình
+    # mang cờ này. Trước đây chỉ chặn trùng theo task_node_id, nên một quy trình
+    # lỡ bật cờ ở ba bước là sinh ra ba hồ sơ đo vẽ cho cùng một hạng mục —
+    # người dùng thấy ba dòng y hệt nhau trong danh sách và không biết bỏ cái nào.
     existing_id = db.execute(
         text("""
             select id from public.survey_records
-            where task_node_id = :task_node_id
+            where service_line_id = :service_line_id
+            order by created_at, id
             limit 1
         """),
-        {"task_node_id": task_node["id"]},
+        {"service_line_id": context["service_line_id"]},
     ).scalar()
     if existing_id:
         return existing_id
