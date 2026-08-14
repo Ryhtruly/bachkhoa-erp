@@ -12,6 +12,7 @@ from src.db.database import get_db
 from src.core.auth import check_user_permission, require_authenticated_user, require_permission, User
 from src.db.models import Contract, ContractGeneratedDocument, Customer, Role, ServiceLine, ServicePackage, TaskType, UserRole
 from src.core import doc_generator
+from src.contracts.services import build_current_contract_document_data
 from src.contracts import (
     ContractService,
     ContractCreateSchema,
@@ -43,19 +44,14 @@ router = APIRouter(tags=["03. Contracts & Workflows"])
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def render_generated_contract_document(document: ContractGeneratedDocument) -> Response:
-    """Recreate an issued contract from its immutable snapshot without persisting a DOCX."""
-    snapshot = dict(document.render_data_snapshot or {})
-    template_version = snapshot.pop("_template_version", None)
-    if not template_version:
-        raise HTTPException(status_code=404, detail="Không tìm thấy phiên bản mẫu của tài liệu hợp đồng.")
-
+def render_current_contract_document(db: Session, contract_id: str) -> Response:
+    """Render a DOCX from the current persisted contract data without storing a file."""
+    document_data, filename = build_current_contract_document_data(db, contract_id)
     try:
-        document_bytes = doc_generator.render_contract_document(snapshot, template_version)
+        document_bytes = doc_generator.render_contract_document(document_data, "mau_hop_dong_v1")
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="Không thể tạo lại tài liệu hợp đồng.") from exc
 
-    filename = document.output_file_name or "HopDong.docx"
     return Response(
         content=document_bytes,
         media_type=DOCX_MEDIA_TYPE,
@@ -1338,18 +1334,7 @@ def get_contract_document(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("contract", "read")),
 ):
-    document = (
-        db.query(ContractGeneratedDocument)
-        .filter(
-            ContractGeneratedDocument.contract_id == contract_id,
-            ContractGeneratedDocument.status == "generated",
-        )
-        .order_by(ContractGeneratedDocument.generated_at.desc())
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail="Chưa có tài liệu hợp đồng đã phát hành.")
-    return render_generated_contract_document(document)
+    return render_current_contract_document(db, contract_id)
 
 
 class OverrideHandoverIn(BaseModel):

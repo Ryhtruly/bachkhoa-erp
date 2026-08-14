@@ -12,21 +12,49 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from src.core import doc_generator
-from src.contracts.services import build_contract_document_snapshot
 from src.routes import routes_contracts
 
 
 class ContractDocumentRendererTests(unittest.TestCase):
-    def test_document_route_uses_latest_generated_snapshot(self):
+    def test_document_route_renders_current_persisted_data_not_snapshot(self):
         document = SimpleNamespace(
             output_file_name="HopDong_2004_BK-2026.docx",
             render_data_snapshot={
                 "contract_id": "2004/BK-2026",
+                "customer_name": "Tên snapshot cũ",
+                "customer_email": "snapshot@example.com",
                 "_template_version": "mau_hop_dong_v1",
             },
         )
+        current_rows = {
+            "Contract": SimpleNamespace(
+                id="2004/BK-2026",
+                customer_id="customer-1",
+                lead_id=None,
+                service_type="Đo hiện trạng",
+                total_value=18500000,
+                date_signed="2026-08-14",
+            ),
+            "Customer": SimpleNamespace(
+                full_name="Tên hiện tại",
+                phone="0900000000",
+                address="Địa chỉ hiện tại",
+                email="",
+            ),
+            "ServiceLine": SimpleNamespace(
+                service_type="Đo hiện trạng",
+                property_address="Địa chỉ hiện tại",
+                price=18500000,
+            ),
+            "Receivable": SimpleNamespace(due_date=None),
+            "LeadPipeline": None,
+            "ContractGeneratedDocument": document,
+        }
 
-        class SnapshotQuery:
+        class CurrentDataQuery:
+            def __init__(self, row):
+                self.row = row
+
             def filter(self, *_criteria):
                 return self
 
@@ -34,55 +62,21 @@ class ContractDocumentRendererTests(unittest.TestCase):
                 return self
 
             def first(self):
-                return document
+                return self.row
 
-        db = SimpleNamespace(query=lambda _model: SnapshotQuery())
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        rendered = {}
         original_renderer = routes_contracts.doc_generator.render_contract_document
-        routes_contracts.doc_generator.render_contract_document = lambda data, version: b"PK-docx"
+        routes_contracts.doc_generator.render_contract_document = lambda data, version: rendered.update(data) or b"PK-docx"
         try:
             response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
 
         self.assertEqual(response.body, b"PK-docx")
-
-    def test_document_response_renders_snapshot_as_inline_docx(self):
-        document = SimpleNamespace(
-            output_file_name="HopDong_2004_BK-2026.docx",
-            render_data_snapshot={
-                "contract_id": "2004/BK-2026",
-                "_template_version": "mau_hop_dong_v1",
-            },
-        )
-        original_renderer = routes_contracts.doc_generator.render_contract_document
-        routes_contracts.doc_generator.render_contract_document = lambda data, version: b"PK-docx"
-        try:
-            response = routes_contracts.render_generated_contract_document(document)
-        finally:
-            routes_contracts.doc_generator.render_contract_document = original_renderer
-
-        self.assertEqual(response.body, b"PK-docx")
-        self.assertEqual(
-            response.media_type,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-        self.assertIn("inline", response.headers["content-disposition"])
-        self.assertIn("HopDong_2004_BK-2026.docx", response.headers["content-disposition"])
-
-    def test_snapshot_keeps_issued_values_filename_and_document_route(self):
-        issued_data = {
-            "contract_id": "2004/BK-2026",
-            "customer_name": "Lê Thị Kiểm Thử",
-            "contract_value": 18500000,
-        }
-
-        snapshot, filename, route = build_contract_document_snapshot(issued_data)
-
-        issued_data["customer_name"] = "Đã chỉnh sửa"
-        self.assertEqual(snapshot["customer_name"], "Lê Thị Kiểm Thử")
-        self.assertEqual(snapshot["_template_version"], "mau_hop_dong_v1")
-        self.assertEqual(filename, "HopDong_2004_BK-2026_Lê_Thị_Kiểm_Thử.docx")
-        self.assertEqual(route, "/api/contracts/2004/BK-2026/document")
+        self.assertEqual(rendered["customer_name"], "Tên hiện tại")
+        self.assertEqual(rendered["customer_email"], "")
+        self.assertEqual(rendered["due_date"], "")
 
     def test_renders_docx_bytes_without_creating_generated_docs_directory(self):
         """A new contract document must remain in memory, not in static/generated_docs."""

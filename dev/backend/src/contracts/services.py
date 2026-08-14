@@ -12,6 +12,7 @@ from src.db.models import (
     Contract,
     ContractGeneratedDocument,
     Customer,
+    LeadPipeline,
     Receivable,
     ServiceLine,
     ServicePackage,
@@ -51,6 +52,52 @@ def build_contract_document_snapshot(contract_data: dict) -> tuple[dict, str, st
     filename = f"HopDong_{safe_contract_id}_{safe_customer_name}.docx"
     document_route = f"/api/contracts/{quote(contract_id, safe='/')}/document"
     return snapshot, filename, document_route
+
+
+def build_contract_document_metadata(contract_id: str, customer_name: str | None) -> tuple[str, str]:
+    """Return the stable API route and safe local filename without freezing document content."""
+    normalized_contract_id = str(contract_id or "").strip()
+    normalized_customer_name = str(customer_name or "KhachHang").strip() or "KhachHang"
+    safe_contract_id = DOCUMENT_FILENAME_INVALID_CHARACTERS.sub("_", normalized_contract_id).replace(" ", "_")
+    safe_customer_name = DOCUMENT_FILENAME_INVALID_CHARACTERS.sub("_", normalized_customer_name).replace(" ", "_")
+    return (
+        f"HopDong_{safe_contract_id}_{safe_customer_name}.docx",
+        f"/api/contracts/{quote(normalized_contract_id, safe='/')}/document",
+    )
+
+
+def _document_date(value) -> str:
+    return value.strftime("%Y-%m-%d") if value and hasattr(value, "strftime") else str(value or "")
+
+
+def build_current_contract_document_data(db: Session, contract_id: str) -> tuple[dict, str]:
+    """Map only currently persisted contract records to DOCX template placeholders."""
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng.")
+
+    customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
+    service_line = db.query(ServiceLine).filter(ServiceLine.contract_id == contract.id).first()
+    receivable = db.query(Receivable).filter(Receivable.contract_id == contract.id).first()
+    lead = (
+        db.query(LeadPipeline).filter(LeadPipeline.id == contract.lead_id).first()
+        if contract.lead_id else None
+    )
+    customer_name = getattr(customer, "full_name", "") or ""
+    filename, _ = build_contract_document_metadata(contract.id, customer_name)
+
+    return {
+        "contract_id": contract.id,
+        "customer_name": customer_name,
+        "phone": getattr(customer, "phone", "") or "",
+        "customer_email": getattr(customer, "email", "") or "",
+        "service_type": contract.service_type or getattr(service_line, "service_type", "") or "",
+        "address": getattr(service_line, "property_address", "") or getattr(customer, "address", "") or "",
+        "contract_value": contract.total_value if contract.total_value is not None else getattr(service_line, "price", "") or "",
+        "date_signed": _document_date(contract.date_signed),
+        "due_date": _document_date(getattr(receivable, "due_date", None)),
+        "sales_source": getattr(lead, "source", "") or "",
+    }, filename
 
 
 def _create_initial_service_line(
@@ -180,11 +227,8 @@ class ContractService:
     def generate_and_save_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
-            contract_data = payload.model_dump()
-            contract_data["contract_id"] = contract_id
-            document_snapshot, document_filename, document_route = build_contract_document_snapshot(contract_data)
-                
             cust_name = payload.customer_name
+            document_filename, document_route = build_contract_document_metadata(contract_id, cust_name)
             phone = payload.phone
             address = payload.address
             service_type = payload.service_type
@@ -241,7 +285,7 @@ class ContractService:
                 status="generated",
                 output_file_link=document_route,
                 output_file_name=document_filename,
-                render_data_snapshot=document_snapshot,
+                render_data_snapshot={},
                 generated_by=actor_id_val,
                 generated_at=datetime.now(timezone.utc),
             ))
