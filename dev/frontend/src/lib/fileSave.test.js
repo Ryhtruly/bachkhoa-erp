@@ -1,12 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { openProtectedDocument, saveFileWithUserLocation } from './fileSave';
+import {
+  fetchProtectedDocumentBlob,
+  requestDocxSaveHandle,
+  writeBlobToFileHandle,
+} from './fileSave';
 
-describe('saveFileWithUserLocation', () => {
+describe('DOCX file save helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    delete window.showSaveFilePicker;
   });
 
-  it('uses window.showSaveFilePicker when available', async () => {
+  it('claims a Save As handle before a DOCX blob exists', async () => {
+    const mockHandle = { createWritable: vi.fn() };
+    window.showSaveFilePicker = vi.fn().mockResolvedValue(mockHandle);
+
+    const result = await requestDocxSaveHandle('TestHopDong.docx');
+
+    expect(window.showSaveFilePicker).toHaveBeenCalledWith(
+      expect.objectContaining({ suggestedName: 'TestHopDong.docx' })
+    );
+    expect(result).toEqual({ handle: mockHandle });
+  });
+
+  it('writes a fetched DOCX blob to a previously selected handle', async () => {
     const mockWrite = vi.fn().mockResolvedValue(undefined);
     const mockClose = vi.fn().mockResolvedValue(undefined);
     const mockHandle = {
@@ -16,61 +33,48 @@ describe('saveFileWithUserLocation', () => {
       }),
     };
 
-    window.showSaveFilePicker = vi.fn().mockResolvedValue(mockHandle);
-
     const testBlob = new Blob(['test content'], { type: 'text/plain' });
-    const result = await saveFileWithUserLocation(testBlob, 'TestHopDong.docx');
+    const result = await writeBlobToFileHandle(mockHandle, testBlob);
 
-    expect(window.showSaveFilePicker).toHaveBeenCalledWith(
-      expect.objectContaining({
-        suggestedName: 'TestHopDong.docx',
-      })
-    );
     expect(mockHandle.createWritable).toHaveBeenCalled();
     expect(mockWrite).toHaveBeenCalledWith(testBlob);
     expect(mockClose).toHaveBeenCalled();
     expect(result).toEqual({ success: true, method: 'picker' });
   });
 
-  it('handles user cancellation (AbortError) gracefully without throwing', async () => {
+  it('returns cancellation without creating a contract-side download fallback', async () => {
     const abortError = new Error('The user aborted a request.');
     abortError.name = 'AbortError';
     window.showSaveFilePicker = vi.fn().mockRejectedValue(abortError);
 
-    const testBlob = new Blob(['test content'], { type: 'text/plain' });
-    const result = await saveFileWithUserLocation(testBlob, 'TestHopDong.docx');
+    const result = await requestDocxSaveHandle('TestHopDong.docx');
 
-    expect(result).toEqual({ success: false, cancelled: true });
+    expect(result).toEqual({ cancelled: true });
   });
 
   it('does not download automatically when the location picker is unavailable', async () => {
-    delete window.showSaveFilePicker;
     const createElement = vi.spyOn(document, 'createElement');
 
-    const testBlob = new Blob(['test content'], { type: 'text/plain' });
-    const result = await saveFileWithUserLocation(testBlob, 'FallbackHopDong.docx');
+    const result = await requestDocxSaveHandle('FallbackHopDong.docx');
 
-    expect(result).toEqual({ success: false, reason: 'SaveLocationUnsupported' });
+    expect(result).toEqual({ reason: 'SaveLocationUnsupported' });
     expect(createElement).not.toHaveBeenCalled();
   });
 });
 
-describe('openProtectedDocument', () => {
-  it('fetches the protected document with bearer auth and opens its blob', async () => {
-    const preview = { opener: {}, location: { replace: vi.fn() }, close: vi.fn() };
-    vi.spyOn(window, 'open').mockReturnValue(preview);
-    vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:contract-document');
-    vi.spyOn(window, 'setTimeout').mockImplementation(() => 1);
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['docx']) });
+describe('fetchProtectedDocumentBlob', () => {
+  it('fetches the protected document with bearer auth without opening a browser tab', async () => {
+    const documentBlob = new Blob(['docx']);
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: async () => documentBlob });
+    const open = vi.spyOn(window, 'open');
 
-    const result = await openProtectedDocument('/api/contracts/2004/BK-2026/document', 'access-token');
+    const result = await fetchProtectedDocumentBlob('/api/contracts/2004/BK-2026/document', 'access-token');
 
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/contracts/2004/BK-2026/document',
       { headers: { Authorization: 'Bearer access-token' } },
     );
-    expect(preview.opener).toBeNull();
-    expect(preview.location.replace).toHaveBeenCalledWith('blob:contract-document');
-    expect(result).toEqual({ success: true });
+    expect(result).toBe(documentBlob);
+    expect(open).not.toHaveBeenCalled();
   });
 });
