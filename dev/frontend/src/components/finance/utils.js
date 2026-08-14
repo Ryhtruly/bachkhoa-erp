@@ -66,9 +66,14 @@ export const docSoTiengViet = (number) => {
   return res;
 };
 
+export const VOUCHER_SIGNERS = Object.freeze({
+  director: 'Lê Văn Sáu',
+  creator: 'Lê Văn Sáu',
+});
+
 export const CATEGORY_AUTO_MAPPING = {
-  "Văn phòng phẩm": { department_code: "Phòng Kỹ Thuật", payer_payee: "Hằng", created_by: "Hằng", approved_by: "Giám đốc" },
-  "In ấn - Photocopy": { department_code: "Phòng Pháp Lý", payer_payee: "Nguyễn Thị A", created_by: "Nguyễn Thị A", approved_by: "Giám đốc" },
-  "Chi quầy tiếp nhận": { department_code: "Phòng Marketing", payer_payee: "Nhân viên Marketing", created_by: "Nhân viên Marketing", approved_by: "Giám đốc" },
-  "Chi thụ lý bản vẽ": { department_code: "Phòng Kỹ Thuật", payer_payee: "Lê Văn Dựng", created_by: "Lê Văn Dựng", approved_by: "Giám đốc" }
+  "Văn phòng phẩm": { department_code: "Phòng Đo vẽ", payer_payee: "Hồ Thị Mỹ Hằng", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director },
+  "In ấn - Photocopy": { department_code: "Phòng Pháp lý", payer_payee: "Trần Thụy Tường Vy", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director },
+  "Chi tiếp khách & Giao tế": { department_code: "Phòng Sale / CSKH", payer_payee: "Nhân viên CSKH", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director },
+  "Chi thụ lý bản vẽ & Trích lục": { department_code: "Phòng Đo vẽ", payer_payee: "Nguyễn Văn A", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director }
 };

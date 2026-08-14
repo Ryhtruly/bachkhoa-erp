@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING, getLocalISOTime } from '../utils';
+import { DatePicker, DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
+import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING, getLocalISOTime, VOUCHER_SIGNERS } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
-import { Check, AlertCircle, Settings, Link, RefreshCw, PlusCircle } from 'lucide-react';
+import { Check, AlertCircle, Settings, Link, RefreshCw, PlusCircle, Wallet, Building2, History, ShieldCheck } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import CashflowModal from '../modals/CashflowModal';
 import CashflowDetailModal from '../modals/CashflowDetailModal';
@@ -20,12 +20,17 @@ export default function SettingsScreen() {
   const [soDuThucTeCK, setSoDuThucTeCK] = useState('');
   const [ghiChuCK, setGhiChuCK] = useState('');
 
-  const [nguoiChot, setNguoiChot] = useState('Lê Văn Dựng');
+  const [nguoiChot, setNguoiChot] = useState(VOUCHER_SIGNERS.director);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [filterMonth, setFilterMonth] = useState('');
+  const [thresholds, setThresholds] = useState({
+    expense_approval_threshold: 2000000,
+    advance_admin_threshold: 5000000
+  });
+  const [savingThresholds, setSavingThresholds] = useState(false);
   const { addToast } = useToast();
 
   const filteredHistory = useMemo(() => {
@@ -41,10 +46,48 @@ export default function SettingsScreen() {
     });
   }, [history, filterMonth]);
 
-  const fetchSystemBalance = useCallback(async () => {
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/finance/settings`);
+      if (res.ok) {
+        const d = await res.json();
+        setThresholds({
+          expense_approval_threshold: d.expense_approval_threshold ?? 2000000,
+          advance_admin_threshold: d.advance_admin_threshold ?? 5000000
+        });
+      }
+    } catch (e) {
+      console.error("Lỗi lấy cấu hình tài chính", e);
+    }
+  }, []);
+
+  const handleSaveThresholds = async () => {
+    setSavingThresholds(true);
+    try {
+      const res = await fetch(`${API}/api/finance/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expense_approval_threshold: thresholds.expense_approval_threshold,
+          advance_admin_threshold: thresholds.advance_admin_threshold
+        })
+      });
+      if (res.ok) {
+        addToast('Giám đốc đã lưu cấu hình ngưỡng tài chính!', 'success');
+      } else {
+        addToast('Không thể lưu cấu hình', 'error');
+      }
+    } catch {
+      addToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setSavingThresholds(false);
+    }
+  };
+
+  const fetchSystemBalance = useCallback(async (closingMoment = ngayChot) => {
     setLoading(true);
     try {
-      const isoString = new Date(ngayChot).toISOString();
+      const isoString = new Date(closingMoment).toISOString();
       const [resTM, resCK] = await Promise.all([
         fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Tiền mặt')}&closing_date=${encodeURIComponent(isoString)}`),
         fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Chuyển khoản')}&closing_date=${encodeURIComponent(isoString)}`)
@@ -55,7 +98,7 @@ export default function SettingsScreen() {
         setSoDuHeThongTM(dTM.system_balance || 0);
         setSoDuHeThongCK(dCK.system_balance || 0);
       } else {
-        addToast('❌ Không thể tính toán số dư từ hệ thống', 'error');
+        addToast('Không thể tính toán số dư từ hệ thống', 'error');
       }
     } catch {
       console.log("Lỗi kết nối API");
@@ -82,7 +125,8 @@ export default function SettingsScreen() {
   useEffect(() => {
     fetchSystemBalance();
     fetchHistory();
-  }, [fetchSystemBalance, fetchHistory]);
+    fetchSettings();
+  }, [fetchSystemBalance, fetchHistory, fetchSettings]);
 
   const valThucTeTM = soDuThucTeTM === '' ? 0 : Number(soDuThucTeTM);
   const chenhLechTM = soDuThucTeTM === '' ? 0 : valThucTeTM - soDuHeThongTM;
@@ -108,15 +152,15 @@ export default function SettingsScreen() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (soDuThucTeTM === '' && soDuThucTeCK === '') {
-      addToast('⚠️ Vui lòng nhập ít nhất một số dư thực tế để chốt quỹ!', 'warning');
+      addToast('Vui lòng nhập ít nhất một số dư thực tế để chốt quỹ!', 'warning');
       return;
     }
     if (soDuThucTeTM !== '' && chenhLechTM !== 0 && !ghiChuTM.trim()) {
-      addToast('⚠️ Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Tiền Mặt!', 'warning');
+      addToast('Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Tiền Mặt!', 'warning');
       return;
     }
     if (soDuThucTeCK !== '' && chenhLechCK !== 0 && !ghiChuCK.trim()) {
-      addToast('⚠️ Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Chuyển Khoản!', 'warning');
+      addToast('Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Chuyển Khoản!', 'warning');
       return;
     }
 
@@ -161,7 +205,7 @@ export default function SettingsScreen() {
       const allOk = results.every(res => res.ok);
 
       if (allOk) {
-        addToast('✅ Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
+        addToast('Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
         setSoDuThucTeTM('');
         setGhiChuTM('');
         setSoDuThucTeCK('');
@@ -204,18 +248,37 @@ export default function SettingsScreen() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
             <div>
               <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mốc thời gian chốt</label>
-              <input
-                type="datetime-local"
-                style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
-                value={ngayChot}
-                onChange={(e) => { 
-                  setNgayChot(e.target.value); 
-                  setSoDuThucTeTM(''); 
-                  setSoDuThucTeCK(''); 
-                  setTimeout(() => fetchSystemBalance(), 0);
-                }}
-                required
-              />
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 112px', gap: 8 }}>
+                <DatePicker
+                  value={ngayChot.slice(0, 10)}
+                  onChange={(value) => {
+                    if (!value) return;
+                    const nextClosingMoment = `${value}T${ngayChot.slice(11, 16) || '00:00'}`;
+                    setNgayChot(nextClosingMoment);
+                    setSoDuThucTeTM('');
+                    setSoDuThucTeCK('');
+                    fetchSystemBalance(nextClosingMoment);
+                  }}
+                  placeholder="Chọn ngày chốt"
+                  dialogLabel="Chọn ngày chốt quỹ"
+                  clearable={false}
+                  className="date-picker--fill"
+                />
+                <input
+                  type="time"
+                  aria-label="Giờ chốt quỹ"
+                  style={{ width: '100%', height: 42, padding: '0 10px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
+                  value={ngayChot.slice(11, 16)}
+                  onChange={(e) => {
+                    const nextClosingMoment = `${ngayChot.slice(0, 10)}T${e.target.value}`;
+                    setNgayChot(nextClosingMoment);
+                    setSoDuThucTeTM('');
+                    setSoDuThucTeCK('');
+                    fetchSystemBalance(nextClosingMoment);
+                  }}
+                  required
+                />
+              </div>
             </div>
             <div>
               <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người thực hiện chốt</label>
@@ -235,13 +298,13 @@ export default function SettingsScreen() {
             {/* Quỹ Tiền Mặt */}
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 24, background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
               <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-                💵 QUỸ TIỀN MẶT (KÉT SẮT)
+                <Wallet size={20} color="#10b981" /> QUỸ TIỀN MẶT (KÉT SẮT)
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
                   <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
-                    {loading ? '⏳...' : `${soDuHeThongTM.toLocaleString('vi-VN')}₫`}
+                    {loading ? 'Đang tải...' : `${soDuHeThongTM.toLocaleString('vi-VN')}₫`}
                   </div>
                 </div>
 
@@ -288,13 +351,13 @@ export default function SettingsScreen() {
             {/* Quỹ Chuyển Khoản */}
             <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 24, background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
               <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-                🏦 QUỸ CHUYỂN KHOẢN (NGÂN HÀNG)
+                <Building2 size={20} color="#3b82f6" /> QUỸ CHUYỂN KHOẢN (NGÂN HÀNG)
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
                   <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
-                    {loading ? '⏳...' : `${soDuHeThongCK.toLocaleString('vi-VN')}₫`}
+                    {loading ? 'Đang tải...' : `${soDuHeThongCK.toLocaleString('vi-VN')}₫`}
                   </div>
                 </div>
 
@@ -371,26 +434,17 @@ export default function SettingsScreen() {
         <div style={{ marginTop: 32, borderTop: '1px solid #e2e8f0', paddingTop: 28 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
             <h4 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 10, letterSpacing: '-0.01em' }}>
-              📋 LỊCH SỬ CHỐT QUỸ TRƯỚC ĐÓ
+              <History size={20} color="var(--orange-500)" /> LỊCH SỬ CHỐT QUỸ TRƯỚC ĐÓ
             </h4>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Chọn tháng:</span>
-                <input
-                  type="month"
+                <DatePicker
+                  selectionMode="month"
                   value={filterMonth}
-                  onChange={(e) => setFilterMonth(e.target.value)}
-                  style={{
-                    height: 32,
-                    padding: '0 8px',
-                    borderRadius: 8,
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    outline: 'none',
-                    color: '#1e293b',
-                    background: '#ffffff'
-                  }}
+                  onChange={setFilterMonth}
+                  placeholder="Chọn tháng"
+                  dialogLabel="Chọn tháng lịch sử chốt quỹ"
                 />
               </div>
               {filterMonth && (
@@ -461,6 +515,67 @@ export default function SettingsScreen() {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Khối Cấu Hình Ngưỡng Tài Chính (Dành cho Giám Đốc) */}
+        <div style={{ marginTop: 40, borderTop: '2px dashed #e2e8f0', paddingTop: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <div>
+              <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={20} color="var(--orange-500)" /> CẤU HÌNH NGƯỠNG PHÊ DUYỆT TÀI CHÍNH (GIÁM ĐỐC)
+              </h4>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
+                Thiết lập hạn mức chi tiêu và tạm ứng vượt ngưỡng bắt buộc phải có Giám đốc phê duyệt.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSaveThresholds}
+              disabled={savingThresholds}
+              style={{ background: '#10b981', borderColor: '#10b981' }}
+            >
+              {savingThresholds ? 'Đang lưu...' : 'Lưu Cấu Hình Ngưỡng'}
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#f8fafc', padding: 24, borderRadius: 16, border: '1px solid #e2e8f0' }}>
+            <div style={{ background: '#fff', padding: 18, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
+                Ngưỡng duyệt chi tự động / vượt cấp (VNĐ)
+              </label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  style={{ width: '100%', fontWeight: 700, fontSize: '1.2rem', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}
+                  value={Number(thresholds.expense_approval_threshold || 0).toLocaleString('vi-VN')}
+                  onChange={(e) => setThresholds(prev => ({ ...prev, expense_approval_threshold: Number(e.target.value.replace(/[^\d]/g, '')) }))}
+                />
+                <span style={{ position: 'absolute', right: 14, fontWeight: 700, color: '#64748b' }}>₫</span>
+              </div>
+              <small style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6, display: 'block' }}>
+                Mặc định: 2.000.000₫. Các khoản chi lớn hơn ngưỡng này cần Giám đốc duyệt.
+              </small>
+            </div>
+
+            <div style={{ background: '#fff', padding: 18, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
+                Ngưỡng tạm ứng cấp Giám đốc (VNĐ)
+              </label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  style={{ width: '100%', fontWeight: 700, fontSize: '1.2rem', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}
+                  value={Number(thresholds.advance_admin_threshold || 0).toLocaleString('vi-VN')}
+                  onChange={(e) => setThresholds(prev => ({ ...prev, advance_admin_threshold: Number(e.target.value.replace(/[^\d]/g, '')) }))}
+                />
+                <span style={{ position: 'absolute', right: 14, fontWeight: 700, color: '#64748b' }}>₫</span>
+              </div>
+              <small style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6, display: 'block' }}>
+                Mặc định: 5.000.000₫. Các đề xuất tạm ứng vượt ngưỡng này cần thẩm định đặc biệt.
+              </small>
+            </div>
           </div>
         </div>
 

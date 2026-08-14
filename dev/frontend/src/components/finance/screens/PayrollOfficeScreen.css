@@ -1,0 +1,136 @@
+.payroll-office {
+  padding: 24px;
+}
+
+.payroll-office__header {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.payroll-office__heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 5px;
+}
+
+.payroll-office__description {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.payroll-office__toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(190px, auto) minmax(340px, 1fr);
+  align-items: end;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+
+.payroll-office__control {
+  display: grid;
+  align-content: end;
+  gap: 7px;
+  min-width: 0;
+}
+
+.payroll-office__control-label {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.payroll-office__period .date-picker,
+.payroll-office__period .date-picker__trigger {
+  width: 100%;
+}
+
+.payroll-office__status .badge {
+  width: fit-content;
+  min-height: 42px;
+  padding: 0 14px;
+  font-size: 0.8rem;
+}
+
+.payroll-office__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.payroll-office__action {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 16px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.payroll-office__action--lock {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.payroll-office__action--lock:hover:not(:disabled) {
+  border-color: #d97706;
+  background: #d97706;
+}
+
+.payroll-office__action--pay {
+  border-color: #10b981;
+  background: #10b981;
+}
+
+.payroll-office__action--pay:hover:not(:disabled) {
+  border-color: #059669;
+  background: #059669;
+}
+
+[data-theme='dark'] .payroll-office__toolbar {
+  border-color: #334155;
+  background: #0f172a;
+}
+
+@media (max-width: 1180px) {
+  .payroll-office__toolbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(190px, 1fr);
+  }
+
+  .payroll-office__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 680px) {
+  .payroll-office {
+    padding: 18px;
+  }
+
+  .payroll-office__toolbar {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .payroll-office__actions {
+    grid-column: auto;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payroll-office__action {
+    width: 100%;
+  }
+}

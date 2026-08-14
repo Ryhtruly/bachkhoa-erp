@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Check, FileWarning, Paperclip, X } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
+import ReceiptLinks from '../../components/finance/ReceiptLinks'
 import { useToast } from '../../contexts/ToastContext'
 import './approvals.css'
 
@@ -109,8 +110,8 @@ export default function PendingApprovals() {
               <span className="approvals__partner">{r.payer_payee_name || r.payer_payee || 'Không rõ người nộp'}</span>
               <span className="approvals__contract">{r.contract_id}</span>
               <span className="approvals__amount">{tien(r.amount)}</span>
-              {r.receipt_attachment_url
-                ? <span className="approvals__bill" title="Có ảnh bill"><Paperclip size={13} /></span>
+              {r.receipt_attachments?.length || r.receipt_attachment_url
+                ? <span className="approvals__bill" title="Có bill/biên lai"><Paperclip size={13} />{r.receipt_attachments?.length || 1}</span>
                 : <span className="approvals__bill is-missing" title="Thiếu ảnh bill"><FileWarning size={13} /></span>}
             </button>
           </li>
@@ -129,10 +130,12 @@ export default function PendingApprovals() {
               <p><span>Hình thức</span><strong>{dangXem.payment_method || '—'}</strong></p>
             </div>
 
-            {dangXem.receipt_attachment_url ? (
-              <a className="approvals__bill-link" href={dangXem.receipt_attachment_url} target="_blank" rel="noreferrer">
-                <Paperclip size={14} /> Xem ảnh bill
-              </a>
+            {dangXem.receipt_attachments?.length || dangXem.receipt_attachment_url ? (
+              <ReceiptLinks
+                attachments={dangXem.receipt_attachments}
+                legacyUrl={dangXem.receipt_attachment_url}
+                addToast={addToast}
+              />
             ) : (
               <p className="approvals__warn">
                 <AlertTriangle size={14} /> Phiếu này <strong>không có ảnh bill</strong>. Duyệt nghĩa là

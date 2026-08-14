@@ -10,3 +10,5 @@ export { default as Modal, FormRow, FormGrid } from './Modal';
 export { default as Card, SectionHeader, EmptyState, Divider } from './Card';
 export { Badge, StatusBadge, WarningBadge, Tag } from './Badge';
 export { Dropdown } from './Dropdown';
+export { SensitiveActionModal } from './SensitiveActionModal';
+export { default as ConfirmationModal } from './ConfirmationModal';

@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import HeaderUserMenu from './HeaderUserMenu';
+import { applyTheme, getInitialTheme } from '../lib/theme';
 
 export default function TopHeader({ onLogout, user, onNotificationNavigate }) {
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState(getInitialTheme);
   const [scrolled, setScrolled] = useState(false);
   // Chỉ 1 dropdown mở tại 1 thời điểm — mở cái mới tự đóng cái đang mở.
   const [openDropdown, setOpenDropdown] = useState(null); // 'notifications' | 'user' | null
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    applyTheme(theme);
   }, [theme]);
 
   useEffect(() => {

@@ -143,6 +143,7 @@ export default function CRM() {
             key: 'source',
             label: 'Nguồn khách hàng',
             type: 'select',
+            width: 200,
             options: [
               { value: 'Facebook', label: 'Facebook' },
               { value: 'Zalo cá nhân', label: 'Zalo cá nhân' },

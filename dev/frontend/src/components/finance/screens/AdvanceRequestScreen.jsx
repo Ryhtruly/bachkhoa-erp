@@ -1,20 +1,25 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
+import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING, VOUCHER_SIGNERS } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { PlusCircle, RefreshCw, AlertCircle, Link } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import CashflowModal from '../modals/CashflowModal';
 import CashflowDetailModal from '../modals/CashflowDetailModal';
+import { apiFetch } from '../../../lib/api';
 
+const getTodayIso = () => {
+  const today = new Date();
+  const offset = today.getTimezoneOffset();
+  return new Date(today.getTime() - offset * 60000).toISOString().slice(0, 10);
+};
 
-export default function AdvanceRequestScreen({ month: propMonth, setMonth: propSetMonth }) {
+export default function AdvanceRequestScreen({ month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [currentUser, setCurrentUser] = useState(propUser || null);
   const [form, setForm] = useState({
     project_id: '',
     contract_id: '',
@@ -23,13 +28,14 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
     note: '',
     payment_method: 'Tiền mặt',
     department_code: '',
-    created_by: 'Lê Văn Dựng',
+    transaction_date: getTodayIso(),
+    created_by: VOUCHER_SIGNERS.creator,
     accounting: 'Nguyễn Thị A',
-    approved_by: 'Lê Văn Dựng',
-    status: 'Hoàn thành'
+    status: 'Chờ duyệt'
   });
   const [amtDisplay, setAmtDisplay] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [detailId, setDetailId] = useState(null);
   const [error, setError] = useState('');
   const { addToast } = useToast();
 
@@ -42,18 +48,37 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
 
   const load = async () => {
     setLoading(true);
-    const r = await fetch(`${API}/api/finance/advance`);
-    setData(await r.json());
-    setLoading(false);
+    try {
+      const r = await fetch(`${API}/api/finance/advance`);
+      if (r.ok) {
+        setData(await r.json());
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     load();
     fetch(`${API}/api/finance/projects`).then(r => r.json()).then(setProjects).catch(() => { });
-  }, []);
+    if (propIsDirector === undefined && !propUser) {
+      apiFetch('/api/auth/me').then(u => setCurrentUser(u)).catch(() => {});
+    }
+  }, [propIsDirector, propUser]);
+
+  const isDirector = propIsDirector !== undefined
+    ? propIsDirector
+    : Boolean(
+        currentUser?.is_director ||
+        currentUser?.username === 'admin' ||
+        currentUser?.role_name === 'admin'
+      );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.transaction_date) { setError('Vui lòng chọn ngày lập phiếu'); return; }
     const amount = parseAmt(amtDisplay);
     if (!amount) { setError('Nhập số tiền'); return; }
     setSubmitting(true); setError('');
@@ -74,14 +99,18 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         })
       });
       if (res.ok) {
-        addToast(' Đã tạo phiếu tạm ứng', 'success');
-        setModal(false); load();
+        addToast('Đã tạo phiếu tạm ứng', 'success');
+        setModal(false); 
+        load();
       } else {
         const err = await res.json();
         setError(err.detail || 'Lỗi server');
       }
-    } catch { setError('Lỗi kết nối'); }
-    finally { setSubmitting(false); }
+    } catch { 
+      setError('Lỗi kết nối'); 
+    } finally { 
+      setSubmitting(false); 
+    }
   };
 
   const filtered = data.filter(t => {
@@ -119,8 +148,22 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   return (
     <div>
       <FinanceScreenHeader 
-        title=" Đề Xuất Tạm Ứng" 
-        subtitle="Ứng tiền mặt cho kỹ sư/chỉ huy trưởng trước khi ra công trường" 
+        title="Đề Xuất Tạm Ứng" 
+        subtitle="Ứng tiền cho kỹ sư/chỉ huy trưởng/pháp lý trước khi đi công trường hoặc thực hiện nhiệm vụ" 
+        onRefresh={load}
+        actions={
+          !isDirector ? (
+            <button 
+              type="button"
+              className="btn btn-primary" 
+              onClick={() => setModal(true)} 
+              style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+              title="Nhân viên / Kế toán lập đề xuất xin tạm ứng kinh phí"
+            >
+              <PlusCircle size={16} /> Lập Đề Xuất Tạm Ứng
+            </button>
+          ) : null
+        }
       />
 
       <FilterBar
@@ -128,8 +171,14 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         onSearchChange={setSearch}
         searchPlaceholder="Tìm số phiếu, đối tác, dự án..."
         filters={[
-          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 160, options: [{ value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] },
-          { key: 'status', label: 'Trạng thái', type: 'select', width: 140, options: [{ value: 'Hoàn thành', label: 'Hoàn thành' }, { value: 'Chờ duyệt', label: 'Chờ duyệt' }] }
+          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 175, options: [{ value: 'All', label: 'Tất cả hình thức' }, { value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] },
+          { key: 'status', label: 'Trạng thái', type: 'select', width: 180, options: [
+            { value: 'All', label: 'Tất cả trạng thái' },
+            { value: 'Chờ duyệt', label: 'Chờ duyệt' },
+            { value: 'Hoàn thành', label: 'Hoàn thành' },
+            { value: 'Từ chối', label: 'Từ chối' },
+            { value: 'Đã hủy', label: 'Đã hủy' }
+          ] }
         ]}
         values={filters}
         onFilterChange={(k, v) => setFilters(p => ({ ...p, [k]: v }))}
@@ -148,32 +197,16 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         />
       )}
 
-      <DataTable columns={CF_COLS} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng" pageSize={15} />
+      <DataTable columns={CF_COLS} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng" pageSize={15} onRowClick={row => setDetailId(row.id)} />
 
-      <Modal open={modal} onClose={() => setModal(false)} size="lg" title=" Đề Xuất Tạm Ứng">
+      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Lập Đề Xuất Tạm Ứng">
         <form onSubmit={handleSubmit}>
           <ExcelGridTable
             title="PHIẾU TẠM ỨNG"
             accentColor="#f59e0b"
             formId=""
-            date={form.transaction_date || new Date().toLocaleDateString('vi-VN')}
-            onDateChange={(v) => setForm({ ...form, transaction_date: v })}
-            note={form.note}
-            onNoteChange={(v) => setForm({ ...form, note: v })}
-            category="Chi phí tạm ứng"
-            categoryOptions={undefined}
-            personLabel="Người nhận"
-            personName={form.payer_payee}
-            onPersonNameChange={(v) => setForm({ ...form, payer_payee: v })}
-            method={form.payment_method}
-            onMethodChange={(v) => setForm({ ...form, payment_method: v })}
-            department={form.department_code}
-            onDepartmentChange={(v) => setForm({ ...form, department_code: v })}
-            amountDisplay={amtDisplay}
-            onAmountChange={(v) => setAmtDisplay(fmtAmt(v))}
-            status={form.status}
-            onStatusChange={(v) => setForm({ ...form, status: v })}
-            projectId={form.project_id || ''}
+            date={form.transaction_date}
+            onDateChange={(v) => setForm(prev => ({ ...prev, transaction_date: v }))}
             onProjectIdChange={(v) => setForm({ ...form, project_id: v })}
             contractId={form.contract_id || ''}
             onContractIdChange={(v) => setForm({ ...form, contract_id: v })}
@@ -192,10 +225,19 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-default)' }}>
             <button type="button" className="btn btn-secondary" onClick={() => setModal(false)}>Hủy</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? '⏳...' : 'Tạo Phiếu Tạm Ứng'}</button>
+            <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Đang tạo...' : 'Tạo Phiếu Tạm Ứng'}</button>
           </div>
         </form>
       </Modal>
+
+      <CashflowDetailModal
+        open={!!detailId}
+        transactionId={detailId}
+        isDirector={isDirector}
+        user={propUser || currentUser}
+        onClose={() => setDetailId(null)}
+        onSuccess={load}
+      />
     </div>
   );
 }

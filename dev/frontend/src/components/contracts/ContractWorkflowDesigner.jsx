@@ -1003,15 +1003,7 @@ export default function ContractWorkflowDesigner({
 
   const activateCurrentWorkflow = async () => {
     if (!serviceLine?.id || !canActivate || (hasActiveRuntime && !structureEditable)) return;
-    let amendmentReason = changeReason;
-    if (hasActiveRuntime && !amendmentReason.trim()) {
-      amendmentReason = window.prompt('Nhập lý do sửa quy trình đang vận hành:') || '';
-      if (!amendmentReason.trim()) {
-        addToast?.('Cần nhập lý do để áp dụng bản sửa đổi', 'error');
-        return;
-      }
-      setChangeReason(amendmentReason);
-    }
+    const amendmentReason = changeReason;
     const hasUnassignedNode = nodes.some(node => !(node.data.assignments || []).length);
     const projectedKeys = new Set();
     const projectedTotal = nodes.reduce((total, node) => total + (node.data.assignments || []).reduce(
@@ -1033,14 +1025,18 @@ export default function ContractWorkflowDesigner({
     const message = hasUnassignedNode
       ? `Một số Node chưa được phân công. Bạn vẫn muốn ${actionLabel.toLowerCase()}?`
       : `${actionLabel} sẽ lưu một Revision có lịch sử riêng.${compensationMessage}\nTiếp tục?`;
-    setActivationConfirmation({ amendmentReason, message });
+    setActivationConfirmation({ amendmentReason, message, phase: 'initial' });
   };
 
   const confirmWorkflowActivation = async () => {
     if (!activationConfirmation || !serviceLine?.id || activating) return;
-    const { amendmentReason } = activationConfirmation;
+    const amendmentReason = (activationConfirmation.amendmentReason || '').trim();
+    if (hasActiveRuntime && !amendmentReason) {
+      addToast?.('Cần nhập lý do để áp dụng bản sửa đổi', 'error');
+      return;
+    }
 
-    if (hasActiveRuntime) {
+    if (hasActiveRuntime && activationConfirmation.phase !== 'impact-warning') {
       const draftGraph = currentPayload(amendmentReason).graph;
       const touchedNodes = changedActiveWorkNodes(
         workflow?.active_graph,
@@ -1053,14 +1049,18 @@ export default function ContractWorkflowDesigner({
             ? `${item.node_code || item.node_key} (${workflowLabels.node_statuses[item.status]})`
             : (item.node_code || item.node_key))
           .join(', ');
-        const confirmed = window.confirm(
-          `Cảnh báo: bản sửa đổi đang tác động tới ${touchedNodes.length} Node có công việc đang xử lý: ${nodeNames}.\n\n`
-          + 'Phân công, checklist hoặc đường chuyển bước có thể ảnh hưởng tới nhân viên đang làm dở. '
-          + 'Bạn xác nhận áp dụng ngay lần cuối?'
-        );
-        if (!confirmed) return;
+        setActivationConfirmation(current => ({
+          ...current,
+          amendmentReason,
+          phase: 'impact-warning',
+          message: `Bản sửa đổi đang tác động tới ${touchedNodes.length} Node có công việc đang xử lý: ${nodeNames}.\n\n`
+            + 'Phân công, checklist hoặc đường chuyển bước có thể ảnh hưởng tới nhân viên đang làm dở. '
+            + 'Hãy kiểm tra kỹ trước khi xác nhận áp dụng ngay.',
+        }));
+        return;
       }
     }
+    setChangeReason(amendmentReason);
     setActivating(true);
     try {
       const result = await requestJson(`/api/contracts/workflow/${encodeURIComponent(serviceLine.id)}/activate`, {
@@ -1953,7 +1953,9 @@ export default function ContractWorkflowDesigner({
         open={Boolean(activationConfirmation)}
         onClose={() => { if (!activating) setActivationConfirmation(null); }}
         closeOnOverlay={!activating}
-        title="Xác nhận kích hoạt quy trình"
+        title={activationConfirmation?.phase === 'impact-warning'
+          ? 'Cảnh báo tác động quy trình đang chạy'
+          : 'Xác nhận kích hoạt quy trình'}
         id="workflow-activation-modal"
         footer={(
           <>
@@ -1967,17 +1969,37 @@ export default function ContractWorkflowDesigner({
             </button>
             <button
               type="button"
-              className="btn btn-primary workflow-activation-confirm"
+              className={`btn ${activationConfirmation?.phase === 'impact-warning' ? 'btn-danger' : 'btn-primary'} workflow-activation-confirm`}
               disabled={activating}
               onClick={confirmWorkflowActivation}
             >
               {activating ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}
-              Kích hoạt
+              {activationConfirmation?.phase === 'impact-warning'
+                ? 'Xác nhận áp dụng'
+                : hasActiveRuntime ? 'Áp dụng bản sửa đổi' : 'Kích hoạt'}
             </button>
           </>
         )}
       >
         <p style={{ margin: 0, whiteSpace: 'pre-line' }}>{activationConfirmation?.message}</p>
+        {hasActiveRuntime && activationConfirmation?.phase !== 'impact-warning' && (
+          <label style={{ display: 'block', marginTop: 16 }}>
+            <span style={{ display: 'block', marginBottom: 6, fontSize: '0.84rem', fontWeight: 700 }}>
+              Lý do sửa quy trình <span style={{ color: '#ef4444' }}>*</span>
+            </span>
+            <textarea
+              className="form-control"
+              rows={3}
+              autoFocus={!activationConfirmation?.amendmentReason}
+              value={activationConfirmation?.amendmentReason || ''}
+              onChange={event => setActivationConfirmation(current => ({
+                ...current,
+                amendmentReason: event.target.value,
+              }))}
+              placeholder="Nhập lý do sửa quy trình đang vận hành..."
+            />
+          </label>
+        )}
       </Modal>
 
       <Modal

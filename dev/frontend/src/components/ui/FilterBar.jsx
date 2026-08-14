@@ -26,6 +26,7 @@ const FilterBar = memo(function FilterBar({
   onYearChange,
   sort,
   onSortChange,
+  sortOptions,
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [localSearch, setLocalSearch] = useState(search);
@@ -79,49 +80,21 @@ const FilterBar = memo(function FilterBar({
         </div>
 
         <div className="filter-bar-modern__controls">
-          {month !== undefined && dateFilterMode === 'month' && (
-            <>
-              {year !== undefined && (
-                <div className="filter-bar-modern__control-group">
-                  <span className="filter-bar-modern__control-label">Năm:</span>
-                  <input
-                    type="number"
-                    className="filter-bar-modern__control-input"
-                    value={year || ''}
-                    onChange={e => onYearChange && onYearChange(e.target.value)}
-                    placeholder="YYYY"
-                    min="2020"
-                    max="2099"
-                    style={{ width: 100 }}
-                  />
-                </div>
-              )}
-              <div className="filter-bar-modern__control-group">
-                <span className="filter-bar-modern__control-label">Tháng:</span>
-                <div className="filter-bar-modern__select-wrapper">
-                  <select
-                    className="filter-bar-modern__control-select"
-                    value={month || ''}
-                    onChange={e => onMonthChange && onMonthChange(e.target.value)}
-                  >
-                    <option value="">-- Chọn tháng --</option>
-                    <option value="01">Tháng 1</option>
-                    <option value="02">Tháng 2</option>
-                    <option value="03">Tháng 3</option>
-                    <option value="04">Tháng 4</option>
-                    <option value="05">Tháng 5</option>
-                    <option value="06">Tháng 6</option>
-                    <option value="07">Tháng 7</option>
-                    <option value="08">Tháng 8</option>
-                    <option value="09">Tháng 9</option>
-                    <option value="10">Tháng 10</option>
-                    <option value="11">Tháng 11</option>
-                    <option value="12">Tháng 12</option>
-                  </select>
-                  <ChevronDown size={14} className="select-icon" />
-                </div>
-              </div>
-            </>
+          {month !== undefined && (dateFilterMode === undefined || dateFilterMode === 'month') && (
+            <DatePicker
+              selectionMode="month"
+              value={year !== undefined && month ? `${year}-${month}` : month}
+              onChange={(value) => {
+                if (year !== undefined) {
+                  onYearChange?.(value ? value.slice(0, 4) : '');
+                  onMonthChange?.(value ? value.slice(5, 7) : '');
+                } else {
+                  onMonthChange?.(value);
+                }
+              }}
+              placeholder="Chọn tháng"
+              dialogLabel="Chọn tháng lọc dữ liệu"
+            />
           )}
 
           {date !== undefined && dateFilterMode !== 'month' && dateFilterMode !== 'year' && (
@@ -172,11 +145,19 @@ const FilterBar = memo(function FilterBar({
               <div className="filter-bar-modern__select-wrapper">
                 <select
                   className="filter-bar-modern__control-select"
-                  value={sort || 'desc'}
+                  value={sort || (sortOptions?.[0]?.value ?? 'desc')}
                   onChange={e => onSortChange && onSortChange(e.target.value)}
                 >
-                  <option value="desc">Mới nhất</option>
-                  <option value="asc">Cũ nhất</option>
+                  {sortOptions ? (
+                    sortOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="desc">Mới nhất</option>
+                      <option value="asc">Cũ nhất</option>
+                    </>
+                  )}
                 </select>
                 <ChevronDown size={14} className="select-icon" />
               </div>
@@ -230,7 +211,9 @@ const FilterBar = memo(function FilterBar({
                     onChange={(e) => onFilterChange?.(f.key, e.target.value)}
                     className="custom-select"
                   >
-                    <option value="All">Tất cả</option>
+                    {!(f.options || []).some(opt => opt.value === 'All' || opt.value === '') && (
+                      <option value="All">{f.allLabel || (f.label ? `Tất cả ${f.label.toLowerCase()}` : 'Tất cả')}</option>
+                    )}
                     {(f.options || []).map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label ?? opt.value}</option>
                     ))}

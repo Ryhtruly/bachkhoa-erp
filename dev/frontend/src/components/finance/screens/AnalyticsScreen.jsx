@@ -4,7 +4,7 @@ import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdow
 import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
-import { PlusCircle, RefreshCw, AlertCircle, Link, DollarSign } from 'lucide-react';
+import { PlusCircle, RefreshCw, AlertCircle, Link, DollarSign, Wallet, Building2, Clock, BarChart3, BarChart2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import CashflowModal from '../modals/CashflowModal';
 import CashflowDetailModal from '../modals/CashflowDetailModal';
@@ -27,23 +27,23 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
   if (mode === 'dashboard') return (
     <div>
       <FinanceScreenHeader 
-        title="📊 Tổng Quan Tài Chính"
+        title="Tổng Quan Tài Chính"
         subtitle="Biểu đồ xu hướng dòng tiền theo tháng"
       />
 
       {/* 3 Balance Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        <BalanceCard title="Quỹ Tiền Mặt" amount={cashBal} icon="💵" subtitle="Thu TM − Chi TM" />
-        <BalanceCard title="Số Dư Ngân Hàng" amount={bankBal} icon="🏦" subtitle="Thu CK − Chi CK" />
-        <BalanceCard title="Tạm Ứng Chưa Hoàn" amount={netAdv} icon="⏳" subtitle="Tạm ứng − Hoàn ứng" />
+        <BalanceCard title="Quỹ Tiền Mặt" amount={cashBal} icon={<Wallet size={20} color="#10b981" />} subtitle="Thu TM − Chi TM" />
+        <BalanceCard title="Số Dư Ngân Hàng" amount={bankBal} icon={<Building2 size={20} color="#3b82f6" />} subtitle="Thu CK − Chi CK" />
+        <BalanceCard title="Tạm Ứng Chưa Hoàn" amount={netAdv} icon={<Clock size={20} color="#f59e0b" />} subtitle="Tạm ứng − Hoàn ứng" />
       </div>
 
       {/* Bar Chart */}
       <div className="card glass-card" style={{ padding: 24, marginBottom: 0 }}>
-        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4 }}>📈 Thu Chi Theo Tháng</h3>
+        <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}><BarChart3 size={18} color="var(--orange-500)" /> Thu Chi Theo Tháng</h3>
         <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: 20 }}>* Tổng dòng tiền Thu (xanh) và Chi (đỏ) theo từng tháng</p>
         {summary.monthly.length === 0 ? (
-          <div className="finance-empty"><span className="finance-empty__icon">📉</span><span>Chưa có dữ liệu tháng</span></div>
+          <div className="finance-empty"><span className="finance-empty__icon"><BarChart2 size={32} /></span><span>Chưa có dữ liệu tháng</span></div>
         ) : (
           <div style={{ width: '100%', height: 300 }}>
             <ResponsiveContainer>
@@ -67,7 +67,7 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
   return (
     <div>
       <FinanceScreenHeader 
-        title="💰 Lợi Nhuận Theo Dự Án"
+        title="Lợi Nhuận Theo Dự Án"
         subtitle="Lợi nhuận = Σ Thu − Σ Chi − Lương khoán tổ thợ (theo từng hợp đồng)"
       />
       <div className="card glass-card" style={{ padding: 24 }}>

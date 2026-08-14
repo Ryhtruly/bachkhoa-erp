@@ -340,8 +340,8 @@ export default function Tasks() {
           onSearchChange={(value) => { setSearchTerm(value); setPage(1); }}
           searchPlaceholder="Tìm theo tên hồ sơ, mã hợp đồng, khách hàng, hạng mục..."
           filters={[
-            { key: 'status', label: 'Trạng thái', type: 'select', width: 170, options: STATUS_OPTIONS.map((s) => ({ value: s, label: s })) },
-            { key: 'priority', label: 'Độ ưu tiên', type: 'select', width: 150, options: PRIORITY_OPTIONS },
+            { key: 'status', label: 'Trạng thái', type: 'select', width: 180, options: STATUS_OPTIONS.map((s) => ({ value: s, label: s })) },
+            { key: 'priority', label: 'Độ ưu tiên', type: 'select', width: 165, options: PRIORITY_OPTIONS },
             { key: 'ward_code', label: 'Phường', type: 'select', width: 190, options: wards.map((w) => ({ value: w.code, label: w.name })) },
           ]}
           values={filters}

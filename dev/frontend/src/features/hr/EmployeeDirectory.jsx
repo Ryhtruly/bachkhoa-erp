@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle, ArrowLeft, Camera, Lock, Mail, Pencil, Printer, Save, Search,
@@ -9,6 +9,9 @@ import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../lib/api';
 import { initialsOf } from '../../lib/avatar';
 import AvatarImage from '../../components/AvatarImage';
+import { printElement } from '../../components/finance/print/printDocument';
+import EmployeePrintProfile from './EmployeePrintProfile';
+import employeeProfilePrintStyles from './employeeProfile.print.css?inline';
 import './humanResources.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -135,6 +138,7 @@ function CreateAccountModal({ employee, onClose, onCreated }) {
 
 export default function EmployeeDirectory() {
   const { addToast } = useToast();
+  const printDocumentRef = useRef(null);
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -173,6 +177,15 @@ export default function EmployeeDirectory() {
     () => employees.find((employee) => employee.id === selectedId) || null,
     [employees, selectedId],
   );
+
+  const handlePrintEmployee = () => {
+    printElement({
+      element: printDocumentRef.current,
+      title: `Hồ sơ nhân sự - ${selectedEmployee?.full_name || ''}`,
+      styles: employeeProfilePrintStyles,
+      onError: message => addToast(message, 'error'),
+    });
+  };
 
   const startCreate = () => {
     setSelectedId(null);
@@ -448,7 +461,7 @@ export default function EmployeeDirectory() {
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(selectedEmployee)}>
                     <Pencil size={14} /> Sửa
                   </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={handlePrintEmployee}>
                     <Printer size={14} /> In
                   </button>
                   <button
@@ -683,6 +696,12 @@ export default function EmployeeDirectory() {
           </form>
         )}
       </section>
+
+      {selectedEmployee && mode === 'view' && (
+        <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '182mm', pointerEvents: 'none' }}>
+          <EmployeePrintProfile employee={selectedEmployee} documentRef={printDocumentRef} />
+        </div>
+      )}
 
       {accountTarget && (
         <CreateAccountModal

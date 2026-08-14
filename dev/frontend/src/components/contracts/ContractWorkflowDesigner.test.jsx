@@ -115,18 +115,25 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/contracts/workflow/line-1/activate');
   });
 
-  it('keeps the final high-risk confirmation separate after the activation modal', () => {
-    const confirmMock = vi.fn(() => false);
-    vi.stubGlobal('prompt', vi.fn(() => 'Cập nhật phân công'));
-    vi.stubGlobal('confirm', confirmMock);
+  it('keeps the final high-risk confirmation in a second application modal', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      amended: true, node_count: 1, assignment_count: 1, compensation_assignment_count: 1,
+    }), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
     renderDesigner({ active: true, changedActiveNode: true });
 
     fireEvent.click(getToolbarAction('áp dụng'));
-    expect(confirmMock).not.toHaveBeenCalled();
+    const firstDialog = screen.getByRole('dialog', { name: 'Xác nhận kích hoạt quy trình' });
+    fireEvent.change(within(firstDialog).getByPlaceholderText('Nhập lý do sửa quy trình đang vận hành...'), {
+      target: { value: 'Cập nhật phân công' },
+    });
+    fireEvent.click(within(firstDialog).getByRole('button', { name: /^áp dụng bản sửa đổi$/i }));
 
-    fireEvent.click(within(screen.getByRole('dialog', { name: 'Xác nhận kích hoạt quy trình' })).getByRole('button', { name: /^kích hoạt$/i }));
+    const warningDialog = screen.getByRole('dialog', { name: 'Cảnh báo tác động quy trình đang chạy' });
+    expect(within(warningDialog).getByText(/bản sửa đổi đang tác động tới/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
 
-    expect(confirmMock).toHaveBeenCalledTimes(1);
-    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining('Cảnh báo: bản sửa đổi đang tác động tới'));
+    fireEvent.click(within(warningDialog).getByRole('button', { name: /^xác nhận áp dụng$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 });

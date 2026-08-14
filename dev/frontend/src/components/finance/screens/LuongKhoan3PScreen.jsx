@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, Banknote, CheckCircle2 } from 'lucide-react';
-import { Badge, DataTable, FormRow } from '../../ui';
+import { Badge, ConfirmationModal, DataTable, DatePicker, FormRow } from '../../ui';
 import { useToast } from '../../../contexts/ToastContext';
 import { fmt, formatDate } from '../utils';
 import { API } from '../financeConstants';
@@ -18,7 +18,7 @@ const adjustmentLabels = {
   holiday_bonus: 'Thưởng lễ/Tết',
 };
 
-export default function LuongKhoan3PScreen() {
+export default function LuongKhoan3PScreen({ user, isDirector = false }) {
   const { addToast } = useToast();
   const [options, setOptions] = useState({
     departments: [],
@@ -32,6 +32,7 @@ export default function LuongKhoan3PScreen() {
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState(false);
+  const [closePayrollOpen, setClosePayrollOpen] = useState(false);
 
   useEffect(() => {
     const loadOptions = async () => {
@@ -98,47 +99,52 @@ export default function LuongKhoan3PScreen() {
     loadLedger();
   }, [loadLedger]);
 
-  const selectedDepartment = options.departments.find(
-    (department) => department.id === departmentId,
-  );
-  const employees = selectedDepartment?.employees || [];
-  const summary = ledger?.summary || {
-    base_salary: 0,
-    main_task_count: 0,
-    support_task_count: 0,
-    piece_rate_main: 0,
-    piece_rate_support: 0,
-    allowance: 0,
-    bonus: 0,
-    penalty: 0,
-    gross_total: 0,
-    recorded_total: 0,
-    estimated_total: 0,
-    paid_total: 0,
-    unpaid_total: 0,
-    pending_record_count: 0,
-    pending_record_total: 0,
-    provisional_count: 0,
-    provisional_total: 0,
-  };
+  const currentDepartment = options.departments.find((item) => item.id === departmentId);
+  const employees = currentDepartment?.employees || [];
 
-  const handleDepartmentChange = (value) => {
-    const department = options.departments.find((item) => item.id === value);
-    setDepartmentId(value);
+  const handleDepartmentChange = (nextDepartmentId) => {
+    setDepartmentId(nextDepartmentId);
+    const department = options.departments.find((item) => item.id === nextDepartmentId);
     setEmployeeId(department?.employees?.[0]?.id || '');
   };
 
-  const handleClosePayroll = async () => {
-    const pendingCount = Number(summary.pending_record_count || 0);
-    if (!employeeId || pendingCount <= 0) {
-      addToast('Không có dòng lương hoàn thành nào cần chốt trong kỳ này.', 'info');
+  const summary = ledger?.summary || {};
+  const summaryCards = [
+    {
+      label: 'Tổng thu nhập (Net)',
+      value: summary.net_salary ?? summary.gross_total ?? 0,
+      note: 'Sau khi tính phụ cấp, thưởng và phạt',
+      tone: 'primary',
+    },
+    {
+      label: 'Lương đã duyệt',
+      value: summary.approved_salary ?? summary.recorded_total ?? 0,
+      note: `${summary.approved_count ?? 0} nhiệm vụ đã ghi nhận`,
+      tone: 'success',
+    },
+    {
+      label: 'Chờ ghi nhận',
+      value: summary.pending_record_total || 0,
+      note: `${summary.pending_record_count || 0} nhiệm vụ hoàn thành chờ chốt`,
+      tone: 'warning',
+    },
+    {
+      label: 'Tạm tính (chưa xong)',
+      value: summary.provisional_total || 0,
+      note: `${summary.provisional_count || 0} nhiệm vụ đang thực hiện`,
+      tone: 'neutral',
+    },
+  ];
+
+  const handleClosePayroll = () => {
+    if (Number(summary.pending_record_count || 0) <= 0) {
+      addToast('Không có dòng lương nào cần chốt trong kỳ này.', 'info');
       return;
     }
-    const ok = window.confirm(
-      `Chốt ${pendingCount} dòng lương cho ${ledger?.employee?.full_name || 'nhân viên'} kỳ ${String(month).padStart(2, '0')}/${year}?`,
-    );
-    if (!ok) return;
+    setClosePayrollOpen(true);
+  };
 
+  const handleConfirmClosePayroll = async () => {
     try {
       setClosing(true);
       const response = await fetch(`${API}/api/payroll/close-employee-period`, {
@@ -161,6 +167,7 @@ export default function LuongKhoan3PScreen() {
           : 'Không có dòng lương mới cần chốt.',
         created > 0 ? 'success' : 'info',
       );
+      setClosePayrollOpen(false);
       await loadLedger();
     } catch (error) {
       addToast(error.message || 'Không chốt được lương.', 'error');
@@ -247,73 +254,43 @@ export default function LuongKhoan3PScreen() {
       label: 'TỔNG NHẬN',
       width: 140,
       align: 'right',
-      render: (value) => <strong className="text-success">{fmt(value)}</strong>,
+      render: (value) => <strong className="payroll-money payroll-money--accent">{fmt(value)}</strong>,
     },
     {
-      key: 'payment_status',
-      label: 'GHI NHẬN',
-      width: 185,
-      render: (value, row) => (
-        <div className="payroll-task">
-          <Badge
-            variant={row.is_recorded ? (
-              value === 'Đã thanh toán' ? 'success' : 'warning'
-            ) : (row.is_closable ? 'warning' : 'neutral')}
-            dot
-          >
-            {value}
-          </Badge>
-          <span>{row.source}</span>
-        </div>
-      ),
+      key: 'status',
+      label: 'TRẠNG THÁI',
+      width: 135,
+      align: 'center',
+      render: (value) => {
+        if (value === 'approved') return <Badge variant="success" dot>Đã duyệt</Badge>;
+        if (value === 'pending_record') return <Badge variant="warning" dot>Chờ ghi nhận</Badge>;
+        return <Badge variant="neutral" dot>Tạm tính</Badge>;
+      },
     },
   ];
 
-  const summaryCards = [
-    {
-      label: 'Lương cơ bản',
-      value: summary.base_salary,
-      note: `${ledger?.employee?.job_title || 'Nhân viên'}`,
-      tone: 'success',
-    },
-    {
-      label: 'Khoán chính',
-      value: summary.piece_rate_main,
-      note: `${summary.main_task_count} nhiệm vụ`,
-      tone: 'primary',
-    },
-    {
-      label: 'Khoán phụ đo',
-      value: summary.piece_rate_support,
-      note: `${summary.support_task_count} nhiệm vụ`,
-      tone: 'info',
-    },
-    { label: 'Phụ cấp', value: summary.allowance, note: 'Cắm mốc / hủy / khác', tone: 'warning' },
-    { label: 'Thưởng', value: summary.bonus, note: 'Ưu tiên và điều chỉnh', tone: 'success' },
-    { label: 'Phạt', value: summary.penalty, note: 'Khấu trừ trong tháng', tone: 'danger' },
-    { label: 'Chờ ghi nhận', value: summary.pending_record_total, note: `${summary.pending_record_count} dòng hoàn thành`, tone: 'warning' },
-    { label: 'Tạm tính', value: summary.provisional_total, note: `${summary.provisional_count} dòng chưa hoàn thành`, tone: 'info' },
-    { label: 'Đã thanh toán', value: summary.paid_total, note: `${fmt(summary.recorded_total)} đã ghi nhận`, tone: 'success' },
-    { label: 'Còn chờ', value: summary.unpaid_total, note: 'Gồm khoản dự tính', tone: 'warning' },
-  ];
   const adjustmentColumns = [
+    {
+      key: 'event_date',
+      label: 'NGÀY',
+      width: 120,
+      render: formatDate,
+    },
     {
       key: 'type',
       label: 'LOẠI ĐIỀU CHỈNH',
       width: 180,
-      render: (value) => adjustmentLabels[value] || value,
+      render: (value) => adjustmentLabels[value] || value || 'Khác',
     },
-    { key: 'reason', label: 'LÝ DO' },
     {
-      key: 'task_id',
-      label: 'HỒ SƠ',
-      width: 140,
-      render: (value) => value || 'Không gắn hồ sơ',
+      key: 'reason',
+      label: 'LÝ DO / GHI CHÚ',
+      render: (value) => value || '—',
     },
     {
       key: 'amount',
       label: 'SỐ TIỀN',
-      width: 150,
+      width: 140,
       align: 'right',
       render: (value, row) => (
         <strong className={row.type === 'penalty' ? 'text-danger' : 'text-success'}>
@@ -327,7 +304,7 @@ export default function LuongKhoan3PScreen() {
     <div className="card payroll-ledger">
       <div className="payroll-ledger__header">
         <div>
-          <h3><Banknote size={20} /> Lương khoán nhiệm vụ</h3>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Banknote size={20} color="var(--orange-500)" /> Lương khoán nhiệm vụ</h3>
           <div className="sub">
             Theo dõi nhiệm vụ chính, phụ đo, phụ cấp, thưởng và phạt theo tháng.
           </div>
@@ -336,15 +313,17 @@ export default function LuongKhoan3PScreen() {
           <Badge variant={ledger?.period_status === 'Paid' ? 'success' : 'warning'} dot>
             Kỳ lương: {payrollPeriodLabels[ledger?.period_status] || 'Đang mở'}
           </Badge>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={closing || loading || optionsLoading || Number(summary.pending_record_count || 0) <= 0}
-            onClick={handleClosePayroll}
-          >
-            <CheckCircle2 size={15} />
-            {closing ? 'Đang chốt...' : `Chốt lương (${summary.pending_record_count || 0})`}
-          </button>
+          {isDirector && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={closing || loading || optionsLoading || Number(summary.pending_record_count || 0) <= 0}
+              onClick={handleClosePayroll}
+            >
+              <CheckCircle2 size={15} />
+              {closing ? 'Đang chốt...' : `Chốt lương (${summary.pending_record_count || 0}) (Giám đốc)`}
+            </button>
+          )}
         </div>
       </div>
 
@@ -378,27 +357,20 @@ export default function LuongKhoan3PScreen() {
             ))}
           </select>
         </FormRow>
-        <FormRow label="Năm">
-          <select
-            className="form-control"
-            value={year}
-            onChange={(event) => setYear(Number(event.target.value))}
-          >
-            {options.years.map((optionYear) => (
-              <option key={optionYear} value={optionYear}>{optionYear}</option>
-            ))}
-          </select>
-        </FormRow>
-        <FormRow label="Tháng">
-          <select
-            className="form-control"
-            value={month}
-            onChange={(event) => setMonth(Number(event.target.value))}
-          >
-            {Array.from({ length: 12 }, (_, index) => index + 1).map((value) => (
-              <option key={value} value={value}>Tháng {value}</option>
-            ))}
-          </select>
+        <FormRow label="Kỳ lương">
+          <DatePicker
+            selectionMode="month"
+            value={`${year}-${String(month).padStart(2, '0')}`}
+            onChange={(value) => {
+              if (!value) return;
+              setYear(Number(value.slice(0, 4)));
+              setMonth(Number(value.slice(5, 7)));
+            }}
+            placeholder="Chọn kỳ lương"
+            dialogLabel="Chọn kỳ lương khoán nhiệm vụ"
+            clearable={false}
+            className="date-picker--fill"
+          />
         </FormRow>
       </div>
 
@@ -454,12 +426,31 @@ export default function LuongKhoan3PScreen() {
           <DataTable
             columns={adjustmentColumns}
             data={ledger.adjustments}
+            loading={loading || optionsLoading}
             rowKey="id"
-            pageSize={0}
+            emptyText="Không có điều chỉnh"
+            pageSize={10}
             compact
           />
         </div>
       )}
+
+      <ConfirmationModal
+        open={closePayrollOpen}
+        title="Xác nhận chốt lương"
+        description={(
+          <span>
+            Bạn có chắc chắn muốn chốt <strong>{summary.pending_record_count || 0}</strong> dòng lương
+            với tổng số tiền <strong>{fmt(summary.pending_record_total || 0)}</strong> cho nhân sự{' '}
+            <strong>{ledger?.employee?.full_name || 'đang chọn'}</strong>?
+          </span>
+        )}
+        confirmLabel="Chốt lương"
+        cancelLabel="Để sau"
+        onConfirm={handleConfirmClosePayroll}
+        onClose={() => setClosePayrollOpen(false)}
+        isLoading={closing}
+      />
     </div>
   );
 }

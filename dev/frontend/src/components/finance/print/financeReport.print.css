@@ -1,0 +1,208 @@
+@page {
+  size: A4 landscape;
+  margin: 10mm 12mm;
+}
+
+:root {
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+html,
+body {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  background: #fff;
+  color: #000000;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 9.5pt;
+  line-height: 1.4;
+}
+
+.finance-print-document {
+  width: 100%;
+}
+
+.finance-print-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12mm;
+  padding-bottom: 3mm;
+  border-bottom: 1.5px solid #000000;
+  line-height: 1.45;
+  font-size: 9.5pt;
+}
+
+.finance-print-header strong {
+  font-size: 10pt;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.finance-print-header__right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.finance-print-title {
+  margin: 5mm 0 4mm;
+  text-align: center;
+}
+
+.finance-print-title h1 {
+  margin: 0 0 1.5mm;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 16pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #000000;
+}
+
+.payroll-print-title,
+.payroll-print-title__main,
+.payroll-print-title__secondary {
+  display: block;
+}
+
+.payroll-print-title__main {
+  font-size: 17pt;
+  line-height: 1.1;
+  letter-spacing: 0.8px;
+}
+
+.payroll-print-title__secondary {
+  margin-top: 1.2mm;
+  font-size: 11pt;
+  line-height: 1.15;
+  letter-spacing: 1.6px;
+}
+
+.finance-print-subtitle {
+  font-style: italic;
+  font-size: 9pt;
+  color: #333333;
+}
+
+.finance-print-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3mm 8mm;
+  margin-bottom: 4mm;
+  padding: 2.5mm 4mm;
+  background: #f8fafc;
+  border: 1px solid #94a3b8;
+  border-radius: 1.5mm;
+  font-size: 9.5pt;
+}
+
+.finance-print-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+}
+
+.finance-print-summary strong {
+  font-weight: 700;
+}
+
+.finance-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 9pt;
+}
+
+.finance-print-table thead {
+  display: table-header-group;
+}
+
+.finance-print-table tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.finance-print-table th,
+.finance-print-table td {
+  padding: 2mm 2.5mm;
+  border: 1px solid #334155;
+  vertical-align: middle;
+}
+
+.finance-print-table th {
+  background: #f1f5f9;
+  font-weight: 800;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: #000000;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.finance-print-table td {
+  color: #000000;
+}
+
+.finance-print-table .is-right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.finance-print-table .is-center {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.finance-print-table .finance-print-footer-row td,
+.finance-print-table tfoot td {
+  background: #f8fafc;
+  font-weight: 800;
+  border-top: 2.5px double #000000;
+  font-size: 9.5pt;
+}
+
+.finance-print-empty {
+  padding: 10mm !important;
+  text-align: center;
+  color: #64748b;
+}
+
+.finance-print-signatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12mm;
+  margin-top: 8mm;
+  text-align: center;
+  break-inside: avoid;
+}
+
+.finance-print-signatures div {
+  display: flex;
+  min-height: 24mm;
+  flex-direction: column;
+  gap: 1mm;
+}
+
+.finance-print-signatures strong {
+  font-size: 9.5pt;
+  text-transform: uppercase;
+}
+
+.finance-print-signatures span {
+  font-size: 8pt;
+  font-style: italic;
+  color: #475569;
+}

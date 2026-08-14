@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, CheckCircle2, Clock3, RotateCcw, XCircle } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, getAccessToken } from '../lib/api';
 import { useDropdownPosition } from '../lib/useDropdownPosition';
 
 const TYPE_ICON = {
@@ -19,12 +19,83 @@ export default function NotificationBell({ open, onOpenChange, onNavigate }) {
 
   useEffect(() => {
     let cancelled = false;
+    let abortController = null;
+    let fallbackPollId = null;
+
     const poll = () => apiFetch('/api/notifications/summary')
       .then((payload) => { if (!cancelled) setItems(payload.items || []); })
       .catch(() => {});
+
+    const startFallbackPolling = () => {
+      if (fallbackPollId !== null) return;
+      poll();
+      fallbackPollId = window.setInterval(poll, 5000);
+    };
+
+    const stopFallbackPolling = () => {
+      if (fallbackPollId === null) return;
+      window.clearInterval(fallbackPollId);
+      fallbackPollId = null;
+    };
+
+    const wait = (milliseconds) => new Promise((resolve) => {
+      window.setTimeout(resolve, milliseconds);
+    });
+
     poll();
-    const pollId = setInterval(poll, 5000);
-    return () => { cancelled = true; clearInterval(pollId); };
+
+    const subscribe = async () => {
+      while (!cancelled) {
+        const token = getAccessToken();
+        if (!token) {
+          startFallbackPolling();
+          return;
+        }
+
+        abortController = new AbortController();
+        try {
+          const response = await fetch('/api/notifications/events', {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+            cache: 'no-store',
+            signal: abortController.signal,
+          });
+          if (response.status === 401 || response.status === 403) {
+            startFallbackPolling();
+            return;
+          }
+          if (!response.ok || !response.body) throw new Error('Không kết nối được Notification Realtime');
+
+          stopFallbackPolling();
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          while (!cancelled) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const blocks = buffer.split('\n\n');
+            buffer = blocks.pop() || '';
+            if (blocks.some((block) => block.includes('event: notifications-changed'))) {
+              poll();
+            }
+          }
+        } catch (streamError) {
+          if (cancelled || streamError?.name === 'AbortError') return;
+        }
+
+        if (!cancelled) {
+          startFallbackPolling();
+          await wait(1500);
+        }
+      }
+    };
+
+    subscribe();
+    return () => {
+      cancelled = true;
+      abortController?.abort();
+      if (fallbackPollId !== null) window.clearInterval(fallbackPollId);
+    };
   }, []);
 
   useEffect(() => {

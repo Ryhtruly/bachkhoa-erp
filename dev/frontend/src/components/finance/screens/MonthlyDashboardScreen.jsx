@@ -1,14 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
-import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
-import { API, CF_COLS } from '../financeConstants';
-import { PlusCircle, RefreshCw, AlertCircle, Link } from 'lucide-react';
+import { DatePicker } from '../../ui';
+import { fmt } from '../utils';
+import { API } from '../financeConstants';
+import { BarChart2, TrendingUp, TrendingDown, Scale, FolderKanban, BarChart3, Building2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import CashflowModal from '../modals/CashflowModal';
-import CashflowDetailModal from '../modals/CashflowDetailModal';
-
 
 export default function MonthlyDashboardScreen({ month: propMonth, setMonth: propSetMonth }) {
   const [localMonth, setLocalMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -16,7 +12,6 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   const setMonth = propSetMonth !== undefined ? propSetMonth : setLocalMonth;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeChartTab, setActiveChartTab] = useState('category'); // 'category' | 'dept'
   const { addToast } = useToast();
 
   const fetchDashboardData = useCallback(async () => {
@@ -27,11 +22,11 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
         const d = await res.json();
         setData(d);
       } else {
-        addToast('❌ Không thể tải dữ liệu báo cáo tháng', 'error');
+        addToast('Không thể tải dữ liệu báo cáo tháng', 'error');
       }
     } catch (e) {
       console.error(e);
-      addToast('❌ Lỗi kết nối máy chủ', 'error');
+      addToast('Lỗi kết nối máy chủ', 'error');
     } finally {
       setLoading(false);
     }
@@ -46,8 +41,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   }
 
   const d = data || {
-    month: 7,
-    year: 2026,
+    month: Number(month.split('-')[1] || 8),
+    year: Number(month.split('-')[0] || 2026),
     total_income: 0,
     total_expenditure: 0,
     net_difference: 0,
@@ -59,27 +54,27 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   const totalExpenditure = d.total_expenditure || 0;
   const netDifference = d.net_difference || 0;
 
-  const chartCategoriesData = d.categories.map(c => ({
+  const chartCategoriesData = (d.categories || []).map(c => ({
     name: c.name,
-    income: c.income || 0,
-    expense: c.expense || 0
+    income: c.income ?? c.thu ?? 0,
+    expense: c.expenditure ?? c.expense ?? c.chi ?? 0
   })).filter(c => c.income > 0 || c.expense > 0);
 
-  const chartDepartmentsData = d.departments.map(dept => ({
+  const chartDepartmentsData = (d.departments || []).map(dept => ({
     name: dept.name,
-    income: dept.income || 0,
-    expense: dept.expense || 0
+    income: dept.income ?? dept.thu ?? 0,
+    expense: dept.expenditure ?? dept.expense ?? dept.chi ?? 0
   })).filter(dept => dept.income > 0 || dept.expense > 0);
 
   return (
-    <div style={{ padding: '16px 0', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ padding: '8px 0', fontFamily: 'system-ui, sans-serif' }}>
       {/* Selector Header */}
       <div style={{
         background: '#ffffff',
         borderRadius: 16,
         padding: '20px 24px',
         border: '1px solid #e2e8f0',
-        marginBottom: 24,
+        marginBottom: 20,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -87,31 +82,24 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
         gap: 16
       }}>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-            📊 BẢNG ĐIỀU KHIỂN THU - CHI (THEO THÁNG)
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <BarChart2 size={22} color="var(--orange-500)" /> BẢNG ĐIỀU KHIỂN THU - CHI (THEO THÁNG)
           </h2>
-          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '4px 0 0 0' }}>
-            Báo cáo tổng hợp doanh số thu chi theo Hạng mục và Phòng ban
+          <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0 0' }}>
+            Báo cáo tổng hợp doanh số thu chi phân bổ theo Hạng mục chi phí và Phòng ban
           </p>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>Chọn tháng:</span>
-            <input
-              type="month"
+            <DatePicker
+              selectionMode="month"
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              style={{
-                height: 38,
-                padding: '0 12px',
-                borderRadius: 8,
-                border: '1px solid #cbd5e1',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                outline: 'none',
-                color: '#1e293b'
-              }}
+              onChange={setMonth}
+              placeholder="Chọn tháng báo cáo"
+              dialogLabel="Chọn tháng báo cáo thu chi"
+              clearable={false}
             />
           </div>
           <div style={{ display: 'flex', gap: 12, background: '#f1f5f9', padding: '6px 12px', borderRadius: 8, fontSize: '0.85rem' }}>
@@ -125,8 +113,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
       {/* 3 Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         <div style={{ background: '#ffffff', borderRadius: 16, padding: '20px 24px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(16,185,129,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
-            💰
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(16,185,129,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <TrendingUp size={22} color="#10b981" />
           </div>
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tổng Thu</div>
@@ -137,8 +125,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
         </div>
 
         <div style={{ background: '#ffffff', borderRadius: 16, padding: '20px 24px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
-            💸
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <TrendingDown size={22} color="#ef4444" />
           </div>
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tổng Chi</div>
@@ -149,8 +137,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
         </div>
 
         <div style={{ background: netDifference >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 16, padding: '20px 24px', border: `1px solid ${netDifference >= 0 ? '#bbf7d0' : '#fecaca'}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: netDifference >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>
-            ⚖️
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: netDifference >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Scale size={22} color={netDifference >= 0 ? '#10b981' : '#ef4444'} />
           </div>
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Chênh Lệch</div>
@@ -169,10 +157,10 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           
           {/* Table 1: Theo Hạng Mục */}
           <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
-              📁 Theo Hạng Mục
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', borderBottom: '1px solid #f1f5f9', paddingBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FolderKanban size={18} color="var(--orange-500)" /> Theo Hạng Mục Chi Phí
             </h3>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, maxHeight: 380, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', color: '#475569', textAlign: 'left', fontWeight: 700 }}>
@@ -184,7 +172,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                 <tbody>
                   {d.categories.map((cat, idx) => {
                     const inc = cat.income ?? cat.thu ?? 0;
-                    const exp = cat.expense ?? cat.chi ?? 0;
+                    const exp = cat.expenditure ?? cat.expense ?? cat.chi ?? 0;
                     return (
                       <tr key={idx} style={{ 
                         borderBottom: '1px solid #f1f5f9',
@@ -208,8 +196,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
 
           {/* Chart 1: Hạng mục */}
           <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0' }}>
-              📊 Thu / Chi theo Hạng mục phát sinh
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <BarChart3 size={18} color="var(--orange-500)" /> Biểu Đồ Thu / Chi Theo Hạng Mục
             </h3>
             {chartCategoriesData.length === 0 ? (
               <div style={{ flex: 1, minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
@@ -239,14 +227,14 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           
           {/* Table 2: Theo Phòng Ban */}
           <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
-              🏢 Theo Phòng Ban / Dự Án
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', borderBottom: '1px solid #f1f5f9', paddingBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Building2 size={18} color="var(--orange-500)" /> Theo Phòng Ban Chức Năng
             </h3>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, maxHeight: 380, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', color: '#475569', textAlign: 'left', fontWeight: 700 }}>
-                    <th style={{ padding: '8px 12px', borderRadius: '6px 0 0 6px' }}>Phòng ban / Dự án</th>
+                    <th style={{ padding: '8px 12px', borderRadius: '6px 0 0 6px' }}>Phòng ban</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right' }}>Thu</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right', borderRadius: '0 6px 6px 0' }}>Chi</th>
                   </tr>
@@ -261,7 +249,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                   ) : (
                     d.departments.map((dept, idx) => {
                       const inc = dept.income ?? dept.thu ?? 0;
-                      const exp = dept.expense ?? dept.chi ?? 0;
+                      const exp = dept.expenditure ?? dept.expense ?? dept.chi ?? 0;
                       return (
                         <tr key={idx} style={{ 
                           borderBottom: '1px solid #f1f5f9',
@@ -286,15 +274,15 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
 
           {/* Chart 2: Phòng ban */}
           <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 20, display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0' }}>
-              📊 Phân bổ Thu / Chi theo Phòng ban
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', margin: '0 0 16px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <BarChart3 size={18} color="var(--orange-500)" /> Phân Bổ Doanh Thu & Chi Phí Theo Phòng Ban
             </h3>
             {chartDepartmentsData.length === 0 ? (
-              <div style={{ flex: 1, minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
+              <div style={{ flex: 1, minHeight: 250, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.85rem' }}>
                 Không có dữ liệu phát sinh theo phòng ban
               </div>
             ) : (
-              <div style={{ flex: 1, width: '100%', minHeight: 220 }}>
+              <div style={{ flex: 1, width: '100%', minHeight: 250 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartDepartmentsData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />

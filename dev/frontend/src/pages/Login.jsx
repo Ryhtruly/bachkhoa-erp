@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './login.css';
+import loginLogo from '../assets/TieuDe.png';
+import { applyTheme, getInitialTheme } from '../lib/theme';
 
 /**
  * Trang đăng nhập.
@@ -26,6 +28,11 @@ export default function Login({ onLogin }) {
   const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(TEN_DA_NHO)));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -60,17 +67,27 @@ export default function Login({ onLogin }) {
 
         <header className="top">
           <div className="brand">
-            <svg width="17" height="13" viewBox="0 0 17 13" fill="none" aria-hidden="true">
-              <path d="M0 0l6 6.5L0 13V0z" fill="#E8703A" />
-              <path d="M8 0l6 6.5L8 13V0z" fill="#E8703A" opacity=".55" />
-            </svg>
-            Bách Khoa ERP
+            <img
+              src={loginLogo}
+              alt="Bách Khoa - Đo đạc - Kiến trúc - Xây dựng"
+            />
           </div>
-          <dl className="meta">
-            <div><dt>Hệ thống</dt><dd>Quản trị đo vẽ &amp; pháp lý</dd></div>
-            <div><dt>Phiên bản</dt><dd>2.4</dd></div>
-            <div><dt>Trạng thái</dt><dd className="live"><b />Đang hoạt động</dd></div>
-          </dl>
+          <div className="top-tools">
+            <button
+              className="theme-toggle"
+              type="button"
+              onClick={() => setTheme((currentTheme) => currentTheme === 'light' ? 'dark' : 'light')}
+              aria-label={theme === 'light' ? 'Chuyển sang nền tối' : 'Chuyển sang nền sáng'}
+              title={theme === 'light' ? 'Chuyển sang nền tối' : 'Chuyển sang nền sáng'}
+            >
+              <span aria-hidden="true">{theme === 'light' ? '🌙' : '☀️'}</span>
+            </button>
+            <dl className="meta">
+              <div><dt>Hệ thống</dt><dd>Quản trị đo vẽ &amp; pháp lý</dd></div>
+              <div><dt>Phiên bản</dt><dd>2.4</dd></div>
+              <div><dt>Trạng thái</dt><dd className="live"><b />Đang hoạt động</dd></div>
+            </dl>
+          </div>
         </header>
 
         <main className="body">

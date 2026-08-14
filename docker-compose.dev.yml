@@ -41,9 +41,8 @@ services:
       REDIS_URL: redis://redis-contracts:6379/0
       WATCHFILES_FORCE_POLLING: "true"
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: wiki-files
+      MINIO_FINANCE_BUCKET: finance-files
       MINIO_PUBLIC_URL: http://localhost:9000
     ports:
       - "127.0.0.1:8080:8080"
@@ -52,6 +51,8 @@ services:
       - ./dev/backend/static:/app/static
     depends_on:
       redis-contracts:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test:
@@ -91,8 +92,8 @@ services:
     volumes:
       - minio_data:/data
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in dev/backend/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in dev/backend/.env}
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s

@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { Modal, FormRow, FormGrid, Dropdown } from '../../ui';
-import { fmt, parseAmt, CATEGORY_AUTO_MAPPING, fmtAmt } from '../utils';
+import { fmt, parseAmt, CATEGORY_AUTO_MAPPING, fmtAmt, VOUCHER_SIGNERS } from '../utils';
 import { ExcelGridTable } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
 import { AlertCircle, PlusCircle, MinusCircle, Check } from 'lucide-react';
 
+const createEmptyCashflowForm = () => ({
+  category: '',
+  payer_payee: '',
+  payment_method: 'Chuyển khoản',
+  contract_id: '',
+  project_id: '',
+  department_code: '',
+  created_by: VOUCHER_SIGNERS.creator,
+  approved_by: VOUCHER_SIGNERS.director,
+});
+
 export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess }) {
   const [type, setType] = useState(defaultType);
   const [amtDisplay, setAmtDisplay] = useState('');
-  const [form, setForm] = useState({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', department_code: '', created_by: '', approved_by: '' });
+  const [form, setForm] = useState(createEmptyCashflowForm);
   const [hangMuc, setHangMuc] = useState('Sinh hoạt gia đình');
   const [customHangMuc, setCustomHangMuc] = useState('');
   const [description, setDescription] = useState('');
@@ -23,7 +34,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     if (open) {
       setType(defaultType);
       setAmtDisplay('');
-      setForm({ category: '', payer_payee: '', payment_method: 'Chuyển khoản', contract_id: '', project_id: '', department_code: '', created_by: '', approved_by: '' });
+      setForm(createEmptyCashflowForm());
       setHangMuc('Sinh hoạt gia đình');
       setCustomHangMuc('');
       setDescription('');
@@ -71,7 +82,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
       });
       if (res.ok) {
         const d = await res.json();
-        addToast(`✅ ${d.id} ghi nhận thành công`, 'success');
+        addToast(`${d.id} ghi nhận thành công`, 'success');
         onSuccess?.();
         onClose();
       } else {
@@ -128,8 +139,8 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
               value={form.payment_method}
               onChange={(val) => setForm({ ...form, payment_method: val })}
               options={[
-                { value: "Chuyển khoản", label: "🏦 Chuyển khoản" },
-                { value: "Tiền mặt", label: "💵 Tiền mặt" }
+                { value: "Chuyển khoản", label: "Chuyển khoản" },
+                { value: "Tiền mặt", label: "Tiền mặt" }
               ]}
               required
             />
@@ -156,34 +167,21 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
                 }
               }}
               options={[
-                { value: "Sinh hoạt gia đình", label: "🏠 Sinh hoạt gia đình" },
-                { value: "Chi bảo vệ", label: "🛡️ Chi bảo vệ" },
-                { value: "Chi thụ lý bản vẽ", label: "📐 Chi thụ lý bản vẽ (Yêu cầu HS/DA)" },
-                { value: "Viết hồ sơ", label: "✍️ Viết hồ sơ" },
-                { value: "Bản vẽ cấp giấy", label: "📄 Bản vẽ cấp giấy" },
-                { value: "Văn phòng phẩm", label: "✏️ Văn phòng phẩm" },
-                { value: "In ấn - Photocopy", label: "🖨️ In ấn - Photocopy" },
-                { value: "Chi quầy tiếp nhận", label: "🛎️ Chi quầy tiếp nhận" },
-                { value: "Ăn uống", label: "🍲 Ăn uống" },
-                { value: "Đi lại - Xăng xe - Gửi xe", label: "🚗 Đi lại - Xăng xe - Gửi xe" },
-                { value: "Công tác phí", label: "✈️ Công tác phí" },
-                { value: "Chuyển phát - Bưu chính-Grab", label: "📦 Chuyển phát - Bưu chính-Grab" },
-                { value: "Trang thiết bị", label: "💻 Trang thiết bị" },
-                { value: "Tiếp khách", label: "🤝 Tiếp khách" },
-                { value: "Điện - Nước - Internet", label: "⚡ Điện - Nước - Internet" },
-                { value: "Sửa chữa nhỏ", label: "🔧 Sửa chữa nhỏ" },
-                { value: "Bảo trì thiết bị", label: "🖥️ Bảo trì thiết bị" },
-                { value: "Vệ sinh - Rác thải", label: "🧹 Vệ sinh - Rác thải" },
-                { value: "Lấy sổ", label: "📘 Lấy sổ" },
-                { value: "Lấy bản vẽ", label: "📐 Lấy bản vẽ" },
-                { value: "Lấy trích lục", label: "📜 Lấy trích lục" },
-                { value: "Công chứng hồ sơ", label: "✒️ Công chứng hồ sơ" },
-                { value: "Quầy nước- cà phê", label: "☕ Quầy nước- cà phê" },
-                { value: "Bổ sung quỹ", label: "💰 Bổ sung quỹ" },
-                { value: "Đóng thuế", label: "🏦 Đóng thuế" },
-                { value: "Hỗ trợ sự kiện - Marketing", label: "📣 Hỗ trợ sự kiện - Marketing" },
-
-                { value: "Khác", label: "✨ Khác (Tự nhập)" }
+                { value: "Chi ngoại giao & Xử lý hồ sơ", label: "Chi ngoại giao & Xử lý hồ sơ" },
+                { value: "Bồi dưỡng thẩm định & Hiện trường", label: "Bồi dưỡng thẩm định & Dẫn mốc hiện trường" },
+                { value: "Chi thụ lý bản vẽ & Trích lục", label: "Chi thụ lý bản vẽ & Lấy trích lục" },
+                { value: "Công chứng, Lệ phí & Nghĩa vụ thuế", label: "Công chứng, Lệ phí & Đóng thuế" },
+                { value: "Chi tiếp khách & Giao tế", label: "Chi tiếp khách & Giao tế đối tác" },
+                { value: "Lương khoán & Hoa hồng 3P", label: "Lương khoán tổ đo vẽ & Hoa hồng" },
+                { value: "Công tác phí & Di chuyển hiện trường", label: "Công tác phí, Xăng xe & Di chuyển" },
+                { value: "Văn phòng phẩm & In ấn kỹ thuật", label: "Văn phòng phẩm & In ấn bản đồ" },
+                { value: "Sửa chữa, Kiểm định máy đo & Thiết bị", label: "Kiểm định máy đo RTK & Bảo trì thiết bị" },
+                { value: "Điện - Nước - Internet", label: "Điện - Nước - Internet" },
+                { value: "Chi hoàn trả khách hàng", label: "Chi hoàn trả khách hàng (nộp thừa / hoàn cọc)" },
+                { value: "Chi quầy tiếp nhận & Vệ sinh", label: "Chi quầy tiếp nhận & Vệ sinh" },
+                { value: "Chi bảo vệ", label: "Chi bảo vệ" },
+                { value: "Sinh hoạt gia đình", label: "Sinh hoạt gia đình" },
+                { value: "Khác", label: "Khác (Tự nhập)" }
               ]}
             />
           </FormRow>
@@ -208,7 +206,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
         </FormGrid>
         {!isThu && form.payment_method === 'Tiền mặt' && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, fontSize: '0.82rem', color: '#f59e0b' }}>
-            ⚠️ Hệ thống tự kiểm tra số dư quỹ tiền mặt trước khi ghi nhận.
+            Hệ thống tự kiểm tra số dư quỹ tiền mặt trước khi ghi nhận.
           </div>
         )}
         {error && (
@@ -220,12 +218,11 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           <button type="button" className="btn btn-secondary" onClick={onClose}>Hủy</button>
           <button type="submit" className="btn" disabled={submitting}
             style={{ background: accent, color: '#fff', padding: '0 24px', opacity: submitting ? 0.6 : 1 }}>
-            {submitting ? '⏳ Đang xử lý...' : `Ghi nhận ${isThu ? 'Phiếu Thu' : 'Phiếu Chi'}`}
+            {submitting ? 'Đang xử lý...' : `Ghi nhận ${isThu ? 'Phiếu Thu' : 'Phiếu Chi'}`}
           </button>
         </div>
       </form>
     </Modal>
   );
 }
-
 

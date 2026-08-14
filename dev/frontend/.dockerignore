@@ -1,7 +1,14 @@
+# Build artifacts and local installs can be very large and are recreated in the image.
 node_modules/
 dist/
 .env
 .env.*
-.git/
+coverage/
+.vite/
+.npm/
 *.log
 .DS_Store
+
+# Local repository metadata is not needed by Vite.
+.git/
+.github/

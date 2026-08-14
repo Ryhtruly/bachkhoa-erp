@@ -1,8 +1,9 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /**
- * Modal — Hộp thoại dùng chung
+ * Modal — Hộp thoại dùng chung (Portaled to document.body)
  *
  * Props:
  *   open: boolean
@@ -38,15 +39,18 @@ export default function Modal({
 
   // Khóa scroll body khi modal mở
   React.useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
+  if (!open) return null;
+
   const sizeMap = { sm: 400, md: 560, lg: 720, xl: 900, full: '92vw' };
 
-  return (
+  const content = (
     <div
-      className={`modal-overlay${open ? ' open' : ''}${overlayClassName ? ` ${overlayClassName}` : ''}`}
+      className={`modal-overlay open${overlayClassName ? ` ${overlayClassName}` : ''}`}
       onClick={closeOnOverlay ? (e) => e.target === e.currentTarget && onClose?.() : undefined}
       role="dialog"
       aria-modal="true"
@@ -90,6 +94,8 @@ export default function Modal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }
 
 

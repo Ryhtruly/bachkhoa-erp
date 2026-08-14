@@ -1,19 +1,20 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
-import { Dropdown } from '../ui';
+import { DatePicker, Dropdown } from '../ui';
 import { fmt, fmtShort, docSoTiengViet } from './utils';
 
-export function FinanceScreenHeader({ title, subtitle, onRefresh, children }) {
+export function FinanceScreenHeader({ title, subtitle, onRefresh, actions, children }) {
   return (
     <div className="finance-screen-header">
       <div>
         <div className="finance-screen-title">{title}</div>
         <div className="finance-screen-sub">{subtitle}</div>
       </div>
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        {actions}
         {children}
         {onRefresh && (
-          <button className="btn btn-ghost" onClick={onRefresh} style={{ height: 36, width: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button className="btn btn-ghost" onClick={onRefresh} style={{ height: 36, width: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Làm mới">
             <RefreshCw size={15} />
           </button>
         )}
@@ -120,7 +121,14 @@ export function ExcelGridTable({
           </td>
           <td style={{ fontWeight: 'bold', width: '15%' }}>Ngày</td>
           <td style={{ width: '35%' }}>
-            <input type={dateType} disabled={isReadOnly} value={date} onChange={e => onDateChange?.(e.target.value)} style={{ fontFamily: 'monospace' }} required />
+            <DatePicker
+              value={date}
+              onChange={onDateChange}
+              placeholder="Chọn ngày"
+              disabled={isReadOnly}
+              clearable={!isReadOnly}
+              className="date-picker--fill"
+            />
           </td>
         </tr>
 
@@ -156,8 +164,8 @@ export function ExcelGridTable({
               </select>
             ) : (
               <select disabled={isReadOnly} value={method} onChange={e => onMethodChange?.(e.target.value)}>
-                <option value="Chuyển khoản">🏦 Chuyển khoản</option>
-                <option value="Tiền mặt">💵 Tiền mặt</option>
+                <option value="Chuyển khoản">Chuyển khoản</option>
+                <option value="Tiền mặt">Tiền mặt</option>
               </select>
             )}
           </td>

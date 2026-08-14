@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Check, CheckCircle2, Circle, Eye, Lock, Paperclip, Plus, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, Circle, Eye, Lock, Plus, ShieldAlert, ShieldCheck, X } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
+import { SensitiveActionModal } from '../../components/ui'
+import ReceiptFileInput from '../../components/finance/ReceiptFileInput'
+import ReceiptLinks from '../../components/finance/ReceiptLinks'
+import { buildPaymentFormData } from '../../components/finance/paymentReceipts'
 import './handover.css'
 
 /**
@@ -38,18 +42,41 @@ const ngayGon = (v) => {
 }
 
 export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnly = false }) {
-  // Chế độ chỉ đọc chặn việc LÀM THAY nhân viên. Nhưng DUYỆT PHIẾU là việc của
-  // chính giám đốc — phải bấm được ngay chỗ đang nhìn thấy tiền, không bắt họ
-  // đi vòng sang màn hình khác.
-  const [dangDuyet, setDangDuyet] = useState(null)
   const [state, setState] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showPayment, setShowPayment] = useState(false)
   const [showDeliver, setShowDeliver] = useState(false)
+  const [showOverrideModal, setShowOverrideModal] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ amount: '', receipt_photo_url: '', payment_method: 'Tiền mặt', note: '' })
+  const [form, setForm] = useState({ amount: '', payment_method: 'Tiền mặt', note: '' })
+  const [receiptFiles, setReceiptFiles] = useState([])
   const [deliverNote, setDeliverNote] = useState('')
+
+  const handleOverrideHandover = async (reason) => {
+    if (!state?.contract_id) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/contracts/${encodeURIComponent(state.contract_id)}/override-handover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason })
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        addToast?.(payload.detail || 'Không thực hiện được ngoại lệ', 'error')
+        return
+      }
+      addToast?.('✅ Giám đốc đã duyệt ngoại lệ cho nợ & mở khóa bàn giao!', 'success')
+      setShowOverrideModal(false)
+      await load()
+      onChanged?.()
+    } catch {
+      addToast?.('Lỗi kết nối máy chủ', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const load = useCallback(async () => {
     if (!taskNodeId) return
@@ -97,6 +124,30 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
     }
   }, [taskNodeId, addToast, load, onChanged])
 
+  const submitPayment = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/handover/${taskNodeId}/payments`, {
+        method: 'POST',
+        body: buildPaymentFormData(form, receiptFiles),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        addToast?.(payload.detail || 'Không ghi nhận được thanh toán', 'error')
+        return false
+      }
+      addToast?.('Đã ghi nhận, chờ giám đốc duyệt', 'success')
+      await load()
+      onChanged?.()
+      return true
+    } catch {
+      addToast?.('Mất kết nối tới máy chủ', 'error')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const quyetPhieu = async (voucherId, dinh) => {
     setSaving(true)
     try {
@@ -111,7 +162,6 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
         return
       }
       addToast?.(dinh === 'approve' ? 'Đã duyệt — công nợ đã trừ' : 'Đã từ chối phiếu', 'success')
-      setDangDuyet(null)
       await load()
       onChanged?.()
     } catch {
@@ -161,6 +211,26 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
             <strong> giám đốc chưa duyệt</strong> — chưa trừ vào công nợ.
           </p>
         )}
+
+        {debt.has_override && (
+          <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid #10b98144', borderRadius: 6, fontSize: '0.8rem', color: '#059669', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ShieldCheck size={14} />
+            <span>Đã duyệt ngoại lệ cho nợ (Lý do: {debt.override_reason || 'Giám đốc phê duyệt'})</span>
+          </div>
+        )}
+
+        {conNo && !debt.has_override && (
+          <div style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              className="btn btn-warning btn-sm"
+              onClick={() => setShowOverrideModal(true)}
+              style={{ background: '#f59e0b', borderColor: '#f59e0b', color: '#fff', fontSize: '0.8rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <ShieldAlert size={14} /> Giám đốc duyệt cho nợ & Bàn giao
+            </button>
+          </div>
+        )}
       </div>
 
       {dot.length > 0 && (
@@ -174,8 +244,8 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
               <li key={d.id} className={d.is_approved ? '' : 'is-pending'}>
                 <span className="handover__inst-date">{ngayGon(d.transaction_date)}</span>
                 <span className="handover__inst-amount">{tien(d.amount)}</span>
-                {d.receipt_attachment_url
-                  ? <a href={d.receipt_attachment_url} target="_blank" rel="noreferrer" title="Xem ảnh bill"><Paperclip size={13} /></a>
+                {d.receipt_attachments?.length || d.receipt_attachment_url
+                  ? <ReceiptLinks attachments={d.receipt_attachments} legacyUrl={d.receipt_attachment_url} addToast={addToast} compact />
                   : <span className="handover__inst-nobill" title="Thiếu ảnh bill">—</span>}
                 {d.is_approved ? (
                   <span className="handover__inst-status">Đã duyệt</span>
@@ -227,7 +297,11 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
                 </button>
               )}
               {!readOnly && !laHoSo && lan.can_record_payment && !lan.done && (
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPayment(true)}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+                  setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                  setReceiptFiles([])
+                  setShowPayment(true)
+                }}>
                   <Plus size={14} /> Ghi nhận thanh toán
                 </button>
               )}
@@ -254,7 +328,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
       )}
 
       {/* ── Ghi nhận một đợt thu ───────────────────────────────── */}
-      <Modal open={showPayment} onClose={() => setShowPayment(false)} title="Ghi nhận đợt thanh toán">
+      <Modal open={showPayment} onClose={() => { setShowPayment(false); setReceiptFiles([]) }} title="Ghi nhận đợt thanh toán">
         <div className="handover__form">
           <p className="handover__form-hint">
             Còn thiếu <strong>{tien(debt.remaining)}</strong>. Phiếu tạo ra ở trạng thái
@@ -264,11 +338,10 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
             <input className="form-control" type="number" min="0" value={form.amount}
               onChange={(e) => setForm({ ...form, amount: e.target.value })} />
           </label>
-          <label>Ảnh bill / biên lai <span className="handover__req">bắt buộc</span>
-            <input className="form-control" placeholder="Dán đường dẫn ảnh đã tải lên"
-              value={form.receipt_photo_url}
-              onChange={(e) => setForm({ ...form, receipt_photo_url: e.target.value })} />
-          </label>
+          <div className="receipt-field">
+            <span className="receipt-field__label">Ảnh bill / biên lai <span className="handover__req">*</span></span>
+            <ReceiptFileInput files={receiptFiles} onChange={setReceiptFiles} disabled={saving} />
+          </div>
           <label>Hình thức
             <select className="form-control" value={form.payment_method}
               onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
@@ -281,17 +354,17 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
               onChange={(e) => setForm({ ...form, note: e.target.value })} />
           </label>
           <div className="handover__form-footer">
-            <button type="button" className="btn btn-secondary" onClick={() => setShowPayment(false)}>Huỷ</button>
+            <button type="button" className="btn btn-secondary" onClick={() => { setShowPayment(false); setReceiptFiles([]) }}>Huỷ</button>
             <button type="button" className="btn btn-primary"
-              disabled={saving || !form.amount || !form.receipt_photo_url.trim()}
+              disabled={saving || !form.amount || Number(form.amount) <= 0
+                || Number(form.amount) > Number(debt.remaining) || receiptFiles.length === 0}
               onClick={async () => {
-                const ok = await post('payments', {
-                  amount: Number(form.amount),
-                  receipt_photo_url: form.receipt_photo_url.trim(),
-                  payment_method: form.payment_method,
-                  note: form.note || null,
-                }, 'Đã ghi nhận, chờ giám đốc duyệt')
-                if (ok) { setShowPayment(false); setForm({ ...form, amount: '', receipt_photo_url: '', note: '' }) }
+                const ok = await submitPayment()
+                if (ok) {
+                  setShowPayment(false)
+                  setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                  setReceiptFiles([])
+                }
               }}>
               {saving ? 'Đang lưu…' : 'Ghi nhận'}
             </button>
@@ -340,6 +413,20 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
           </div>
         </div>
       </Modal>
+
+      {/* Sensitive Action Modal for Handover Override */}
+      <SensitiveActionModal
+        isOpen={showOverrideModal}
+        onClose={() => setShowOverrideModal(false)}
+        onConfirm={handleOverrideHandover}
+        title="Duyệt ngoại lệ bàn giao khi còn công nợ (Giám đốc)"
+        description={`Hợp đồng ${state?.contract_id} hiện còn nợ ${tien(debt.remaining)}. Sau khi duyệt ngoại lệ, quy trình sẽ được mở khóa hoàn thành Node K08.`}
+        actionLabel="Duyệt cho nợ"
+        actionVariant="warning"
+        requireReason={true}
+        placeholderReason="Nhập lý do duyệt cho nợ ngoại lệ (*)..."
+        isLoading={saving}
+      />
     </section>
   )
 }

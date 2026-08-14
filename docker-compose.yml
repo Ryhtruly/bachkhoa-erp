@@ -22,6 +22,21 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in dev/backend/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in dev/backend/.env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   backend:
     build:
       context: ./dev/backend
@@ -32,9 +47,8 @@ services:
     environment:
       REDIS_URL: redis://redis-contracts:6379/0
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: wiki-files
+      MINIO_FINANCE_BUCKET: finance-files
       MINIO_PUBLIC_URL: http://localhost:9000
     ports:
       - "127.0.0.1:8080:8080"
@@ -42,6 +56,8 @@ services:
       - contract-files:/app/static/contracts
     depends_on:
       redis-contracts:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test:
@@ -67,3 +83,4 @@ services:
 
 volumes:
   contract-files:
+  minio-data:

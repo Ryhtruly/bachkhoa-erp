@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-import { SubTabs } from '../components/ui';
-import {
-  Receipt, Banknote, Building2,
-  FileText, RotateCcw, BarChart2,
-  PlusCircle, Settings, Hammer, UsersRound, HandCoins
-} from 'lucide-react';
+import FinanceNav from '../components/finance/FinanceNav';
 
 // Nhập các màn hình (screens) đã được bóc tách
 import MonthlyDashboardScreen from '../components/finance/screens/MonthlyDashboardScreen';
@@ -22,62 +17,44 @@ import LuongKhoan3PScreen from '../components/finance/screens/LuongKhoan3PScreen
 import BangGiaKhoanScreen from '../components/finance/screens/BangGiaKhoanScreen';
 import PayrollOfficeScreen from '../components/finance/screens/PayrollOfficeScreen';
 
-const THUCHI_TABS = [
-  { id: 'monthly-dashboard', label: 'Báo Cáo', icon: <BarChart2 size={16} /> },
-  { id: 'cashflow-all', label: 'Nhật Ký', icon: <Receipt size={16} /> },
-  { id: 'cashflow-cash', label: 'Quỹ Tiền Mặt', icon: <Banknote size={16} /> },
-  { id: 'cashflow-bank', label: 'Quỹ Ngân Hàng', icon: <Building2 size={16} /> },
-  { id: 'cashflow-print', label: 'Chứng Từ', icon: <FileText size={16} /> },
-  { id: 'debt-collection', label: 'Thu Công Nợ', icon: <HandCoins size={16} /> },
-  { id: 'receivables', label: 'Công Nợ Phải Thu', icon: <Receipt size={16} /> },
-  { id: 'advance-request', label: 'Tạm Ứng', icon: <PlusCircle size={16} /> },
-  { id: 'advance-clear', label: 'Quyết Toán', icon: <RotateCcw size={16} /> },
-  { id: 'cashflow-settings', label: 'Thiết Lập', icon: <Settings size={16} /> },
-  { id: 'payroll-worker', label: 'Lương Khoán Nhiệm Vụ', icon: <Hammer size={16} /> },
-  { id: 'bang-gia', label: 'Bảng Giá Khoán', icon: <Banknote size={16} /> },
-  { id: 'payroll-office', label: 'Lương VP & Hoa Hồng', icon: <UsersRound size={16} /> }
-];
-
-export default function Cashflow({ landing }) {
-  // Kế toán mở Thu Chi là để thu công nợ, không phải xem báo cáo tháng.
+export default function Cashflow({ landing, user, isDirector }) {
   const [activeMenu, setActiveMenu] = useState(landing || 'monthly-dashboard');
   const [globalMonth, setGlobalMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   const renderContent = () => {
     switch (activeMenu) {
-      case 'monthly-dashboard': return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-all': return <CashflowScreen key="all" mode="all" month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'debt-collection': return <DebtCollection />;
-      case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} />;
-      case 'cashflow-settings': return <SettingsScreen />;
-      case 'payroll-worker': return <LuongKhoan3PScreen />;
-      case 'bang-gia': return <BangGiaKhoanScreen />;
-      case 'payroll-office': return <PayrollOfficeScreen />;
+      case 'monthly-dashboard': return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'cashflow-all': return <CashflowScreen key="all" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'debt-collection': return <DebtCollection user={user} isDirector={isDirector} />;
+      case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'cashflow-settings': return <SettingsScreen user={user} isDirector={isDirector} />;
+      case 'payroll-worker': return <LuongKhoan3PScreen user={user} isDirector={isDirector} />;
+      case 'bang-gia': return <BangGiaKhoanScreen user={user} isDirector={isDirector} />;
+      case 'payroll-office': return <PayrollOfficeScreen user={user} isDirector={isDirector} />;
 
-      // Các màn hình dưới đây đã được bóc tách và sẵn sàng để sử dụng 
-      // nếu bạn muốn chuyển đổi UI sang dạng Sidebar (Phương án A)
-      case 'contracts': return <ContractsScreen />;
-      case 'receivables': return <ReceivablesScreen />;
-      case 'payables': return <PayablesScreen />;
-      case 'analytics-dashboard': return <AnalyticsScreen mode="dashboard" />;
-      case 'analytics-profit': return <AnalyticsScreen mode="profit" />;
+      case 'contracts': return <ContractsScreen user={user} isDirector={isDirector} />;
+      case 'receivables': return <ReceivablesScreen user={user} isDirector={isDirector} />;
+      case 'payables': return <PayablesScreen user={user} isDirector={isDirector} />;
+      case 'analytics-dashboard': return <AnalyticsScreen mode="dashboard" user={user} isDirector={isDirector} />;
+      case 'analytics-profit': return <AnalyticsScreen mode="profit" user={user} isDirector={isDirector} />;
 
-      default: return <MonthlyDashboardScreen />;
+      default: return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
     }
   };
 
   return (
-    <section className="tab-pane active" id="tab-thuchi" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px' }}>
-      <SubTabs
-        active={activeMenu}
-        onChange={setActiveMenu}
-        tabs={THUCHI_TABS}
+    <section className="tab-pane active" id="tab-thuchi" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '14px' }}>
+      <FinanceNav
+        activeTab={activeMenu}
+        onSelectTab={setActiveMenu}
+        user={user}
+        isDirector={isDirector}
       />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 24px 24px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 4px 24px 4px' }}>
         {renderContent()}
       </div>
     </section>

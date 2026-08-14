@@ -42,23 +42,42 @@ function App() {
   };
 
   useEffect(() => {
-    if (!loggedIn) return undefined;
+    if (!loggedIn) {
+      setSessionLoading(false);
+      return undefined;
+    }
     let mounted = true;
-    apiFetch('/api/auth/me')
+
+    // Safety timeout: auto logout after 7s if /api/auth/me hangs
+    const safetyTimer = setTimeout(() => {
+      if (mounted && sessionLoading) {
+        console.warn('Authentication verification timed out.');
+        handleLogout();
+      }
+    }, 7000);
+
+    apiFetch('/api/auth/me', { timeout: 6000 })
       .then((user) => {
         if (!mounted) return;
         setProfile(user);
         setWorkspace(user.default_workspace === 'employee' ? 'employee' : 'management');
-        // Mỗi vai vào thẳng màn hình việc của mình. Trước đây ai cũng rơi vào
-        // Tổng Quan — bức tranh tài chính toàn công ty — nên kế toán đăng nhập
-        // xong chỉ thấy doanh thu và KPI, không có gì để làm.
         if (user.default_workspace !== 'employee' && user.username !== 'admin') {
           setActiveTab(user.permissions?.finance ? 'cashflow' : 'contracts');
         }
       })
-      .catch(() => mounted && handleLogout())
-      .finally(() => mounted && setSessionLoading(false));
-    return () => { mounted = false; };
+      .catch((err) => {
+        console.error('Session validation error:', err);
+        if (mounted) handleLogout();
+      })
+      .finally(() => {
+        clearTimeout(safetyTimer);
+        if (mounted) setSessionLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
+    };
   }, [loggedIn]);
 
   useEffect(() => {
@@ -86,29 +105,48 @@ function App() {
     );
   }
 
-  // permission: tab chỉ được render khi có quyền đọc tài nguyên tương ứng.
-  const TABS = [
-    { key: 'dashboard', Component: Dashboard, permission: 'finance', props: { user: profile } },
-    { key: 'crm', Component: CRM, permission: 'crm' },
-    { key: 'tasks', Component: Tasks, permission: 'survey_record' },
-    { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
-    { key: 'settings', Component: Settings, permission: 'settings' },
-    { key: 'contracts', Component: Contracts, permission: 'contract' },
-    { key: 'timeline', Component: ContractTimeline, directorOnly: true },
-    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: profile?.username === 'admin' ? undefined : 'debt-collection' } },
-    { key: 'kpi', Component: KPI, permission: 'hr' },
-    { key: 'wiki', Component: HumanResources, permission: 'hr' },
-  ];
-
   if (!loggedIn) {
     return <Login onLogin={handleLogin} />;
   }
 
-  if (sessionLoading) return <div className="app-loading">Đang xác thực phiên làm việc...</div>;
+  if (sessionLoading) {
+    return (
+      <div className="app-session-loader">
+        <div className="app-session-loader__box">
+          <div className="app-session-loader__spinner" />
+          <h3 className="app-session-loader__title">Đang xác thực phiên làm việc...</h3>
+          <p className="app-session-loader__sub">Hệ thống đang kiểm tra phiên đăng nhập và tải quyền người dùng.</p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            style={{ marginTop: 18 }}
+            onClick={handleLogout}
+          >
+            Đăng nhập lại
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const employeeMode = workspace === 'employee';
   const permissions = profile?.permissions || {};
-  const isDirector = profile?.username === 'admin';
+  const isDirector = Boolean(profile?.is_director || profile?.username === 'admin' || profile?.role_name === 'admin');
+
+  // permission: tab chỉ được render khi có quyền đọc tài nguyên tương ứng.
+  const TABS = [
+    { key: 'dashboard', Component: Dashboard, permission: 'finance', directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'crm', Component: CRM, permission: 'crm', props: { user: profile, isDirector } },
+    { key: 'tasks', Component: Tasks, permission: 'survey_record', props: { user: profile, isDirector } },
+    { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission', props: { user: profile, isDirector } },
+    { key: 'settings', Component: Settings, permission: 'settings', directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'contracts', Component: Contracts, permission: 'contract', props: { user: profile, isDirector } },
+    { key: 'timeline', Component: ContractTimeline, directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'debt-collection', user: profile, isDirector } },
+    { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
+  ];
+
   const allowedTabs = TABS.filter(tab => (
     (!tab.permission || permissions[tab.permission])
     && (!tab.directorOnly || isDirector)

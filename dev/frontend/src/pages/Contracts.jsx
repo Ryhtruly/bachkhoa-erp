@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Plus,
 import { useToast } from '../contexts/ToastContext';
 import { DataTable, StatusBadge, FilterBar } from '../components/ui';
 import ContractComposer from '../features/contracts/ContractComposer';
+import { saveFileWithUserLocation } from '../lib/fileSave';
+import { apiFetch } from '../lib/api';
 import '../components/contracts/contracts.css';
 
 const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
@@ -167,29 +169,42 @@ export default function Contracts() {
 
     setSavingContract(true);
     try {
-      const res = await fetch('/api/contracts/generate', {
+      const data = await apiFetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, ...payload })
       });
-      if (res.ok) {
-        const data = await res.json();
-        addToast('Hợp đồng đã được tạo thành công!', 'success');
-        if (data.download_url) {
+
+      addToast('✅ Hợp đồng đã được lưu vào hệ thống!', 'success');
+
+      // Đóng modal và reset form ngay lập tức để người dùng không bị kẹt ở màn "Đang lưu..."
+      setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
+      setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
+      setIsModalOpen(false);
+      setSavingContract(false);
+
+      if (page === 1) fetchContracts();
+      else setPage(1);
+
+      // Kích hoạt hộp thoại chọn nơi lưu file Word (Save As)
+      if (data?.download_url) {
+        const safeCustName = (payload.customer_name || 'KhachHang').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
+        const safeContractId = (payload.contract_id || formData.contract_id || 'HD').replace(/[/\\?%*:|"<>]/g, '_');
+        const suggestedFileName = `HopDong_${safeContractId}_${safeCustName}.docx`;
+
+        saveFileWithUserLocation(data.download_url, suggestedFileName).then(saveRes => {
+          if (saveRes?.success && saveRes?.method === 'picker') {
+            addToast(`📁 Đã lưu tệp hợp đồng vào thư mục bạn chọn (${suggestedFileName})`, 'success');
+          } else if (saveRes?.cancelled) {
+            addToast('Đã huỷ chọn nơi lưu file Word (Hợp đồng vẫn lưu đầy đủ trong hệ thống)', 'info');
+          }
+        }).catch(fileErr => {
+          console.warn('Lỗi khi kích hoạt chọn nơi lưu tệp hợp đồng:', fileErr);
           window.open(data.download_url);
-        }
-        setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
-        setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
-        setIsModalOpen(false);
-        if (page === 1) fetchContracts();
-        else setPage(1);
-      } else {
-        const err = await res.json();
-        addToast('Lỗi: ' + (err.detail || ''), 'error');
+        });
       }
-    } catch {
-      addToast('Lỗi kết nối máy chủ', 'error');
-    } finally {
+    } catch (err) {
+      addToast('Lỗi: ' + (err.message || 'Không thể tạo hợp đồng'), 'error');
       setSavingContract(false);
     }
   };

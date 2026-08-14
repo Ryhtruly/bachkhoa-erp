@@ -1,92 +1,236 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { FormRow, FormGrid } from '../../ui';
-import { fmt, fmtShort, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
-import { FinanceScreenHeader, BalanceCard, SummaryStrip } from '../SharedFinanceUI';
+import { DatePicker } from '../../ui';
+import { fmtShort, docSoTiengViet, CATEGORY_AUTO_MAPPING, VOUCHER_SIGNERS } from '../utils';
 import { API } from '../financeConstants';
-import { Printer, PlusCircle, RefreshCw, AlertTriangle, ArrowLeft } from 'lucide-react';
-function VoucherTemplate({
+import { COMPANY_IDENTITY } from '../../../lib/companyIdentity';
+import voucherPrintStyles from './PrintVoucherScreen.print.css?inline';
+import {
+  Printer,
+  PlusCircle,
+  RefreshCw,
+  AlertTriangle,
+  FileText,
+  DollarSign,
+  User,
+  Calendar,
+  CreditCard,
+  Building2,
+  FolderOpen,
+  Briefcase,
+  Sparkles,
+  Save,
+  CheckCircle2
+} from 'lucide-react';
+
+const getTodayIso = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (d) => {
+  if (!d) return '';
+  if (d.includes('-')) {
+    const parts = d.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return d;
+};
+
+export function VoucherTemplate({
   title, voucherId, date, personName, labelPerson, description, amount, amountWords,
-  category, paymentMethod, department, contractId, projectId, createdBy, accounting, approvedBy
+  category, paymentMethod, department, contractId, projectId, accounting, documentRef
 }) {
   const isThu = title.includes('THU');
-  const accent = isThu ? '#10b981' : '#ef4444';
+  const isTamUng = title.includes('TẠM ỨNG');
+  const isHoanUng = title.includes('HOÀN ỨNG');
+
+  const formCode = isThu ? '01 - TT' : (isTamUng ? '02 - TT/TỨ' : (isHoanUng ? '03 - TT/HỨ' : '02 - TT'));
+  const tkNo = isThu ? (paymentMethod === 'Chuyển khoản' ? '1121' : '1111') : (isTamUng ? '141' : (isHoanUng ? '642 / 154' : (category && category.includes('Lương') ? '334' : '642')));
+  const tkCo = isThu ? (category && category.includes('Thu') ? '131 / 511' : '131') : (paymentMethod === 'Chuyển khoản' ? '1121' : '1111');
+
   return (
-    <table className="excel-grid-table" style={{ width: '100%' }}>
-      <tbody>
-        <tr>
-          <td colSpan={2} style={{ width: '40%', textAlign: 'center', padding: '15px 10px', verticalAlign: 'middle', fontWeight: 'bold' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-              <img src="/src/assets/logo.png" alt="LOGO" style={{ height: 42, objectFit: 'contain' }} />
-              <span style={{ fontSize: '0.75rem', letterSpacing: 0.5, opacity: 0.8 }}>BÁCH KHOA ERP</span>
-            </div>
-          </td>
-          <td colSpan={2} style={{ width: '60%', textAlign: 'center', padding: '15px 10px' }}>
-            <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, letterSpacing: 1, color: accent }}>{title}</h2>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: '0.82rem', color: '#444' }}>
-              <span>Ngày: {date}</span>
-            </div>
-          </td>
-        </tr>
-        <tr>
-          <td style={{ fontWeight: 'bold', width: '15%' }}>Số CT</td>
-          <td style={{ width: '35%', fontWeight: 'bold', fontFamily: 'monospace' }}>{voucherId}</td>
-          <td style={{ fontWeight: 'bold', width: '15%' }}>Hình thức</td>
-          <td style={{ width: '35%' }}>{paymentMethod}</td>
-        </tr>
-        <tr>
-          <td style={{ fontWeight: 'bold' }}>{labelPerson || 'Đối tác'}</td>
-          <td>{personName || '—'}</td>
-          <td style={{ fontWeight: 'bold' }}>Hạng mục</td>
-          <td>{category || '—'}</td>
-        </tr>
-        <tr>
-          <td style={{ fontWeight: 'bold' }}>Diễn giải</td>
-          <td colSpan={3}>{description || '—'}</td>
-        </tr>
-        <tr>
-          <td style={{ fontWeight: 'bold' }}>Số tiền</td>
-          <td colSpan={3} style={{ fontWeight: 'bold', color: accent, fontSize: '1.2rem' }}>
-            {amount ? `${Number(amount).toLocaleString('vi-VN')} VNĐ` : '0 VNĐ'}
-          </td>
-        </tr>
-        <tr>
-          <td colSpan={4} style={{ padding: 10 }}>
-            <span style={{ fontWeight: 'bold' }}>Bằng chữ: </span>
-            <i>{amountWords || 'Không đồng'}</i>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div ref={documentRef} className="voucher-print-document" style={{
+      background: '#ffffff',
+      color: '#000000',
+      fontFamily: '"Times New Roman", Times, serif',
+      lineHeight: 1.45,
+      padding: '24px 32px'
+    }}>
+      {/* Header Công Ty & Mẫu Số Bộ Tài Chính */}
+      <div className="voucher-print-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div style={{ fontSize: '0.92rem', lineHeight: 1.4 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.98rem', textTransform: 'uppercase' }}>
+            {COMPANY_IDENTITY.legalName}
+          </div>
+          <div>Địa chỉ: {COMPANY_IDENTITY.address}</div>
+          <div>Mã số thuế: {COMPANY_IDENTITY.taxCode} | ĐT: {COMPANY_IDENTITY.phone}</div>
+        </div>
+
+        <div style={{ textAlign: 'center', fontSize: '0.88rem', minWidth: 260 }}>
+          <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>Mẫu số {formCode}</div>
+          <div style={{ fontStyle: 'italic', fontSize: '0.82rem', color: '#444' }}>
+            (Ban hành theo Thông tư số 99/2025/TT-BTC<br />của Bộ Tài chính)
+          </div>
+        </div>
+      </div>
+
+      {/* Tiêu Đề Chứng Từ & Ngày Tháng */}
+      <div className="voucher-print-title" style={{ textAlign: 'center', marginBottom: 20 }}>
+        <h1 style={{
+          margin: '0 0 6px 0',
+          fontSize: '1.75rem',
+          fontWeight: 800,
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+          color: '#000000'
+        }}>
+          {title}
+        </h1>
+        <div style={{ fontStyle: 'italic', fontSize: '0.95rem', marginBottom: 8 }}>
+          Ngày {date ? formatDisplayDate(date).split('/')[0] : '...'} tháng {date ? formatDisplayDate(date).split('/')[1] : '...'} năm {date ? formatDisplayDate(date).split('/')[2] : '2026'}
+        </div>
+        <div className="voucher-print-ledger" style={{ display: 'flex', justifyContent: 'center', gap: 32, fontSize: '0.9rem', fontWeight: 600 }}>
+          <span>Số: <strong style={{ fontFamily: 'monospace' }}>{voucherId || '........'}</strong></span>
+          <span>Quyển số: <strong>01</strong></span>
+          <span>Nợ: <strong>{tkNo}</strong></span>
+          <span>Có: <strong>{tkCo}</strong></span>
+        </div>
+      </div>
+
+      {/* Nội Dung Chi Tiết Chứng Từ */}
+      <div className="voucher-print-details" style={{ fontSize: '1rem', lineHeight: 1.9, marginBottom: 24 }}>
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Họ và tên {isThu ? 'người nộp tiền' : 'người nhận tiền'}:</span>
+          <strong className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>{personName || ''}</strong>
+        </div>
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Địa chỉ / Bộ phận:</span>
+          <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>{department || COMPANY_IDENTITY.legalName}</span>
+        </div>
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Lý do {isThu ? 'nộp' : 'chi'}:</span>
+          <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>
+            {description || category || ''}
+          </span>
+        </div>
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Số tiền:</span>
+          <strong className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2, fontSize: '1.1rem' }}>
+            {amount ? `${Number(amount).toLocaleString('vi-VN')} VNĐ` : '................................................... VNĐ'}
+          </strong>
+        </div>
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Viết bằng chữ:</span>
+          <em className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2, fontWeight: 600 }}>
+            {amountWords || '........................................................................................................................................'}
+          </em>
+        </div>
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Hình thức thanh toán:</span>
+          <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>
+            {paymentMethod || 'Tiền mặt'} (Hạng mục: {category || 'Khác'})
+          </span>
+        </div>
+        {(contractId || projectId) && (
+          <div className="voucher-print-row" style={{ display: 'flex' }}>
+            <span className="voucher-print-label" style={{ minWidth: 250 }}>- Hợp đồng / Hồ sơ liên quan:</span>
+            <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2, fontWeight: 700 }}>
+              {[contractId && `HĐ: ${contractId}`, projectId && `Hồ sơ: ${projectId}`].filter(Boolean).join(' | ')}
+            </span>
+          </div>
+        )}
+        <div className="voucher-print-row" style={{ display: 'flex' }}>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Kèm theo:</span>
+          <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>
+            01 chứng từ gốc
+          </span>
+        </div>
+      </div>
+
+      {/* Ngày Ký */}
+      <div className="voucher-print-date" style={{ textAlign: 'right', fontStyle: 'italic', fontSize: '0.95rem', marginBottom: 12 }}>
+        Ngày {date ? formatDisplayDate(date).split('/')[0] : '...'} tháng {date ? formatDisplayDate(date).split('/')[1] : '...'} năm {date ? formatDisplayDate(date).split('/')[2] : '2026'}
+      </div>
+
+      {/* 5 Cột Chữ Ký Chuẩn Bộ Tài Chính */}
+      <div className="voucher-print-signatures" style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(5, 1fr)',
+        textAlign: 'center',
+        gap: 8,
+        marginBottom: 36
+      }}>
+        <div className="voucher-print-signature">
+          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Giám đốc</div>
+          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên, đóng dấu)</div>
+          <div className="voucher-print-signature-space" style={{ height: 50 }} />
+          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{VOUCHER_SIGNERS.director}</div>
+        </div>
+
+        <div className="voucher-print-signature">
+          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Kế toán trưởng</div>
+          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
+          <div className="voucher-print-signature-space" style={{ height: 50 }} />
+          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{accounting || 'Nguyễn Thị A'}</div>
+        </div>
+
+        <div className="voucher-print-signature">
+          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Thủ quỹ</div>
+          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
+          <div className="voucher-print-signature-space" style={{ height: 50 }} />
+          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>&nbsp;</div>
+        </div>
+
+        <div className="voucher-print-signature">
+          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Người lập phiếu</div>
+          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
+          <div className="voucher-print-signature-space" style={{ height: 50 }} />
+          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{VOUCHER_SIGNERS.creator}</div>
+        </div>
+
+        <div className="voucher-print-signature">
+          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>{isThu ? 'Người nộp tiền' : 'Người nhận tiền'}</div>
+          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
+          <div className="voucher-print-signature-space" style={{ height: 50 }} />
+          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{personName || ''}</div>
+        </div>
+      </div>
+
+      {/* Dòng Xác Nhận Đã Nhận Đủ Tiền Ở Dưới Cùng */}
+      <div className="voucher-print-confirmation" style={{ borderTop: '1px dashed #999', paddingTop: 10, fontSize: '0.88rem', fontStyle: 'italic' }}>
+        + Đã nhận đủ số tiền (viết bằng chữ): {amountWords || '................................................................................................................................'}
+      </div>
+    </div>
   );
 }
 
 const CATEGORY_OPTIONS = [
-  { value: 'Văn phòng phẩm', label: '📝 Văn phòng phẩm' },
-  { value: 'In ấn - Photocopy', label: '🖨️ In ấn - Photocopy' },
-  { value: 'Chi quầy tiếp nhận', label: '☕ Chi quầy tiếp nhận' },
-  { value: 'Ăn uống', label: '🍱 Ăn uống' },
-  { value: 'Đi lại - Xăng xe - Gửi xe', label: '🚗 Đi lại - Xăng xe - Gửi xe' },
-  { value: 'Công tác phí', label: '✈️ Công tác phí' },
-  { value: 'Chuyển phát - Bưu chính-Grap', label: '📦 Chuyển phát - Bưu chính-Grap' },
-  { value: 'Điện - Nước - Internet', label: '💡 Điện - Nước - Internet' },
-  { value: 'Sửa chữa nhỏ', label: '🔧 Sửa chữa nhỏ' },
-  { value: 'Bảo trì thiết bị', label: '⚙️ Bảo trì thiết bị' },
-  { value: 'Vệ sinh - Rác thải', label: '🧹 Vệ sinh - Rác thải' },
-  { value: 'Hỗ trợ sự kiện - Marketing', label: '📢 Hỗ trợ sự kiện - Marketing' },
-  { value: 'Chi thụ lý bản vẽ', label: '📐 Chi thụ lý bản vẽ' },
-  { value: 'Chi bảo vệ', label: '🛡️ Chi bảo vệ' },
-  { value: 'Công chứng hồ sơ', label: '📜 Công chứng hồ sơ' },
-  { value: 'Thu chênh lệch kiểm kê quỹ', label: '➕ Thu chênh lệch kiểm kê quỹ' },
-  { value: 'Chi chênh lệch kiểm kê quỹ', label: '➖ Chi chênh lệch kiểm kê quỹ' },
-  { value: 'Lương khoán', label: '👷 Lương khoán tổ thợ' },
-  { value: 'Khác', label: '🌀 Khác' },
+  { value: 'Chi ngoại giao & Xử lý hồ sơ', label: 'Chi ngoại giao & Xử lý hồ sơ' },
+  { value: 'Bồi dưỡng thẩm định & Hiện trường', label: 'Bồi dưỡng thẩm định & Hiện trường' },
+  { value: 'Chi thụ lý bản vẽ & Trích lục', label: 'Chi thụ lý bản vẽ & Trích lục' },
+  { value: 'Công chứng, Lệ phí & Nghĩa vụ thuế', label: 'Công chứng, Lệ phí & Nghĩa vụ thuế' },
+  { value: 'Chi tiếp khách & Giao tế', label: 'Chi tiếp khách & Giao tế' },
+  { value: 'Lương khoán & Hoa hồng 3P', label: 'Lương khoán & Hoa hồng 3P' },
+  { value: 'Công tác phí & Di chuyển hiện trường', label: 'Công tác phí & Di chuyển hiện trường' },
+  { value: 'Văn phòng phẩm & In ấn kỹ thuật', label: 'Văn phòng phẩm & In ấn kỹ thuật' },
+  { value: 'Sửa chữa, Kiểm định máy đo & Thiết bị', label: 'Sửa chữa, Kiểm định máy đo & Thiết bị' },
+  { value: 'Điện - Nước - Internet', label: 'Điện - Nước - Internet' },
+  { value: 'Chi hoàn trả khách hàng', label: 'Chi hoàn trả khách hàng' },
+  { value: 'Chi quầy tiếp nhận & Vệ sinh', label: 'Chi quầy tiếp nhận & Vệ sinh' },
+  { value: 'Chi bảo vệ', label: 'Chi bảo vệ' },
+  { value: 'Thu chênh lệch kiểm kê quỹ', label: 'Thu chênh lệch kiểm kê quỹ' },
+  { value: 'Chi chênh lệch kiểm kê quỹ', label: 'Chi chênh lệch kiểm kê quỹ' },
+  { value: 'Khác', label: 'Khác' },
 ];
 
 const METHOD_OPTIONS = [
-  { value: 'Chuyển khoản', label: '🏦 Chuyển khoản' },
-  { value: 'Tiền mặt', label: '💵 Tiền mặt' },
-  { value: 'Tạm ứng', label: '⏳ Tạm ứng' },
+  { value: 'Chuyển khoản', label: 'Chuyển khoản' },
+  { value: 'Tiền mặt', label: 'Tiền mặt' },
+  { value: 'Tạm ứng', label: 'Tạm ứng' },
 ];
 
 const CATEGORIES_REQUIRE_LINK = [
@@ -102,15 +246,15 @@ const TX_TYPE_META = {
   'Hoàn ứng': { title: 'PHIẾU QUYẾT TOÁN HOÀN ỨNG', action: 'Quyết toán chứng từ tạm ứng', color: '#6366f1', bg: 'rgba(99,102,241,0.08)', prefix: 'PT/PC', labelPerson: 'Người quyết toán' }
 };
 
-const defaultCreatedBy = 'Lê Văn Dựng';
+const defaultCreatedBy = VOUCHER_SIGNERS.creator;
 const defaultAccounting = 'Nguyễn Thị A';
-const defaultApprovedBy = 'Lê Văn Dựng';
+const defaultApprovedBy = VOUCHER_SIGNERS.director;
 
 const emptyForm = {
   id: '',
-  transaction_date: new Date().toLocaleDateString('vi-VN'),
+  transaction_date: getTodayIso(),
   description: '',
-  category: 'Sinh hoạt gia đình',
+  category: 'Chi tiếp khách & Giao tế',
   payer_payee: '',
   payment_method: 'Chuyển khoản',
   department_code: '',
@@ -124,6 +268,7 @@ const emptyForm = {
 };
 
 export default function PrintVoucherScreen({ month }) {
+  const voucherDocumentRef = useRef(null);
   const [mode, setMode] = useState('create');
   const [txType, setTxType] = useState('Chi');
   const [transactions, setTransactions] = useState([]);
@@ -206,6 +351,7 @@ export default function PrintVoucherScreen({ month }) {
             setForm(prev => ({
               ...emptyForm,
               id: d.next_id,
+              transaction_date: getTodayIso(),
               category: txType === 'Tạm ứng' ? 'Tạm ứng kinh phí' : (txType === 'Hoàn ứng' ? 'Quyết toán tạm ứng' : 'Khác'),
               payment_method: txType === 'Tạm ứng' ? 'Tạm ứng' : 'Chuyển khoản'
             }));
@@ -220,15 +366,22 @@ export default function PrintVoucherScreen({ month }) {
     if (mode === 'print' && selectedId) {
       const tx = transactions.find(t => t.id === selectedId);
       if (tx) {
-        const rawDate = tx.date || tx.transaction_date;
-        let txDate = rawDate;
-        if (rawDate && rawDate.includes('-')) {
-          const [y, m, d] = rawDate.split('-');
-          txDate = `${d}/${m}/${y}`;
+        let rawDate = tx.date || tx.transaction_date || tx.created_at || '';
+        let isoDate = getTodayIso();
+        if (rawDate) {
+          const cleanDate = rawDate.split('T')[0].split(' ')[0];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+            isoDate = cleanDate;
+          } else if (cleanDate.includes('/')) {
+            const parts = cleanDate.split('/');
+            if (parts.length === 3) {
+              isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+          }
         }
         setForm({
           id: tx.id,
-          transaction_date: txDate || new Date().toLocaleDateString('vi-VN'),
+          transaction_date: isoDate,
           description: tx.description || '',
           category: tx.category || 'Khác',
           payer_payee: tx.partner || tx.payer_payee || '',
@@ -236,9 +389,9 @@ export default function PrintVoucherScreen({ month }) {
           department_code: tx.department_code || '',
           amount: String(tx.amount || ''),
           status: tx.status || 'Hoàn thành',
-          created_by: tx.created_by || defaultCreatedBy,
+          created_by: defaultCreatedBy,
           accounting: defaultAccounting,
-          approved_by: tx.approved_by || defaultApprovedBy,
+          approved_by: defaultApprovedBy,
           contract_id: tx.contract_id || '',
           project_id: tx.project_id || ''
         });
@@ -285,11 +438,6 @@ export default function PrintVoucherScreen({ month }) {
     });
   }, [activeAdvances, month]);
 
-  const selectedAdvance = useMemo(
-    () => activeAdvances.find(a => a.id === selectedAdvanceId) || null,
-    [activeAdvances, selectedAdvanceId]
-  );
-
   const amountInWords = useMemo(() => {
     const n = Number(form.amount);
     if (!n || n <= 0) return '';
@@ -308,17 +456,77 @@ export default function PrintVoucherScreen({ month }) {
     !form.project_id;
 
   const handlePrint = () => {
-    window.print();
+    const sourceDocument = voucherDocumentRef.current;
+    if (!sourceDocument) {
+      addToast('Không tìm thấy nội dung chứng từ để in', 'error');
+      return;
+    }
+
+    const printFrame = document.createElement('iframe');
+    printFrame.setAttribute('title', 'Bản in chứng từ thu chi');
+    printFrame.setAttribute('aria-hidden', 'true');
+    Object.assign(printFrame.style, {
+      position: 'fixed',
+      left: '-10000px',
+      top: '0',
+      width: '210mm',
+      height: '297mm',
+      border: '0',
+      opacity: '0',
+      pointerEvents: 'none',
+    });
+
+    let cleanupTimer;
+    const cleanup = () => {
+      window.clearTimeout(cleanupTimer);
+      printFrame.remove();
+    };
+
+    printFrame.onload = () => {
+      const printWindow = printFrame.contentWindow;
+      if (!printWindow) {
+        cleanup();
+        addToast('Trình duyệt không thể mở bản in', 'error');
+        return;
+      }
+
+      printWindow.addEventListener('afterprint', cleanup, { once: true });
+      cleanupTimer = window.setTimeout(cleanup, 120000);
+      printWindow.focus();
+      printWindow.print();
+    };
+
+    printFrame.srcdoc = `<!doctype html>
+      <html lang="vi">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Chứng từ thu chi</title>
+          <style>${voucherPrintStyles}</style>
+        </head>
+        <body>${sourceDocument.outerHTML}</body>
+      </html>`;
+    document.body.appendChild(printFrame);
+  };
+
+  const handleQuickAddAmount = (addValue) => {
+    const current = Number(form.amount) || 0;
+    const nextVal = current + addValue;
+    setForm(prev => ({ ...prev, amount: String(nextVal) }));
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) {
-      addToast('Nhập số tiền hợp lệ', 'warning');
+    if (!form.transaction_date) {
+      addToast('Vui lòng chọn ngày lập chứng từ', 'warning');
       return;
     }
-    if (!form.payer_payee) {
-      addToast('Nhập người nhận/nộp', 'warning');
+    if (!form.amount || isNaN(form.amount) || Number(form.amount) <= 0) {
+      addToast('Nhập số tiền phát sinh hợp lệ (> 0 VNĐ)', 'warning');
+      return;
+    }
+    if (!form.payer_payee || !form.payer_payee.trim()) {
+      addToast('Vui lòng nhập họ tên người giao dịch', 'warning');
       return;
     }
     if (CATEGORIES_REQUIRE_LINK.includes(form.category) && !form.contract_id && !form.project_id) {
@@ -378,17 +586,17 @@ export default function PrintVoucherScreen({ month }) {
 
       if (res.ok) {
         const saved = await res.json();
-        addToast('Lưu phiếu thành công!', 'success');
+        addToast('Lưu chứng từ thành công!', 'success');
         await fetchTransactions();
         await fetchActiveAdvances();
         setMode('print');
         setSelectedId(saved.id || (saved.auto_vouchers && saved.auto_vouchers[0] ? saved.auto_vouchers[0].id : ''));
       } else {
         const err = await res.json();
-        addToast(`Lỗi: ${err.detail || 'Không thể lưu'}`, 'error');
+        addToast(`Lỗi: ${err.detail || 'Không thể lưu chứng từ'}`, 'error');
       }
     } catch (e) {
-      addToast('Lỗi kết nối máy chủ', 'error');
+      addToast('Lỗi kết nối máy chủ khi lưu chứng từ', 'error');
     } finally {
       setLoading(false);
     }
@@ -414,13 +622,14 @@ export default function PrintVoucherScreen({ month }) {
   const voucherInfo = getVoucherInfo();
 
   return (
-    <div className="print-screen-container" style={{ padding: '16px 0' }}>
+    <div className="print-screen-container" style={{ padding: '8px 0 32px 0' }}>
       {/* Top Bar Navigation */}
       <div style={{
-        background: '#fff',
-        borderRadius: 12,
-        padding: '16px 20px',
+        background: '#ffffff',
+        borderRadius: 14,
+        padding: '14px 20px',
         border: '1px solid #e2e8f0',
+        boxShadow: '0 2px 8px -2px rgba(0,0,0,0.04)',
         marginBottom: 20,
         display: 'flex',
         alignItems: 'center',
@@ -428,59 +637,122 @@ export default function PrintVoucherScreen({ month }) {
         flexWrap: 'wrap',
         gap: 16
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            onClick={() => setMode(mode === 'create' ? 'print' : 'create')}
-            className={`btn ${mode === 'create' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40 }}
-          >
-            {mode === 'create' ? <PlusCircle size={18} /> : <Printer size={18} />}
-            {mode === 'create' ? 'Soạn phiếu mới' : 'Chuyển sang In phiếu'}
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
+            <button
+              onClick={() => setMode('create')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: 'none',
+                background: mode === 'create' ? '#2563eb' : 'transparent',
+                color: mode === 'create' ? '#ffffff' : '#475569',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: mode === 'create' ? '0 2px 6px rgba(37,99,235,0.3)' : 'none'
+              }}
+            >
+              <PlusCircle size={17} /> Soạn chứng từ mới
+            </button>
+            <button
+              onClick={() => setMode('print')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                borderRadius: 8,
+                border: 'none',
+                background: mode === 'print' ? '#2563eb' : 'transparent',
+                color: mode === 'print' ? '#ffffff' : '#475569',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                boxShadow: mode === 'print' ? '0 2px 6px rgba(37,99,235,0.3)' : 'none'
+              }}
+            >
+              <Printer size={17} /> Xem & In chứng từ
+            </button>
+          </div>
 
           {mode === 'create' && (
-            <div style={{ display: 'flex', background: '#f1f5f9', padding: 4, borderRadius: 8 }}>
-              {Object.keys(TX_TYPE_META).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTxType(t)}
-                  style={{
-                    border: 'none',
-                    background: txType === t ? '#fff' : 'transparent',
-                    color: txType === t ? TX_TYPE_META[t].color : '#64748b',
-                    fontWeight: txType === t ? 700 : 500,
-                    padding: '6px 14px',
-                    borderRadius: 6,
-                    fontSize: '0.85rem',
-                    cursor: 'pointer',
-                    boxShadow: txType === t ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
+            <div style={{ display: 'inline-flex', background: '#f8fafc', padding: 4, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+              {Object.keys(TX_TYPE_META).map(t => {
+                const meta = TX_TYPE_META[t];
+                const active = txType === t;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTxType(t)}
+                    style={{
+                      border: 'none',
+                      background: active ? meta.color : 'transparent',
+                      color: active ? '#ffffff' : '#475569',
+                      fontWeight: active ? 700 : 600,
+                      padding: '6px 14px',
+                      borderRadius: 7,
+                      fontSize: '0.84rem',
+                      cursor: 'pointer',
+                      boxShadow: active ? `0 2px 8px ${meta.color}40` : 'none',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="btn btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, height: 40 }}
-            title="Tải lại danh sách hợp đồng, phòng ban & phiếu mới nhất"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              height: 38,
+              padding: '0 14px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            title="Tải lại danh sách"
           >
-            <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
-            Làm mới dữ liệu
+            <RefreshCw size={15} className={refreshing ? 'spin' : ''} />
+            Làm mới
           </button>
           <button
             onClick={handlePrint}
-            className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, height: 40, background: '#0f172a' }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              height: 38,
+              padding: '0 18px',
+              borderRadius: 8,
+              border: 'none',
+              background: '#0f172a',
+              color: '#ffffff',
+              fontSize: '0.88rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(15,23,42,0.25)'
+            }}
           >
-            <Printer size={18} /> In chứng từ (Print/PDF)
+            <Printer size={16} /> In chứng từ (Print/PDF)
           </button>
         </div>
       </div>
@@ -489,10 +761,25 @@ export default function PrintVoucherScreen({ month }) {
 
         {/* Sidebar Chọn Phiếu Để In */}
         {mode === 'print' && (
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 16, display: 'flex', flexDirection: 'column', height: 'fit-content', maxHeight: 'calc(100vh - 200px)' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 12px 0', color: '#0f172a' }}>
-              📜 Chọn phiếu cần in ({printList.length})
-            </h3>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: 14,
+            border: '1px solid #e2e8f0',
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            height: 'fit-content',
+            maxHeight: 'calc(100vh - 180px)',
+            boxShadow: '0 4px 12px -2px rgba(0,0,0,0.03)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ fontSize: '0.92rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>Danh sách chứng từ</span>
+              </h3>
+              <span style={{ fontSize: '0.78rem', background: '#eff6ff', color: '#2563eb', fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
+                {printList.length}
+              </span>
+            </div>
             <input
               type="text"
               placeholder="Tìm mã phiếu, người nhận/nộp..."
@@ -500,12 +787,14 @@ export default function PrintVoucherScreen({ month }) {
               onChange={e => setPrintSearch(e.target.value)}
               style={{
                 width: '100%',
-                padding: '8px 12px',
+                padding: '9px 12px',
                 borderRadius: 8,
-                border: '1px solid #cbd5e1',
-                fontSize: '0.85rem',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '0.84rem',
                 marginBottom: 12,
-                outline: 'none'
+                outline: 'none',
+                background: '#f8fafc',
+                boxSizing: 'border-box'
               }}
             />
             <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -516,15 +805,15 @@ export default function PrintVoucherScreen({ month }) {
                   style={{
                     padding: '10px 12px',
                     borderRadius: 8,
-                    border: `1px solid ${selectedId === t.id ? '#3b82f6' : '#e2e8f0'}`,
-                    background: selectedId === t.id ? '#eff6ff' : '#f8fafc',
+                    border: `1.5px solid ${selectedId === t.id ? '#3b82f6' : '#e2e8f0'}`,
+                    background: selectedId === t.id ? '#eff6ff' : '#ffffff',
                     cursor: 'pointer',
                     fontSize: '0.82rem',
                     transition: 'all 0.15s'
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#1e293b' }}>
-                    <span>{t.id}</span>
+                    <span style={{ fontFamily: 'monospace' }}>{t.id}</span>
                     <span style={{ color: t.type === 'Thu' ? '#10b981' : '#ef4444' }}>
                       {t.type === 'Thu' ? '+' : '-'}{fmtShort(t.amount)}
                     </span>
@@ -543,16 +832,71 @@ export default function PrintVoucherScreen({ month }) {
 
           {/* Form Nhập Dữ Liệu Khi Ở Mode Create */}
           {mode === 'create' && (
-            <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 24 }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, margin: '0 0 16px 0', color: TX_TYPE_META[txType].color, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>✏️ CHẾ ĐỘ SOẠN THẢO: {TX_TYPE_META[txType].title}</span>
-              </h3>
+            <div style={{
+              background: '#ffffff',
+              borderRadius: 16,
+              border: '1px solid #e2e8f0',
+              padding: '24px 28px',
+              boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)'
+            }}>
+              {/* Header của Form Soạn Thảo */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingBottom: 16,
+                marginBottom: 20,
+                borderBottom: '1.5px solid #f1f5f9'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: TX_TYPE_META[txType].bg,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: TX_TYPE_META[txType].color
+                  }}>
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                      SOẠN THẢO {TX_TYPE_META[txType].title}
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+                      {TX_TYPE_META[txType].action}
+                    </p>
+                  </div>
+                </div>
 
+                <div style={{
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  background: TX_TYPE_META[txType].bg,
+                  color: TX_TYPE_META[txType].color,
+                  fontWeight: 700,
+                  fontSize: '0.84rem'
+                }}>
+                  Tiền tố: {TX_TYPE_META[txType].prefix}
+                </div>
+              </div>
+
+              {/* Quyết toán Hoàn ứng Banner */}
               {txType === 'Hoàn ứng' && (
-                <div style={{ marginBottom: 20, padding: 16, background: '#eef2ff', borderRadius: 8, border: '1px solid #c7d2fe' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#3730a3', marginBottom: 8 }}>
-                    📌 Chọn phiếu Tạm ứng cần quyết toán:
-                  </label>
+                <div style={{
+                  marginBottom: 24,
+                  padding: '16px 20px',
+                  background: '#f5f3ff',
+                  borderRadius: 12,
+                  border: '1.5px solid #ddd6fe',
+                  boxShadow: '0 2px 6px rgba(124,58,237,0.04)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#6d28d9', fontWeight: 800, fontSize: '0.9rem' }}>
+                    <Sparkles size={18} />
+                    <span>CHỌN CHỨNG TỪ TẠM ỨNG CẦN QUYẾT TOÁN:</span>
+                  </div>
                   <select
                     value={selectedAdvanceId}
                     onChange={(e) => {
@@ -571,31 +915,115 @@ export default function PrintVoucherScreen({ month }) {
                         }));
                       }
                     }}
-                    style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid #a5b4fc', fontSize: '0.9rem', fontWeight: 600 }}
+                    style={{
+                      width: '100%',
+                      height: 48,
+                      minHeight: 48,
+                      padding: '0 42px 0 14px',
+                      lineHeight: '45px',
+                      boxSizing: 'border-box',
+                      borderRadius: 8,
+                      border: '1.5px solid #c4b5fd',
+                      backgroundColor: '#ffffff',
+                      fontSize: '0.92rem',
+                      fontWeight: 600,
+                      color: '#4c1d95',
+                      textAlign: 'left',
+                      textAlignLast: 'left',
+                      display: 'block',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                    }}
                   >
-                    <option value="">-- Chọn chứng từ tạm ứng --</option>
+                    <option value="">-- Nhấp để chọn phiếu tạm ứng --</option>
                     {filteredAdvances.map(a => (
-                      <option key={a.id} value={a.id}>{a.id} ({a.partner || a.payer_payee} - {Number(a.amount || 0).toLocaleString('vi-VN')}₫)</option>
+                      <option key={a.id} value={a.id}>
+                        {a.id} — {a.partner || a.payer_payee} ({Number(a.amount || 0).toLocaleString('vi-VN')}₫) — {a.note || a.description || 'Không có ghi chú'}
+                      </option>
                     ))}
                   </select>
                 </div>
               )}
 
               <form onSubmit={handleSave}>
-                <FormGrid cols={3}>
-                  <FormRow label="Mã số phiếu (ID)" required>
-                    <input type="text" value={form.id} readOnly style={{ background: '#f8fafc', fontWeight: 700, fontFamily: 'monospace' }} />
-                  </FormRow>
+                {/* 3-Cột Grid Gọn Gàng, Đồng Bộ */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                  gap: '20px 24px',
+                  marginBottom: 20
+                }}>
+                  {/* Cột 1: Mã số phiếu */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <FileText size={14} style={{ color: '#64748b' }} /> Mã số phiếu (ID) <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.id}
+                      readOnly
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 14px',
+                        borderRadius: 8,
+                        border: '1.5px solid #e2e8f0',
+                        background: '#f8fafc',
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        fontSize: '0.95rem',
+                        color: '#1e293b',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
 
-                  <FormRow label="Ngày lập chứng từ" required>
-                    <input type="date" value={form.transaction_date} onChange={e => setForm({ ...form, transaction_date: e.target.value })} required />
-                  </FormRow>
+                  {/* Cột 2: Ngày lập */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <Calendar size={14} style={{ color: '#64748b' }} /> Ngày lập chứng từ <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <DatePicker
+                      value={form.transaction_date}
+                      onChange={value => setForm(prev => ({ ...prev, transaction_date: value }))}
+                      placeholder="Chọn ngày lập chứng từ"
+                      className="date-picker--fill"
+                    />
+                  </div>
 
-                  <FormRow label={voucherInfo.labelPerson} required>
-                    <input type="text" value={form.payer_payee} onChange={e => setForm({ ...form, payer_payee: e.target.value })} placeholder="Họ tên người giao dịch..." required />
-                  </FormRow>
+                  {/* Cột 3: Người giao dịch */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <User size={14} style={{ color: '#64748b' }} /> {voucherInfo.labelPerson} <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.payer_payee}
+                      onChange={e => setForm({ ...form, payer_payee: e.target.value })}
+                      placeholder="Nhập họ tên đối tác / nhân viên..."
+                      required
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 14px',
+                        borderRadius: 8,
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '0.92rem',
+                        fontWeight: 500,
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
 
-                  <FormRow label="Hạng mục thu chi" required>
+                  {/* Hàng 2 - Cột 1: Hạng mục thu chi */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <Briefcase size={14} style={{ color: '#64748b' }} /> Hạng mục thu chi <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
                     <select
                       value={form.category}
                       onChange={e => {
@@ -615,72 +1043,341 @@ export default function PrintVoucherScreen({ month }) {
                         }
                       }}
                       required
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 12px',
+                        borderRadius: 8,
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '0.92rem',
+                        fontWeight: 600,
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
                     >
                       {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
-                  </FormRow>
+                  </div>
 
-                  <FormRow label="Hình thức thanh toán" required>
-                    <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })} required>
+                  {/* Hàng 2 - Cột 2: Hình thức thanh toán */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <CreditCard size={14} style={{ color: '#64748b' }} /> Hình thức thanh toán <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <select
+                      value={form.payment_method}
+                      onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                      required
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 12px',
+                        borderRadius: 8,
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '0.92rem',
+                        fontWeight: 600,
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    >
                       {METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
-                  </FormRow>
+                  </div>
 
-                  <FormRow label="Số tiền phát sinh (VNĐ)" required>
+                  {/* Hàng 2 - Cột 3: Số tiền phát sinh */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <DollarSign size={14} style={{ color: TX_TYPE_META[txType].color }} /> Số tiền phát sinh (VNĐ) <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
                     <input
                       type="number"
                       value={form.amount}
                       onChange={e => setForm({ ...form, amount: e.target.value })}
-                      placeholder="Nhập số tiền..."
-                      style={{ fontWeight: 700, fontSize: '1.05rem', color: TX_TYPE_META[txType].color }}
+                      placeholder="0"
+                      min="1"
                       required
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 14px',
+                        borderRadius: 8,
+                        border: `1.5px solid ${TX_TYPE_META[txType].color}60`,
+                        background: '#ffffff',
+                        fontWeight: 800,
+                        fontSize: '1.1rem',
+                        color: TX_TYPE_META[txType].color,
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
                     />
-                  </FormRow>
+                    {/* Nút cộng tiền nhanh */}
+                    <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                      {[1000000, 2000000, 5000000, 10000000].map(val => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => handleQuickAddAmount(val)}
+                          style={{
+                            border: '1px solid #e2e8f0',
+                            background: '#f8fafc',
+                            color: '#475569',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          +{val >= 1000000 ? `${val / 1000000}tr` : val}
+                        </button>
+                      ))}
+                      {form.amount && (
+                        <button
+                          type="button"
+                          onClick={() => setForm(prev => ({ ...prev, amount: '' }))}
+                          style={{
+                            border: '1px solid #fee2e2',
+                            background: '#fef2f2',
+                            color: '#ef4444',
+                            fontSize: '0.72rem',
+                            fontWeight: 600,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Xóa
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                  <FormRow label="Liên kết Mã Hợp Đồng">
-                    <select value={form.contract_id} onChange={e => setForm({ ...form, contract_id: e.target.value })}>
-                      <option value="">-- Không chọn HĐ --</option>
-                      {contracts.map(c => <option key={c.id} value={c.id}>{c.id} - {c.customer_name || 'Khách'}</option>)}
+                  {/* Hàng 3 - Cột 1: Mã Hợp Đồng */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <FolderOpen size={14} style={{ color: '#64748b' }} /> Liên kết Mã Hợp Đồng
+                    </label>
+                    <select
+                      value={form.contract_id}
+                      onChange={e => setForm({ ...form, contract_id: e.target.value })}
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 12px',
+                        borderRadius: 8,
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '0.88rem',
+                        fontWeight: 500,
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      <option value="">-- Không liên kết HĐ --</option>
+                      {contracts.map(c => (
+                        <option key={c.id || c.contract_id} value={c.id || c.contract_id}>
+                          {c.id || c.contract_id} — {c.customer_name || 'Khách hàng'}
+                        </option>
+                      ))}
                     </select>
-                  </FormRow>
+                  </div>
 
-                  <FormRow label="Liên kết Mã Hồ Sơ / Dự Án">
-                    <select value={form.project_id} onChange={e => setForm({ ...form, project_id: e.target.value })}>
-                      <option value="">-- Không chọn Hồ sơ --</option>
-                      {projects.map(p => <option key={p.id} value={p.id}>{p.id} - {p.task_name || p.service_type}</option>)}
+                  {/* Hàng 3 - Cột 2: Mã Hồ Sơ / Dự Án */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <Briefcase size={14} style={{ color: '#64748b' }} /> Liên kết Mã Hồ Sơ / Dự Án
+                    </label>
+                    <select
+                      value={form.project_id}
+                      onChange={e => setForm({ ...form, project_id: e.target.value })}
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 12px',
+                        borderRadius: 8,
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '0.88rem',
+                        fontWeight: 500,
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      <option value="">-- Không liên kết Hồ sơ --</option>
+                      {projects.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.label || 'Hồ sơ kỹ thuật chưa có mã'}
+                        </option>
+                      ))}
                     </select>
-                  </FormRow>
+                  </div>
 
-                  <FormRow label="Phòng ban thụ hưởng">
-                    <select value={form.department_code} onChange={e => setForm({ ...form, department_code: e.target.value })}>
+                  {/* Hàng 3 - Cột 3: Phòng ban thụ hưởng */}
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                      <Building2 size={14} style={{ color: '#64748b' }} /> Phòng ban thụ hưởng
+                    </label>
+                    <select
+                      value={form.department_code}
+                      onChange={e => setForm({ ...form, department_code: e.target.value })}
+                      style={{
+                        width: '100%',
+                        height: 42,
+                        padding: '0 12px',
+                        borderRadius: 8,
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        fontSize: '0.88rem',
+                        fontWeight: 500,
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    >
                       <option value="">-- Chọn phòng ban --</option>
-                      {departmentOptions.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                      {departmentOptions.map(d => (
+                        <option key={d.value} value={d.value}>{d.label}</option>
+                      ))}
                     </select>
-                  </FormRow>
+                  </div>
+                </div>
 
-                  <FormRow label="Diễn giải chi tiết" cols={3} required>
-                    <input type="text" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Nội dung diễn giải chi tiết cho chứng từ..." required />
-                  </FormRow>
-                </FormGrid>
-
-                {needsLinkWarning && (
-                  <div style={{ marginTop: 16, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#ef4444', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <AlertTriangle size={16} />
-                    <span>Hạng mục "{form.category}" bắt buộc phải chọn Mã Hợp Đồng hoặc Mã Hồ Sơ!</span>
+                {/* Tiền bằng chữ realtime badge */}
+                {amountInWords && (
+                  <div style={{
+                    marginBottom: 16,
+                    padding: '8px 14px',
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: 8,
+                    color: '#15803d',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}>
+                    <CheckCircle2 size={16} />
+                    <span>Số tiền bằng chữ: <strong>{amountInWords}</strong></span>
                   </div>
                 )}
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-                  <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '0 24px', height: 42 }}>
-                    {loading ? '⏳ Đang lưu...' : '💾 Lưu phiếu & Hiển thị bản in'}
+                {/* Diễn giải chi tiết (chiếm toàn bộ chiều rộng) */}
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
+                    <FileText size={14} style={{ color: '#64748b' }} /> Diễn giải chi tiết <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={form.description}
+                    onChange={e => setForm({ ...form, description: e.target.value })}
+                    placeholder="Nội dung diễn giải chi tiết cho chứng từ..."
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      border: '1.5px solid #cbd5e1',
+                      background: '#ffffff',
+                      fontSize: '0.92rem',
+                      fontWeight: 500,
+                      color: '#0f172a',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+
+                {needsLinkWarning && (
+                  <div style={{
+                    marginBottom: 18,
+                    padding: '12px 16px',
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 10,
+                    color: '#b91c1c',
+                    fontSize: '0.86rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontWeight: 600
+                  }}>
+                    <AlertTriangle size={18} />
+                    <span>Hạng mục "{form.category}" bắt buộc phải liên kết Mã Hợp Đồng hoặc Mã Hồ Sơ/Dự Án!</span>
+                  </div>
+                )}
+
+                {/* Nút hành động Lưu */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '0 28px',
+                      height: 44,
+                      borderRadius: 10,
+                      border: 'none',
+                      background: loading ? '#94a3b8' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.95rem',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <Save size={18} />
+                    {loading ? 'Đang ghi nhận...' : 'Lưu chứng từ & Hiển thị bản in'}
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* Visual Voucher Display Component (Render Trực Tiếp Mẫu In) */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 32, boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
+          {/* Visual Voucher Display Component (Render Mẫu In Trực Quan) */}
+          <div className="voucher-print-area-wrapper" style={{
+            background: '#ffffff',
+            borderRadius: 16,
+            border: '1px solid #e2e8f0',
+            padding: '32px 36px',
+            boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05)'
+          }}>
+            <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                BẢN XEM TRƯỚC MẪU IN (A4)
+              </span>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="no-print"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  color: '#334155',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                <Printer size={15} /> In nhanh
+              </button>
+            </div>
+
             <VoucherTemplate
               title={voucherInfo.title}
               voucherId={form.id}
@@ -694,10 +1391,9 @@ export default function PrintVoucherScreen({ month }) {
               paymentMethod={form.payment_method}
               department={form.department_code}
               contractId={form.contract_id}
-              projectId={form.project_id}
-              createdBy={form.created_by}
+              projectId={projects.find(project => project.id === form.project_id)?.label || (form.project_id ? 'Hồ sơ đã liên kết' : '')}
               accounting={form.accounting}
-              approvedBy={form.approved_by}
+              documentRef={voucherDocumentRef}
             />
           </div>
 

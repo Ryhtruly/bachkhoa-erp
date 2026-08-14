@@ -1,32 +1,50 @@
-/* Trang đăng nhập — bản dựng lại từ mẫu thiết kế, giữ nguyên từng giá trị về
-   màu, khoảng cách, cỡ chữ và animation.
+/* Trang đăng nhập — giữ nguyên bố cục kỹ thuật của mẫu, dùng palette sáng để
+   tăng độ thoáng, độ tương phản và khả năng đọc trong môi trường văn phòng.
 
    Mọi selector đều nằm dưới `.bk-login`. Mẫu gốc viết cho một trang HTML đứng
    một mình nên dùng selector trần (`h1`, `form`, `input`, `.top`, `.body`…);
    thả nguyên vào app sẽ đè lên toàn bộ giao diện còn lại. */
 
 .bk-login {
-  --ink: #0F0D0B;
-  --ink-2: #171310;
-  --rail: #1C1713;
-  --line: rgba(232, 180, 140, .13);
-  --line-2: rgba(232, 180, 140, .22);
-  --fg: #F2EDE7;
-  --fg-2: #A79C91;
-  --fg-3: #6E655C;
-  --acc: #E8703A;
-  --acc-dim: rgba(232, 112, 58, .16);
-  --ok: #7FB069;
+  --ink: #F4F6F9;
+  --ink-2: #FFFFFF;
+  --rail: rgba(255, 255, 255, .92);
+  --line: rgba(28, 39, 57, .10);
+  --line-2: rgba(28, 39, 57, .22);
+  --fg: #172033;
+  --fg-2: #566176;
+  --fg-3: #7D889A;
+  --acc: #E86832;
+  --acc-dim: rgba(232, 104, 50, .11);
+  --ok: #34875A;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
   --sans: 'Be Vietnam Pro', system-ui, sans-serif;
 
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--ink);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(232, 104, 50, .09), transparent 32%),
+    linear-gradient(145deg, #FFFFFF 0%, var(--ink) 58%, #EEF1F5 100%);
   color: var(--fg);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+}
+[data-theme='dark'] .bk-login {
+  --ink: #0B0F19;
+  --ink-2: #111827;
+  --rail: rgba(15, 23, 42, .92);
+  --line: rgba(148, 163, 184, .13);
+  --line-2: rgba(148, 163, 184, .3);
+  --fg: #F8FAFC;
+  --fg-2: #CBD5E1;
+  --fg-3: #94A3B8;
+  --acc: #F06A36;
+  --acc-dim: rgba(240, 106, 54, .16);
+  --ok: #58B87B;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(240, 106, 54, .13), transparent 32%),
+    linear-gradient(145deg, #111827 0%, var(--ink) 58%, #070A11 100%);
 }
 .bk-login *,
 .bk-login *::before,
@@ -40,13 +58,16 @@
     linear-gradient(var(--line) 1px, transparent 1px),
     linear-gradient(90deg, var(--line) 1px, transparent 1px);
   background-size: 64px 64px;
-  opacity: .5;
+  opacity: .72;
 }
 .bk-login .vignette {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(120% 80% at 30% 45%, transparent 40%, rgba(0, 0, 0, .55) 100%);
+  background: radial-gradient(110% 85% at 28% 44%, rgba(255, 255, 255, .42), transparent 58%, rgba(23, 32, 51, .045) 100%);
+}
+[data-theme='dark'] .bk-login .vignette {
+  background: radial-gradient(120% 80% at 30% 45%, transparent 40%, rgba(0, 0, 0, .5) 100%);
 }
 
 /* ── khung chính ─────────────────────────────────────────────── */
@@ -66,20 +87,38 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 28px;
+  padding: 10px 28px;
   border-bottom: 1px solid var(--line);
   gap: 32px;
 }
 .bk-login .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  font-weight: 800;
-  font-size: 14px;
-  letter-spacing: .13em;
-  text-transform: uppercase;
+  flex: none;
 }
-.bk-login .brand svg { flex: none; }
+.bk-login .brand img {
+  display: block;
+  width: clamp(120px, 11vw, 145px);
+  height: auto;
+  border-radius: 3px;
+}
+.bk-login .top-tools { display: flex; align-items: center; gap: 14px; }
+.bk-login .theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--ink-2);
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color .18s, background .18s, transform .18s;
+}
+.bk-login .theme-toggle:hover { border-color: var(--acc); transform: translateY(-1px); }
+.bk-login .theme-toggle:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.bk-login .theme-toggle span { font-size: 16px; line-height: 1; }
 .bk-login .meta { display: flex; gap: 0; font-family: var(--mono); font-size: 10px; }
 .bk-login .meta div { padding: 0 18px; border-left: 1px solid var(--line); text-align: right; }
 .bk-login .meta div:first-child { border: 0; }
@@ -174,6 +213,9 @@
    phóng to cùng hình, để nở tự do thì trên màn rộng chữ to gấp đôi phần còn lại
    của trang. Trần 420px giữ tỉ lệ phóng trong khoảng 0,86–1,4. */
 .bk-login .plot svg { width: 100%; height: 100%; max-height: min(100%, 420px); overflow: visible; }
+.bk-login .plot [fill="#A79C91"] { fill: var(--fg-2); }
+.bk-login .plot [fill="#6E655C"] { fill: var(--fg-3); }
+.bk-login .plot [stroke="#6E655C"] { stroke: var(--fg-3); }
 .bk-login .trace { stroke-dasharray: 8 5; animation: bk-login-march 3.4s linear infinite; }
 @keyframes bk-login-march { to { stroke-dashoffset: -26 } }
 .bk-login .vtx { animation: bk-login-pulse 2.8s ease-in-out infinite; }
@@ -208,7 +250,14 @@
 .bk-login .sw.dash { border-style: dashed; border-color: var(--acc); }
 
 /* ── cột phải: khay đăng nhập ────────────────────────────────── */
-.bk-login .rail { background: var(--rail); display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.bk-login .rail {
+  background: var(--rail);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  box-shadow: -18px 0 44px rgba(23, 32, 51, .055);
+  backdrop-filter: blur(14px);
+}
 .bk-login .rail-hd { display: flex; align-items: center; gap: 14px; padding: 20px 30px; border-bottom: 1px solid var(--line); }
 .bk-login .num {
   font-family: var(--mono);
@@ -243,18 +292,25 @@
 .bk-login input[type=text],
 .bk-login input[type=password] {
   width: 100%;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, .76);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
   color: var(--fg);
   font-family: var(--mono);
   font-size: 15px;
-  padding: 0 0 11px;
+  padding: 12px 13px;
   outline: none;
-  transition: border-color .18s;
+  transition: border-color .18s, box-shadow .18s, background .18s;
 }
 .bk-login input::placeholder { color: var(--fg-3); }
-.bk-login input:focus { border-color: var(--acc); }
+.bk-login input:focus {
+  background: #FFFFFF;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-dim);
+}
+[data-theme='dark'] .bk-login input[type=text],
+[data-theme='dark'] .bk-login input[type=password] { background: rgba(11, 15, 25, .56); }
+[data-theme='dark'] .bk-login input:focus { background: #111827; }
 .bk-login .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
 .bk-login .check {
   display: flex;
@@ -275,7 +331,7 @@
   top: 1px;
   width: 4px;
   height: 8px;
-  border: solid var(--ink);
+  border: solid #FFFFFF;
   border-width: 0 2px 2px 0;
   transform: rotate(42deg);
 }
@@ -294,6 +350,7 @@
   letter-spacing: .09em;
   text-transform: uppercase;
   padding: 15px;
+  border-radius: 7px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -368,6 +425,11 @@
   .bk-login .strip { grid-template-columns: repeat(2, 1fr); }
   .bk-login .strip div:nth-child(3) { border-left: 0; padding-left: 0; }
   .bk-login .meta div:nth-child(1) { display: none; }
+  .bk-login .rail { box-shadow: none; }
+}
+@media (max-width: 640px) {
+  .bk-login .meta { display: none; }
+  .bk-login .brand img { width: min(145px, 48vw); }
 }
 @media (prefers-reduced-motion: reduce) {
   .bk-login *, .bk-login *::before, .bk-login *::after { animation: none !important; transition: none !important; }

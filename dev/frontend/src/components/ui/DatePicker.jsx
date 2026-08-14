@@ -14,8 +14,18 @@ function parseDate(value) {
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
+function parseMonth(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, 1);
+}
+
 function formatIsoDate(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function formatIsoMonth(year, month) {
+  return `${year}-${String(month + 1).padStart(2, '0')}`;
 }
 
 function isSameDay(left, right) {
@@ -30,12 +40,21 @@ export default function DatePicker({
   value = '',
   onChange,
   placeholder = 'Chọn ngày',
+  selectionMode = 'day',
+  disabled = false,
+  clearable = true,
+  className = '',
+  dialogLabel,
 }) {
-  const selectedDate = useMemo(() => parseDate(value), [value]);
+  const isMonthMode = selectionMode === 'month';
+  const selectedDate = useMemo(
+    () => isMonthMode ? parseMonth(value) : parseDate(value),
+    [isMonthMode, value]
+  );
   const today = useMemo(() => new Date(), []);
   const initialDate = selectedDate || today;
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState('days');
+  const [mode, setMode] = useState(isMonthMode ? 'months' : 'days');
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
   const rootRef = useRef(null);
@@ -62,6 +81,10 @@ export default function DatePicker({
     setViewMonth(selectedDate.getMonth());
   }, [selectedDate]);
 
+  useEffect(() => {
+    setMode(isMonthMode ? 'months' : 'days');
+  }, [isMonthMode]);
+
   const firstWeekday = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const yearPageStart = viewYear - 5;
@@ -85,21 +108,24 @@ export default function DatePicker({
   };
 
   const displayValue = selectedDate
-    ? formatIsoDate(
-      selectedDate.getFullYear(),
-      selectedDate.getMonth(),
-      selectedDate.getDate()
-    ).split('-').reverse().join('/')
+    ? isMonthMode
+      ? `${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`
+      : formatIsoDate(
+        selectedDate.getFullYear(),
+        selectedDate.getMonth(),
+        selectedDate.getDate()
+      ).split('-').reverse().join('/')
     : placeholder;
 
   return (
-    <div className="date-picker" ref={rootRef}>
+    <div className={`date-picker${className ? ` ${className}` : ''}`} ref={rootRef}>
       <button
         type="button"
         className={`date-picker__trigger${open ? ' date-picker__trigger--open' : ''}`}
+        disabled={disabled}
         onClick={() => {
           setOpen(current => !current);
-          setMode('days');
+          setMode(isMonthMode ? 'months' : 'days');
         }}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -108,7 +134,7 @@ export default function DatePicker({
         <span>{displayValue}</span>
       </button>
 
-      {value && (
+      {value && clearable && !disabled && (
         <button
           type="button"
           className="date-picker__clear"
@@ -120,7 +146,11 @@ export default function DatePicker({
       )}
 
       {open && (
-        <div className="date-picker__popover" role="dialog" aria-label="Chọn ngày ký">
+        <div
+          className="date-picker__popover"
+          role="dialog"
+          aria-label={dialogLabel || (isMonthMode ? 'Chọn tháng' : placeholder)}
+        >
           <div className="date-picker__header">
             <button type="button" onClick={() => moveView(-1)} aria-label="Trước">
               <ChevronLeft size={17} />
@@ -186,10 +216,21 @@ export default function DatePicker({
                 <button
                   type="button"
                   key={name}
-                  className={viewMonth === index ? 'is-selected' : ''}
+                  className={
+                    selectedDate
+                    && selectedDate.getFullYear() === viewYear
+                    && selectedDate.getMonth() === index
+                      ? 'is-selected'
+                      : ''
+                  }
                   onClick={() => {
                     setViewMonth(index);
-                    setMode('days');
+                    if (isMonthMode) {
+                      onChange?.(formatIsoMonth(viewYear, index));
+                      setOpen(false);
+                    } else {
+                      setMode('days');
+                    }
                   }}
                 >
                   {name}
@@ -222,11 +263,15 @@ export default function DatePicker({
             onClick={() => {
               setViewYear(today.getFullYear());
               setViewMonth(today.getMonth());
-              onChange?.(formatIsoDate(today.getFullYear(), today.getMonth(), today.getDate()));
+              onChange?.(
+                isMonthMode
+                  ? formatIsoMonth(today.getFullYear(), today.getMonth())
+                  : formatIsoDate(today.getFullYear(), today.getMonth(), today.getDate())
+              );
               setOpen(false);
             }}
           >
-            Hôm nay
+            {isMonthMode ? 'Tháng này' : 'Hôm nay'}
           </button>
         </div>
       )}
