@@ -28,6 +28,7 @@ class CashflowTransaction(Base):
     cash_balance_after = Column(Numeric, nullable=True)
     bank_balance_after = Column(Numeric, nullable=True)
     receipt_attachment_url = Column(Text, nullable=True)
+    receipt_attachments = Column(JSONB, nullable=False, default=list)
     notes = Column(Text, nullable=True)
     created_by_user_id = Column(String, nullable=True)
     approved_by_user_id = Column(String, nullable=True)
@@ -44,7 +45,19 @@ class Receivable(Base):
     contract_id = Column(String, ForeignKey("contracts.id"))
     paid_amount = Column(Numeric, default=0)
     remaining_amount = Column(Numeric, nullable=True)
+    due_date = Column(Date, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+    is_refunded = Column(Boolean, default=False, nullable=False)
+    refund_reason = Column(Text, nullable=True)
+    refund_by = Column(String, ForeignKey("users.id"), nullable=True)
+    refund_at = Column(DateTime(timezone=True), nullable=True)
+    is_written_off = Column(Boolean, default=False, nullable=False)
+    written_off_reason = Column(Text, nullable=True)
+    written_off_by = Column(String, ForeignKey("users.id"), nullable=True)
+    written_off_at = Column(DateTime(timezone=True), nullable=True)
+    carried_forward_to = Column(String, ForeignKey("contracts.id"), nullable=True)
+    carried_forward_from = Column(String, ForeignKey("contracts.id"), nullable=True)
 
 
 class FundOpeningBalance(Base):
@@ -60,9 +73,8 @@ class FundOpeningBalance(Base):
 
 class FinanceSetting(Base):
     __tablename__ = "finance_settings"
-    setting_key = Column(String(100), primary_key=True)
-    setting_value = Column(Text, nullable=True)
-    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+    key = Column(String(100), primary_key=True)
+    value = Column(Numeric, nullable=True)
 
 
 class ContractExpense(Base):

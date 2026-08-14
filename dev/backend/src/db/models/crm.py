@@ -95,6 +95,10 @@ class Contract(Base):
     remedy_period_days = Column(Integer, nullable=True)
     acceptance_period_days = Column(Integer, nullable=True)
     response_period_days = Column(Integer, nullable=True)
+    completion_override = Column(Boolean, default=False, nullable=False)
+    completion_override_by = Column(String, ForeignKey("users.id"), nullable=True)
+    completion_override_reason = Column(Text, nullable=True)
+    completion_override_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 

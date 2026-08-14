@@ -42,6 +42,7 @@ class PayrollPeriod(Base):
     status = Column(String(20), nullable=True, default="Open")
     locked_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
+    locked_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
 
 
 class Attendance(Base):
