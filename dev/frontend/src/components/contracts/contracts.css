@@ -154,7 +154,7 @@
 .contract-paper-preview > svg { color: var(--orange-400); }
 .contract-paper-preview strong { color: var(--text-primary); font-size: 0.85rem; }
 .contract-paper-preview span { font-size: 0.73rem; }
-.contract-paper-preview a { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; color: var(--orange-500); font-size: 0.75rem; font-weight: 750; text-decoration: none; }
+.contract-paper-preview a, .contract-paper-preview button { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; padding: 0; border: 0; color: var(--orange-500); background: transparent; font: inherit; font-size: 0.75rem; font-weight: 750; text-decoration: none; cursor: pointer; }
 /* Nút "Quy trình" — thanh hành động dính đáy cột chi tiết, rộng hết cột.
    Trước đây là nút nổi (position: fixed) lơ lửng góc phải, đè lên nội dung và
    nằm sát nút chat nên trông rời rạc. Giờ là con cuối của .contract-detail-pane

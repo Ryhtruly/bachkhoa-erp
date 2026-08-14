@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from fastapi.responses import StreamingResponse
@@ -9,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from src.db.database import get_db
 from src.core.auth import check_user_permission, require_authenticated_user, require_permission, User
-from src.db.models import Contract, Customer, Role, ServiceLine, ServicePackage, TaskType, UserRole
+from src.db.models import Contract, ContractGeneratedDocument, Customer, Role, ServiceLine, ServicePackage, TaskType, UserRole
+from src.core import doc_generator
 from src.contracts import (
     ContractService,
     ContractCreateSchema,
@@ -37,6 +39,28 @@ _APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
 _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
 
 router = APIRouter(tags=["03. Contracts & Workflows"])
+
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def render_generated_contract_document(document: ContractGeneratedDocument) -> Response:
+    """Recreate an issued contract from its immutable snapshot without persisting a DOCX."""
+    snapshot = dict(document.render_data_snapshot or {})
+    template_version = snapshot.pop("_template_version", None)
+    if not template_version:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên bản mẫu của tài liệu hợp đồng.")
+
+    try:
+        document_bytes = doc_generator.render_contract_document(snapshot, template_version)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail="Không thể tạo lại tài liệu hợp đồng.") from exc
+
+    filename = document.output_file_name or "HopDong.docx"
+    return Response(
+        content=document_bytes,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 class WorkflowRevisionPayload(BaseModel):
@@ -1306,6 +1330,26 @@ def generate_and_save_contract(
     user: User = Depends(require_permission("contract", "create")),
 ):
     return ContractService.generate_and_save_contract(db, payload, actor_id=user.id)
+
+
+@router.get("/{contract_id:path}/document")
+def get_contract_document(
+    contract_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("contract", "read")),
+):
+    document = (
+        db.query(ContractGeneratedDocument)
+        .filter(
+            ContractGeneratedDocument.contract_id == contract_id,
+            ContractGeneratedDocument.status == "generated",
+        )
+        .order_by(ContractGeneratedDocument.generated_at.desc())
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Chưa có tài liệu hợp đồng đã phát hành.")
+    return render_generated_contract_document(document)
 
 
 class OverrideHandoverIn(BaseModel):

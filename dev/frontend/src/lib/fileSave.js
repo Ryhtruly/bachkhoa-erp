@@ -5,7 +5,7 @@
  * (Chrome, Edge, Cốc Cốc, Opera) cho phép người dùng tự do chọn bất kỳ ổ đĩa / thư mục nào
  * trên máy tính (D:\, E:\, Desktop, thư mục Khách hàng,...) để lưu file.
  *
- * Tự động fallback về Blob Download nếu trình duyệt không hỗ trợ File System Access API.
+ * Trình duyệt không hỗ trợ sẽ báo kết quả để UI hướng dẫn dùng Chrome hoặc Edge.
  */
 
 export async function saveFileWithUserLocation(blobOrUrl, suggestedName = 'HopDong.docx', customTypes = null) {
@@ -49,21 +49,31 @@ export async function saveFileWithUserLocation(blobOrUrl, suggestedName = 'HopDo
     }
   }
 
-  // 2. Cơ chế dự phòng: Kích hoạt tải về với thẻ <a> và download attribute
-  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = suggestedName;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    }, 1000);
-    return { success: true, method: 'download' };
-  }
+  return { success: false, reason: 'SaveLocationUnsupported' };
+}
 
-  return { success: false, reason: 'Unsupported environment' };
+export async function openProtectedDocument(documentUrl, accessToken) {
+  const preview = window.open('about:blank', '_blank');
+  if (!preview) {
+    throw new Error('Trình duyệt đã chặn cửa sổ xem tài liệu');
+  }
+  preview.opener = null;
+
+  try {
+    const response = await fetch(documentUrl, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || 'Không thể mở tài liệu hợp đồng');
+    }
+
+    const objectUrl = window.URL.createObjectURL(await response.blob());
+    preview.location.replace(objectUrl);
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60_000);
+    return { success: true };
+  } catch (error) {
+    preview.close();
+    throw error;
+  }
 }

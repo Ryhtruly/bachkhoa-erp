@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Plus,
 import { useToast } from '../contexts/ToastContext';
 import { DataTable, StatusBadge, FilterBar } from '../components/ui';
 import ContractComposer from '../features/contracts/ContractComposer';
-import { saveFileWithUserLocation } from '../lib/fileSave';
-import { apiFetch } from '../lib/api';
+import { openProtectedDocument, saveFileWithUserLocation } from '../lib/fileSave';
+import { apiFetch, getAccessToken } from '../lib/api';
 import '../components/contracts/contracts.css';
 
 const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
@@ -192,20 +192,39 @@ export default function Contracts() {
         const safeContractId = (payload.contract_id || formData.contract_id || 'HD').replace(/[/\\?%*:|"<>]/g, '_');
         const suggestedFileName = `HopDong_${safeContractId}_${safeCustName}.docx`;
 
-        saveFileWithUserLocation(data.download_url, suggestedFileName).then(saveRes => {
+        try {
+          const response = await fetch(data.download_url, {
+            headers: { Authorization: `Bearer ${getAccessToken()}` },
+          });
+          if (!response.ok) {
+            const errorPayload = await response.json().catch(() => ({}));
+            throw new Error(errorPayload.detail || 'Không thể tạo tài liệu Word để lưu');
+          }
+
+          const saveRes = await saveFileWithUserLocation(await response.blob(), suggestedFileName);
           if (saveRes?.success && saveRes?.method === 'picker') {
             addToast(`📁 Đã lưu tệp hợp đồng vào thư mục bạn chọn (${suggestedFileName})`, 'success');
           } else if (saveRes?.cancelled) {
             addToast('Đã huỷ chọn nơi lưu file Word (Hợp đồng vẫn lưu đầy đủ trong hệ thống)', 'info');
+          } else if (saveRes?.reason === 'SaveLocationUnsupported') {
+            addToast('Trình duyệt này không hỗ trợ chọn nơi lưu. Vui lòng dùng Chrome hoặc Edge.', 'info');
           }
-        }).catch(fileErr => {
-          console.warn('Lỗi khi kích hoạt chọn nơi lưu tệp hợp đồng:', fileErr);
-          window.open(data.download_url);
-        });
+        } catch (fileErr) {
+          console.warn('Không thể chuẩn bị tệp Word để lưu cục bộ:', fileErr);
+          addToast('Hợp đồng đã lưu nhưng chưa thể tạo tệp Word để lưu cục bộ', 'error');
+        }
       }
     } catch (err) {
       addToast('Lỗi: ' + (err.message || 'Không thể tạo hợp đồng'), 'error');
       setSavingContract(false);
+    }
+  };
+
+  const openContractDocument = async (documentUrl) => {
+    try {
+      await openProtectedDocument(documentUrl, getAccessToken());
+    } catch (error) {
+      addToast(error.message || 'Không thể mở tài liệu hợp đồng', 'error');
     }
   };
 
@@ -289,10 +308,10 @@ export default function Contracts() {
       align: 'center',
       width: 68,
       render: (val) => val
-        ? <a href={val} target="_blank" rel="noreferrer" className="btn btn-secondary btn-xs contract-file-btn"
-            title="Mở file hợp đồng" aria-label="Mở file hợp đồng">
+        ? <button type="button" className="btn btn-secondary btn-xs contract-file-btn"
+            title="Mở file hợp đồng" aria-label="Mở file hợp đồng" onClick={() => openContractDocument(val)}>
           <Download size={14} />
-        </a>
+        </button>
         : <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>—</span>
     }
   ];
@@ -385,7 +404,7 @@ export default function Contracts() {
                     <FileText size={42} />
                     <strong>Tài liệu hợp đồng</strong>
                     <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
-                    {selectedContract.file_link && <a href={selectedContract.file_link} target="_blank" rel="noreferrer"><Download size={15} /> Mở tài liệu</a>}
+                    {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><Download size={15} /> Mở tài liệu</button>}
                   </div>
                 </div>
                 <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>

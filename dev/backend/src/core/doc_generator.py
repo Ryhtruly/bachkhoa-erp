@@ -1,8 +1,45 @@
+import io
 import os
 from docx import Document
 
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTPUT_DIR = os.path.join(BACKEND_DIR, "static", "generated_docs")
+CONTRACT_TEMPLATE_VERSIONS = {
+    "mau_hop_dong_v1": "mau_hop_dong.docx",
+}
+
+
+def contract_template_filename(template_version: str) -> str:
+    try:
+        return CONTRACT_TEMPLATE_VERSIONS[template_version]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported contract template version: {template_version}") from exc
+
+
+def _replace_document_placeholders(doc: Document, data: dict) -> None:
+    for paragraph in doc.paragraphs:
+        replace_placeholders_in_paragraph(paragraph, data)
+
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    replace_placeholders_in_paragraph(paragraph, data)
+
+
+def render_contract_document(data: dict, template_version: str) -> bytes:
+    """Render an issued contract into memory without creating a server-side DOCX."""
+    template_path = os.path.join(
+        BACKEND_DIR,
+        "src",
+        "templates",
+        contract_template_filename(template_version),
+    )
+    doc = Document(template_path)
+    _replace_document_placeholders(doc, data)
+    output = io.BytesIO()
+    doc.save(output)
+    return output.getvalue()
 
 def generate_document(data, template_name="mau_hop_dong.docx", output_prefix="Doc"):
     """
@@ -16,16 +53,7 @@ def generate_document(data, template_name="mau_hop_dong.docx", output_prefix="Do
         # Load the template
         doc = Document(template_path)
         
-        # Replace placeholders in paragraphs
-        for paragraph in doc.paragraphs:
-            replace_placeholders_in_paragraph(paragraph, data)
-            
-        # Replace placeholders in tables (if any)
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        replace_placeholders_in_paragraph(paragraph, data)
+        _replace_document_placeholders(doc, data)
                         
         # Save output file
         # Use primary key from data if available, else timestamp

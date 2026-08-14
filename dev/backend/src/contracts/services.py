@@ -2,6 +2,7 @@ import uuid
 import re
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import quote
 from fastapi import HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from src.db.models import (
     AuditLog,
     Contract,
+    ContractGeneratedDocument,
     Customer,
     Receivable,
     ServiceLine,
@@ -17,12 +19,13 @@ from src.db.models import (
     User,
 )
 from src.services import telegram_service
-from src.core import doc_generator
 from src.core.audit import log_action
 from src.contracts.read_model import sync_contract_read_model_after_write
 
 
 CONTRACT_CODE_PATTERN = re.compile(r"^(?P<sequence>\d+)/BK-\d{4}$")
+CONTRACT_DOCUMENT_TEMPLATE_VERSION = "mau_hop_dong_v1"
+DOCUMENT_FILENAME_INVALID_CHARACTERS = re.compile(r'[/\\?%*:|"<>]')
 
 
 def next_contract_code(contract_ids, *, year: int | None = None) -> str:
@@ -33,6 +36,21 @@ def next_contract_code(contract_ids, *, year: int | None = None) -> str:
         if (match := CONTRACT_CODE_PATTERN.match((contract_id or "").strip()))
     ), default=0)
     return f"{highest_sequence + 1:03d}/BK-{year or datetime.now().year}"
+
+
+def build_contract_document_snapshot(contract_data: dict) -> tuple[dict, str, str]:
+    """Freeze the data and template version needed to reproduce an issued document."""
+    snapshot = dict(contract_data)
+    contract_id = str(snapshot["contract_id"]).strip()
+    customer_name = str(snapshot.get("customer_name") or "KhachHang").strip()
+    snapshot["contract_id"] = contract_id
+    snapshot["_template_version"] = CONTRACT_DOCUMENT_TEMPLATE_VERSION
+
+    safe_contract_id = DOCUMENT_FILENAME_INVALID_CHARACTERS.sub("_", contract_id).replace(" ", "_")
+    safe_customer_name = DOCUMENT_FILENAME_INVALID_CHARACTERS.sub("_", customer_name).replace(" ", "_")
+    filename = f"HopDong_{safe_contract_id}_{safe_customer_name}.docx"
+    document_route = f"/api/contracts/{quote(contract_id, safe='/')}/document"
+    return snapshot, filename, document_route
 
 
 def _create_initial_service_line(
@@ -164,14 +182,7 @@ class ContractService:
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             contract_data = payload.model_dump()
             contract_data["contract_id"] = contract_id
-            success_gen, download_url, full_path = doc_generator.generate_document(
-                data=contract_data, 
-                template_name="mau_hop_dong.docx", 
-                output_prefix="Contract"
-            )
-            
-            if not success_gen:
-                raise HTTPException(status_code=500, detail=f"Cannot generate Word document: {download_url}")
+            document_snapshot, document_filename, document_route = build_contract_document_snapshot(contract_data)
                 
             cust_name = payload.customer_name
             phone = payload.phone
@@ -202,7 +213,7 @@ class ContractService:
                 service_type=service_type,
                 total_value=contract_val,
                 date_signed=d_signed,
-                file_link=download_url
+                file_link=document_route,
             )
             db.add(new_hd)
 
@@ -224,6 +235,16 @@ class ContractService:
             
             actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
             actor_id_val = actor_id if actor_exists else None
+
+            db.add(ContractGeneratedDocument(
+                contract_id=contract_id,
+                status="generated",
+                output_file_link=document_route,
+                output_file_name=document_filename,
+                render_data_snapshot=document_snapshot,
+                generated_by=actor_id_val,
+                generated_at=datetime.now(timezone.utc),
+            ))
 
             db.add(AuditLog(
                 actor_id=actor_id_val,
@@ -249,7 +270,7 @@ class ContractService:
                 "status": "success",
                 "id": new_hd.id,
                 "service_line_id": service_line.id,
-                "download_url": download_url,
+                "download_url": document_route,
             }
         except HTTPException:
             raise
