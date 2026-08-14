@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Plus, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Plus, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { DataTable, StatusBadge, FilterBar } from '../components/ui';
 import ContractComposer from '../features/contracts/ContractComposer';
-import { openProtectedDocument, saveFileWithUserLocation } from '../lib/fileSave';
+import { fetchProtectedDocumentBlob, requestDocxSaveHandle, writeBlobToFileHandle } from '../lib/fileSave';
 import { apiFetch, getAccessToken } from '../lib/api';
+import ContractDocumentViewer from '../components/contracts/ContractDocumentViewer';
 import '../components/contracts/contracts.css';
 
 const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
@@ -44,6 +45,7 @@ export default function Contracts() {
   const [savingContract, setSavingContract] = useState(false);
   const [contractView, setContractView] = useState('list');
   const [selectedContract, setSelectedContract] = useState(null);
+  const [documentUrl, setDocumentUrl] = useState('');
   const [navTarget, setNavTarget] = useState(null);
   const navTargetContractRef = useRef(null);
   const { addToast } = useToast();
@@ -167,6 +169,27 @@ export default function Contracts() {
       return;
     }
 
+    const safeCustName = (payload.customer_name || 'KhachHang').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
+    const safeContractId = (payload.contract_id || formData.contract_id || 'HD').replace(/[/\\?%*:|"<>]/g, '_');
+    const suggestedFileName = `HopDong_${safeContractId}_${safeCustName}.docx`;
+    let fileSelection;
+
+    try {
+      fileSelection = await requestDocxSaveHandle(suggestedFileName);
+    } catch (error) {
+      addToast(error.message || 'Không thể mở hộp chọn nơi lưu file Word', 'error');
+      return;
+    }
+
+    if (fileSelection.cancelled) {
+      addToast('Đã hủy chọn nơi lưu; hợp đồng chưa được tạo.', 'info');
+      return;
+    }
+    if (fileSelection.reason === 'SaveLocationUnsupported') {
+      addToast('Trình duyệt không hỗ trợ chọn nơi lưu DOCX. Vui lòng dùng Chrome hoặc Edge.', 'info');
+      return;
+    }
+
     setSavingContract(true);
     try {
       const data = await apiFetch('/api/contracts/generate', {
@@ -176,56 +199,30 @@ export default function Contracts() {
       });
 
       addToast('✅ Hợp đồng đã được lưu vào hệ thống!', 'success');
+      try {
+        if (!data?.download_url) throw new Error('Không nhận được đường dẫn tài liệu Word');
+        const documentBlob = await fetchProtectedDocumentBlob(data.download_url, getAccessToken());
+        await writeBlobToFileHandle(fileSelection.handle, documentBlob);
+        addToast(`📁 Đã lưu tệp hợp đồng vào thư mục bạn chọn (${suggestedFileName})`, 'success');
+      } catch (fileErr) {
+        console.warn('Không thể ghi tệp Word đã tạo vào máy:', fileErr);
+        addToast('Hợp đồng đã lưu nhưng chưa thể ghi tệp Word. Bạn có thể mở tài liệu để xem lại.', 'error');
+      }
 
-      // Đóng modal và reset form ngay lập tức để người dùng không bị kẹt ở màn "Đang lưu..."
       setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
       setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
       setIsModalOpen(false);
-      setSavingContract(false);
-
       if (page === 1) fetchContracts();
       else setPage(1);
-
-      // Kích hoạt hộp thoại chọn nơi lưu file Word (Save As)
-      if (data?.download_url) {
-        const safeCustName = (payload.customer_name || 'KhachHang').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
-        const safeContractId = (payload.contract_id || formData.contract_id || 'HD').replace(/[/\\?%*:|"<>]/g, '_');
-        const suggestedFileName = `HopDong_${safeContractId}_${safeCustName}.docx`;
-
-        try {
-          const response = await fetch(data.download_url, {
-            headers: { Authorization: `Bearer ${getAccessToken()}` },
-          });
-          if (!response.ok) {
-            const errorPayload = await response.json().catch(() => ({}));
-            throw new Error(errorPayload.detail || 'Không thể tạo tài liệu Word để lưu');
-          }
-
-          const saveRes = await saveFileWithUserLocation(await response.blob(), suggestedFileName);
-          if (saveRes?.success && saveRes?.method === 'picker') {
-            addToast(`📁 Đã lưu tệp hợp đồng vào thư mục bạn chọn (${suggestedFileName})`, 'success');
-          } else if (saveRes?.cancelled) {
-            addToast('Đã huỷ chọn nơi lưu file Word (Hợp đồng vẫn lưu đầy đủ trong hệ thống)', 'info');
-          } else if (saveRes?.reason === 'SaveLocationUnsupported') {
-            addToast('Trình duyệt này không hỗ trợ chọn nơi lưu. Vui lòng dùng Chrome hoặc Edge.', 'info');
-          }
-        } catch (fileErr) {
-          console.warn('Không thể chuẩn bị tệp Word để lưu cục bộ:', fileErr);
-          addToast('Hợp đồng đã lưu nhưng chưa thể tạo tệp Word để lưu cục bộ', 'error');
-        }
-      }
     } catch (err) {
       addToast('Lỗi: ' + (err.message || 'Không thể tạo hợp đồng'), 'error');
+    } finally {
       setSavingContract(false);
     }
   };
 
-  const openContractDocument = async (documentUrl) => {
-    try {
-      await openProtectedDocument(documentUrl, getAccessToken());
-    } catch (error) {
-      addToast(error.message || 'Không thể mở tài liệu hợp đồng', 'error');
-    }
+  const openContractDocument = (nextDocumentUrl) => {
+    setDocumentUrl(nextDocumentUrl);
   };
 
   const formatVND = (amount) => {
@@ -309,8 +306,8 @@ export default function Contracts() {
       width: 68,
       render: (val) => val
         ? <button type="button" className="btn btn-secondary btn-xs contract-file-btn"
-            title="Mở file hợp đồng" aria-label="Mở file hợp đồng" onClick={() => openContractDocument(val)}>
-          <Download size={14} />
+            title="Mở tài liệu hợp đồng" aria-label="Mở tài liệu hợp đồng" onClick={() => openContractDocument(val)}>
+          <FileText size={14} />
         </button>
         : <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>—</span>
     }
@@ -404,7 +401,7 @@ export default function Contracts() {
                     <FileText size={42} />
                     <strong>Tài liệu hợp đồng</strong>
                     <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
-                    {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><Download size={15} /> Mở tài liệu</button>}
+                    {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><FileText size={15} /> Mở tài liệu</button>}
                   </div>
                 </div>
                 <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
@@ -446,6 +443,12 @@ export default function Contracts() {
         saving={savingContract}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleGenerateContract}
+      />
+      <ContractDocumentViewer
+        isOpen={Boolean(documentUrl)}
+        documentUrl={documentUrl}
+        accessToken={getAccessToken()}
+        onClose={() => setDocumentUrl('')}
       />
     </section>
   );
