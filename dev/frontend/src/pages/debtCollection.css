@@ -1,0 +1,208 @@
+/* Thu Công Nợ — màn hình của Kế toán.
+   Dùng lại token màu/khoảng cách sẵn có để khớp với tab Hợp đồng. */
+
+.debt {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 22px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.debt__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.debt__eyebrow {
+  color: var(--orange-500);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.debt__head h2 { margin: 3px 0 5px; font-size: 1.35rem; font-weight: 800; }
+.debt__head p { margin: 0; color: var(--text-tertiary); font-size: 0.85rem; max-width: 60ch; }
+.debt__head .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ── Hai con số dẫn đầu ────────────────────────────────────────
+   Kế toán mở lên cần biết ngay: bao nhiêu hồ sơ, tổng bao nhiêu tiền. */
+.debt__totals { display: flex; flex-wrap: wrap; gap: 12px; }
+.debt__total {
+  flex: 1 1 190px;
+  padding: 13px 16px;
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+}
+.debt__total span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.debt__total strong { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.debt__total--money { background: #fffbeb; border-color: #fcd34d; }
+.debt__total--money strong { color: #b45309; }
+
+/* ── Danh sách hồ sơ đang nợ ───────────────────────────────────── */
+.debt__list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.debt__card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 15px 17px;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+}
+.debt__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.debt__contract {
+  display: block;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+.debt__customer { display: block; margin: 2px 0; font-size: 1rem; font-weight: 700; }
+.debt__service { color: var(--text-tertiary); font-size: 0.8rem; }
+
+/* Hồ sơ treo càng lâu càng phải đập vào mắt — đó là việc cần đòi trước. */
+.debt__age {
+  flex-shrink: 0;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+.debt__age.is-late { background: #fee2e2; color: #991b1b; }
+
+.debt__bar {
+  height: 5px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+.debt__bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--orange-500);
+}
+
+.debt__figures { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 0.85rem; }
+.debt__figures span { color: var(--text-tertiary); }
+.debt__figures strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.debt__figures .is-owed strong { color: #b91c1c; }
+
+.debt__card .btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Rỗng và lỗi ──────────────────────────────────────────────── */
+.debt__msg { margin: 0; color: var(--text-tertiary); font-size: 0.88rem; }
+.debt__msg--error { display: grid; gap: 12px; justify-items: start; color: #b91c1c; }
+
+.debt__empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--bg-card, #f8fafc);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm, 8px);
+  color: var(--text-tertiary);
+}
+.debt__empty svg { color: #16a34a; }
+.debt__empty strong { color: var(--text-primary); font-size: 1rem; }
+.debt__empty span { max-width: 46ch; font-size: 0.85rem; line-height: 1.55; }
+
+/* ── Hộp thoại ghi nhận ───────────────────────────────────────── */
+.debt__form { display: flex; flex-direction: column; gap: 14px; }
+.debt__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.debt__req { color: #dc2626; text-transform: none; letter-spacing: 0; }
+.debt__form-hint {
+  margin: 0;
+  padding: 11px 13px;
+  background: #f8fafc;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.debt__warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.82rem;
+}
+.debt__form-footer { display: flex; justify-content: flex-end; gap: 10px; }
+
+.debt__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.debt__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.debt__age--waiting { background: #dbeafe; color: #1e40af; }
+
+/* Hộp xác nhận giao khi còn nợ — phải nói rõ hệ quả trước khi bấm */
+.debt__confirm {
+  padding: 14px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+}
+.debt__confirm-line {
+  display: flex; justify-content: space-between;
+  margin: 0 0 5px; font-size: 0.86rem;
+}
+.debt__confirm-line strong { font-variant-numeric: tabular-nums; }
+.debt__confirm-line.is-owed { color: #b91c1c; }
+.debt__confirm-ask { margin: 14px 0 8px; font-size: 0.92rem; line-height: 1.5; }
+.debt__confirm-note { margin: 0; color: #78350f; font-size: 0.8rem; line-height: 1.55; }
+
+/* Nói rõ đang chờ ai — thay cho một cái nút bấm vào là báo lỗi */
+.debt__blocked {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 11px;
+  background: #f1f5f9;
+  border-left: 3px solid #94a3b8;
+  color: #475569;
+  font-size: 0.81rem;
+}
+.debt__age--blocked { background: #f1f5f9; color: #475569; }
+
+/* Đang chờ người khác làm — thông tin, không phải cảnh báo. */
+.debt__waiting {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 11px;
+  background: #fff7ed;
+  border-left: 3px solid var(--orange-400, #fb923c);
+  color: #9a3412;
+  font-size: 0.81rem;
+}

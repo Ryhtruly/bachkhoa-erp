@@ -10,6 +10,8 @@ import AvatarImage from '../../components/AvatarImage'
 import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './employeePortalMappers'
 import { WORKFLOW_NODE_STATUS_LABELS } from '../../components/contracts/workflowLabels'
 import Modal from '../../components/ui/Modal'
+import LegalDossierNodePanel from '../legal-dossier/LegalDossierNodePanel'
+import HandoverPanel from '../handover/HandoverPanel'
 
 export const CHECKLIST_STATUS = Object.freeze({
   NOT_STARTED: 'pending',
@@ -20,6 +22,10 @@ export const CHECKLIST_STATUS = Object.freeze({
   REJECTED: 'failed',
   NOT_APPLICABLE: 'not_applicable',
 })
+
+// Đúng bộ trạng thái mà máy chủ chấp nhận khi nộp nghiệm thu — xem
+// submit_task_node_for_acceptance trong contracts/workflow_runtime.py.
+const CHECKLIST_DAT = new Set(['approved', 'late_approved', 'not_applicable'])
 
 const CHECKLIST_STATUS_LABEL = {
   approved: 'Đã duyệt',
@@ -94,9 +100,13 @@ function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
       aria-expanded={expanded}
     >
       <strong>{task.name || task.node_code}</strong>
-      <span className={`employee-workspace-node-card__remaining${task.is_overdue ? ' is-overdue' : ''}`}>
-        {task.is_overdue && <AlertTriangle size={11} />}
-        {remainingTimeLabel(task.deadline_at)}
+      <span className={`employee-workspace-node-card__remaining${
+        task.is_overdue && !NODE_DA_XONG.has(task.status) ? ' is-overdue' : ''
+      }${NODE_DA_XONG.has(task.status) ? ' is-done' : ''}`}>
+        {task.is_overdue && !NODE_DA_XONG.has(task.status) && <AlertTriangle size={11} />}
+        {NODE_DA_XONG.has(task.status)
+          ? finishedTimeLabel(task.deadline_at, task.completion_date)
+          : remainingTimeLabel(task.deadline_at)}
       </span>
     </button>
     <div className="employee-workspace-node-card__checklist">
@@ -110,6 +120,31 @@ function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
     </div>
     <footer><AssigneeAvatars assignees={task.assignees || []} /></footer>
   </article>
+}
+
+// Việc đã nghiệm thu thì đếm ngược tới hạn là vô nghĩa — nhân viên nhìn thẻ đã
+// xong mà thấy "Còn 17 ngày" sẽ tưởng chưa làm. Xong rồi thì thứ đáng nói là
+// làm sớm hay trễ so với hạn, chứ không phải còn bao lâu.
+const NODE_DA_XONG = new Set(['accepted', 'completed'])
+
+const khoangCach = (milliseconds) => {
+  const totalHours = Math.ceil(milliseconds / 3_600_000)
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  const parts = []
+  if (days) parts.push(`${days} ngày`)
+  if (hours) parts.push(`${hours} giờ`)
+  return parts.join(' ')
+}
+
+const finishedTimeLabel = (deadlineAt, finishedAt) => {
+  if (!finishedAt) return 'Đã xong'
+  if (!deadlineAt) return `Xong ${new Date(finishedAt).toLocaleDateString('vi-VN')}`
+  const difference = new Date(deadlineAt).getTime() - new Date(finishedAt).getTime()
+  if (Math.abs(difference) < 3_600_000) return 'Xong đúng hạn'
+  return difference > 0
+    ? `Xong sớm ${khoangCach(difference)}`
+    : `Xong trễ ${khoangCach(-difference)}`
 }
 
 const remainingTimeLabel = (deadlineAt) => {
@@ -149,14 +184,18 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
       return
     }
     setSubmitting(true)
+    // Checklist không đòi minh chứng thì không có gì để đính kèm. FormData rỗng
+    // vẫn gửi header multipart nhưng không có phần nào, và máy chủ đọc đó là body
+    // hỏng — nút bấm không ăn. Không có gì gửi thì gửi không body.
     const body = new FormData()
     if (file) body.append('file', file)
     if (note) body.append('note', note)
     if (lateReason.trim()) body.append('late_reason', lateReason.trim())
+    const coDinhKem = Boolean(file || note || lateReason.trim())
     try {
       await apiFetch(`/api/employee-portal/tasks/${taskNodeId}/checklist/${item.id}/submit`, {
         method: 'POST',
-        body,
+        ...(coDinhKem ? { body } : {}),
       })
       addToast('Đã nộp minh chứng, chờ duyệt', 'success')
       setFile(null)
@@ -273,9 +312,21 @@ function NodeActionBar({ task, onChanged }) {
     </button>
   }
   if (task.status === 'in_progress') {
-    return <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={submitForAcceptance}>
+    const chuaDat = (task.checklist || []).filter(item => !CHECKLIST_DAT.has(item.status))
+    const chuaTich = chuaDat.filter(item => item.status === 'pending' || item.status === 'failed')
+    const nut = <button type="button" className="btn btn-primary btn-sm"
+      disabled={busy || chuaDat.length > 0} onClick={submitForAcceptance}>
       <Send size={14} /> Nộp nghiệm thu
     </button>
+    if (chuaDat.length === 0) return nut
+    return <div className="employee-workspace-task-modal__gate">
+      {nut}
+      <small>
+        {chuaTich.length > 0
+          ? `Tích xong checklist bên dưới rồi mới nộp nghiệm thu được — còn ${chuaTich.length} việc`
+          : 'Checklist đã nộp, đang chờ quản lý duyệt'}
+      </small>
+    </div>
   }
   if (task.status === 'submitted') {
     return <span className="employee-workspace-checklist__status-label"><Clock size={13} /> Đang chờ quản lý duyệt</span>
@@ -284,6 +335,9 @@ function NodeActionBar({ task, onChanged }) {
 }
 
 export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
+  // Bối cảnh Toast có thể vắng mặt (ví dụ trong test dựng component đơn lẻ),
+  // nên không phá vỡ cả màn hình chỉ vì thiếu một hàm báo lỗi.
+  const { addToast } = useToast() || {}
   const calendarRef = useRef(null)
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [weekLabel, setWeekLabel] = useState('')
@@ -429,7 +483,9 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
       <div className="employee-workspace-node-modal">
         <div className="employee-workspace-node-card__summary">
           <strong>{WORKFLOW_NODE_STATUS_LABELS[selectedTask.status] || selectedTask.status}</strong>
-          <span>{remainingTimeLabel(selectedTask.deadline_at)}</span>
+          <span>{NODE_DA_XONG.has(selectedTask.status)
+            ? finishedTimeLabel(selectedTask.deadline_at, selectedTask.completion_date)
+            : remainingTimeLabel(selectedTask.deadline_at)}</span>
         </div>
         <div className="employee-workspace-node-card__people">
           <AssigneeAvatars assignees={selectedTask.assignees || []} />
@@ -438,6 +494,20 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
         <div className="employee-workspace-task-modal__action">
           <NodeActionBar task={selectedTask} onChanged={onRefresh} />
         </div>
+
+        {/* Hai node đặc biệt. Thao tác của chúng thuộc về CHÍNH NGƯỜI ĐƯỢC PHÂN
+            CÔNG, nên chỗ đúng là ngay đây — trong khung nghiệm thu ở Lịch trình,
+            không phải trong sơ đồ quy trình của giám đốc. */}
+        <LegalDossierNodePanel
+          taskNodeId={selectedTask.id}
+          addToast={addToast}
+          onChanged={onRefresh}
+        />
+        <HandoverPanel
+          taskNodeId={selectedTask.id}
+          addToast={addToast}
+          onChanged={onRefresh}
+        />
         {(selectedTask.checklist?.length || 0) > 0 ? (
           <ul className="employee-workspace-checklist">
             {selectedTask.checklist.map(item => <ChecklistEvidenceItem

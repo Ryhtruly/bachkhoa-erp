@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileSignature, Printer, Download, Plus, MoveHorizontal, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, Plus, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { Modal, FormRow, FormGrid, DataTable, StatusBadge, FilterBar } from '../components/ui';
-import LocationPicker from '../components/location/LocationPicker';
+import { DataTable, StatusBadge, FilterBar } from '../components/ui';
+import ContractComposer from '../features/contracts/ContractComposer';
 import '../components/contracts/contracts.css';
 
 const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
@@ -39,6 +39,7 @@ export default function Contracts() {
   const [config, setConfig] = useState({ personnel: [], services: [] });
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [savingContract, setSavingContract] = useState(false);
   const [contractView, setContractView] = useState('list');
   const [selectedContract, setSelectedContract] = useState(null);
   const [navTarget, setNavTarget] = useState(null);
@@ -144,28 +145,32 @@ export default function Contracts() {
   }, [fetchConfig]);
 
   useEffect(() => {
-    fetchContracts();
-
     const d = new Date();
     const today = d.toISOString().split('T')[0];
     d.setDate(d.getDate() + 7);
     const nextWeek = d.toISOString().split('T')[0];
     setFormData(prev => ({ ...prev, date_signed: today, due_date: nextWeek }));
-  }, [fetchContracts]);
+  }, []);
 
-  const handleGenerateContract = async (e) => {
-    e.preventDefault();
-    const val = parseFloat(formData.contract_value);
-    if (!val || val <= 0) {
+  // Vào sơ đồ quy trình rồi quay ra, trạng thái và công nợ đã đổi ở màn kia.
+  // Màn này không bị gỡ khỏi cây nên dữ liệu cũ nằm nguyên đó — người dùng thấy
+  // "Đang thực hiện" cho hợp đồng vừa nghiệm thu xong và phải tự F5.
+  useEffect(() => {
+    if (contractView === 'list') fetchContracts();
+  }, [contractView, fetchContracts]);
+
+  const handleGenerateContract = async (payload) => {
+    if (!payload.contract_value || payload.contract_value <= 0) {
       addToast('Nhập giá trị hợp đồng hợp lệ', 'error');
       return;
     }
 
+    setSavingContract(true);
     try {
       const res = await fetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, contract_value: val })
+        body: JSON.stringify({ ...formData, ...payload })
       });
       if (res.ok) {
         const data = await res.json();
@@ -184,6 +189,8 @@ export default function Contracts() {
       }
     } catch {
       addToast('Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setSavingContract(false);
     }
   };
 
@@ -213,49 +220,63 @@ export default function Contracts() {
     {
       key: 'id',
       label: 'Mã hợp đồng',
-      width: 150,
+      width: 145,
       render: (value) => <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{value}</span>
     },
     {
       key: 'customer_name',
       label: 'Khách hàng',
-      width: 170,
+      width: 160,
       render: (val) => <EllipsisCell value={val} />
     },
     {
       key: 'service_lines',
       label: 'Hạng mục',
-      width: 210,
+      width: 135,
       render: (lines = []) => (
         <span className="contract-service-summary">
           <Layers3 size={14} />
           <span>{lines.map(line => line.name).filter(Boolean).join(', ') || 'Chưa có Hạng mục'}</span>
-          <small>{lines.length}</small>
+          {lines.length > 1 && <small>{lines.length}</small>}
         </span>
       )
     },
-    { key: 'date_signed', label: 'Ngày ký', width: 105 },
     {
+      // Tiền là thứ người dùng tìm đầu tiên. Trước đây cột này bị đẩy ra ngoài
+      // màn hình, phải kéo ngang mới thấy — nên gộp giá trị và công nợ làm một,
+      // bỏ cột Ngày ký (đã có trong khung chi tiết bên phải).
       key: 'total_value',
-      label: 'Giá trị',
+      label: 'Giá trị / Còn nợ',
       align: 'right',
-      render: (value) => <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 650 }}>{formatVND(value)}</span>
+      width: 172,
+      render: (value, row) => (
+        <span className="contract-money">
+          <strong>{formatVND(value)}</strong>
+          {/* Chỉ dám nói "đã thu đủ" khi thật sự có số để đối chiếu — thiếu dữ
+              liệu mà báo đã thu đủ là báo sai chiều nguy hiểm nhất. */}
+          {row.remaining_amount == null
+            ? <em className="is-unknown">chưa có số liệu</em>
+            : Number(row.remaining_amount) > 0
+              ? <em className="is-owed">còn {formatVND(row.remaining_amount)}</em>
+              : <em className="is-paid">đã thu đủ</em>}
+        </span>
+      )
     },
     {
       key: 'status',
       label: 'Trạng thái',
-      width: 120,
+      width: 155,
       render: (value) => <StatusBadge status={value || 'Chưa cập nhật'} domain="contracts" />
     },
     {
       key: 'file_link',
       label: 'File',
       align: 'center',
-      width: 80,
-      stickyRight: true,
+      width: 68,
       render: (val) => val
-        ? <a href={val} target="_blank" rel="noreferrer" className="btn btn-secondary btn-xs" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}>
-          <Download size={14} /> File HĐ
+        ? <a href={val} target="_blank" rel="noreferrer" className="btn btn-secondary btn-xs contract-file-btn"
+            title="Mở file hợp đồng" aria-label="Mở file hợp đồng">
+          <Download size={14} />
         </a>
         : <span style={{ color: 'var(--text-tertiary)', fontSize: '0.78rem' }}>—</span>
     }
@@ -298,9 +319,6 @@ export default function Contracts() {
               />
             </div>
 
-            <div className="contract-table-hint">
-              <MoveHorizontal size={15} /> Kéo ngang để xem đầy đủ thông tin.
-            </div>
             <DataTable
               columns={columns}
               data={contracts}
@@ -385,68 +403,16 @@ export default function Contracts() {
         </React.Suspense>
       )}
 
-      {/* Modal Soạn Hợp Đồng */}
-      <Modal
+      {/* Form soạn hợp đồng — dựng theo bản thiết kế riêng, không dùng khung
+          Modal chung vì bố cục của nó (đầu · thân cuộn · chân dính) khác hẳn. */}
+      <ContractComposer
         open={isModalOpen}
+        code={formData.contract_id}
+        services={config.services}
+        saving={savingContract}
         onClose={() => setIsModalOpen(false)}
-        size="lg"
-        title={
-          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <FileSignature size={20} color="var(--orange-500)" /> Soạn Hợp Đồng Mới
-          </span>
-        }
-      >
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0 0 20px 0' }}>
-          Điền thông tin và lưu hợp đồng vào hệ thống.
-        </p>
-        <form id="hopdong-form" onSubmit={handleGenerateContract}>
-          <FormGrid cols={2}>
-            <FormRow label="Mã hợp đồng" required>
-              <input className="form-control" required readOnly value={formData.contract_id} type="text" placeholder="001/BK-2026" />
-            </FormRow>
-            <FormRow label="Tên khách hàng" required>
-              <input className="form-control" required value={formData.customer_name} onChange={e => setFormData({ ...formData, customer_name: e.target.value })} type="text" />
-            </FormRow>
-            <FormRow label="Số điện thoại" required>
-              <input className="form-control" required value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} type="text" />
-            </FormRow>
-            <FormRow label="Địa chỉ BĐS" required cols={2}>
-              <LocationPicker
-                value={addressLocation}
-                onChange={(nextLocation) => {
-                  setAddressLocation(nextLocation);
-                  setFormData(current => ({ ...current, address: nextLocation.displayAddress }));
-                }}
-              />
-            </FormRow>
-            <FormRow label="Dịch vụ" required>
-              <select className="form-control" required value={formData.service_type} onChange={e => setFormData({ ...formData, service_type: e.target.value })}>
-                <option value="">— Chọn Dịch Vụ —</option>
-                {config.services.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </FormRow>
-            <FormRow label="Sale / Nguồn" required>
-              <input className="form-control" required value={formData.sales_source} onChange={e => setFormData({ ...formData, sales_source: e.target.value })} type="text" placeholder="Tên sale" />
-            </FormRow>
-            <FormRow label="Giá trị HĐ (VNĐ)" required>
-              <input className="form-control" required value={formData.contract_value} onChange={e => setFormData({ ...formData, contract_value: e.target.value })} type="number" placeholder="15000000" />
-            </FormRow>
-            <FormRow label="Ngày ký" required>
-              <input className="form-control" required value={formData.date_signed} onChange={e => setFormData({ ...formData, date_signed: e.target.value })} type="date" />
-            </FormRow>
-            <FormRow label="Hạn hoàn thành" required>
-              <input className="form-control" required value={formData.due_date} onChange={e => setFormData({ ...formData, due_date: e.target.value })} type="date" />
-            </FormRow>
-          </FormGrid>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid var(--border-default)' }}>
-            <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Hủy bỏ</button>
-            <button type="submit" className="btn btn-primary" style={{ padding: '0 24px' }}>
-              <Printer size={16} style={{ marginRight: '8px' }} /> Xuất Word & Ghi dữ liệu
-            </button>
-          </div>
-        </form>
-      </Modal>
+        onSubmit={handleGenerateContract}
+      />
     </section>
   );
 }

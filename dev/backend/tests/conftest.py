@@ -194,3 +194,37 @@ def finance_clerk_user(db):
     db.delete(role)
     db.delete(user)
     db.commit()
+
+
+# ══════════════════════════════════════════════════════════════════
+# Phiên đọc tới CSDL thật — để bắt lỗi lệch giữa SQL viết tay và schema
+# ══════════════════════════════════════════════════════════════════
+#
+# Khác hẳn fixture `db` ở trên: fixture này KHÔNG ghi gì, chỉ chạy select để
+# kiểm tra các câu SQL viết tay trong route còn khớp tên cột hay không. Đây là
+# loại lỗi mà test logic thuần không bao giờ bắt được — migration đổi tên cột,
+# test vẫn xanh, nhưng trang danh sách chết trắng.
+
+@pytest.fixture(scope="session")
+def db_session():
+    """CSDL để đối chiếu SQL viết tay với tên cột thật.
+
+    Chỉ chạy SELECT, không ghi gì. Dùng SCHEMA_CHECK_DATABASE_URL nếu có (thường
+    trỏ tới bản sao chỉ-đọc), nếu không thì lấy CSDL thử đã được conftest kiểm
+    duyệt ở trên. KHÔNG tự ý đọc DATABASE_URL gốc — bộ chặn đầu file cấm chạy
+    test lên CSDL đang phục vụ khách.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    dsn = os.environ.get("SCHEMA_CHECK_DATABASE_URL", "").strip() or TEST_DATABASE_URL
+    if not dsn:
+        pytest.skip("Chưa cấu hình CSDL để đối chiếu schema")
+
+    engine = create_engine(dsn)
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()

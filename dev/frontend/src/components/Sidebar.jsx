@@ -5,14 +5,16 @@ export default function Sidebar({ activeTab, setActiveTab, mode = 'management', 
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
   // Đây chỉ là dọn giao diện cho gọn; chặn thật nằm ở từng endpoint phía server.
   const menuItems = [
-    { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard, permission: 'finance' },
+    // Tổng Quan là bức tranh tài chính TOÀN CÔNG TY — việc của giám đốc.
+    // Kế toán mở lên chỉ thấy doanh thu, cơ cấu chi phí, KPI: không dùng được gì.
+    { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard, permission: 'finance', directorOnly: true },
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter, permission: 'crm' },
     { id: 'tasks', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban, permission: 'survey_record' },
     { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck, permission: 'legal_submission' },
     { id: 'contracts', label: 'Hợp Đồng', icon: FileText, permission: 'contract' },
     { id: 'timeline', label: 'Quản Lý Timeline', icon: ChartNoAxesGantt, directorOnly: true },
     { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet, permission: 'finance' },
-    { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr' },
+    { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr', directorOnly: true },
     { id: 'wiki', label: 'Nhân Sự & Đào Tạo', icon: BookOpen, permission: 'hr' },
   ];
 

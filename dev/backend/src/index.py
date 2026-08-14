@@ -29,6 +29,8 @@ from src.routes.routes_employee_portal import router as employee_portal_router
 from src.routes.routes_user_admin import router as user_admin_router
 from src.routes.routes_notifications import router as notifications_router
 from src.routes.routes_legal_submissions import router as legal_submissions_router
+from src.routes.routes_legal_dossiers import router as legal_dossiers_router
+from src.routes.routes_handover import router as handover_router
 from src.routes.routes_survey_records import router as survey_records_router
 
 from src.db.database import engine, Base, SessionLocal
@@ -180,6 +182,8 @@ app.include_router(settings_router)
 app.include_router(kpi_router)
 app.include_router(notifications_router)
 app.include_router(legal_submissions_router)
+app.include_router(legal_dossiers_router)
+app.include_router(handover_router)
 app.include_router(survey_records_router)
 
 @app.get("/")

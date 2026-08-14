@@ -29,6 +29,13 @@ from src.contracts.workflow_runtime import (
 from src.contracts.timeline import project_node_timeline
 from src.services.timeline_realtime import publish_timeline_change, timeline_event_stream
 
+from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+
+# Hằng số cho truy vấn tiền — dùng chung một định nghĩa với tầng tài chính,
+# tránh mỗi nơi liệt kê một kiểu rồi lệch nhau.
+_APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
+_INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
+
 router = APIRouter(tags=["03. Contracts & Workflows"])
 
 
@@ -114,9 +121,18 @@ def _require_director(
 
 
 def _timeline_node_type(node_code: str | None, definition: dict) -> str:
-    if definition.get("requires_gov_submission") or node_code in {"K04", "K05", "K06", "K07", "K08"}:
+    """Node thuộc phân hệ nào — nhận diện bằng CỜ, không bằng mã.
+
+    Trước đây hàm này liệt kê cứng {"K04","K05",...}. Công ty đổi tên bước hoặc
+    thêm bước là sai ngay, và nó cũng là nguồn sự thật thứ hai bên cạnh chính
+    các cờ trên node. Node bàn giao (cờ is_handover) dùng chung cho cả hai phân
+    hệ nên không thuộc riêng bên nào.
+    """
+    if definition.get("is_handover"):
+        return "shared"
+    if definition.get("requires_gov_submission"):
         return "legal"
-    if definition.get("creates_survey_record") or node_code in {"K02", "K03"}:
+    if definition.get("creates_survey_record"):
         return "survey"
     return "shared"
 
@@ -305,17 +321,61 @@ def list_contract_workspace(
             "price": _money_value(line.price),
         })
 
+    # Tiến độ và tiền: TÍNH SỐNG, không đọc cột status chết.
+    # Cột contracts.status chưa bao giờ được cập nhật nên mọi hợp đồng đều hiện
+    # "Chưa cập nhật" — vô nghĩa với người dùng. Suy ra từ quy trình và phiếu thu
+    # đã duyệt thì không bao giờ lệch.
+    tien_va_tien_do = {}
+    if contract_ids:
+        for r in db.execute(
+            text(f"""
+                select c.id,
+                       coalesce((
+                         select sum(t.amount) from public.cashflow_transactions t
+                         where t.contract_id = c.id
+                           and t.transaction_type in ({_INCOME_SQL})
+                           and t.status in ({_APPROVED_SQL})
+                       ), 0) as da_thu,
+                       count(wi.id)                                       as so_quy_trinh,
+                       count(*) filter (where wi.status = 'completed')     as so_xong,
+                       count(*) filter (where wi.status = 'cancelled')     as so_huy
+                from public.contracts c
+                left join public.service_lines sl on sl.contract_id = c.id
+                left join public.workflow_instances wi on wi.service_line_id = sl.id
+                where c.id = any(:ids)
+                group by c.id
+            """),
+            {"ids": list(contract_ids)},
+        ).mappings():
+            tien_va_tien_do[r["id"]] = dict(r)
+
+    def _tien_do(info: dict, tong: float) -> str:
+        if not info or not info["so_quy_trinh"]:
+            return "Chưa có quy trình"
+        if info["so_huy"] == info["so_quy_trinh"]:
+            return "Đã huỷ"
+        if info["so_xong"] == info["so_quy_trinh"]:
+            # Nhãn phải vừa một dòng trong cột trạng thái; số nợ cụ thể đã nằm
+            # ngay cột bên cạnh nên ở đây chỉ cần nói vì sao chưa chốt được.
+            return "Hoàn thành" if float(info["da_thu"] or 0) >= tong - 0.01 else "Xong, còn nợ"
+        return "Đang thực hiện"
+
     rows = []
     for contract_id in contract_ids:
         contract, customer = contract_by_id[contract_id]
         service_lines = lines_by_contract.get(contract_id, [])
+        tong = _money_value(contract.total_value)
+        info = tien_va_tien_do.get(contract_id)
+        da_thu = float(info["da_thu"] or 0) if info else 0.0
         rows.append({
             "id": contract.id,
             "customer_name": customer.full_name if customer else "Chưa cập nhật",
             "customer_phone": customer.phone if customer else "",
             "date_signed": _date_value(contract.date_signed),
-            "total_value": _money_value(contract.total_value),
-            "status": contract.status or "Chưa cập nhật",
+            "total_value": tong,
+            "paid_amount": da_thu,
+            "remaining_amount": max(0.0, tong - da_thu),
+            "status": _tien_do(info, tong),
             "service_location": contract.service_location or "",
             "file_link": contract.file_link or "",
             "service_lines": service_lines,

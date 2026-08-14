@@ -6,7 +6,11 @@ from src.db.models._base import *
 class CashflowTransaction(Base):
     __tablename__ = "cashflow_transactions"
     id = Column(String, primary_key=True)
-    project_id = Column(String, ForeignKey("projects_tasks.id"), nullable=True)
+    # Cột này chứa id của service_lines (Hạng mục) — xem create_cashflow.
+    # Trước đây khai báo khoá ngoại tới "projects_tasks", một bảng KHÔNG tồn tại
+    # trong CSDL lẫn trong model, khiến SQLAlchemy không dựng nổi thứ tự bảng và
+    # mọi lần tạo phiếu thu/chi đều lỗi 500.
+    project_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
     contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
     transaction_type = Column(String, nullable=True)  # Thu / Chi or INCOME / EXPENSE
     amount = Column(Numeric, nullable=True)
@@ -31,6 +35,7 @@ class CashflowTransaction(Base):
     scope = Column(String, default="Công ty")
     cancellation_reason = Column(String, nullable=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Receivable(Base):

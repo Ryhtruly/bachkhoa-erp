@@ -17,15 +17,20 @@ import {
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
 import { avatarColorFor, initialsOf } from '../lib/avatar';
-import { isTerminalSurveyStatus } from '../lib/dossierStatus';
+import { isDossierLocked } from '../lib/dossierStatus';
 import './surveyRecords.css';
 
 const API = '';
 
-const STATUS_OPTIONS = ['Đang thực hiện', 'Hoàn thành', 'Nộp thành công', 'Huỷ'];
+// Ba trạng thái đầu do HỆ THỐNG tính theo tiến độ quy trình, không ai gõ tay được.
+// Chỉ hai giá trị cuối là nhân viên tự chọn.
+const COMPUTED_STATUSES = ['Đang thực hiện', 'Đã bàn giao', 'Hoàn thành'];
+const MANUAL_STATUS_OPTIONS = ['Nộp thành công', 'Huỷ'];
+const STATUS_OPTIONS = [...COMPUTED_STATUSES, ...MANUAL_STATUS_OPTIONS];
 
 const STATUS_VARIANTS = {
   'Đang thực hiện': 'info',
+  'Đã bàn giao': 'warning',
   'Hoàn thành': 'success',
   'Nộp thành công': 'primary',
   'Huỷ': 'neutral',
@@ -45,7 +50,10 @@ const DUE_SOON_DAYS = 2;
 
 function computeWarning(record) {
   if (record.status === 'Huỷ') return { label: 'Đã huỷ', variant: 'neutral' };
-  if (record.accepted_at || record.status === 'Hoàn thành') return { label: 'Xong', variant: 'success' };
+  // Hồ sơ đã đóng thì không còn hạn nào để cảnh báo nữa.
+  if (isDossierLocked(record)) return { label: 'Xong', variant: 'success' };
+  // Đo vẽ xong nhưng hạng mục còn phần pháp lý — hạn của bước sau, không phải của mình.
+  if (record.status === 'Đã bàn giao') return { label: 'Chờ pháp lý', variant: 'info' };
   if (!record.deadline_at) return { label: 'Chưa đặt hạn', variant: 'neutral' };
   const remainingMs = new Date(record.deadline_at).getTime() - Date.now();
   if (remainingMs < 0) return { label: 'Trễ hạn', variant: 'danger' };
@@ -87,7 +95,8 @@ const toEditForm = (data) => ({
   dossier_name: data.dossier_name || '',
   ward_code: data.ward_code || '',
   priority: data.priority || 'NORMAL',
-  status: data.status || 'Đang thực hiện',
+  // Chỉ nhận trạng thái thủ công. Rỗng nghĩa là "để hệ thống tự tính theo quy trình".
+  status: data.manual_status || '',
   note: data.note || '',
 });
 
@@ -109,6 +118,7 @@ export default function Tasks() {
   const [selectedId, setSelectedId] = useState(null);
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
   const [editForm, setEditForm] = useState(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -166,6 +176,7 @@ export default function Tasks() {
     setIsDetailOpen(true);
     setDetailLoading(true);
     setEditing(false);
+    setDetailError('');
     try {
       const res = await fetch(`${API}/api/survey-records/${recordId}`);
       if (res.ok) {
@@ -173,9 +184,12 @@ export default function Tasks() {
         setDetailData(data);
         setEditForm(toEditForm(data));
       } else {
+        // Không được để hộp thoại đứng ở "Đang tải…" mãi — phải nói rõ hỏng gì.
+        setDetailError(`Không lấy được chi tiết hồ sơ (lỗi ${res.status}).`);
         addToast('Không lấy được chi tiết hồ sơ', 'error');
       }
     } catch {
+      setDetailError('Mất kết nối tới máy chủ.');
       addToast('Lỗi kết nối khi tải chi tiết', 'error');
     } finally {
       setDetailLoading(false);
@@ -373,8 +387,17 @@ export default function Tasks() {
         closeOnOverlay={!saving}
         title={<span className="survey-modal-title"><ScrollText size={20} /> Chi tiết Hồ Sơ Đo Vẽ</span>}
       >
-        {detailLoading || !editForm ? (
+        {detailLoading ? (
           <div className="survey-loading">Đang tải…</div>
+        ) : (detailError || !editForm) ? (
+          <div className="survey-loading">
+            <p style={{ color: 'var(--danger-600, #dc2626)', marginBottom: 14 }}>
+              {detailError || 'Không có dữ liệu để hiển thị.'}
+            </p>
+            <button type="button" className="btn btn-secondary" onClick={() => openDetail(selectedId)}>
+              Thử lại
+            </button>
+          </div>
         ) : (
           <form onSubmit={handleSave}>
             <div className="survey-detail__identity">
@@ -386,7 +409,7 @@ export default function Tasks() {
                 <div className="survey-detail__name">{editForm.dossier_name || 'Chưa đặt tên hồ sơ'}</div>
               </div>
               <div className="survey-detail__badges">
-                <Badge variant={STATUS_VARIANTS[editForm.status] || 'neutral'}>{editForm.status}</Badge>
+                <Badge variant={STATUS_VARIANTS[detailData?.status] || 'neutral'}>{detailData?.status || '—'}</Badge>
                 {detailData?.has_legal && <Badge variant="primary">Có pháp lý</Badge>}
               </div>
             </div>
@@ -421,10 +444,13 @@ export default function Tasks() {
             <section className="survey-detail__section">
               <h4>Tiến độ</h4>
               <div className="survey-detail__grid">
-                <Field label="Trạng thái" editing={editing} value={editForm.status}>
+                <Field label="Trạng thái" editing={editing} value={detailData?.status}>
+                  {/* Chỉ cho chọn 2 trạng thái thủ công. Ba giá trị còn lại do hệ thống
+                      tính theo tiến độ quy trình — gõ tay được là lại lệch như cũ. */}
                   <select className="form-control" value={editForm.status}
                     onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
-                    {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                    <option value="">Theo tiến độ quy trình ({detailData?.status || '—'})</option>
+                    {MANUAL_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </Field>
                 <Field label="Cảnh báo" value={detailData ? computeWarning(detailData).label : ''} />
@@ -440,7 +466,7 @@ export default function Tasks() {
             </section>
 
             <div className="survey-detail__footer">
-              {isTerminalSurveyStatus(detailData?.status || editForm.status) ? (
+              {isDossierLocked(detailData, editForm.status) ? (
                 <>
                   <span className="survey-muted" role="status">Hồ sơ đã hoàn tất và không thể chỉnh sửa.</span>
                   <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>

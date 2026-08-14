@@ -20,6 +20,20 @@ from src.finance.domain_rules import (
 )
 from src.finance.serializers import serialize_employee
 
+# Chỉ phiếu đã duyệt mới được tính vào công nợ. Phiếu đang chờ duyệt không
+# đụng tới sổ nợ — nếu không, nhân viên gõ một phiếu khống là công nợ tự biến mất
+# mà chưa ai phê duyệt.
+APPROVED_TX_STATUSES = {"Hoàn thành", "Đã duyệt", "COMPLETED"}
+PENDING_TX_STATUSES = {"Chờ duyệt", "PENDING"}
+# Hai bộ giá trị vì dữ liệu cũ dùng tiếng Anh, dữ liệu mới dùng tiếng Việt.
+INCOME_TX_TYPES = {"Thu", "INCOME"}
+
+
+def counts_toward_receivable(status: Optional[str], tx_type: Optional[str]) -> bool:
+    """Phiếu này có được trừ vào công nợ hợp đồng không."""
+    return (tx_type in INCOME_TX_TYPES) and (status in APPROVED_TX_STATUSES)
+
+
 class FinanceService:
 
     @staticmethod
@@ -159,9 +173,11 @@ class FinanceService:
                 }
             ))
 
-            if payload.type == "Thu" and contract_id:
+            # Chỉ trừ công nợ khi phiếu đã duyệt. Phiếu "Chờ duyệt" phải đợi
+            # giám đốc bấm duyệt thì mới ghi nhận (xem approve_cashflow).
+            if counts_toward_receivable(tx_status, payload.type) and contract_id:
                 FinanceService._sync_receivables(db, contract_id, payload.amount)
-                
+
             db.commit()
             return {"status": "success", "id": tc.id, "type": payload.type}
         except HTTPException:
@@ -188,10 +204,10 @@ class FinanceService:
             if parsed_date and parsed_date != t.transaction_date:
                 check_closed_period(db, parsed_date)
             
-            if t.status in ["Hoàn thành", "Đã duyệt"]:
+            if t.status in APPROVED_TX_STATUSES:
                 if hasattr(payload, 'contract_id') and payload.contract_id is not None:
                     if t.contract_id != payload.contract_id:
-                        if t.transaction_type == "Thu":
+                        if t.transaction_type in INCOME_TX_TYPES:
                             if t.contract_id: FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
                             if payload.contract_id: FinanceService._sync_receivables(db, payload.contract_id, float(t.amount))
                         t.contract_id = payload.contract_id
@@ -218,7 +234,9 @@ class FinanceService:
 
             if amount_diff != 0:
                 calculate_balances(db, t.transaction_type, amount_diff, payload.payment_method)
-                if t.transaction_type == "Thu" and t.contract_id:
+                # Phiếu chưa duyệt chưa từng được cộng vào công nợ nên cũng không
+                # có gì để điều chỉnh; số tiền cuối cùng sẽ được ghi nhận lúc duyệt.
+                if counts_toward_receivable(t.status, t.transaction_type) and t.contract_id:
                     FinanceService._sync_receivables(db, t.contract_id, amount_diff)
 
             t.category_code = payload.category
@@ -271,13 +289,18 @@ class FinanceService:
                 raise HTTPException(status_code=400, detail="Phiếu này đã bị hủy trước đó.")
             
             check_closed_period(db, t.transaction_date or date.today())
-            
+
+            # Phải nhớ trạng thái trước khi ghi đè, vì việc hoàn công nợ phụ thuộc
+            # vào chuyện phiếu ĐÃ từng được tính hay chưa.
+            was_counted = counts_toward_receivable(t.status, t.transaction_type)
+
             t.status = "Đã hủy"
             t.cancellation_reason = reason
             t.cancelled_at = datetime.now()
-            
-            # 1. Sync Receivables backward if it was Thu
-            if t.transaction_type == "Thu" and t.contract_id:
+
+            # 1. Hoàn lại công nợ — chỉ khi phiếu này thực sự đã được trừ trước đó.
+            # Huỷ một phiếu còn "Chờ duyệt" mà vẫn cộng ngược sẽ thổi phồng công nợ.
+            if was_counted and t.contract_id:
                 FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
             
             # 2. Reverse Entry to correct Running Balance without deleting
@@ -683,17 +706,90 @@ class FinanceService:
 
     @staticmethod
     def _sync_receivables(db: Session, contract_id: str, amount: float):
+        c = db.query(Contract).filter(Contract.id == contract_id).first()
+        total = float(c.total_value or 0) if c else 0.0
+
         rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
         if rec:
-            rec.paid_amount = float(rec.paid_amount or 0) + amount
-            rec.remaining_amount = max(0.0, float(rec.remaining_amount or 0) - amount)
+            rec.paid_amount = max(0.0, float(rec.paid_amount or 0) + amount)
+            # Số còn lại luôn suy ra từ giá trị hợp đồng, không trừ dần vào chính nó.
+            # Trừ dần thì mỗi lần hoàn tác lại lệch thêm một ít và không bao giờ khớp lại.
+            rec.remaining_amount = max(0.0, total - float(rec.paid_amount or 0))
         else:
-            c = db.query(Contract).filter(Contract.id == contract_id).first()
-            total = float(c.total_value or 0) if c else 0.0
+            paid = max(0.0, amount)
             due_date_val = c.date_signed + timedelta(days=30) if c and c.date_signed else None
             db.add(Receivable(
                 contract_id=contract_id,
-                paid_amount=amount,
-                remaining_amount=max(0.0, total - amount),
+                paid_amount=paid,
+                remaining_amount=max(0.0, total - paid),
                 due_date=due_date_val
             ))
+
+    @staticmethod
+    def approve_cashflow(db: Session, transaction_id: str, actor_id: str) -> dict:
+        """Giám đốc duyệt phiếu. ĐÂY là lúc công nợ mới thực sự được ghi nhận."""
+        try:
+            t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
+            if not t:
+                raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
+            if t.status in APPROVED_TX_STATUSES:
+                raise HTTPException(status_code=400, detail="Phiếu này đã được duyệt rồi")
+            if t.status not in PENDING_TX_STATUSES:
+                raise HTTPException(status_code=400, detail=f"Phiếu đang ở trạng thái '{t.status}', không duyệt được")
+
+            check_closed_period(db, t.transaction_date or date.today())
+
+            t.status = "Hoàn thành"
+            t.approved_by_user_id = actor_id
+            t.approved_at = datetime.now(timezone.utc)
+
+            if counts_toward_receivable(t.status, t.transaction_type) and t.contract_id:
+                FinanceService._sync_receivables(db, t.contract_id, float(t.amount))
+
+            actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
+            db.add(AuditLog(
+                actor_id=actor_id if actor_exists else None,
+                action="APPROVE",
+                object_type="CashflowTransaction",
+                payload_json={"id": t.id, "new": {"status": "Hoàn thành", "amount": float(t.amount)}},
+            ))
+
+            db.commit()
+            return {"status": "success", "id": t.id, "new_status": t.status}
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @staticmethod
+    def reject_cashflow(db: Session, transaction_id: str, reason: str, actor_id: str) -> dict:
+        """Giám đốc từ chối phiếu chờ duyệt. Không đụng công nợ vì phiếu chưa từng được tính."""
+        if not (reason or "").strip():
+            raise HTTPException(status_code=400, detail="Phải ghi lý do từ chối")
+        try:
+            t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
+            if not t:
+                raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
+            if t.status not in PENDING_TX_STATUSES:
+                raise HTTPException(status_code=400, detail=f"Chỉ từ chối được phiếu đang chờ duyệt (hiện: '{t.status}')")
+
+            t.status = "Từ chối"
+            t.cancellation_reason = reason
+            t.cancelled_at = datetime.now()
+
+            actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
+            db.add(AuditLog(
+                actor_id=actor_id if actor_exists else None,
+                action="REJECT",
+                object_type="CashflowTransaction",
+                payload_json={"id": t.id, "new": {"status": "Từ chối", "reason": reason}},
+            ))
+
+            db.commit()
+            return {"status": "success", "id": t.id, "new_status": t.status}
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))

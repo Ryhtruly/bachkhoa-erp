@@ -65,6 +65,14 @@ const STATUS_MAPS = {
     'Chờ thanh toán': 'warning',
     'Còn nợ': 'warning',
     'Quá hạn': 'danger',
+    // Tiến độ hợp đồng ở danh sách. "Xong, còn nợ" là việc đang chờ người đi
+    // đòi tiền — phải bật lên khỏi nền, không được xám như hợp đồng đã huỷ.
+    'Hoàn thành': 'success',
+    'Xong, còn nợ': 'warning',
+    'Đang thực hiện': 'info',
+    'Chưa có quy trình': 'neutral',
+    'Đã huỷ': 'neutral',
+    'Đã hủy': 'neutral',
   },
   hopdong: {
     'settled': 'success',

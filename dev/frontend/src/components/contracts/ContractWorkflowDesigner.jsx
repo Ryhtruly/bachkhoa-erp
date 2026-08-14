@@ -18,6 +18,8 @@ import {
   Ban,
   Banknote,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleDashed,
   Clock3,
   ExternalLink,
@@ -50,6 +52,8 @@ import {
   createChecklistDefinition,
   removeChecklistDefinition,
 } from './workflowChecklistState';
+import HandoverPanel from '../../features/handover/HandoverPanel';
+import LegalDossierNodePanel from '../../features/legal-dossier/LegalDossierNodePanel';
 
 function resolveWorkflowLabels(graph) {
   return {
@@ -366,13 +370,13 @@ function graphToFlow(graph, catalog, executionNodes = [], options = {}) {
         label: value.name || catalogItem?.name || key,
         description: value.description || catalogItem?.description || '',
         checklist,
-        role: value.role || '',
         assignments: options.preferDefinitionAssignments
           ? (Array.isArray(value.assignments) ? value.assignments : [])
           : (execution?.assignments || (Array.isArray(value.assignments) ? value.assignments : [])),
         taskNodeId: execution?.id || null,
         requiresGovSubmission: Boolean(value.requires_gov_submission),
         createsSurveyRecord: Boolean(value.creates_survey_record),
+        isHandover: Boolean(value.is_handover),
         durationDays: value.duration_days ?? '',
         durationHours: value.duration_hours ?? '',
         executionStatus: execution?.status || 'pending',
@@ -421,9 +425,9 @@ function flowToGraph(nodes, edges, startNode, labels = DEFAULT_WORKFLOW_LABELS) 
       task_code: node.data.code,
       name: node.data.label,
       description: node.data.description || '',
-      role: node.data.role || '',
       requires_gov_submission: Boolean(node.data.requiresGovSubmission),
       creates_survey_record: Boolean(node.data.createsSurveyRecord),
+      is_handover: Boolean(node.data.isHandover),
       duration_days: Number(node.data.durationDays) || 0,
       duration_hours: Number(node.data.durationHours) || 0,
       checklist: (node.data.checklist || []).map(item => {
@@ -481,9 +485,9 @@ function comparableNodeDefinition(node = {}) {
     task_code: node.task_code || '',
     name: node.name || '',
     description: node.description || '',
-    role: node.role || '',
     requires_gov_submission: Boolean(node.requires_gov_submission),
     creates_survey_record: Boolean(node.creates_survey_record),
+    is_handover: Boolean(node.is_handover),
     duration_days: Number(node.duration_days) || 0,
     duration_hours: Number(node.duration_hours) || 0,
     checklist,
@@ -546,6 +550,18 @@ export default function ContractWorkflowDesigner({
   const [startNode, setStartNode] = useState(parsed.startNode);
   const [selectedNodeId, setSelectedNodeId] = useState(parsed.startNode);
   const [inspectorTab, setInspectorTab] = useState('node');
+  // Thu khung bên phải để nhường diện tích cho sơ đồ quy trình. Nhớ lại lần sau
+  // để khỏi phải bấm lại mỗi lần mở màn hình.
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(
+    () => localStorage.getItem('bk:workflow-inspector-collapsed') === '1',
+  );
+  useEffect(() => {
+    localStorage.setItem('bk:workflow-inspector-collapsed', inspectorCollapsed ? '1' : '0');
+  }, [inspectorCollapsed]);
+  // Cấu hình node (tên bước, mã cụm, cờ, thời hạn) ẩn mặc định — mã và tên đã hiện
+  // ngay ở tiêu đề rồi, bày thêm ô nhập y hệt chỉ làm rối và đẩy phần việc thật xuống dưới.
+  const [editingNodeConfig, setEditingNodeConfig] = useState(false);
+  useEffect(() => { setEditingNodeConfig(false); }, [selectedNodeId]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(workflow?.template?.id || '');
   const [workflowLabels, setWorkflowLabels] = useState(parsed.labels);
   const [saving, setSaving] = useState(false);
@@ -778,6 +794,7 @@ export default function ContractWorkflowDesigner({
         role: '',
         requiresGovSubmission: false,
         createsSurveyRecord: false,
+        isHandover: false,
         durationDays: '',
         durationHours: '',
         executionStatus: 'pending',
@@ -1314,7 +1331,13 @@ export default function ContractWorkflowDesigner({
           )}
         </div>
 
-        <aside className="workflow-inspector">
+        <aside className={`workflow-inspector${inspectorCollapsed ? ' workflow-inspector--collapsed' : ''}`}>
+          {inspectorCollapsed ? (
+            <div className="workflow-inspector__stub" onClick={() => setInspectorCollapsed(false)}>
+              <span>{selectedNode?.data.code || 'Chi tiết'}</span>
+            </div>
+          ) : (
+          <>
           <div className="workflow-inspector__tabs">
             {[
               ['node', 'Node'],
@@ -1341,18 +1364,74 @@ export default function ContractWorkflowDesigner({
             </div>
           ) : inspectorTab === 'node' ? (
             <div className="workflow-inspector__content">
-              <div className="workflow-inspector__heading">
+              <div className="workflow-inspector__heading workflow-node-title">
                 <div>
-                  <span>{selectedNode.data.code}</span>
+                  <span>{selectedNode.data.code} · Node</span>
                   <strong>{selectedNode.data.label}</strong>
-                  <em className={`workflow-status-pill workflow-status-pill--${selectedNode.data.executionStatus}`}>
-                    {selectedNode.data.executionStatusLabel}
-                  </em>
                 </div>
-                <button type="button" disabled={!structureEditable} className="danger-icon-button" onClick={removeSelectedNode} title="Xóa Node">
-                  <Trash2 size={16} />
-                </button>
+                <div className="workflow-inspector__heading-actions">
+                  <button
+                    type="button"
+                    className={`workflow-icon-button${editingNodeConfig ? ' is-active' : ''}`}
+                    onClick={() => setEditingNodeConfig(value => !value)}
+                    title={editingNodeConfig ? 'Ẩn phần cấu hình' : 'Chỉnh sửa cấu hình bước'}
+                    aria-label="Chỉnh sửa cấu hình bước"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button type="button" disabled={!structureEditable} className="danger-icon-button" onClick={removeSelectedNode} title="Xóa Node">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
+
+              {/* Tóm tắt chỉ đọc — thay cho việc bày lại toàn bộ ô nhập.
+                  Mã và tên bước đã nằm ở tiêu đề nên không lặp lại ở đây. */}
+              {/* Trạng thái, thời lượng và cờ đều là thuộc tính của cùng một bước —
+                  xếp chung một hàng thì đọc được trong một nhịp mắt, thay vì rải
+                  ra ba khối chồng lên nhau. */}
+              <div className="workflow-node-meta">
+                <em className={`workflow-status-pill workflow-status-pill--${selectedNode.data.executionStatus}`}>
+                  {selectedNode.data.executionStatusLabel}
+                </em>
+                <span className="workflow-node-meta__dur">
+                  <Clock3 size={13} />
+                  {Number(selectedNode.data.durationDays) || Number(selectedNode.data.durationHours)
+                    ? [
+                        Number(selectedNode.data.durationDays) ? `${selectedNode.data.durationDays} ngày` : null,
+                        Number(selectedNode.data.durationHours) ? `${selectedNode.data.durationHours} giờ` : null,
+                      ].filter(Boolean).join(' ')
+                    : 'Chưa đặt thời hạn'}
+                </span>
+                {selectedNode.data.requiresGovSubmission && <span className="is-flag">Nộp cơ quan</span>}
+                {selectedNode.data.createsSurveyRecord && <span className="is-flag">Bước đo vẽ</span>}
+                {selectedNode.data.isHandover && <span className="is-flag">Bàn giao</span>}
+              </div>
+
+              {/* Nhãn "Đầu ra nghiệm thu:" chiếm mất nửa dòng đầu để nói một điều
+                  mà vị trí của câu đã nói rồi. */}
+              {!editingNodeConfig && selectedNode.data.description && (
+                <p className="workflow-node-desc">{selectedNode.data.description}</p>
+              )}
+
+              {/* Hai node đặc biệt: K06 vì THỜI GIAN (chờ cơ quan), K08 vì TIỀN
+                  (cổng công nợ). Nhận diện bằng CỜ, không bằng mã node. */}
+              {selectedNode.data.requiresGovSubmission && selectedNode.data.taskNodeId && (
+                <LegalDossierNodePanel
+                  taskNodeId={selectedNode.data.taskNodeId}
+                  addToast={addToast}
+                  onChanged={onPersisted}
+                  readOnly
+                />
+              )}
+              {selectedNode.data.isHandover && selectedNode.data.taskNodeId && (
+                <HandoverPanel
+                  taskNodeId={selectedNode.data.taskNodeId}
+                  addToast={addToast}
+                  onChanged={onPersisted}
+                  readOnly
+                />
+              )}
 
               {selectedNode.data.pendingAcceptanceId && canReviewNode && (
                 <div className="workflow-review-card">
@@ -1391,6 +1470,8 @@ export default function ContractWorkflowDesigner({
                 </div>
               )}
 
+              {editingNodeConfig && (
+              <>
               <label>
                 Tên bước
                 <input
@@ -1428,16 +1509,6 @@ export default function ContractWorkflowDesigner({
                   onChange={event => updateSelectedNode({ description: event.target.value })}
                 />
               </label>
-              <label>
-                Vai trò mặc định
-                <input
-                  className="form-control"
-                  disabled={!structureEditable}
-                  placeholder="MAIN, ASSISTANT, SUBMITTER..."
-                  value={selectedNode.data.role}
-                  onChange={event => updateSelectedNode({ role: event.target.value.toUpperCase() })}
-                />
-              </label>
               <label className="workflow-check-row">
                 <input
                   type="checkbox"
@@ -1455,6 +1526,15 @@ export default function ContractWorkflowDesigner({
                   onChange={event => updateSelectedNode({ createsSurveyRecord: event.target.checked })}
                 />
                 Bước đo vẽ (tự tạo hồ sơ Đo vẽ khi bắt đầu)
+              </label>
+              <label className="workflow-check-row">
+                <input
+                  type="checkbox"
+                  disabled={!structureEditable}
+                  checked={Boolean(selectedNode.data.isHandover)}
+                  onChange={event => updateSelectedNode({ isHandover: event.target.checked })}
+                />
+                Bước bàn giao (mở cổng công nợ — phải thu đủ tiền mới đóng được)
               </label>
               <div className="workflow-duration">
                 <span className="workflow-duration__label">Thời hạn xử lý — tính từ lúc nhân viên bấm bắt đầu</span>
@@ -1494,6 +1574,8 @@ export default function ContractWorkflowDesigner({
                 <CheckCircle2 size={16} />
                 {startNode === selectedNode.id ? 'Đây là Node bắt đầu' : 'Đặt làm Node bắt đầu'}
               </button>
+              </>
+              )}
             </div>
           ) : inspectorTab === 'checklist' ? (
             <div className="workflow-inspector__content">
@@ -1850,7 +1932,21 @@ export default function ContractWorkflowDesigner({
               </div>
             </div>
           )}
+          </>
+          )}
         </aside>
+
+        {/* Nút thu/mở nằm NGOÀI khung: đặt bên trong <aside> thì overflow của khung
+            cắt mất nửa nút, nhìn như bị chìm. Ra ngoài mới nổi hẳn lên trên. */}
+        <button
+          type="button"
+          className="workflow-inspector-toggle"
+          onClick={() => setInspectorCollapsed(value => !value)}
+          title={inspectorCollapsed ? 'Mở khung chi tiết' : 'Thu khung để sơ đồ rộng hơn'}
+          aria-label={inspectorCollapsed ? 'Mở khung chi tiết' : 'Thu khung chi tiết'}
+        >
+          {inspectorCollapsed ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}
+        </button>
       </div>
 
       <Modal

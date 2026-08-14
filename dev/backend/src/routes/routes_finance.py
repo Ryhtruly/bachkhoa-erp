@@ -185,6 +185,27 @@ def void_cashflow(
     return FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
 
 
+@router.post("/cashflow/{transaction_id:path}/approve")
+def approve_cashflow(
+    transaction_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "approve"))
+):
+    """Duyệt phiếu chờ duyệt. Đây mới là lúc công nợ được ghi nhận."""
+    return FinanceService.approve_cashflow(db, transaction_id, actor_id=user.id)
+
+
+@router.post("/cashflow/{transaction_id:path}/reject")
+def reject_cashflow(
+    transaction_id: str,
+    payload: CashflowVoidIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "approve"))
+):
+    """Từ chối phiếu chờ duyệt, bắt buộc ghi lý do."""
+    return FinanceService.reject_cashflow(db, transaction_id, payload.reason, actor_id=user.id)
+
+
 # ══════════════════════════════════════════════════════════════
 # 2. CHỨNG TỪ & CÔNG NỢ
 # ══════════════════════════════════════════════════════════════

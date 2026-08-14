@@ -3,7 +3,7 @@ import { SubTabs } from '../components/ui';
 import {
   Receipt, Banknote, Building2,
   FileText, RotateCcw, BarChart2,
-  PlusCircle, Settings, Hammer, UsersRound
+  PlusCircle, Settings, Hammer, UsersRound, HandCoins
 } from 'lucide-react';
 
 // Nhập các màn hình (screens) đã được bóc tách
@@ -15,6 +15,7 @@ import AdvanceClearScreen from '../components/finance/screens/AdvanceClearScreen
 import SettingsScreen from '../components/finance/screens/SettingsScreen';
 import ContractsScreen from '../components/finance/screens/ContractsScreen';
 import ReceivablesScreen from '../components/finance/screens/ReceivablesScreen';
+import DebtCollection from './DebtCollection';
 import PayablesScreen from '../components/finance/screens/PayablesScreen';
 import AnalyticsScreen from '../components/finance/screens/AnalyticsScreen';
 import LuongKhoan3PScreen from '../components/finance/screens/LuongKhoan3PScreen';
@@ -27,6 +28,8 @@ const THUCHI_TABS = [
   { id: 'cashflow-cash', label: 'Quỹ Tiền Mặt', icon: <Banknote size={16} /> },
   { id: 'cashflow-bank', label: 'Quỹ Ngân Hàng', icon: <Building2 size={16} /> },
   { id: 'cashflow-print', label: 'Chứng Từ', icon: <FileText size={16} /> },
+  { id: 'debt-collection', label: 'Thu Công Nợ', icon: <HandCoins size={16} /> },
+  { id: 'receivables', label: 'Công Nợ Phải Thu', icon: <Receipt size={16} /> },
   { id: 'advance-request', label: 'Tạm Ứng', icon: <PlusCircle size={16} /> },
   { id: 'advance-clear', label: 'Quyết Toán', icon: <RotateCcw size={16} /> },
   { id: 'cashflow-settings', label: 'Thiết Lập', icon: <Settings size={16} /> },
@@ -35,8 +38,9 @@ const THUCHI_TABS = [
   { id: 'payroll-office', label: 'Lương VP & Hoa Hồng', icon: <UsersRound size={16} /> }
 ];
 
-export default function Cashflow() {
-  const [activeMenu, setActiveMenu] = useState('monthly-dashboard');
+export default function Cashflow({ landing }) {
+  // Kế toán mở Thu Chi là để thu công nợ, không phải xem báo cáo tháng.
+  const [activeMenu, setActiveMenu] = useState(landing || 'monthly-dashboard');
   const [globalMonth, setGlobalMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
   const renderContent = () => {
@@ -46,6 +50,7 @@ export default function Cashflow() {
       case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} />;
       case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} />;
       case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} />;
+      case 'debt-collection': return <DebtCollection />;
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} />;
       case 'cashflow-settings': return <SettingsScreen />;

@@ -3,10 +3,11 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy import text
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from src.contracts.workflow_runtime import (
     WorkflowValidationError,
@@ -44,9 +45,13 @@ def _active_employee_for_user(db: Session, user_id: str) -> Employee | None:
 def evidence_file_reference(db: Session, task_node_id: str, filename: str) -> FileReference:
     task_node = db.execute(
         text("""
-            select n.id, n.service_line_id, sl.contract_id
+            -- task_nodes KHÔNG có service_line_id. Hạng mục nằm ở workflow_instances,
+            -- phải đi qua đó mới lấy được. Viết thẳng n.service_line_id làm mọi lần
+            -- nộp minh chứng đều lỗi 500.
+            select n.id, wi.service_line_id, sl.contract_id
             from public.task_nodes n
-            join public.service_lines sl on sl.id = n.service_line_id
+            join public.workflow_instances wi on wi.id = n.workflow_instance_id
+            join public.service_lines sl on sl.id = wi.service_line_id
             where n.id = :task_node_id
         """),
         {"task_node_id": task_node_id},
@@ -92,12 +97,30 @@ def get_employee_profile(
 async def submit_checklist_evidence(
     task_node_id: str,
     checklist_result_id: str,
-    file: UploadFile | None = File(None),
-    note: str = Form(None),
-    late_reason: str = Form(None),
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Checklist không đòi minh chứng thì không có gì để gửi, và trình duyệt gửi
+    # multipart rỗng. Khai bằng File()/Form() thì python-multipart coi body đó là
+    # hỏng và trả 400 — nhân viên pháp lý không tích nổi checklist nào. Tự đọc
+    # form và chấp nhận rỗng, vì "không nộp kèm gì" là tình huống hợp lệ nhất.
+    file: StarletteUploadFile | None = None
+    note: str | None = None
+    late_reason: str | None = None
+    if "multipart/form-data" in (request.headers.get("content-type") or ""):
+        try:
+            form = await request.form()
+        except Exception:
+            form = None
+        if form is not None:
+            uploaded = form.get("file")
+            if isinstance(uploaded, StarletteUploadFile) and uploaded.filename:
+                file = uploaded
+            note = (form.get("note") or None) if isinstance(form.get("note"), str) else None
+            raw_reason = form.get("late_reason")
+            late_reason = raw_reason if isinstance(raw_reason, str) and raw_reason else None
+
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")

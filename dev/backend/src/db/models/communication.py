@@ -8,7 +8,8 @@ class ChatRoom(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=True)
     type = Column(String, nullable=True)
-    related_task_id = Column(String, ForeignKey("projects_tasks.id"), nullable=True)
+    # Cùng lý do như CashflowTransaction.project_id: "projects_tasks" là bảng ma.
+    related_task_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
 
 
 class Message(Base):

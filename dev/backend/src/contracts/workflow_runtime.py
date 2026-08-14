@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
@@ -1078,7 +1078,11 @@ def _apply_workflow_amendment(
                 db, task_node_id=task_node_id, actor_id=actor_id
             ))
 
+    # Sửa thời lượng một node là dời hạn của cả dây phía sau — tính lại toàn bộ.
+    ke_hoach = recompute_planned_deadlines(db, workflow_instance_id=instance["id"])
+
     return {
+        "planned_end": ke_hoach.get("planned_end"),
         "instance_id": instance["id"],
         "revision_id": revision["id"],
         "revision_no": revision["revision_no"],
@@ -1305,7 +1309,13 @@ def activate_workflow(
     provisioned_records = _ensure_node_module_records(
         db, task_node_id=created_node_ids[start_node], actor_id=actor_id
     )
+
+    # Dựng ngay lịch dự kiến cho TOÀN BỘ quy trình, không đợi từng node bắt đầu.
+    # Giám đốc phải thấy ngày giao khách ngay lúc áp dụng quy trình.
+    ke_hoach = recompute_planned_deadlines(db, workflow_instance_id=instance["id"])
+
     return {
+        "planned_end": ke_hoach.get("planned_end"),
         "instance_id": instance["id"],
         "revision_id": revision["id"],
         "revision_no": revision["revision_no"],
@@ -1600,24 +1610,124 @@ def _node_definition(db: Session, task_node: dict) -> dict | None:
     return (graph_row["graph"]["nodes"] or {}).get(task_node["node_key"]) if graph_row else None
 
 
-def _apply_node_duration(db: Session, *, task_node_id: str, node_def: dict) -> None:
-    """Hạn xử lý = thời điểm bắt đầu + thời lượng giám đốc cấu hình cho Node.
+def recompute_planned_deadlines(db: Session, *, workflow_instance_id: str) -> dict[str, Any]:
+    """Tính lại hạn của TOÀN BỘ node trong quy trình theo kế hoạch CỘNG DỒN.
 
-    Cấu hình thời lượng thay cho việc chọn mốc ngày tuyệt đối: không ai biết trước
-    nhân viên sẽ bấm bắt đầu lúc nào, nên hạn đặt sẵn thường lệch thực tế."""
-    days = int(node_def.get("duration_days") or 0)
-    hours = int(node_def.get("duration_hours") or 0)
-    if days <= 0 and hours <= 0:
-        return
-    db.execute(
+    Trước đây mỗi node tính riêng: `hạn = lúc bấm bắt đầu + thời lượng của chính nó`.
+    Cách đó sai ở hai chỗ:
+
+    1. **Hạn đi giật lùi.** Node sau có thời lượng ngắn hơn node trước thì hạn của
+       nó lại sớm hơn — K02 hạn 15/08 mà K03 (chạy sau) hạn 14/08.
+    2. **Không biết ngày giao khách.** Quy trình 18 ngày mà hạn xa nhất chỉ 5 ngày,
+       vì không có node nào cộng dồn thời lượng của các bước trước.
+
+    Cách đúng: chạy dọc sơ đồ từ node bắt đầu, cộng dồn thời lượng.
+
+        hạn(node) = hạn(node liền trước) + thời lượng(node)
+        hạn(node đầu) = mốc khởi động + thời lượng(node đầu)
+
+    Node có nhiều nhánh vào thì lấy mốc MUỘN NHẤT — phải chờ xong hết mới làm được.
+
+    Đây là **kế hoạch cứng**: bắt đầu trễ thì hạn không dời, node báo trễ ngay.
+    Đó là chủ ý — ngày giao khách phải cố định, và chậm thì phải thấy chậm.
+    """
+    rev = db.execute(
         text("""
-            update public.task_nodes
-            set deadline_at = started_at + make_interval(days => :days, hours => :hours),
-                updated_at = now()
-            where id = :task_node_id and started_at is not null
+            select r.graph, r.activated_at
+            from public.workflow_instance_revisions r
+            join public.workflow_instances wi on wi.active_revision_id = r.id
+            where wi.id = :i
         """),
-        {"task_node_id": task_node_id, "days": days, "hours": hours},
-    )
+        {"i": workflow_instance_id},
+    ).mappings().first()
+    if not rev:
+        return {"updated": 0}
+
+    graph = rev["graph"] or {}
+    graph_nodes = graph.get("nodes") or {}
+    if not graph_nodes:
+        return {"updated": 0}
+
+    runtime = db.execute(
+        text("""
+            select node_key, id, started_at
+            from public.task_nodes
+            where workflow_instance_id = :i
+        """),
+        {"i": workflow_instance_id},
+    ).mappings().all()
+    if not runtime:
+        return {"updated": 0}
+    by_key = {r["node_key"]: r for r in runtime}
+
+    # Mốc khởi động: lúc node đầu tiên thật sự bắt đầu. Chưa ai bắt đầu thì lấy
+    # lúc giám đốc áp dụng quy trình, để sếp thấy ngay lịch dự kiến.
+    da_bat_dau = [r["started_at"] for r in runtime if r["started_at"]]
+    anchor = min(da_bat_dau) if da_bat_dau else (rev["activated_at"] or datetime.now(timezone.utc))
+
+    def thoi_luong(key: str) -> timedelta:
+        d = graph_nodes.get(key) or {}
+        return timedelta(days=int(d.get("duration_days") or 0),
+                         hours=int(d.get("duration_hours") or 0))
+
+    # Bậc vào để duyệt tô-pô. Bỏ cạnh tự trỏ và cạnh quay lui (quy trình cũ có
+    # nhánh "cần bổ sung" quay ngược) — nếu không sẽ kẹt vòng lặp vô hạn.
+    ke = {k: [] for k in graph_nodes}
+    bac_vao = {k: 0 for k in graph_nodes}
+    for key, d in graph_nodes.items():
+        for dich in (d.get("transitions") or {}).values():
+            if dich in graph_nodes and dich != key:
+                ke[key].append(dich)
+                bac_vao[dich] += 1
+
+    han: dict[str, datetime] = {}
+    hang_doi = [k for k, n in bac_vao.items() if n == 0] or [graph.get("start_node")]
+    hang_doi = [k for k in hang_doi if k in graph_nodes]
+    da_duyet: set[str] = set()
+
+    while hang_doi:
+        key = hang_doi.pop(0)
+        if key in da_duyet:
+            continue
+        da_duyet.add(key)
+        moc_vao = han.get(key, anchor)
+        han[key] = moc_vao + thoi_luong(key)
+        for dich in ke[key]:
+            # Node có nhiều nhánh vào phải chờ nhánh muộn nhất
+            han[dich] = max(han.get(dich, han[key]), han[key])
+            bac_vao[dich] -= 1
+            if bac_vao[dich] <= 0 and dich not in da_duyet:
+                hang_doi.append(dich)
+
+    # Node còn kẹt do nhánh quay lui: vẫn phải có hạn, nối tiếp mốc muộn nhất
+    for key in graph_nodes:
+        if key not in han:
+            han[key] = (max(han.values()) if han else anchor) + thoi_luong(key)
+
+    # Quy trình chưa khai thời lượng ở bất kỳ bước nào là quy trình chưa có kế
+    # hoạch — dựng hạn cho nó chỉ tạo ra một loạt việc "trễ" ngay từ lúc sinh ra.
+    if sum((thoi_luong(k) for k in graph_nodes), timedelta(0)) == timedelta(0):
+        return {"updated": 0, "anchor": anchor.isoformat() if anchor else None, "planned_end": None}
+
+    so_dong = 0
+    for key, moc in han.items():
+        node = by_key.get(key)
+        # Bước khai 0 ngày vẫn phải có hạn: nó bằng hạn của bước liền trước, tức
+        # phải xong trong cùng mốc đó. Bỏ qua thì nhân viên thấy "Không đặt hạn"
+        # và không bao giờ bị nhắc trễ — đúng cái đang xảy ra ở node lưu trữ.
+        if not node:
+            continue
+        db.execute(
+            text("update public.task_nodes set deadline_at = :h, updated_at = now() where id = :i"),
+            {"h": moc, "i": node["id"]},
+        )
+        so_dong += 1
+
+    return {
+        "updated": so_dong,
+        "anchor": anchor.isoformat() if anchor else None,
+        "planned_end": max(han.values()).isoformat() if han else None,
+    }
 
 
 def _maybe_create_legal_submission(
@@ -1649,18 +1759,51 @@ def _maybe_create_legal_submission(
         _NODE_PRIMARY_ASSIGNEE_QUERY, {"task_node_id": task_node["id"]}
     ).mappings().first()
 
+    # HỒ SƠ (1 dòng / Hạng mục) giữ trạng thái vòng đời. Mỗi LẦN NỘP là một dòng
+    # legal_submissions riêng treo dưới nó — nộp lại lần 3 không tạo hồ sơ mới.
+    dossier_id = db.execute(
+        text("""
+            insert into public.legal_dossiers
+                (service_line_id, contract_id, task_node_id, dossier_name,
+                 assigned_employee_id, status, created_by)
+            values (:service_line_id, :contract_id, :task_node_id, :dossier_name,
+                    :assigned_employee_id, 'ASSIGNED', :created_by)
+            on conflict (service_line_id) do update set task_node_id = excluded.task_node_id
+            returning id
+        """),
+        {
+            "service_line_id": context["service_line_id"],
+            "contract_id": context["contract_id"],
+            "task_node_id": task_node["id"],
+            "dossier_name": context["customer_name"],
+            "assigned_employee_id": assignee["employee_id"] if assignee else None,
+            "created_by": actor_id,
+        },
+    ).scalar()
+
+    db.execute(
+        text("""
+            insert into public.legal_dossier_events (dossier_id, from_status, to_status, note, actor_user_id)
+            values (:d, null, 'ASSIGNED', :n, :a)
+        """),
+        {"d": dossier_id, "n": "Bộ phận đo vẽ đã bàn giao, hồ sơ chờ tiếp nhận", "a": actor_id},
+    )
+
     return db.execute(
         text("""
             insert into public.legal_submissions
-                (task_node_id, service_line_id, contract_id, dossier_name, case_description,
-                 assigned_employee_id, contact_phone, linked_survey_folder_url, created_by)
+                (task_node_id, dossier_id, submit_seq, service_line_id, contract_id,
+                 dossier_name, case_description, assigned_employee_id, contact_phone,
+                 linked_survey_folder_url, created_by)
             values
-                (:task_node_id, :service_line_id, :contract_id, :dossier_name, :case_description,
-                 :assigned_employee_id, :contact_phone, :linked_survey_folder_url, :created_by)
+                (:task_node_id, :dossier_id, 1, :service_line_id, :contract_id,
+                 :dossier_name, :case_description, :assigned_employee_id, :contact_phone,
+                 :linked_survey_folder_url, :created_by)
             returning id
         """),
         {
             "task_node_id": task_node["id"],
+            "dossier_id": dossier_id,
             "service_line_id": context["service_line_id"],
             "contract_id": context["contract_id"],
             "dossier_name": context["customer_name"],
@@ -1802,7 +1945,9 @@ def start_task_node(db: Session, *, task_node_id: str, employee_id: str, actor_i
     if not node_def:
         return result
 
-    _apply_node_duration(db, task_node_id=task_node_id, node_def=node_def)
+    # Tính lại hạn cho TOÀN BỘ quy trình, không riêng node vừa bắt đầu — hạn là
+    # chuỗi cộng dồn nên đụng một node là ảnh hưởng cả dây phía sau.
+    recompute_planned_deadlines(db, workflow_instance_id=node["workflow_instance_id"])
 
     # Fallback cho các workflow được kích hoạt trước khi cơ chế provision-at-ready
     # được triển khai. Hàm ensure idempotent nên retry/rework không sinh bản ghi mới.

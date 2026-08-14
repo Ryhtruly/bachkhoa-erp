@@ -7,19 +7,27 @@ from typing import Optional
 from src.core.auth import check_user_permission, get_current_user, require_permission
 from src.db.database import get_db
 from src.db.models import User
-from src.dossiers.lifecycle import assert_dossier_mutable
+from src.dossiers.lifecycle import (
+    LEGAL_PACKAGE_ID,
+    SURVEY_FLAGS_LATERAL,
+    SURVEY_STATUS_LATERAL,
+    SURVEY_STATUS_SELECT,
+    assert_dossier_mutable,
+)
 
 router = APIRouter(prefix="/api/survey-records", tags=["Survey Records"])
 
-STATUSES = ["Đang thực hiện", "Hoàn thành", "Nộp thành công", "Huỷ"]
+# Trạng thái NGƯỜI DÙNG được phép tự đặt. Ba giá trị còn lại (Đang thực hiện /
+# Đã bàn giao / Hoàn thành) do hệ thống tính sống, không ai gõ tay được.
+MANUAL_STATUSES = ["Nộp thành công", "Huỷ"]
+ALL_STATUSES = ["Đang thực hiện", "Đã bàn giao", "Hoàn thành", *MANUAL_STATUSES]
 PRIORITIES = ["HIGH", "NORMAL", "LOW"]
-LEGAL_PACKAGE_ID = "sp_002"
 
 # Chỉ survey_records mới lưu dữ liệu riêng (tên hồ sơ, phường, ưu tiên). Mọi cột còn lại
 # đọc thẳng từ nguồn gốc để không bao giờ lệch khi khách đổi SĐT hay sếp đổi lịch.
 _BASE_SQL = f"""
     select s.id, s.task_node_id, s.service_line_id, s.contract_id,
-           s.dossier_name, s.ward_code, s.priority, s.status, s.note,
+           s.dossier_name, s.ward_code, s.priority, s.manual_status, s.note,
            s.created_at, s.updated_at,
            w.name as ward_name,
            sl.service_type as service_line_name,
@@ -29,15 +37,10 @@ _BASE_SQL = f"""
            main_emp.full_name as main_assignee_name,
            main_emp.avatar_url as main_assignee_avatar,
            assist_emp.full_name as assistant_name,
-           -- Cột "Pháp lý": hợp đồng này có Hạng mục nào thuộc gói Pháp Lý không.
-           exists (
-             select 1 from public.service_lines sl2
-             join public.task_types tt2 on tt2.id = sl2.task_type_id
-             where sl2.contract_id = s.contract_id
-               and tt2.service_package_id = '{LEGAL_PACKAGE_ID}'
-           ) as has_legal
+{SURVEY_STATUS_SELECT}
     from public.survey_records s
     join public.task_nodes n on n.id = s.task_node_id
+    join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = s.service_line_id
     join public.contracts c on c.id = s.contract_id
     left join public.customers cu on cu.id = c.customer_id
@@ -58,6 +61,8 @@ _BASE_SQL = f"""
         and a.assignment_status not in ('replaced', 'declined')
       order by a.created_at asc limit 1
     ) assist_emp on true
+{SURVEY_FLAGS_LATERAL}
+{SURVEY_STATUS_LATERAL}
 """
 
 
@@ -112,13 +117,15 @@ def get_survey_stats(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("survey_record", "read")),
 ):
+    # Đếm theo trạng thái TÍNH SỐNG — cùng một công thức với danh sách, nên hai
+    # chỗ không bao giờ lệch nhau.
     rows = db.execute(
-        text("select status, count(*) as total from public.survey_records group by status")
+        text(f"select status, count(*) as total from ({_BASE_SQL}) x group by status")
     ).mappings().all()
     counts = {row["status"]: row["total"] for row in rows}
     return {
         "status": "success",
-        "data": {"total": sum(counts.values()), **{s: counts.get(s, 0) for s in STATUSES}},
+        "data": {"total": sum(counts.values()), **{s: counts.get(s, 0) for s in ALL_STATUSES}},
     }
 
 
@@ -142,7 +149,7 @@ def list_survey_records(
         )""")
         params["search"] = f"%{search}%"
     if status and status != "All":
-        where.append("s.status = :status")
+        where.append("st.effective_status = :status")
         params["status"] = status
     if ward_code and ward_code != "All":
         where.append("s.ward_code = :ward_code")
@@ -153,13 +160,7 @@ def list_survey_records(
     where_sql = f"where {' and '.join(where)}" if where else ""
 
     total = db.execute(
-        text(f"""
-            select count(*) from public.survey_records s
-            join public.service_lines sl on sl.id = s.service_line_id
-            join public.contracts c on c.id = s.contract_id
-            left join public.customers cu on cu.id = c.customer_id
-            {where_sql}
-        """),
+        text(f"select count(*) from ({_BASE_SQL} {where_sql}) x"),
         params,
     ).scalar()
 
@@ -205,29 +206,39 @@ def update_survey_record(
     if not check_user_permission(db, user, "survey_record", "update"):
         raise HTTPException(status_code=403, detail="Không có quyền cập nhật hồ sơ đo vẽ")
 
-    status_row = db.execute(
-        text("select status from public.survey_records where id = :record_id"),
-        {"record_id": record_id},
-    ).first()
-    if not status_row:
+    # Khoá sửa dựa trên trạng thái TÍNH SỐNG, không phải cột thủ công — nếu không
+    # thì hồ sơ đã chạy hết quy trình vẫn sửa được vì cột thủ công đang rỗng.
+    current = db.execute(
+        text(f"{_BASE_SQL} where s.id = :record_id"), {"record_id": record_id}
+    ).mappings().first()
+    if not current:
         raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ đo vẽ")
-    assert_dossier_mutable(status_row[0])
+    assert_dossier_mutable(current["status"])
 
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Không có trường nào để cập nhật")
-    if "status" in updates and updates["status"] not in STATUSES:
-        raise HTTPException(status_code=400, detail=f"Trạng thái phải thuộc {STATUSES}")
+    if "status" in updates and updates["status"] not in MANUAL_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Chỉ đặt tay được {MANUAL_STATUSES}. "
+                "Đang thực hiện / Đã bàn giao / Hoàn thành do hệ thống tự tính theo tiến độ quy trình."
+            ),
+        )
     if "priority" in updates and updates["priority"] not in PRIORITIES:
         raise HTTPException(status_code=400, detail=f"Độ ưu tiên phải thuộc {PRIORITIES}")
 
-    set_clause = ", ".join(f"{key} = :{key}" for key in updates)
+    # Cột trạng thái thủ công đã đổi tên; giữ nguyên tên trường "status" trong API
+    # để frontend không phải sửa gì.
+    set_clause = ", ".join(
+        f'{"manual_status" if key == "status" else key} = :{key}' for key in updates
+    )
     updates["record_id"] = record_id
     result = db.execute(
         text(f"""
             update public.survey_records set {set_clause}, updated_at = now()
             where id = :record_id
-              and coalesce(status, '') not in ('Hoàn thành', 'Nộp thành công')
             returning id
         """),
         updates,

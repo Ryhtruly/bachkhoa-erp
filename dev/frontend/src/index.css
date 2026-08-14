@@ -664,6 +664,23 @@ body {
   transform: scale(0.97);
 }
 
+/* `all: unset` ở .btn xoá luôn cách trình duyệt làm mờ nút bị khoá, nên nút
+   disabled vẫn trông y hệt nút bấm được — người dùng bấm mãi mà không hiểu.
+   Khoá thì phải nhìn ra là khoá. */
+.btn:disabled,
+.btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+  filter: grayscale(0.35);
+}
+
+.btn:disabled:hover,
+.btn[aria-disabled='true']:hover,
+.btn:disabled:active {
+  transform: none;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--orange-400), var(--orange-600));
   color: #fff;
@@ -1213,7 +1230,19 @@ tbody tr:last-child td {
   align-items: center;
   gap: 2px;
   margin-bottom: 24px;
+  /* Nhiều tab hơn chiều ngang màn hình thì phải CUỘN được, không được cắt cụt.
+     Thiếu hai dòng này là các tab cuối biến mất, không cách nào tới. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
+.subtabs::-webkit-scrollbar { height: 5px; }
+.subtabs::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-default);
+}
+.subtabs::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+.subtabs::-webkit-scrollbar-track { background: transparent; }
 
 .subtabs--line {
   border-bottom: 2px solid var(--border-subtle);
@@ -1243,6 +1272,8 @@ tbody tr:last-child td {
   transition: all 0.2s var(--ease-out);
   white-space: nowrap;
   position: relative;
+  /* Không cho co lại — thà cuộn ngang còn hơn chữ bị bóp nát */
+  flex-shrink: 0;
 }
 
 .subtabs--line .subtabs__item:hover {
@@ -1875,13 +1906,26 @@ tbody tr:hover td.dt-sticky-right {
 }
 
 .contract-page .table-wrap table {
-  width: max-content;
-  min-width: 2200px;
+  /* Trước đây ép min-width: 2200px — cột Giá trị và Trạng thái bị đẩy ra ngoài
+     màn hình, phải kéo ngang mới thấy tiền. table-layout: fixed để bề rộng cột
+     khai báo ở DataTable được tôn trọng, tên khách dài thì cắt bằng "…" chứ
+     không được phép nong cả bảng ra. */
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .contract-page .table-wrap th,
 .contract-page .table-wrap td {
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* DataTable gắn min-width bằng inline style cho mọi bảng; ở bảng này nó khiến
+   bảng tràn khung khi mở khung chi tiết. Bề rộng khai báo chỉ nên là tỉ lệ. */
+.contract-page .table-wrap th {
+  min-width: 0 !important;
 }
 
 .contract-page .table-wrap thead th {
@@ -1908,85 +1952,12 @@ tbody tr:hover td.dt-sticky-right {
   background: var(--contract-detail-bg);
 }
 
-/* Sticky right column overrides for contract table row types */
-.contract-page thead th.dt-sticky-right {
-  background: var(--contract-table-header-bg);
-}
-
-.contract-page tbody td.dt-sticky-right {
-  background: var(--contract-table-bg);
-}
-
-.contract-page tbody tr:hover td.dt-sticky-right {
-  background: var(--contract-table-hover-bg);
-}
-
-.contract-page tbody .contract-group-row td.dt-sticky-right {
-  background: var(--contract-group-bg);
-}
-
-.contract-page tbody .contract-group-row:hover td.dt-sticky-right {
-  background: var(--contract-group-hover-bg);
-}
-
-.contract-page tbody .contract-detail-row td.dt-sticky-right {
-  background: var(--contract-detail-bg);
-}
-
 .contract-cell-ellipsis {
   display: block;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Giữ hai khóa nghiệp vụ ở bên trái trong lúc kéo ngang. */
-.contract-page .table-wrap th:nth-child(1),
-.contract-page .table-wrap td:nth-child(1) {
-  position: sticky;
-  left: 0;
-  width: 220px;
-  min-width: 220px;
-}
-
-.contract-page .table-wrap th:nth-child(2),
-.contract-page .table-wrap td:nth-child(2) {
-  position: sticky;
-  left: 220px;
-  width: 150px;
-  min-width: 150px;
-  box-shadow: 8px 0 12px -12px rgba(15, 23, 42, 0.5);
-}
-
-.contract-page .table-wrap th:nth-child(-n + 2) {
-  z-index: 14;
-  background: var(--contract-table-header-bg);
-}
-
-.contract-page .table-wrap tbody tr {
-  --contract-sticky-bg: var(--contract-table-bg);
-}
-
-.contract-page .table-wrap tbody tr:hover {
-  --contract-sticky-bg: var(--contract-table-hover-bg);
-}
-
-.contract-page .table-wrap tbody .contract-group-row {
-  --contract-sticky-bg: var(--contract-group-bg);
-}
-
-.contract-page .table-wrap tbody .contract-group-row:hover {
-  --contract-sticky-bg: var(--contract-group-hover-bg);
-}
-
-.contract-page .table-wrap tbody .contract-detail-row {
-  --contract-sticky-bg: var(--contract-detail-bg);
-}
-
-.contract-page .table-wrap td:nth-child(-n + 2) {
-  z-index: 3;
-  background: var(--contract-sticky-bg);
 }
 
 .dt-skeleton-row td {

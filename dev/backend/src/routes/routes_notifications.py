@@ -80,6 +80,23 @@ _EMPLOYEE_CHECKLIST_RESUBMIT_QUERY = text(
 )
 
 
+_EMPLOYEE_LEGAL_DOSSIER_QUERY = text(
+    """
+    select d.id as dossier_id, d.status, d.sub_status, d.dossier_name,
+           d.task_node_id, n.node_key, wn.name as node_name,
+           d.contract_id, d.service_line_id,
+           coalesce(d.updated_at, d.created_at) as created_at
+    from public.legal_dossiers d
+    join public.task_nodes n on n.id = d.task_node_id
+    join public.workflow_nodes wn on wn.code = n.node_code
+    where d.assigned_employee_id = :employee_id
+      and d.status in ('ASSIGNED', 'PENDING')
+    order by created_at asc
+    limit 50
+    """
+)
+
+
 def _iso(value):
     return value.isoformat() if value else None
 
@@ -138,6 +155,30 @@ def get_notifications_summary(
                 "service_line_id": row["service_line_id"],
                 "node_key": row["node_key"],
                 "task_node_id": row["task_node_id"],
+                "created_at": _iso(row["created_at"]),
+            })
+        # Hồ sơ pháp lý chờ tiếp nhận / đang tạm dừng. Không có chuông thì nhân viên
+        # pháp lý phải tự vào dò xem có việc mới không.
+        for row in db.execute(
+            _EMPLOYEE_LEGAL_DOSSIER_QUERY, {"employee_id": employee.id}
+        ).mappings().all():
+            if row["status"] == "ASSIGNED":
+                nhan = f"Hồ sơ '{row['dossier_name']}' — có hồ sơ mới từ bộ phận đo vẽ, chờ tiếp nhận"
+            else:
+                ly_do = {
+                    "AGENCY": "đang chờ cơ quan",
+                    "SURVEYOR": "đang chờ đo vẽ sửa bản vẽ",
+                    "INTERNAL": "đang chờ nội bộ",
+                }.get(row["sub_status"], "đang tạm dừng")
+                nhan = f"Hồ sơ '{row['dossier_name']}' {ly_do}"
+            items.append({
+                "type": "legal_dossier",
+                "label": nhan,
+                "contract_id": row["contract_id"],
+                "service_line_id": row["service_line_id"],
+                "node_key": row["node_key"],
+                "task_node_id": row["task_node_id"],
+                "dossier_id": row["dossier_id"],
                 "created_at": _iso(row["created_at"]),
             })
 

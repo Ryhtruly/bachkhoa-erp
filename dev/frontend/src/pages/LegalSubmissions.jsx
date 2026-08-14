@@ -17,7 +17,8 @@ import {
   Badge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
-import { isTerminalLegalStatus } from '../lib/dossierStatus';
+import { isDossierLocked } from '../lib/dossierStatus';
+import LegalDossierActions from '../features/legal-dossier/LegalDossierActions';
 import './legalSubmissions.css';
 
 const API = '';
@@ -91,6 +92,10 @@ export default function LegalSubmissions() {
   const [selectedSubmissionId, setSelectedSubmissionId] = useState(null);
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  // Hồ sơ (1 dòng / Hạng mục) giữ trạng thái vòng đời; mỗi lần nộp là một dòng
+  // legal_submissions treo dưới nó. Hai thứ khác nhau nên tải riêng.
+  const [dossier, setDossier] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState(null);
   // Mở chi tiết là chế độ XEM; phải bấm nút "Sửa" mới cho nhập liệu.
@@ -149,11 +154,22 @@ export default function LegalSubmissions() {
     return () => clearInterval(pollId);
   }, [fetchSubmissions]);
 
+  const loadDossier = useCallback(async (taskNodeId) => {
+    if (!taskNodeId) { setDossier(null); return; }
+    try {
+      const res = await fetch(`${API}/api/legal-dossiers/by-task-node/${taskNodeId}`);
+      setDossier(res.ok ? (await res.json()).data : null);
+    } catch {
+      setDossier(null);
+    }
+  }, []);
+
   const handleOpenDetailModal = async (submissionId) => {
     setSelectedSubmissionId(submissionId);
     setIsDetailModalOpen(true);
     setDetailLoading(true);
     setEditing(false);
+    setDetailError('');
     try {
       const res = await fetch(`${API}/api/legal-submissions/${submissionId}`);
       if (res.ok) {
@@ -161,10 +177,15 @@ export default function LegalSubmissions() {
         const data = payload.data;
         setDetailData(data);
         setEditForm(toEditForm(data));
+        loadDossier(data.task_node_id);
       } else {
+        // Không được để hộp thoại đứng ở "Đang tải…" mãi — phải nói rõ hỏng gì
+        // và cho người dùng bấm thử lại.
+        setDetailError(`Không lấy được chi tiết hồ sơ (lỗi ${res.status}).`);
         addToast('Không lấy được chi tiết hồ sơ', 'error');
       }
     } catch {
+      setDetailError('Mất kết nối tới máy chủ.');
       addToast('Lỗi kết nối khi tải chi tiết', 'error');
     } finally {
       setDetailLoading(false);
@@ -356,8 +377,18 @@ export default function LegalSubmissions() {
           </span>
         }
       >
-        {detailLoading || !editForm ? (
+        {detailLoading ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải…</div>
+        ) : (detailError || !editForm) ? (
+          <div style={{ padding: '24px 0', textAlign: 'center' }}>
+            <p style={{ color: 'var(--danger-600, #dc2626)', marginBottom: 14 }}>
+              {detailError || 'Không có dữ liệu để hiển thị.'}
+            </p>
+            <button type="button" className="btn btn-secondary"
+              onClick={() => handleOpenDetailModal(selectedSubmissionId)}>
+              Thử lại
+            </button>
+          </div>
         ) : (
           <form onSubmit={handleSaveDetail}>
             <div className="legal-detail__identity">
@@ -370,6 +401,14 @@ export default function LegalSubmissions() {
               </div>
               <Badge variant={GOV_STATUS_VARIANTS[editForm.gov_status] || 'neutral'}>{editForm.gov_status}</Badge>
             </div>
+
+            {dossier && (
+              <LegalDossierActions
+                dossier={dossier}
+                addToast={addToast}
+                onDone={() => { loadDossier(detailData?.task_node_id); fetchSubmissions(); }}
+              />
+            )}
 
             <section className="legal-detail__section">
               <h4 className="legal-detail__section-title">Hồ sơ</h4>
@@ -472,7 +511,7 @@ export default function LegalSubmissions() {
             </section>
 
             <div className="legal-detail__footer">
-              {isTerminalLegalStatus(detailData?.gov_status || editForm.gov_status) ? (
+              {isDossierLocked(detailData, editForm.gov_status) ? (
                 <>
                   <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }} role="status">
                     Hồ sơ đã hoàn tất và không thể chỉnh sửa.

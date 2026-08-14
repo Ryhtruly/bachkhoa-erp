@@ -49,6 +49,12 @@ function App() {
         if (!mounted) return;
         setProfile(user);
         setWorkspace(user.default_workspace === 'employee' ? 'employee' : 'management');
+        // Mỗi vai vào thẳng màn hình việc của mình. Trước đây ai cũng rơi vào
+        // Tổng Quan — bức tranh tài chính toàn công ty — nên kế toán đăng nhập
+        // xong chỉ thấy doanh thu và KPI, không có gì để làm.
+        if (user.default_workspace !== 'employee' && user.username !== 'admin') {
+          setActiveTab(user.permissions?.finance ? 'cashflow' : 'contracts');
+        }
       })
       .catch(() => mounted && handleLogout())
       .finally(() => mounted && setSessionLoading(false));
@@ -82,14 +88,14 @@ function App() {
 
   // permission: tab chỉ được render khi có quyền đọc tài nguyên tương ứng.
   const TABS = [
-    { key: 'dashboard', Component: Dashboard, permission: 'finance' },
+    { key: 'dashboard', Component: Dashboard, permission: 'finance', props: { user: profile } },
     { key: 'crm', Component: CRM, permission: 'crm' },
     { key: 'tasks', Component: Tasks, permission: 'survey_record' },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
     { key: 'settings', Component: Settings, permission: 'settings' },
     { key: 'contracts', Component: Contracts, permission: 'contract' },
     { key: 'timeline', Component: ContractTimeline, directorOnly: true },
-    { key: 'cashflow', Component: Cashflow, permission: 'finance' },
+    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: profile?.username === 'admin' ? undefined : 'debt-collection' } },
     { key: 'kpi', Component: KPI, permission: 'hr' },
     { key: 'wiki', Component: HumanResources, permission: 'hr' },
   ];
@@ -157,9 +163,9 @@ function App() {
             isDirector={isDirector}
           />
           <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}${activeTab === 'timeline' ? ' main--timeline' : ''}${activeTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal'].includes(activeTab) ? ' main--list' : ''}`}>
-            {(employeeMode ? allowedEmployeeTabs : allowedTabs).map(({ key, Component }) => (
+            {(employeeMode ? allowedEmployeeTabs : allowedTabs).map(({ key, Component, props }) => (
               <div key={key} style={{ display: (employeeMode ? employeeTab : activeTab) === key ? 'block' : 'none' }}>
-                <Component />
+                <Component {...(props || {})} />
               </div>
             ))}
           </main>

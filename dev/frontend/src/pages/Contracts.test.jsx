@@ -7,20 +7,26 @@ import Contracts from './Contracts'
 const { addToast } = vi.hoisted(() => ({ addToast: vi.fn() }))
 
 vi.mock('../contexts/ToastContext', () => ({ useToast: () => ({ addToast }) }))
-vi.mock('../components/location/LocationPicker', () => ({
-  default: () => <div data-testid="location-picker">Địa chỉ chuẩn</div>,
-}))
 
 describe('Contracts', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('uses the standardized location picker in the manual contract form', async () => {
+  // Địa chỉ bất động sản phải chọn từ danh mục địa giới, không gõ tay — gõ tay
+  // thì mỗi người viết một kiểu và không bao giờ lọc hay đối chiếu được.
+  it('bắt chọn tỉnh/phường từ danh mục, phường khoá cho tới khi chọn tỉnh', async () => {
     vi.stubGlobal('fetch', vi.fn((url) => {
-      if (String(url).startsWith('/api/contracts/workspace-list')) {
+      const u = String(url)
+      if (u.startsWith('/api/contracts/workspace-list')) {
         return Promise.resolve({ ok: true, json: async () => ({ data: [], pagination: {} }) })
       }
-      if (url === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ personnel: [], services: [] }) })
-      if (url === '/api/contracts/next-code') return Promise.resolve({ ok: true, json: async () => ({ contract_id: '001/BK-2026' }) })
+      if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ personnel: [], services: ['Tách thửa'] }) })
+      if (u === '/api/contracts/next-code') return Promise.resolve({ ok: true, json: async () => ({ contract_id: '001/BK-2026' }) })
+      if (u === '/api/survey-records/wards/provinces') {
+        return Promise.resolve({ ok: true, json: async () => ([{ code: '79', name: 'TP. Hồ Chí Minh' }]) })
+      }
+      if (u.startsWith('/api/survey-records/wards?')) {
+        return Promise.resolve({ ok: true, json: async () => ([{ code: '760', name: 'Phường Bến Nghé' }]) })
+      }
       return Promise.reject(new Error(`Unexpected fetch: ${url}`))
     }))
 
@@ -28,6 +34,37 @@ describe('Contracts', () => {
     await waitFor(() => expect(container.querySelector('.contract-add-button')).toBeInTheDocument())
     fireEvent.click(container.querySelector('.contract-add-button'))
 
-    expect(await screen.findByTestId('location-picker')).toBeInTheDocument()
+    const tinh = await screen.findByLabelText(/Tỉnh \/ Thành phố/)
+    const phuong = screen.getByLabelText(/Phường \/ Xã/)
+    expect(phuong).toBeDisabled()
+
+    await waitFor(() => expect(screen.getByRole('option', { name: 'TP. Hồ Chí Minh' })).toBeInTheDocument())
+    fireEvent.change(tinh, { target: { value: '79' } })
+
+    expect(phuong).not.toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Phường Bến Nghé' })).toBeInTheDocument())
+  })
+
+  it('đọc số tiền thành chữ để bắt lỗi gõ thừa hoặc thiếu số 0', async () => {
+    vi.stubGlobal('fetch', vi.fn((url) => {
+      const u = String(url)
+      if (u.startsWith('/api/contracts/workspace-list')) {
+        return Promise.resolve({ ok: true, json: async () => ({ data: [], pagination: {} }) })
+      }
+      if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ personnel: [], services: [] }) })
+      if (u === '/api/contracts/next-code') return Promise.resolve({ ok: true, json: async () => ({ contract_id: '001/BK-2026' }) })
+      if (u === '/api/survey-records/wards/provinces') return Promise.resolve({ ok: true, json: async () => ([]) })
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    }))
+
+    const { container } = render(<Contracts />)
+    await waitFor(() => expect(container.querySelector('.contract-add-button')).toBeInTheDocument())
+    fireEvent.click(container.querySelector('.contract-add-button'))
+
+    const gia = await screen.findByLabelText(/Giá trị hợp đồng/)
+    fireEvent.change(gia, { target: { value: '18500000' } })
+
+    expect(gia.value).toBe('18.500.000')
+    expect(screen.getByText('Mười tám triệu năm trăm nghìn đồng')).toBeInTheDocument()
   })
 })

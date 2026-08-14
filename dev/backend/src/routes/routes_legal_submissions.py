@@ -7,17 +7,23 @@ from typing import Optional
 from src.core.auth import check_user_permission, get_current_user, require_permission
 from src.db.database import get_db
 from src.db.models import User
-from src.dossiers.lifecycle import assert_dossier_mutable
+from src.dossiers.lifecycle import (
+    TERMINAL_SQL_ARRAY,
+    assert_dossier_mutable,
+)
 
 router = APIRouter(prefix="/api/legal-submissions", tags=["Legal Submissions"])
 
 GOV_STATUSES = ["Đang chi nhánh", "Hoàn thành", "Rút hồ sơ", "Trả công văn"]
 
-_LIST_BASE_SQL = """
+_LIST_BASE_SQL = f"""
     select s.id, s.task_node_id, s.service_line_id, s.contract_id, s.dossier_name,
            s.case_description, s.assigned_employee_id, s.contact_phone, s.receipt_code,
            s.receipt_photo_url, s.dossier_file_url, s.linked_survey_folder_url,
-           s.payment_status, s.gov_status, s.received_date, s.expected_return_date,
+           s.payment_status, s.legacy_gov_status as gov_status,
+           -- Cùng một quy tắc khoá với bên Đo vẽ, do backend quyết định.
+           s.legacy_gov_status = any({TERMINAL_SQL_ARRAY}) as is_locked,
+           s.received_date, s.expected_return_date,
            s.is_first_submission, s.previous_submission_id, s.note, s.created_at, s.updated_at,
            sl.service_type as service_line_name, e.full_name as assigned_employee_name
     from public.legal_submissions s
@@ -46,7 +52,7 @@ def get_legal_submission_stats(
     user: User = Depends(require_permission("legal_submission", "read")),
 ):
     rows = db.execute(
-        text("select gov_status, count(*) as total from public.legal_submissions group by gov_status")
+        text("select legacy_gov_status as gov_status, count(*) as total from public.legal_submissions group by legacy_gov_status")
     ).mappings().all()
     counts = {row["gov_status"]: row["total"] for row in rows}
     return {
@@ -76,7 +82,7 @@ def list_legal_submissions(
         )""")
         params["search"] = f"%{search}%"
     if gov_status and gov_status != "All":
-        where.append("s.gov_status = :gov_status")
+        where.append("s.legacy_gov_status = :gov_status")
         params["gov_status"] = gov_status
     where_sql = f"where {' and '.join(where)}" if where else ""
 
@@ -124,7 +130,7 @@ def update_legal_submission(
         raise HTTPException(status_code=403, detail="Không có quyền cập nhật hồ sơ pháp lý")
 
     status_row = db.execute(
-        text("select gov_status from public.legal_submissions where id = :submission_id"),
+        text("select legacy_gov_status from public.legal_submissions where id = :submission_id"),
         {"submission_id": submission_id},
     ).first()
     if not status_row:
@@ -137,14 +143,24 @@ def update_legal_submission(
     if "gov_status" in updates and updates["gov_status"] not in GOV_STATUSES:
         raise HTTPException(status_code=400, detail=f"gov_status phải là một trong {GOV_STATUSES}")
 
-    set_clause = ", ".join(f"{key} = :{key}" for key in updates)
+    # Ô ngày để trống gửi lên là chuỗi rỗng, Postgres không ép được sang kiểu date
+    # và trả 500. Người dùng xoá ngày đi là chuyện bình thường, phải hiểu là NULL.
+    for cot_ngay in ("received_date", "expected_return_date"):
+        if cot_ngay in updates and not (updates[cot_ngay] or "").strip():
+            updates[cot_ngay] = None
+
+    # Cột gov_status đã đổi tên thành legacy_gov_status; giữ nguyên tên trường trong
+    # API để frontend không phải sửa. Đợt 3 sẽ thay hẳn bằng legal_dossiers.status.
+    set_clause = ", ".join(
+        f'{"legacy_gov_status" if key == "gov_status" else key} = :{key}' for key in updates
+    )
     updates["submission_id"] = submission_id
     result = db.execute(
         text(f"""
             update public.legal_submissions
             set {set_clause}, updated_at = now()
             where id = :submission_id
-              and coalesce(gov_status, '') not in ('Hoàn thành', 'Nộp thành công')
+              and coalesce(legacy_gov_status, '') not in ('Hoàn thành', 'Nộp thành công')
             returning id
         """),
         updates,

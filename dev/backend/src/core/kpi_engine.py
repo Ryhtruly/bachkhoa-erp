@@ -14,8 +14,12 @@ def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
 
     rows = db.execute(text("""
         with period as (
-          select :period_start::date as start_date,
-                 (:period_start::date + interval '1 month')::date as end_date
+          -- Dùng cast(... as date) chứ KHÔNG dùng :param::date.
+          -- SQLAlchemy không nhận ra tham số khi ngay sau nó là dấu '::' (nó coi
+          -- đó là dấu hai chấm được thoát), nên câu SQL tới Postgres còn nguyên
+          -- ":period_start" và lỗi cú pháp — cả trang KPI chết 500.
+          select cast(:period_start as date) as start_date,
+                 cast(cast(:period_start as date) + interval '1 month' as date) as end_date
         ), completed as (
           select a.employee_id,
                  count(distinct n.id) as total_completed,

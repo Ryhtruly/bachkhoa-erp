@@ -1,0 +1,300 @@
+/* Form soạn hợp đồng — dựng theo bản thiết kế, giữ nguyên giá trị màu, khoảng
+   cách, cỡ chữ.
+
+   Mọi selector nằm dưới `.ctr-form`. Mẫu viết cho trang HTML đứng một mình nên
+   dùng selector trần (`label`, `select`, `.row`, `.btn`…); thả thẳng vào app sẽ
+   đè lên toàn bộ form khác. */
+
+.ctr-form-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 23, 31, .45);
+  backdrop-filter: blur(2px);
+}
+
+.ctr-form {
+  --acc: #E8703A;
+  --acc-soft: #FEF1EB;
+  --acc-line: #F6C4AC;
+  --acc-deep: #B84A18;
+  --ink: #14171F;
+  --ink-2: #4A5262;
+  --ink-3: #8792A6;
+  --ink-4: #AAB3C2;
+  --card: #FFFFFF;
+  --field: #F7F9FB;
+  --field-hv: #F1F4F8;
+  --line: #E2E7EE;
+  --line-2: #CDD5E0;
+  --ok: #2E9E5B;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'Be Vietnam Pro', system-ui, sans-serif;
+  --r: 7px;
+
+  width: 100%;
+  max-width: 880px;
+  max-height: 90vh;
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(20, 23, 31, .06), 0 12px 40px rgba(20, 23, 31, .14);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--sans);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+.ctr-form *,
+.ctr-form *::before,
+.ctr-form *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── đầu ─────────────────────────────────────────────────────── */
+.ctr-form .hd {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.ctr-form .ic {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r);
+  background: var(--acc-soft);
+  color: var(--acc);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.ctr-form .hd h1 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; }
+.ctr-form .hd p { font-size: 12.5px; color: var(--ink-3); margin-top: 1px; }
+.ctr-form .code {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.ctr-form .code b {
+  font-weight: 400;
+  color: var(--ink-4);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.ctr-form .x {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: var(--r);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: .15s;
+}
+.ctr-form .x:hover { background: var(--field); color: var(--ink); }
+
+/* ── thân cuộn ───────────────────────────────────────────────── */
+.ctr-form .bd { overflow-y: auto; padding: 4px 22px 22px; flex: 1; min-height: 0; }
+
+.ctr-form .sec { padding-top: 20px; }
+.ctr-form .sec-hd { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.ctr-form .sec-hd h2 {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.ctr-form .sec-hd i { height: 1px; background: var(--line); flex: 1; }
+
+.ctr-form .row { display: grid; gap: 14px; margin-bottom: 14px; }
+.ctr-form .row:last-child { margin-bottom: 0; }
+.ctr-form .c2 { grid-template-columns: 1fr 1fr; }
+.ctr-form .c3 { grid-template-columns: 1fr 1fr 1.35fr; }
+.ctr-form .c-date { grid-template-columns: 1fr 1fr auto; }
+
+/* `label` toàn cục của app viết hoa và giãn chữ mọi nhãn. Ở form này nhãn là
+   chữ thường, nên phải chặn lại chứ không chỉ đặt cỡ và màu. */
+.ctr-form label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ctr-form label u { text-decoration: none; color: var(--acc); margin-left: 2px; }
+.ctr-form label small { font-weight: 400; color: var(--ink-4); font-size: 11.5px; margin-left: 5px; }
+
+.ctr-form .in,
+.ctr-form select {
+  width: 100%;
+  height: 40px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 0 12px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.ctr-form select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238792A6' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.ctr-form .in::placeholder { color: var(--ink-4); }
+.ctr-form .in:hover,
+.ctr-form select:hover:not(:disabled) { background: var(--field-hv); border-color: var(--line-2); }
+.ctr-form .in:focus,
+.ctr-form select:focus { background: #fff; border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft); }
+.ctr-form select:disabled { background: #FAFBFC; color: var(--ink-4); cursor: not-allowed; border-style: dashed; }
+.ctr-form .in.bad,
+.ctr-form select.bad { border-color: #E5484D; box-shadow: 0 0 0 3px #FEECEC; }
+
+.ctr-form .wrap { position: relative; }
+.ctr-form .suf {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-4);
+  pointer-events: none;
+}
+/* ── Ô tiền ───────────────────────────────────────────────────
+   Giá trị hợp đồng là con số quan trọng nhất của cả form và là chỗ dễ gõ sai
+   nhất. Cho nó cỡ chữ lớn hẳn để đọc lại được từ xa, kèm hàng mệnh giá bấm
+   nhanh — hợp đồng ở đây gần như luôn là số tròn triệu. */
+.ctr-form .tien { max-width: 420px; }
+.ctr-form .money {
+  height: 54px;
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  padding-right: 38px;
+  color: var(--ink);
+}
+.ctr-form .tien .suf { font-size: 17px; }
+.ctr-form .tien .hint { min-height: 18px; font-size: 12.5px; }
+
+.ctr-form .quick { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.ctr-form .quick button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: .15s;
+}
+.ctr-form .quick button:hover { background: var(--acc-soft); border-color: var(--acc-line); color: var(--acc-deep); }
+.ctr-form .quick button:active { transform: scale(.97); }
+.ctr-form .quick button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ctr-form .quick .is-clear { margin-left: auto; color: var(--ink-3); }
+.ctr-form .quick .is-clear:hover { background: #FEECEC; border-color: #F3C6C7; color: #B4292D; }
+.ctr-form .hint { font-size: 12px; color: var(--ink-3); margin-top: 6px; min-height: 17px; line-height: 1.4; }
+.ctr-form .hint b { color: var(--acc-deep); font-weight: 500; }
+
+.ctr-form .span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 12px;
+  align-self: end;
+  background: var(--acc-soft);
+  border-radius: var(--r);
+  font-size: 13px;
+  color: var(--acc-deep);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ctr-form .span svg { flex: none; opacity: .7; }
+.ctr-form .span.is-bad { background: #FEECEC; color: #B4292D; }
+
+/* ── chân dính ───────────────────────────────────────────────── */
+.ctr-form .ft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: var(--card);
+  flex: none;
+}
+.ctr-form .stat {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: auto;
+}
+.ctr-form .stat b { font-weight: 500; color: var(--ink-2); }
+.ctr-form .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); flex: none; }
+.ctr-form .stat.done .dot { background: var(--ok); }
+.ctr-form .stat.done b { color: var(--ok); }
+.ctr-form .btn {
+  height: 38px;
+  padding: 0 18px;
+  border-radius: var(--r);
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: .15s;
+  border: 1px solid var(--line-2);
+  background: #fff;
+  color: var(--ink-2);
+}
+.ctr-form .btn:hover { background: var(--field-hv); border-color: var(--ink-4); }
+.ctr-form .btn.pri { background: var(--acc); border-color: var(--acc); color: #fff; padding: 0 22px; font-weight: 600; }
+.ctr-form .btn.pri:hover { background: #D45F2B; border-color: #D45F2B; }
+.ctr-form .btn:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+/* Đang lưu: nút phải nhìn ra là đang bận và không bấm lại được. */
+.ctr-form .btn:disabled { opacity: .6; cursor: wait; }
+.ctr-form .btn.pri:disabled:hover { background: var(--acc); border-color: var(--acc); }
+
+@media (max-width: 720px) {
+  .ctr-form-overlay { padding: 0; }
+  .ctr-form { max-width: none; max-height: 100vh; border-radius: 0; }
+  .ctr-form .c2,
+  .ctr-form .c3,
+  .ctr-form .c-date { grid-template-columns: 1fr; }
+  .ctr-form .code b { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ctr-form *, .ctr-form *::before, .ctr-form *::after { transition: none !important; }
+}

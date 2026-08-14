@@ -8,12 +8,12 @@ from src.routes.routes_legal_submissions import LegalSubmissionUpdateSchema, upd
 from src.routes.routes_survey_records import SurveyRecordUpdateSchema, update_survey_record
 
 
-@pytest.mark.parametrize("status", [None, "Đang thực hiện", "Đang chi nhánh", "Rút hồ sơ", "Trả công văn"])
+@pytest.mark.parametrize("status", [None, "Đang thực hiện", "Đã bàn giao", "Đang chi nhánh", "Rút hồ sơ", "Trả công văn"])
 def test_draft_or_rework_dossiers_remain_mutable(status):
     assert_dossier_mutable(status)
 
 
-@pytest.mark.parametrize("status", ["Hoàn thành", "Nộp thành công"])
+@pytest.mark.parametrize("status", ["Hoàn thành", "Nộp thành công", "Huỷ", "CLOSED"])
 def test_terminal_dossiers_are_locked(status):
     with pytest.raises(HTTPException) as exc_info:
         assert_dossier_mutable(status)
@@ -23,8 +23,9 @@ def test_terminal_dossiers_are_locked(status):
 
 
 class FakeResult:
-    def __init__(self, value):
+    def __init__(self, value, mapping=None):
         self.value = value
+        self._mapping = mapping
 
     def scalar(self):
         return self.value
@@ -32,8 +33,21 @@ class FakeResult:
     def first(self):
         return self.value
 
+    def mappings(self):
+        # Bên Đo vẽ đọc trạng thái TÍNH SỐNG qua .mappings() nên phải giả lập cả
+        # đường này, không chỉ .first().
+        return FakeResult(self._mapping if self._mapping is not None else self.value)
+
 
 class FakeDb:
+    """Giả lập CSDL cho test chặn sửa hồ sơ đã kết thúc.
+
+    Nhận diện câu đọc trạng thái theo TÊN CỘT THẬT sau Đợt 2:
+    `legacy_gov_status` bên Pháp lý, và truy vấn tính sống bên Đo vẽ (có
+    `effective_status as status`). Dò nhầm tên là stub trả về giá trị rác,
+    khoá sửa vẫn 'pass' mà thực chất chưa kiểm gì.
+    """
+
     def __init__(self, current_status):
         self.current_status = current_status
         self.statements = []
@@ -41,9 +55,17 @@ class FakeDb:
     def execute(self, statement, params=None):
         query = str(statement)
         self.statements.append(query)
-        if "select gov_status" in query or "select status" in query:
-            return FakeResult((self.current_status,))
-        return FakeResult(("record-1",))
+        doc_trang_thai = (
+            "select legacy_gov_status" in query
+            or "select manual_status" in query
+            or "effective_status as status" in query
+        )
+        if doc_trang_thai:
+            return FakeResult(
+                (self.current_status,),
+                mapping={"status": self.current_status, "gov_status": self.current_status},
+            )
+        return FakeResult(("record-1",), mapping={"id": "record-1"})
 
     def commit(self):
         raise AssertionError("completed dossier must not commit an edit")
