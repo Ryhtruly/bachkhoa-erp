@@ -8,6 +8,7 @@ ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
 ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 BUCKET = os.getenv("MINIO_BUCKET", "wiki-files")
+FINANCE_BUCKET = os.getenv("MINIO_FINANCE_BUCKET", "finance-files")
 PUBLIC_URL = os.getenv("MINIO_PUBLIC_URL", "http://localhost:9000")
 
 _s3 = None
@@ -32,6 +33,14 @@ def ensure_bucket():
     except Exception:
         client.create_bucket(Bucket=BUCKET)
 
+def ensure_finance_bucket():
+    """Create the private finance bucket without granting a public policy."""
+    client = _get_client()
+    try:
+        client.head_bucket(Bucket=FINANCE_BUCKET)
+    except Exception:
+        client.create_bucket(Bucket=FINANCE_BUCKET)
+
 def set_bucket_public():
     client = _get_client()
     policy = {
@@ -52,6 +61,27 @@ def upload_file(file_obj, object_name: str) -> str:
     client = _get_client()
     client.upload_fileobj(file_obj, BUCKET, object_name)
     return f"{PUBLIC_URL}/{BUCKET}/{object_name}"
+
+def upload_finance_file(
+    file_obj,
+    object_name: str,
+    *,
+    content_type: str,
+    metadata: dict[str, str] | None = None,
+) -> str:
+    """Upload an immutable receipt object to the private finance bucket."""
+    client = _get_client()
+    extra_args = {"ContentType": content_type}
+    if metadata:
+        extra_args["Metadata"] = {str(key): str(value) for key, value in metadata.items()}
+    client.upload_fileobj(file_obj, FINANCE_BUCKET, object_name, ExtraArgs=extra_args)
+    return object_name
+
+def get_finance_file(object_name: str) -> dict:
+    return _get_client().get_object(Bucket=FINANCE_BUCKET, Key=object_name)
+
+def delete_finance_file(object_name: str):
+    _get_client().delete_object(Bucket=FINANCE_BUCKET, Key=object_name)
 
 def file_exists(object_name: str) -> bool:
     client = _get_client()

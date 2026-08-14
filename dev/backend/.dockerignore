@@ -1,13 +1,29 @@
-.env
-.env.*
+# Never send local secrets or generated data to the Docker daemon.
+.env*
 !.env.example
+*.xlsx
+*.log
 venv/
-__pycache__/
-*.py[cod]
 *.sqlite
 *.db
+
+# Development-only material is not copied by the production Dockerfile.
+tests/
+scripts/
+app/
+alembic/
+src/test_*.py
+src/**/test_*.py
+src/static/
+
+# Local/generated Python and contract artifacts.
+__pycache__/
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-scripts/
 req_out.txt
+static/contracts/
+static/generated_contracts/
+static/generated_docs/
+static/generated_quotes/

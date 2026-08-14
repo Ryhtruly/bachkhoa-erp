@@ -1,3 +1,4 @@
+import re
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, or_, text
@@ -44,16 +45,24 @@ class FinanceRepository:
             start_bal = FinanceRepository.get_setting_value(db, key, 0.0)
             start_date = None
 
+        # Only count approved/completed transactions for actual cash/bank ledger
+        approved_cond = or_(
+            CashflowTransaction.status.is_(None),
+            CashflowTransaction.status.in_(["Hoàn thành", "Đã duyệt", "COMPLETED", "approved", ""])
+        )
+
         q_thu = db.query(func.sum(CashflowTransaction.amount)).filter(
             CashflowTransaction.transaction_type == "Thu",
             CashflowTransaction.payment_method == payment_method,
-            CashflowTransaction.scope == "Công ty"
+            CashflowTransaction.scope == "Công ty",
+            approved_cond
         )
         
         q_chi = db.query(func.sum(CashflowTransaction.amount)).filter(
             CashflowTransaction.transaction_type == "Chi",
             CashflowTransaction.payment_method == payment_method,
-            CashflowTransaction.scope == "Công ty"
+            CashflowTransaction.scope == "Công ty",
+            approved_cond
         )
         
         if start_date:
@@ -76,14 +85,19 @@ class FinanceRepository:
         now = target_date or datetime.now().date()
         month_str = now.strftime("%m")
         year_str = now.strftime("%Y")
+        pattern = f"{prefix}-{month_str}/{year_str}-%"
         
-        serial = 1
-        while True:
-            proposed_id = f"{prefix}-{month_str}/{year_str}-{serial:03d}"
-            exists = db.query(CashflowTransaction.id).filter(CashflowTransaction.id == proposed_id).first()
-            if not exists:
-                return proposed_id
-            serial += 1
+        existing_ids = db.query(CashflowTransaction.id).filter(
+            CashflowTransaction.id.like(pattern)
+        ).all()
+        
+        max_num = 0
+        for (eid,) in existing_ids:
+            m = re.search(r"-(\d+)$", eid)
+            if m:
+                max_num = max(max_num, int(m.group(1)))
+                
+        return f"{prefix}-{month_str}/{year_str}-{max_num + 1:03d}"
 
     @staticmethod
     def list_cashflow_transactions(
@@ -194,12 +208,18 @@ class FinanceRepository:
         rows = db.query(Contract, Customer.full_name, Customer.phone).outerjoin(
             Customer, Contract.customer_id == Customer.id
         ).order_by(Contract.created_at.desc()).all()
+        
+        # Batch pre-aggregate payments by contract in 1 single query
+        paid_map = dict(
+            db.query(CashflowTransaction.contract_id, func.sum(CashflowTransaction.amount))
+            .filter(CashflowTransaction.transaction_type == "Thu", CashflowTransaction.contract_id.isnot(None))
+            .group_by(CashflowTransaction.contract_id)
+            .all()
+        )
+        
         result = []
         for contract, cust_name, cust_phone in rows:
-            paid = float(db.query(func.sum(CashflowTransaction.amount)).filter(
-                CashflowTransaction.contract_id == contract.id,
-                CashflowTransaction.transaction_type == "Thu"
-            ).scalar() or 0)
+            paid = float(paid_map.get(contract.id, 0.0) or 0.0)
             total = float(contract.total_value or 0)
             result.append({
                 "id": contract.id,
@@ -217,18 +237,80 @@ class FinanceRepository:
     @staticmethod
     def list_receivables_formatted(db: Session) -> list:
         today = date.today()
+        contracts_q = db.query(Contract, Customer.full_name, Customer.representative_name).outerjoin(
+            Customer, Contract.customer_id == Customer.id
+        ).all()
+        contracts_map = {}
+        contracts_customer_map = {}
+        for c, cust_name, rep_name in contracts_q:
+            contracts_map[c.id] = float(c.total_value or 0)
+            contracts_customer_map[c.id] = cust_name or rep_name or ""
+
+        # Batch pre-fetch all pending refund transactions in 1 single query
+        pending_refunds = db.query(CashflowTransaction).filter(
+            CashflowTransaction.contract_id.isnot(None),
+            CashflowTransaction.transaction_type == "Chi",
+            CashflowTransaction.status == "Chờ duyệt"
+        ).all()
+        pending_refund_map = {t.contract_id: t for t in pending_refunds}
+
         rows = db.query(Receivable).order_by(Receivable.due_date.asc().nullslast()).all()
         result = []
         for r in rows:
+            paid = float(r.paid_amount or 0)
             remaining = float(r.remaining_amount or 0)
+            total_val = contracts_map.get(r.contract_id, 0.0)
+            excess_amount = max(paid - total_val, 0) if (total_val > 0 and paid > total_val + 0.009) else 0.0
             overdue = bool(r.due_date and r.due_date < today and remaining > 0)
+
+            is_written_off = bool(getattr(r, 'is_written_off', False))
+            is_refunded = bool(getattr(r, 'is_refunded', False))
+            carried_forward_to = getattr(r, 'carried_forward_to', None)
+            carried_forward_from = getattr(r, 'carried_forward_from', None)
+
+            pending_refund = pending_refund_map.get(r.contract_id)
+
+            if is_written_off:
+                status = "written_off"
+            elif is_refunded:
+                status = "refunded"
+            elif excess_amount > 0.009:
+                status = "overpaid"
+            elif carried_forward_to:
+                status = "settled"
+            elif remaining <= 0:
+                status = "settled"
+            elif overdue:
+                status = "overdue"
+            elif paid > 0:
+                status = "partial"
+            else:
+                status = "not_started"
+
+            cust_name = contracts_customer_map.get(r.contract_id, "") or getattr(r, 'customer_name', '') or ""
+
             result.append({
                 "id": r.id,
                 "contract_id": r.contract_id or "",
-                "paid_amount": float(r.paid_amount or 0),
+                "customer_name": cust_name,
+                "customer": cust_name,
+                "total_value": total_val,
+                "paid_amount": paid,
                 "remaining_amount": remaining,
+                "excess_amount": excess_amount,
+                "is_overpaid": excess_amount > 0.009,
+                "has_pending_refund": bool(pending_refund),
+                "pending_refund_id": pending_refund.id if pending_refund else "",
+                "pending_refund_amount": float(pending_refund.amount or 0) if pending_refund else 0.0,
                 "due_date": str(r.due_date) if r.due_date else "",
                 "overdue": overdue,
+                "status": status,
+                "is_written_off": is_written_off,
+                "written_off_reason": getattr(r, 'written_off_reason', '') or "",
+                "is_refunded": is_refunded,
+                "refund_reason": getattr(r, 'refund_reason', '') or "",
+                "carried_forward_to": carried_forward_to or "",
+                "carried_forward_from": carried_forward_from or "",
                 "created_at": r.created_at.strftime("%d/%m/%y") if r.created_at else "",
             })
         return result
@@ -491,8 +573,29 @@ class FinanceRepository:
         }
 
     @staticmethod
-    def list_projects(db: Session) -> List[ServiceLine]:
-        return db.query(ServiceLine).order_by(ServiceLine.id.desc()).limit(300).all()
+    def list_projects(db: Session) -> List[Dict]:
+        rows = (
+            db.query(ServiceLine, Contract, Customer)
+            .outerjoin(Contract, Contract.id == ServiceLine.contract_id)
+            .outerjoin(Customer, Customer.id == Contract.customer_id)
+            .order_by(Contract.date_signed.desc().nullslast(), ServiceLine.id.desc())
+            .limit(300)
+            .all()
+        )
+
+        projects = []
+        for service_line, contract, customer in rows:
+            business_code = contract.id if contract else service_line.contract_id
+            service_name = service_line.service_type or service_line.service_package
+            customer_name = customer.full_name if customer else service_line.land_owner_name
+            label_parts = [part for part in (business_code, service_name, customer_name) if part]
+            projects.append({
+                "id": service_line.id,
+                "contract_id": service_line.contract_id,
+                "label": " — ".join(label_parts) or "Hồ sơ kỹ thuật chưa có mã",
+            })
+
+        return projects
 
     @staticmethod
     def get_finance_settings(db: Session) -> Dict:
@@ -500,7 +603,9 @@ class FinanceRepository:
             "initial_cash_balance": FinanceRepository.get_setting_value(db, "initial_cash_balance"),
             "initial_bank_balance": FinanceRepository.get_setting_value(db, "initial_bank_balance"),
             "initial_total_income": FinanceRepository.get_setting_value(db, "initial_total_income"),
-            "initial_total_expenditure": FinanceRepository.get_setting_value(db, "initial_total_expenditure")
+            "initial_total_expenditure": FinanceRepository.get_setting_value(db, "initial_total_expenditure"),
+            "expense_approval_threshold": FinanceRepository.get_setting_value(db, "expense_approval_threshold", default=2000000.0),
+            "advance_admin_threshold": FinanceRepository.get_setting_value(db, "advance_admin_threshold", default=5000000.0)
         }
 
     @staticmethod
@@ -516,13 +621,19 @@ class FinanceRepository:
         except Exception:
             raise HTTPException(status_code=400, detail="Tháng không hợp lệ. Format phải là YYYY-MM")
 
+        approved_cond = or_(
+            CashflowTransaction.status.is_(None),
+            CashflowTransaction.status.in_(["Hoàn thành", "Đã duyệt", "COMPLETED", "approved", ""])
+        )
+
         # Filter transactions in this month
         txs = db.query(CashflowTransaction).filter(
             extract("year", CashflowTransaction.transaction_date) == year,
             extract("month", CashflowTransaction.transaction_date) == m_num,
             CashflowTransaction.scope == "Công ty",
             CashflowTransaction.category_code != "Chi phí tạm ứng",
-            CashflowTransaction.category_code != "Quyết toán hoàn ứng"
+            CashflowTransaction.category_code != "Quyết toán hoàn ứng",
+            approved_cond
         ).all()
 
         # Calculate overall totals
@@ -532,28 +643,74 @@ class FinanceRepository:
 
         # Define standard categories to show
         standard_categories = [
-            "Văn phòng phẩm", "In ấn - Photocopy", "Chi quầy tiếp nhận", "Ăn uống",
-            "Đi lại - Xăng xe - Gửi xe", "Công tác phí", "Chuyển phát - Bưu chính-Grap",
-            "Điện - Nước - Internet", "Sửa chữa nhỏ", "Bảo trì thiết bị", "Vệ sinh - Rác thải",
-            "Hỗ trợ sự kiện - Marketing", "Chi thụ lý bản vẽ", "Chi bảo vệ", "Công chứng hồ sơ",
-            "Thu chênh lệch kiểm kê quỹ", "Chi chênh lệch kiểm kê quỹ"
+            "Thu tiền hợp đồng dịch vụ",
+            "Thu hoàn ứng / Tạm ứng",
+            "Thu chênh lệch kiểm kê quỹ",
+            "Chi ngoại giao & Xử lý hồ sơ",
+            "Bồi dưỡng thẩm định & Hiện trường",
+            "Chi thụ lý bản vẽ & Trích lục",
+            "Công chứng, Lệ phí & Nghĩa vụ thuế",
+            "Chi tiếp khách & Giao tế",
+            "Chi lương, Thù lao & Hoa hồng 3P",
+            "Công tác phí & Di chuyển hiện trường",
+            "Văn phòng phẩm & In ấn kỹ thuật",
+            "Điện - Nước - Internet",
+            "Sửa chữa, Kiểm định máy đo & Thiết bị",
+            "Chi hoàn trả khách hàng",
+            "Chi điều chỉnh hủy phiếu",
+            "Chi chênh lệch kiểm kê quỹ",
+            "Chi phí hành chính & Khác"
         ]
+
+        def normalize_category(cat_raw, tx_type):
+            c = (cat_raw or "").strip().lower()
+            if tx_type == "Thu" or "thu" in c:
+                if any(k in c for k in ["hợp đồng", "hd", "hđ", "dự án", "cọc", "thanh toán", "đợt", "thực hiện"]):
+                    return "Thu tiền hợp đồng dịch vụ"
+                if any(k in c for k in ["hoàn ứng", "tạm ứng", "hoàn trả"]):
+                    return "Thu hoàn ứng / Tạm ứng"
+                if "kiểm kê" in c:
+                    return "Thu chênh lệch kiểm kê quỹ"
+                return "Thu tiền hợp đồng dịch vụ" if t.contract_id else (cat_raw or "Thu nhập khác")
+
+            # Sensitive / Diplomatic / Facilitation expenses mapped naturally
+            if any(k in c for k in ["ngoại giao", "đối ngoại", "quan hệ", "cơ chế", "xử lý hồ sơ", "xử lý nhanh", "bôi trơn", "đút lót", "hỗ trợ ban ngành", "hỗ trợ phòng tnmt"]):
+                return "Chi ngoại giao & Xử lý hồ sơ"
+            if any(k in c for k in ["dẫn mốc", "giáp ranh", "bồi dưỡng", "thực địa", "hiện trường", "thẩm định", "cán bộ địa chính"]):
+                return "Bồi dưỡng thẩm định & Hiện trường"
+            if any(k in c for k in ["thụ lý", "bản vẽ", "trích lục", "lấy sổ", "lấy trích lục", "lấy bản vẽ", "cấp giấy", "viết hồ sơ"]):
+                return "Chi thụ lý bản vẽ & Trích lục"
+            if any(k in c for k in ["công chứng", "lệ phí", "thuế", "đóng thuế", "vi bằng", "trước bạ"]):
+                return "Công chứng, Lệ phí & Nghĩa vụ thuế"
+            if any(k in c for k in ["tiếp khách", "giao tế", "cà phê", "quầy nước", "ăn uống", "marketing", "sự kiện"]):
+                return "Chi tiếp khách & Giao tế"
+            if any(k in c for k in ["lương", "thưởng", "hoa hồng", "nhân công", "3p", "thù lao"]):
+                return "Chi lương, Thù lao & Hoa hồng 3P"
+            if any(k in c for k in ["xăng", "đi lại", "xe", "grap", "grab", "công tác", "bưu chính", "chuyển phát"]):
+                return "Công tác phí & Di chuyển hiện trường"
+            if any(k in c for k in ["văn phòng phẩm", "in ấn", "photocopy", "giấy", "bản đồ"]):
+                return "Văn phòng phẩm & In ấn kỹ thuật"
+            if any(k in c for k in ["điện", "nước", "internet", "mạng", "viễn thông"]):
+                return "Điện - Nước - Internet"
+            if any(k in c for k in ["sửa chữa", "bảo trì", "thiết bị", "máy tính", "máy in", "kiểm định", "máy đo", "rtk", "toàn đạc"]):
+                return "Sửa chữa, Kiểm định máy đo & Thiết bị"
+            if any(k in c for k in ["hoàn trả", "trả lại", "nộp thừa", "hoàn cọc"]):
+                return "Chi hoàn trả khách hàng"
+            if any(k in c for k in ["hủy phiếu", "hoàn tác", "void", "refund"]):
+                return "Chi điều chỉnh hủy phiếu"
+            if any(k in c for k in ["kiểm kê"]):
+                return "Chi chênh lệch kiểm kê quỹ"
+
+            return cat_raw or "Chi phí hành chính & Khác"
 
         # Map categories
         cat_map = {c: {"income": 0.0, "expenditure": 0.0} for c in standard_categories}
-        
-        # Map any categories not in standard list
+
         for t in txs:
-            cat = t.category_code or "Khác"
-            normalized_cat = cat
-            for sc in standard_categories:
-                if sc.lower() in cat.lower() or cat.lower() in sc.lower():
-                    normalized_cat = sc
-                    break
-            
+            normalized_cat = normalize_category(t.category_code, t.transaction_type)
             if normalized_cat not in cat_map:
                 cat_map[normalized_cat] = {"income": 0.0, "expenditure": 0.0}
-                
+
             amt = float(t.amount or 0.0)
             if t.transaction_type == "Thu":
                 cat_map[normalized_cat]["income"] += amt
@@ -567,12 +724,70 @@ class FinanceRepository:
                 "expenditure": v["expenditure"]
             }
             for k, v in cat_map.items()
+            if v["income"] > 0 or v["expenditure"] > 0 or k in standard_categories[:6]
         ]
 
-        # Map departments (Phòng ban/Dự án)
-        dept_map = {}
+        # Load official departments from DB
+        db_depts = db.query(Department).order_by(Department.id).all()
+        official_dept_names = [d.name for d in db_depts] if db_depts else [
+            "Phòng Đo vẽ", "Phòng Pháp lý", "Phòng Sale / CSKH", "Phòng Kế toán", "Ban Giám đốc"
+        ]
+        dept_map = {d: {"income": 0.0, "expenditure": 0.0} for d in official_dept_names}
+
+        # Batch pre-fetch all contracts and project service lines in this month's transactions
+        contract_ids = {t.contract_id for t in txs if t.contract_id}
+        project_ids = {t.project_id for t in txs if t.project_id}
+        contracts_map = {
+            c.id: c for c in db.query(Contract).filter(Contract.id.in_(contract_ids)).all()
+        } if contract_ids else {}
+        projects_map = {
+            p.id: p for p in db.query(ServiceLine).filter(ServiceLine.id.in_(project_ids)).all()
+        } if project_ids else {}
+
+        def resolve_department(t):
+            dept_raw = (t.department_code or "").strip().lower()
+            if any(k in dept_raw for k in ["đo vẽ", "dove", "survey"]):
+                return "Phòng Đo vẽ"
+            if any(k in dept_raw for k in ["pháp lý", "phaply", "legal"]):
+                return "Phòng Pháp lý"
+            if any(k in dept_raw for k in ["sale", "cskh", "kinh doanh", "crm"]):
+                return "Phòng Sale / CSKH"
+            if any(k in dept_raw for k in ["kế toán", "ketoan", "finance"]):
+                return "Phòng Kế toán"
+            if any(k in dept_raw for k in ["giám đốc", "admin", "ban giám đốc", "quản trị"]):
+                return "Ban Giám đốc"
+
+            if t.contract_id and t.contract_id in contracts_map:
+                c = contracts_map[t.contract_id]
+                st = ((c.service_type or "") + " " + (c.service_package or "")).lower()
+                if any(k in st for k in ["đo vẽ", "đo đạc", "khảo sát", "hiện trạng", "cắm mốc", "bản đồ"]):
+                    return "Phòng Đo vẽ"
+                if any(k in st for k in ["pháp lý", "hợp thửa", "tách thửa", "cấp sổ", "sang tên", "thừa kế", "chuyển mục đích", "thủ tục"]):
+                    return "Phòng Pháp lý"
+                return "Phòng Sale / CSKH"
+
+            if t.project_id and t.project_id in projects_map:
+                sl = projects_map[t.project_id]
+                st = (sl.service_type or "").lower()
+                if any(k in st for k in ["đo vẽ", "đo đạc", "khảo sát", "hiện trạng"]):
+                    return "Phòng Đo vẽ"
+                if any(k in st for k in ["pháp lý", "hợp thửa", "tách thửa", "cấp sổ", "thủ tục"]):
+                    return "Phòng Pháp lý"
+
+            cat = (t.category_code or "").lower()
+            if any(k in cat for k in ["bản vẽ", "đo đạc", "khảo sát", "hiện trường"]):
+                return "Phòng Đo vẽ"
+            if any(k in cat for k in ["công chứng", "thụ lý", "pháp lý", "sổ đỏ", "địa chính"]):
+                return "Phòng Pháp lý"
+            if any(k in cat for k in ["marketing", "hoa hồng", "bán hàng", "quảng cáo", "tiếp khách"]):
+                return "Phòng Sale / CSKH"
+            if any(k in cat for k in ["hoàn trả", "nộp thừa", "kiểm kê", "hoàn cọc"]):
+                return "Phòng Kế toán"
+
+            return "Ban Giám đốc"
+
         for t in txs:
-            dept = t.department_code or "Khác / Văn phòng"
+            dept = resolve_department(t)
             if dept not in dept_map:
                 dept_map[dept] = {"income": 0.0, "expenditure": 0.0}
             amt = float(t.amount or 0.0)

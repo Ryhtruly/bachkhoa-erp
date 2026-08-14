@@ -86,58 +86,28 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
     if user.username == "admin":
         return True
 
-    # Admin role bypass
-    admin_role = (
-        db.query(Role.id)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .filter(UserRole.user_id == user.id, Role.role_name.ilike("admin"))
-        .first()
-    )
-    if admin_role:
-        return True
-
     permission_column = f"can_{action}"
     if not hasattr(RolePermission, permission_column):
         return False
 
     valid_resources = RESOURCE_ALIASES.get(resource, [resource])
 
-    perm = (
-        db.query(RolePermission)
-        .join(UserRole, UserRole.role_id == RolePermission.role_id)
+    # Single unified query: check either admin role OR valid permission grant
+    allowed = db.query(
+        db.query(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .outerjoin(RolePermission, RolePermission.role_id == Role.id)
         .filter(
             UserRole.user_id == user.id,
-            RolePermission.resource.in_(valid_resources),
-            getattr(RolePermission, permission_column) == True
-        )
-        .first()
-    )
-    legacy_allowed = perm is not None
-
-    # The normalized RBAC tables are evaluated in shadow mode until their grant
-    # matrix is fully provisioned.  They cannot alter this legacy decision.
-    try:
-        normalized = evaluate_normalized_permission(
-            db,
-            user_id=user.id,
-            resource_codes=valid_resources,
-            action=action,
-        )
-        if normalized is not None and normalized.allowed != legacy_allowed:
-            logger.warning(
-                "RBAC shadow mismatch resource=%s action=%s permission=%s legacy_allowed=%s normalized_allowed=%s",
-                resource,
-                action,
-                normalized.permission_code,
-                legacy_allowed,
-                normalized.allowed,
+            (Role.role_name.ilike("admin")) | (
+                RolePermission.resource.in_(valid_resources) &
+                (getattr(RolePermission, permission_column) == True)
             )
-    except SQLAlchemyError:
-        # Some deployments may not have the normalized tables yet.  Legacy
-        # authorization must remain available during the compatibility window.
-        logger.info("RBAC shadow evaluator unavailable resource=%s action=%s", resource, action)
+        )
+        .exists()
+    ).scalar()
 
-    return legacy_allowed
+    return bool(allowed)
 
 def require_permission(resource: str, action: str):
     def dependency(

@@ -1,6 +1,6 @@
 import uuid
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy import func, text
@@ -18,6 +18,7 @@ from src.db.models import (
 )
 from src.services import telegram_service
 from src.core import doc_generator
+from src.core.audit import log_action
 from src.contracts.read_model import sync_contract_read_model_after_write
 
 
@@ -249,6 +250,211 @@ class ContractService:
                 "id": new_hd.id,
                 "service_line_id": service_line.id,
                 "download_url": download_url,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @staticmethod
+    def override_handover(db: Session, contract_id: str, reason: str, actor_id: str) -> dict:
+        """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K08."""
+        if not (reason or "").strip():
+            raise HTTPException(status_code=400, detail="Bắt buộc phải nhập lý do phê duyệt ngoại lệ.")
+        try:
+            contract = db.query(Contract).filter(Contract.id == contract_id).first()
+            if not contract:
+                raise HTTPException(status_code=404, detail=f"Không tìm thấy hợp đồng '{contract_id}'.")
+
+            contract.completion_override = True
+            contract.completion_override_by = actor_id
+            contract.completion_override_reason = reason
+            contract.completion_override_at = datetime.now(timezone.utc)
+
+            log_action(
+                db=db,
+                actor_id=actor_id,
+                action="OVERRIDE_HANDOVER",
+                object_type="Contract",
+                payload={"contract_id": contract_id, "reason": reason, "completion_override": True}
+            )
+
+            db.commit()
+            sync_contract_read_model_after_write(db)
+            return {
+                "status": "success",
+                "contract_id": contract.id,
+                "completion_override": True,
+                "completion_override_reason": contract.completion_override_reason,
+                "completion_override_at": contract.completion_override_at.isoformat() if contract.completion_override_at else None,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @staticmethod
+    def write_off_debt(db: Session, contract_id: str, reason: str, actor_id: str) -> dict:
+        """Giám đốc duyệt xóa nợ / miễn giảm công nợ cho hợp đồng."""
+        if not (reason or "").strip():
+            raise HTTPException(status_code=400, detail="Bắt buộc phải nhập lý do xóa nợ / miễn giảm.")
+        try:
+            contract = db.query(Contract).filter(Contract.id == contract_id).first()
+            if not contract:
+                raise HTTPException(status_code=404, detail=f"Không tìm thấy hợp đồng '{contract_id}'.")
+
+            rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
+            if not rec:
+                rec = Receivable(
+                    contract_id=contract_id,
+                    paid_amount=0.0,
+                    remaining_amount=float(contract.total_value or 0.0),
+                )
+                db.add(rec)
+                db.flush()
+
+            rec.is_written_off = True
+            rec.written_off_by = actor_id
+            rec.written_off_reason = reason
+            rec.written_off_at = datetime.now(timezone.utc)
+
+            log_action(
+                db=db,
+                actor_id=actor_id,
+                action="WRITE_OFF_DEBT",
+                object_type="Receivable",
+                payload={"contract_id": contract_id, "reason": reason, "remaining_amount": float(rec.remaining_amount or 0)}
+            )
+
+            db.commit()
+            sync_contract_read_model_after_write(db)
+            return {
+                "status": "success",
+                "contract_id": contract.id,
+                "is_written_off": True,
+                "written_off_reason": rec.written_off_reason,
+                "written_off_at": rec.written_off_at.isoformat() if rec.written_off_at else None,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @staticmethod
+    def get_eligible_carry_forward_targets(db: Session, contract_id: str) -> dict:
+        """Lấy danh sách các hợp đồng hợp lệ của cùng khách hàng để nhận chuyển nợ."""
+        source_c = db.query(Contract).filter(Contract.id == contract_id).first()
+        if not source_c:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy hợp đồng nguồn '{contract_id}'.")
+
+        # Lấy thông tin khách hàng
+        customer = db.query(Customer).filter(Customer.id == source_c.customer_id).first() if source_c.customer_id else None
+        customer_name = customer.full_name if customer else "Khách hàng"
+
+        # Lọc các hợp đồng khác của cùng khách hàng
+        query = db.query(Contract).filter(
+            Contract.id != contract_id,
+            Contract.status.notin_(["cancelled", "closed", "written_off"]) if Contract.status is not None else True
+        )
+        if source_c.customer_id:
+            query = query.filter(Contract.customer_id == source_c.customer_id)
+
+        target_contracts = query.order_by(Contract.date_signed.desc().nullslast(), Contract.created_at.desc()).all()
+
+        targets_data = []
+        for tc in target_contracts:
+            rec = db.query(Receivable).filter(Receivable.contract_id == tc.id).first()
+            remaining = float(rec.remaining_amount) if rec and rec.remaining_amount is not None else float(tc.total_value or 0.0)
+            paid = float(rec.paid_amount) if rec and rec.paid_amount is not None else 0.0
+
+            targets_data.append({
+                "id": tc.id,
+                "customer_id": tc.customer_id,
+                "customer_name": customer_name,
+                "service_type": tc.service_type or tc.service_package or "Hợp đồng dịch vụ",
+                "total_value": float(tc.total_value or 0.0),
+                "paid_amount": paid,
+                "remaining_amount": remaining,
+                "date_signed": tc.date_signed.strftime("%d/%m/%Y") if tc.date_signed else None,
+                "status": tc.status or "active"
+            })
+
+        return {
+            "source_contract_id": contract_id,
+            "customer_id": source_c.customer_id,
+            "customer_name": customer_name,
+            "targets": targets_data
+        }
+
+    @staticmethod
+    def carry_forward_debt(db: Session, contract_id: str, target_contract_id: str, reason: str, actor_id: str) -> dict:
+        """Giám đốc duyệt chuyển nợ hợp đồng cũ sang hợp đồng mới."""
+        if not (target_contract_id or "").strip():
+            raise HTTPException(status_code=400, detail="Bắt buộc phải chọn hợp đồng nhận nợ.")
+        if contract_id == target_contract_id:
+            raise HTTPException(status_code=400, detail="Không thể chuyển nợ sang chính hợp đồng này.")
+        if not (reason or "").strip():
+            raise HTTPException(status_code=400, detail="Bắt buộc phải nhập lý do chuyển nợ.")
+        try:
+            source_c = db.query(Contract).filter(Contract.id == contract_id).first()
+            if not source_c:
+                raise HTTPException(status_code=404, detail=f"Không tìm thấy hợp đồng nguồn '{contract_id}'.")
+
+            target_c = db.query(Contract).filter(Contract.id == target_contract_id).first()
+            if not target_c:
+                raise HTTPException(status_code=404, detail=f"Không tìm thấy hợp đồng đích '{target_contract_id}'.")
+
+            source_rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
+            if not source_rec:
+                source_rec = Receivable(
+                    contract_id=contract_id,
+                    paid_amount=0.0,
+                    remaining_amount=float(source_c.total_value or 0.0),
+                )
+                db.add(source_rec)
+                db.flush()
+
+            debt_amount = float(source_rec.remaining_amount or 0.0)
+
+            target_rec = db.query(Receivable).filter(Receivable.contract_id == target_contract_id).first()
+            if not target_rec:
+                target_rec = Receivable(
+                    contract_id=target_contract_id,
+                    paid_amount=0.0,
+                    remaining_amount=float(target_c.total_value or 0.0),
+                )
+                db.add(target_rec)
+                db.flush()
+
+            # Set carry forward links
+            source_rec.carried_forward_to = target_contract_id
+            target_rec.carried_forward_from = contract_id
+            target_rec.remaining_amount = float(target_rec.remaining_amount or 0.0) + debt_amount
+
+            log_action(
+                db=db,
+                actor_id=actor_id,
+                action="CARRY_FORWARD_DEBT",
+                object_type="Receivable",
+                payload={
+                    "source_contract_id": contract_id,
+                    "target_contract_id": target_contract_id,
+                    "debt_transferred": debt_amount,
+                    "reason": reason,
+                }
+            )
+
+            db.commit()
+            sync_contract_read_model_after_write(db)
+            return {
+                "status": "success",
+                "source_contract_id": contract_id,
+                "target_contract_id": target_contract_id,
+                "debt_transferred": debt_amount,
+                "carried_forward_to": target_contract_id,
             }
         except HTTPException:
             raise

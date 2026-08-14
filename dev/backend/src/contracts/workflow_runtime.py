@@ -2089,6 +2089,33 @@ def review_task_node_acceptance(
             f"Không thể nghiệm thu Node vì còn checklist chưa được duyệt: {names}"
         )
 
+    # ── Cổng kiểm soát công nợ Node K08 (Bàn giao kết quả) ──
+    node_key_str = (acceptance.get("node_key") or "").upper()
+    if decision == "accepted" and ("K08" in node_key_str or "HANDOVER" in node_key_str or "BAN_GIAO" in node_key_str):
+        contract_info = db.execute(
+            text("""
+                select wi.contract_id, c.total_value, c.completion_override,
+                       coalesce(r.paid_amount, 0) as paid_amount
+                from public.workflow_instances wi
+                left join public.contracts c on c.id = wi.contract_id
+                left join public.receivables r on r.contract_id = wi.contract_id
+                where wi.id = :instance_id
+            """),
+            {"instance_id": acceptance["workflow_instance_id"]},
+        ).mappings().first()
+
+        if contract_info and contract_info["contract_id"]:
+            c_total = float(contract_info["total_value"] or 0)
+            c_paid = float(contract_info["paid_amount"] or 0)
+            c_debt = max(c_total - c_paid, 0.0)
+            has_override = bool(contract_info["completion_override"])
+
+            if c_debt > 0 and not has_override:
+                raise WorkflowValidationError(
+                    f"Chặn bàn giao: Hợp đồng {contract_info['contract_id']} còn nợ ({c_debt:,.0f}đ). "
+                    "Hệ thống chặn hoàn thành Node K08 trừ khi có Giám đốc duyệt cho nợ ngoại lệ."
+                )
+
     if decision == "rework_required":
         db.execute(
             text("""

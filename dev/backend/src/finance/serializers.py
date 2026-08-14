@@ -1,5 +1,17 @@
 from sqlalchemy.orm import Session
 from src.db.models import CashflowTransaction, Contract, Customer, ServiceLine, Employee
+from src.files.payment_receipts import public_receipt_attachments
+
+
+def _receipt_fields(t: CashflowTransaction) -> dict:
+    attachments = public_receipt_attachments(
+        getattr(t, "receipt_attachments", None),
+        getattr(t, "receipt_attachment_url", None),
+    )
+    return {
+        "receipt_attachments": attachments,
+        "receipt_attachment_url": attachments[0]["url"] if attachments else None,
+    }
 
 def serialize_cashflow(t: CashflowTransaction, db: Session) -> dict:
     """Serialize 1 cashflow transaction, including labels."""
@@ -34,9 +46,11 @@ def serialize_cashflow(t: CashflowTransaction, db: Session) -> dict:
         "transaction_type": raw_type,
         "type": raw_type,
         "date": date_str,
+        "transaction_date": date_str,
         "category": raw_cat,
         "description": raw_desc,
         "partner": raw_partner,
+        "payer_payee": raw_partner,
         "payment_method": raw_method,
         "project": project_label,
         "contract": contract_label,
@@ -47,7 +61,13 @@ def serialize_cashflow(t: CashflowTransaction, db: Session) -> dict:
         "cash_balance_after": float(t.cash_balance_after or 0),
         "bank_balance_after": float(t.bank_balance_after or 0),
         "status": t.status or "",
-        "scope": t.scope or "Công ty"
+        "scope": t.scope or "Công ty",
+        "Ngày": date_str,
+        "Hạng mục": raw_cat,
+        "Diễn giải": raw_desc,
+        "Đối tác": raw_partner,
+        "Hình thức": raw_method,
+        **_receipt_fields(t),
     }
 
 def serialize_cashflow_bulk(rows, db: Session) -> list:
@@ -98,9 +118,11 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
             "transaction_type": raw_type,
             "type": raw_type,
             "date": date_str,
+            "transaction_date": date_str,
             "category": raw_cat,
             "description": raw_desc,
             "partner": raw_partner,
+            "payer_payee": raw_partner,
             "payment_method": raw_method,
             "project": project_label,
             "contract": contract_label,
@@ -111,7 +133,13 @@ def serialize_cashflow_bulk(rows, db: Session) -> list:
             "cash_balance_after": float(t.cash_balance_after or 0),
             "bank_balance_after": float(t.bank_balance_after or 0),
             "status": t.status or "",
-            "scope": t.scope or "Công ty"
+            "scope": t.scope or "Công ty",
+            "Ngày": date_str,
+            "Hạng mục": raw_cat,
+            "Diễn giải": raw_desc,
+            "Đối tác": raw_partner,
+            "Hình thức": raw_method,
+            **_receipt_fields(t),
         })
     return result
 

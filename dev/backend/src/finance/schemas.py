@@ -35,6 +35,7 @@ class CashflowVoidIn(BaseModel):
 
 class AdvanceCreateIn(BaseModel):
     project_id: Optional[str] = None
+    contract_id: Optional[str] = None
     amount: float
     payer_payee: str
     note: Optional[str] = ""
@@ -92,7 +93,14 @@ class EmployeeUpsertIn(BaseModel):
         return value or None
 
 class FinanceSettingsIn(BaseModel):
-    initial_cash_balance: float = 0.0
-    initial_bank_balance: float = 0.0
-    initial_total_income: float = 0.0
-    initial_total_expenditure: float = 0.0
+    initial_cash_balance: Optional[float] = 0.0
+    initial_bank_balance: Optional[float] = 0.0
+    initial_total_income: Optional[float] = 0.0
+    initial_total_expenditure: Optional[float] = 0.0
+    expense_approval_threshold: Optional[float] = None
+    advance_admin_threshold: Optional[float] = None
+
+class RefundExcessIn(BaseModel):
+    amount: Optional[float] = None
+    reason: Optional[str] = None
+

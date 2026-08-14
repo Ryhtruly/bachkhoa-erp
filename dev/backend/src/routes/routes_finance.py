@@ -14,7 +14,7 @@ from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
     AdvanceCreateIn, AdvanceClearIn, FundCloseIn,
-    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn,
+    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, RefundExcessIn,
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee
 )
 
@@ -109,8 +109,9 @@ def cashflow_cash(
         project_id=project_id, contract_id=contract_id, scope=scope
     )
     
-    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu")
-    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi")
+    approved_set = {"Hoàn thành", "Đã duyệt", "COMPLETED", "approved", None, ""}
+    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
+    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
 
     return {
         "balance": balance,
@@ -139,8 +140,9 @@ def cashflow_bank(
         project_id=project_id, contract_id=contract_id, scope=scope
     )
     
-    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu")
-    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi")
+    approved_set = {"Hoàn thành", "Đã duyệt", "COMPLETED", "approved", None, ""}
+    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
+    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
 
     return {
         "balance": balance,
@@ -249,7 +251,7 @@ def create_advance(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "create"))
 ):
-    return FinanceService.create_advance(db, payload)
+    return FinanceService.create_advance(db, payload, actor_id=user.id)
 
 @router.post("/advance/clear")
 def clear_advance(
@@ -268,6 +270,14 @@ def clear_advance(
 def list_employee_departments(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("hr", "read"))
+):
+    departments = FinanceRepository.list_employee_departments(db)
+    return [{"id": department.id, "name": department.name} for department in departments]
+
+@router.get("/departments")
+def list_departments(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
 ):
     departments = FinanceRepository.list_employee_departments(db)
     return [{"id": department.id, "name": department.name} for department in departments]
@@ -378,6 +388,35 @@ def create_worker_wage(
     return FinanceService.create_worker_wage(db, payload)
 
 
+@router.get("/payroll/periods")
+def list_payroll_periods(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read"))
+):
+    """Danh sách các kỳ lương kèm trạng thái chốt."""
+    return FinanceService.list_payroll_periods(db)
+
+
+@router.post("/payroll/periods/{period_id}/lock")
+def lock_payroll_period(
+    period_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "approve"))
+):
+    """Giám đốc duyệt chốt bảng lương tháng (open -> locked)."""
+    return FinanceService.lock_payroll_period(db, period_id, actor_id=user.id)
+
+
+@router.post("/payroll/periods/{period_id}/mark-paid")
+def mark_paid_payroll_period(
+    period_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "update"))
+):
+    """Kế toán/Giám đốc đánh dấu đã chi trả lương (locked -> paid)."""
+    return FinanceService.mark_paid_payroll_period(db, period_id, actor_id=user.id)
+
+
 # ══════════════════════════════════════════════════════════════
 # 5. BÁO CÁO & LỢI NHUẬN
 # ══════════════════════════════════════════════════════════════
@@ -394,9 +433,7 @@ def list_projects(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    rows = FinanceRepository.list_projects(db)
-    return [{"id": p.id, "label": f"{p.id} — {p.service_type or p.contract_id or ''}".strip(" —")}
-            for p in rows]
+    return FinanceRepository.list_projects(db)
 
 @router.get("/settings")
 def get_finance_settings(
@@ -473,3 +510,20 @@ def get_monthly_dashboard(
     user: User = Depends(require_permission("finance", "read"))
 ):
     return FinanceRepository.get_monthly_dashboard(db, month)
+
+@router.post("/contracts/{contract_id}/refund-excess")
+def create_refund_excess_voucher(
+    contract_id: str,
+    payload: RefundExcessIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "create"))
+):
+    """Lập phiếu chi hoàn trả tiền thừa cho khách hàng (trạng thái Chờ duyệt)."""
+    return FinanceService.create_refund_voucher(
+        db=db,
+        contract_id=contract_id,
+        amount=payload.amount,
+        reason=payload.reason,
+        actor_id=user.id
+    )
+

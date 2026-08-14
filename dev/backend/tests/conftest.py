@@ -84,6 +84,14 @@ from src.db.models import User, Role, UserRole, RolePermission, AuditLog
 from src.core.auth import hash_password, create_access_token
 
 
+@pytest.fixture(scope="session", autouse=True)
+def init_test_db():
+    import src.db.models
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
 @pytest.fixture(scope="session")
 def client():
     with TestClient(app) as c:
@@ -92,7 +100,9 @@ def client():
 
 @pytest.fixture(scope="function", autouse=True)
 def db():
+    import src.db.models
     connection = engine.connect()
+    Base.metadata.create_all(bind=connection)
     transaction = connection.begin()
     session = Session(bind=connection)
     app.dependency_overrides[get_db] = lambda: session
@@ -101,7 +111,8 @@ def db():
     finally:
         app.dependency_overrides.pop(get_db, None)
         session.close()
-        transaction.rollback()
+        if transaction.is_active:
+            transaction.rollback()
         connection.close()
 
 

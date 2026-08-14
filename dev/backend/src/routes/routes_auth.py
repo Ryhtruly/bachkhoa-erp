@@ -3,8 +3,9 @@ from pydantic import BaseModel
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 from src.db.database import get_db
-from src.db.models import Employee, Role, User, UserRole
+from src.db.models import Employee, Role, User, UserRole, RolePermission
 from src.core.auth import (
+    RESOURCE_ALIASES,
     check_user_permission,
     create_access_token,
     get_current_user,
@@ -49,30 +50,52 @@ def get_me(
         .filter(Employee.user_id == user.id, Employee.is_active == True)
         .first()
     )
-    # Chỉ ai THỰC SỰ có quyền quản lý mới vào không gian quản lý.
-    # Trước đây tài khoản không gắn hồ sơ nhân sự lại được mặc định cho vào chế độ
-    # quản lý — mặc định ngược hướng an toàn: một tài khoản không có quyền nào vẫn
-    # nhìn thấy toàn bộ menu điều hành.
-    is_management_user = check_user_permission(db, user, "hr", "read")
-    default_workspace = "management" if is_management_user else "employee"
 
-    role_row = (
-        db.query(Role.display_name, Role.role_name)
+    # Lấy toàn bộ roles của user trong 1 query duy nhất
+    user_roles = (
+        db.query(Role)
         .join(UserRole, UserRole.role_id == Role.id)
         .filter(UserRole.user_id == user.id)
-        .order_by(case((Role.role_name == "admin", 0), else_=1), Role.id.asc())
-        .first()
+        .all()
     )
+    is_admin = bool(user.username == "admin" or any(r.role_name.lower() == "admin" for r in user_roles))
 
-    # Quyền trả về CHỈ để giao diện biết ẩn/hiện tab cho gọn mắt.
-    # Việc chặn thật vẫn nằm ở từng endpoint — ẩn tab không phải là phân quyền.
+    sorted_roles = sorted(user_roles, key=lambda r: (0 if r.role_name == "admin" else 1, r.id))
+    role_row = sorted_roles[0] if sorted_roles else None
+
+    # Lấy toàn bộ permissions của các roles này trong 1 query duy nhất (nếu không phải superadmin)
+    role_ids = [r.id for r in user_roles]
+    role_perms = (
+        db.query(RolePermission)
+        .filter(RolePermission.role_id.in_(role_ids))
+        .all()
+    ) if role_ids and not is_admin else []
+
+    def check_perm(resource: str, action: str) -> bool:
+        if is_admin:
+            return True
+        col = f"can_{action}"
+        valid_res = RESOURCE_ALIASES.get(resource, [resource])
+        return any(
+            p.resource in valid_res and bool(getattr(p, col, False))
+            for p in role_perms
+        )
+
+    is_management_user = check_perm("hr", "read") or is_admin
+    default_workspace = "management" if is_management_user else "employee"
+
     permissions = {
-        resource: check_user_permission(db, user, resource, "read")
+        resource: check_perm(resource, "read")
         for resource in (
             "survey_record", "legal_submission",
             "finance", "crm", "contract", "hr", "settings",
         )
     }
+
+    is_director = is_admin
+    can_approve_finance = check_perm("finance", "approve")
+    can_approve_contract = check_perm("contract", "approve")
+    can_approve_payroll = check_perm("payroll", "approve")
 
     return {
         "id": user.id,
@@ -82,9 +105,16 @@ def get_me(
         "employee_id": employee.id if employee else None,
         "full_name": employee.full_name if employee else user.username,
         "avatar_url": employee.avatar_url if employee else None,
+        "role_name": role_row.role_name if role_row else "employee",
         "role_display_name": role_row.display_name if role_row else None,
+        "is_director": is_director,
         "default_workspace": default_workspace,
         "permissions": permissions,
+        "action_permissions": {
+            "can_approve_finance": can_approve_finance,
+            "can_approve_contract": can_approve_contract,
+            "can_approve_payroll": can_approve_payroll,
+        }
     }
 
 @router.get(

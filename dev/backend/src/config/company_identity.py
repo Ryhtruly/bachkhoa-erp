@@ -1,0 +1,11 @@
+"""Canonical legal identity used by backend-generated business content."""
+
+COMPANY_LEGAL_NAME = "Công Ty TNHH Kiến Trúc Xây Dựng và Đo Đạc Bản Đồ Bách Khoa"
+COMPANY_INTERNATIONAL_NAME = "BACH KHOA ARCHITECTURE CONSTRUCTION AND MAP MEASUREMENT COMPANY LIMITED"
+COMPANY_SHORT_NAME = "BKSUCO"
+COMPANY_TAX_CODE = "0316334425"
+COMPANY_TAX_ADDRESS = "83 Đặng Như Mai, Phường Cát Lái, TP Hồ Chí Minh, Việt Nam"
+COMPANY_ADDRESS = "83 Đặng Như Mai, Phường Cát Lái, Thành phố Hồ Chí Minh, Việt Nam"
+COMPANY_OPERATING_STATUS = "Đang hoạt động"
+COMPANY_REPRESENTATIVE = "Lê Văn Sáu"
+COMPANY_PHONE = "0349792855"

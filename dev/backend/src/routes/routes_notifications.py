@@ -1,12 +1,20 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.core.auth import check_user_permission, get_current_user
 from src.db.database import get_db
 from src.db.models import Employee, User
+from src.services.timeline_realtime import notification_event_stream
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive",
+}
 
 _MANAGER_NODE_REVIEW_QUERY = text(
     """
@@ -184,3 +192,15 @@ def get_notifications_summary(
 
     items.sort(key=lambda item: item["created_at"] or "")
     return {"count": len(items), "items": items}
+
+
+@router.get("/events")
+def stream_notification_events(
+    user: User = Depends(get_current_user),
+):
+    """Authenticated invalidation stream; clients re-read their DB-backed summary."""
+    return StreamingResponse(
+        notification_event_stream(),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )

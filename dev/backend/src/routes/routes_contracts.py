@@ -1306,3 +1306,61 @@ def generate_and_save_contract(
     user: User = Depends(require_permission("contract", "create")),
 ):
     return ContractService.generate_and_save_contract(db, payload, actor_id=user.id)
+
+
+class OverrideHandoverIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000, description="Lý do duyệt cho nợ và bàn giao")
+
+
+class WriteOffDebtIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000, description="Lý do xóa nợ / miễn giảm")
+
+
+class CarryForwardDebtIn(BaseModel):
+    target_contract_id: str = Field(min_length=1, max_length=100, description="Mã hợp đồng nhận nợ")
+    reason: str = Field(min_length=1, max_length=1000, description="Lý do chuyển nợ")
+
+
+@router.post("/{contract_id:path}/override-handover")
+def override_handover(
+    contract_id: str,
+    payload: OverrideHandoverIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "approve")),
+):
+    """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K08."""
+    return ContractService.override_handover(db, contract_id, payload.reason, actor_id=user.id)
+
+
+@router.post("/{contract_id:path}/write-off-debt")
+def write_off_debt(
+    contract_id: str,
+    payload: WriteOffDebtIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "approve")),
+):
+    """Giám đốc duyệt xóa nợ / miễn giảm công nợ cho hợp đồng."""
+    return ContractService.write_off_debt(db, contract_id, payload.reason, actor_id=user.id)
+
+
+@router.get("/{contract_id:path}/eligible-carry-forward-targets")
+def get_eligible_carry_forward_targets(
+    contract_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read")),
+):
+    """Lấy danh sách các hợp đồng hợp lệ của cùng khách hàng để chuyển nợ sang."""
+    return ContractService.get_eligible_carry_forward_targets(db, contract_id)
+
+
+@router.post("/{contract_id:path}/carry-forward-debt")
+def carry_forward_debt(
+    contract_id: str,
+    payload: CarryForwardDebtIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "approve")),
+):
+    """Giám đốc duyệt chuyển nợ hợp đồng cũ sang hợp đồng mới."""
+    return ContractService.carry_forward_debt(
+        db, contract_id, payload.target_contract_id, payload.reason, actor_id=user.id
+    )

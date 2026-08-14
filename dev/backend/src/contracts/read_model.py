@@ -41,8 +41,8 @@ def _get_redis_client():
         _redis_client = redis.Redis.from_url(
             REDIS_URL,
             decode_responses=True,
-            socket_connect_timeout=0.5,
-            socket_timeout=1.0,
+            socket_connect_timeout=0.2,
+            socket_timeout=0.2,
             health_check_interval=30,
         )
     return _redis_client
@@ -109,14 +109,30 @@ def build_contract_read_model(db: Session):
         total = float(contract.total_value or 0)
         paid = float((receivable.paid_amount or 0) if receivable else 0)
         debt = max(total - paid, 0)
+        excess_amount = max(paid - total, 0) if (total > 0 and paid > total + 0.009) else 0.0
         due_date = getattr(receivable, 'due_date', None) if receivable else None
 
-        if debt <= 0:
+        is_written_off = bool(getattr(receivable, 'is_written_off', False)) if receivable else False
+        is_refunded = bool(getattr(receivable, 'is_refunded', False)) if receivable else False
+        carried_forward_to = getattr(receivable, 'carried_forward_to', None) if receivable else None
+        carried_forward_from = getattr(receivable, 'carried_forward_from', None) if receivable else None
+
+        if is_written_off:
+            status = "written_off"
+        elif is_refunded:
+            status = "refunded"
+        elif excess_amount > 0.009:
+            status = "overpaid"
+        elif carried_forward_to:
+            status = "settled"
+        elif debt <= 0:
             status = "settled"
         elif due_date and due_date < date.today():
             status = "overdue"
+        elif paid > 0:
+            status = "partial"
         else:
-            status = "pending"
+            status = "not_started"
 
         date_signed_str = contract.date_signed.strftime("%Y-%m-%d") if (contract.date_signed and hasattr(contract.date_signed, "strftime")) else str(contract.date_signed or "")
         due_date_str = due_date.strftime("%Y-%m-%d") if (due_date and hasattr(due_date, "strftime")) else str(due_date or "")
@@ -131,12 +147,23 @@ def build_contract_read_model(db: Session):
             "item_count": len(contract_lines),
             "service_type": ", ".join(service_names) or contract.service_type or "",
             "date_signed": date_signed_str,
-            "contract_value": total,
+            "total_value": total,
             "paid_amount": paid,
-            "debt_amount": debt,
+            "remaining_amount": debt,
+            "excess_amount": excess_amount,
+            "is_overpaid": excess_amount > 0.009,
+            "status": status,
             "sales_source": lead.source if lead and lead.source else "",
             "due_date": due_date_str,
-            "status": status,
+            "contract_status": contract.status or "in_progress",
+            "completion_override": bool(contract.completion_override),
+            "completion_override_reason": contract.completion_override_reason or "",
+            "is_written_off": is_written_off,
+            "written_off_reason": getattr(receivable, 'written_off_reason', '') if receivable else "",
+            "is_refunded": is_refunded,
+            "refund_reason": getattr(receivable, 'refund_reason', '') if receivable else "",
+            "carried_forward_to": carried_forward_to or "",
+            "carried_forward_from": carried_forward_from or "",
             "notes": "",
             "contract_file": contract.file_link or "",
         })

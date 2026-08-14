@@ -41,8 +41,8 @@ def publish_timeline_change(source: str, *, entity_id: str | None = None) -> Non
         logger.warning("Timeline realtime publish failed: %s", exc)
 
 
-def timeline_event_stream() -> Iterator[str]:
-    """Authenticated Server-Sent Events backed by Redis Pub/Sub."""
+def _redis_event_stream(event_name: str) -> Iterator[str]:
+    """Yield authenticated SSE invalidations backed by Redis Pub/Sub."""
     client = _redis_client()
     pubsub = client.pubsub(ignore_subscribe_messages=True)
     try:
@@ -51,7 +51,9 @@ def timeline_event_stream() -> Iterator[str]:
         while True:
             message = pubsub.get_message(timeout=15.0)
             if message and message.get("type") == "message":
-                yield f"event: timeline-change\ndata: {message.get('data') or '{}'}\n\n"
+                # Consumers re-read their authorized view from the database;
+                # the Redis payload is only an invalidation signal.
+                yield f"event: {event_name}\ndata: {{}}\n\n"
             else:
                 yield ": keep-alive\n\n"
     except (RedisError, GeneratorExit):
@@ -61,4 +63,14 @@ def timeline_event_stream() -> Iterator[str]:
             pubsub.close()
         except RedisError:
             pass
+
+
+def timeline_event_stream() -> Iterator[str]:
+    """Authenticated realtime invalidations for the director Timeline."""
+    yield from _redis_event_stream("timeline-change")
+
+
+def notification_event_stream() -> Iterator[str]:
+    """Authenticated realtime invalidations for notification summaries."""
+    yield from _redis_event_stream("notifications-changed")
 

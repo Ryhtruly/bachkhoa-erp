@@ -34,6 +34,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.files.payment_receipts import public_receipt_attachments
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
 
 # Trạng thái node coi như đã đóng — không thao tác được nữa.
@@ -95,13 +96,21 @@ def debt_summary(db: Session, contract_id: str | None, total_value: float | None
 
     paid = float(row["da_duyet"] or 0)
     remaining = max(0.0, total - paid)
+
+    c_ovr = db.execute(
+        text("select completion_override, completion_override_reason from public.contracts where id = :c"),
+        {"c": contract_id}
+    ).mappings().first()
+
     return {
         "contract_id": contract_id,
         "total_value": total,
         "paid": paid,
         "remaining": remaining,
         "percent": round(paid / total * 100) if total else 100,
-        "is_settled": remaining <= 0.009,
+        "is_settled": remaining <= 0.009 or (bool(c_ovr["completion_override"]) if c_ovr else False),
+        "has_override": bool(c_ovr["completion_override"]) if c_ovr else False,
+        "override_reason": c_ovr["completion_override_reason"] if c_ovr else None,
         # Tiền nhân viên đã gõ nhưng sếp CHƯA duyệt — hiện riêng để khỏi tưởng đã thu.
         "pending_amount": float(row["cho_duyet"] or 0),
     }
@@ -114,6 +123,7 @@ def installments(db: Session, contract_id: str | None) -> list[dict]:
     rows = db.execute(
         text(f"""
             select id, amount, transaction_date, status, receipt_attachment_url,
+                   receipt_attachments,
                    payer_payee_name, payment_method, description, approved_at
             from public.cashflow_transactions
             where contract_id = :c and transaction_type in ({_INCOME_SQL})
@@ -122,11 +132,21 @@ def installments(db: Session, contract_id: str | None) -> list[dict]:
         """),
         {"c": contract_id},
     ).mappings().all()
-    return [
-        {**dict(r), "amount": float(r["amount"] or 0),
-         "is_approved": r["status"] in APPROVED_TX_STATUSES}
-        for r in rows
-    ]
+    result = []
+    for row in rows:
+        item = dict(row)
+        attachments = public_receipt_attachments(
+            item.get("receipt_attachments"),
+            item.get("receipt_attachment_url"),
+        )
+        item.update({
+            "amount": float(row["amount"] or 0),
+            "is_approved": row["status"] in APPROVED_TX_STATUSES,
+            "receipt_attachments": attachments,
+            "receipt_attachment_url": attachments[0]["url"] if attachments else None,
+        })
+        result.append(item)
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -436,7 +456,7 @@ def record_payment(
     task_node_id: str,
     *,
     amount: float,
-    receipt_photo_url: str,
+    receipt_attachments: list[dict],
     payment_method: str,
     payer_name: str | None,
     note: str | None,
@@ -449,7 +469,7 @@ def record_payment(
     """
     if amount is None or float(amount) <= 0:
         raise HTTPException(status_code=400, detail="Số tiền phải lớn hơn 0")
-    if not (receipt_photo_url or "").strip():
+    if not receipt_attachments:
         raise HTTPException(status_code=400, detail="Bắt buộc đính ảnh bill/biên lai")
 
     node = _node_or_404(db, task_node_id)
@@ -476,23 +496,28 @@ def record_payment(
 
     hom_nay = date.today()
     new_id = FinanceRepository.generate_voucher_id("Thu", db, hom_nay)
+    first_receipt_url = f"/api/handover/payment-receipts/{receipt_attachments[0]['id']}"
     db.execute(
         text("""
             insert into public.cashflow_transactions
                 (id, contract_id, transaction_type, amount, category_code,
                  payer_payee_name, payment_method, transaction_date, document_number,
-                 description, receipt_attachment_url, created_by_user_id, status, scope)
+                 description, receipt_attachment_url, receipt_attachments,
+                 created_by_user_id, status, scope)
             values
                 (:id, :contract_id, 'Thu', :amount, 'Thu tiền hợp đồng',
                  :payer, :method, :ngay, :id,
-                 :mo_ta, :bill, :actor, 'Chờ duyệt', 'Công ty')
+                 :mo_ta, :bill, cast(:attachments as jsonb),
+                 :actor, 'Chờ duyệt', 'Công ty')
         """),
         {
             "id": new_id, "contract_id": node["contract_id"], "amount": float(amount),
             "payer": payer_name or node["customer_name"], "method": payment_method or "Tiền mặt",
             "ngay": hom_nay,
             "mo_ta": note or f"Thu tiền tại bước bàn giao — {node['service_type'] or ''}".strip(),
-            "bill": receipt_photo_url, "actor": actor_id,
+            "bill": first_receipt_url,
+            "attachments": json.dumps(receipt_attachments, ensure_ascii=False),
+            "actor": actor_id,
         },
     )
 
@@ -503,10 +528,19 @@ def record_payment(
             values (:i, 'HANDOVER_PAYMENT_RECORDED', :s, :s, :a, cast(:p as jsonb))
         """),
         {"i": task_node_id, "s": node["status"], "a": actor_id,
-         "p": json.dumps({"voucher_id": new_id, "so_tien": float(amount)}, ensure_ascii=False)},
+         "p": json.dumps({
+             "voucher_id": new_id,
+             "so_tien": float(amount),
+             "receipt_count": len(receipt_attachments),
+         }, ensure_ascii=False)},
     )
 
-    return {"voucher_id": new_id, "amount": float(amount), "status": "Chờ duyệt"}
+    return {
+        "voucher_id": new_id,
+        "amount": float(amount),
+        "status": "Chờ duyệt",
+        "receipt_count": len(receipt_attachments),
+    }
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -516,12 +550,8 @@ def record_payment(
 def outstanding_handovers(db: Session) -> list[dict]:
     """Việc của kế toán ở bước bàn giao — cả hồ sơ CHƯA giao lẫn ĐÃ giao còn nợ.
 
-    Ban đầu hàm này chỉ liệt kê hồ sơ ĐÃ bàn giao. Nhưng như vậy kế toán không
-    thấy hồ sơ đang chờ chính mình bấm bàn giao — nó chỉ hiện ra SAU khi họ bấm,
-    mà họ lại không có đường nào để bấm. Danh sách rỗng, việc đứng im.
-
-    Giờ liệt kê mọi node bàn giao đang mở, kèm cờ `da_ban_giao` để giao diện biết
-    nên mời bấm nút nào. Nhận diện node bằng CỜ `is_handover`, không bằng mã.
+    Tối ưu hoá hiệu năng cao: Join tính sẵn tổng thu và batch fetch phân công
+    để loại bỏ hoàn toàn N+1 queries.
     """
     rows = db.execute(
         text(f"""
@@ -530,21 +560,20 @@ def outstanding_handovers(db: Session) -> list[dict]:
                    (n.execution_data->'handover'->>'delivered_at') is not null as da_ban_giao,
                    sl.contract_id, sl.service_type, cu.full_name as customer_name,
                    coalesce(c.total_value, 0) as total_value,
-                   -- Cửa khoá: hạng mục có hồ sơ nộp thì phải đóng xong mới bàn giao được.
-                   -- Trả kèm đây để giao diện nói được ĐANG CHỜ AI, thay vì mời bấm
-                   -- rồi mới báo lỗi.
                    d.status as dossier_status,
                    de.full_name as dossier_assignee,
-                   coalesce((
-                     select sum(t.amount) from public.cashflow_transactions t
-                     where t.contract_id = sl.contract_id
-                       and t.transaction_type in ({_INCOME_SQL})
-                       and t.status in ({_APPROVED_SQL})
-                   ), 0) as paid
+                   coalesce(paid_tx.paid_amount, 0) as paid
             from public.task_nodes n
             join public.workflow_instances wi on wi.id = n.workflow_instance_id
             join public.service_lines sl on sl.id = wi.service_line_id
             join public.workflow_instance_revisions r on r.id = n.defined_by_revision_id
+            left join (
+                select t.contract_id, sum(t.amount) as paid_amount
+                from public.cashflow_transactions t
+                where t.transaction_type in ({_INCOME_SQL})
+                  and t.status in ({_APPROVED_SQL})
+                group by t.contract_id
+            ) paid_tx on paid_tx.contract_id = sl.contract_id
             left join public.contracts c on c.id = sl.contract_id
             left join public.customers cu on cu.id = c.customer_id
             left join public.legal_dossiers d on d.service_line_id = sl.id
@@ -556,6 +585,42 @@ def outstanding_handovers(db: Session) -> list[dict]:
         """)
     ).mappings().all()
 
+    if not rows:
+        return []
+
+    # 1. Batch fetch user_ids có quyền finance để xác định ai là bên tiền / bên hồ sơ
+    finance_user_ids = set(
+        r[0] for r in db.execute(text("""
+            select distinct ur.user_id
+            from public.user_roles ur
+            join public.role_permissions rp on rp.role_id = ur.role_id
+            where rp.resource = 'finance'
+              and (rp.can_create = true or rp.can_approve = true or rp.can_update = true)
+        """)).all()
+    )
+
+    # 2. Batch fetch tất cả phân công của các task node trong danh sách (1 truy vấn duy nhất)
+    node_ids = [r["task_node_id"] for r in rows]
+    assignments = db.execute(
+        text("""
+            select a.task_node_id, e.full_name, e.user_id, a.is_primary
+            from public.task_node_assignments a
+            join public.employees e on e.id = a.employee_id
+            where a.task_node_id = any(:node_ids)
+              and a.assignment_status not in ('replaced','declined','cancelled')
+            order by a.is_primary desc nulls last, a.created_at
+        """),
+        {"node_ids": node_ids}
+    ).mappings().all()
+
+    node_assignee_map = {}
+    for a in assignments:
+        nid = a["task_node_id"]
+        # Người không thuộc nhóm kế toán/tài chính chính là bên phụ trách hồ sơ (người đi giao)
+        if a["user_id"] not in finance_user_ids:
+            if nid not in node_assignee_map:
+                node_assignee_map[nid] = a["full_name"]
+
     ket_qua = []
     for r in rows:
         con_lai = max(0.0, float(r["total_value"] or 0) - float(r["paid"] or 0))
@@ -564,10 +629,7 @@ def outstanding_handovers(db: Session) -> list[dict]:
         if r["da_ban_giao"] and con_lai <= 0.009:
             continue
         cua_mo = r["dossier_status"] is None or r["dossier_status"] == "CLOSED"
-        # Đây là màn của KẾ TOÁN. Việc mang hồ sơ đến cho khách không phải việc
-        # của họ, nên đừng mời bấm — chỉ cho biết đang chờ ai làm.
-        ben_ho_so, _ = _chia_vai_ban_giao(db, r["task_node_id"])
-        nguoi_giao = ben_ho_so[0]["full_name"] if ben_ho_so else None
+        nguoi_giao = node_assignee_map.get(r["task_node_id"])
         ket_qua.append({
             **dict(r),
             "total_value": float(r["total_value"] or 0),

@@ -1,6 +1,8 @@
 import os
 import requests
 
+from src.config.company_identity import COMPANY_LEGAL_NAME
+
 ZALO_ACCESS_TOKEN = os.getenv("ZALO_ACCESS_TOKEN", "MOCK_TOKEN")
 ZALO_OA_ID = os.getenv("ZALO_OA_ID", "MOCK_OA_ID")
 
@@ -47,7 +49,7 @@ def remind_debt(customer_name: str, phone: str, contract_id: str, amount: float)
     """
     msg = (
         f"Kính gửi {customer_name},\n\n"
-        f"Công ty Bách Khoa xin trân trọng thông báo: Hợp đồng số {contract_id} của quý khách "
+        f"{COMPANY_LEGAL_NAME} xin trân trọng thông báo: Hợp đồng số {contract_id} của quý khách "
         f"đã đến hạn thanh toán đợt tiếp theo.\n"
         f"Số tiền cần thanh toán: {amount:,} VNĐ.\n\n"
         f"Quý khách vui lòng thanh toán để chúng tôi tiếp tục tiến độ công việc.\n"

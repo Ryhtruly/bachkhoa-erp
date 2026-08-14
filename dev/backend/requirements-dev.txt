@@ -1,0 +1,3 @@
+# Runtime dependencies plus tools used only by local data-seeding scripts.
+-r requirements.txt
+Faker==33.1.0

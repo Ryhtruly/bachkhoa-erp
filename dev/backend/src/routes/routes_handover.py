@@ -1,26 +1,38 @@
 """Node bàn giao (K08) — cổng công nợ, 2 làn Pháp lý / Kế toán."""
 
+import io
+import json
+import logging
 from typing import Optional
+from urllib.parse import quote
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.core.auth import check_user_permission, require_permission
+from src.core.auth import check_user_permission, get_current_user, require_permission
 from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import handover as HO
 from src.dossiers.actor_guard import assert_can_act_on_node, ghi_chu_xu_ly_thay
+from src.files.payment_receipts import (
+    MAX_RECEIPT_BYTES,
+    MAX_RECEIPT_FILES,
+    build_receipt_metadata,
+    validate_receipt,
+)
+from src.services.storage_service import (
+    delete_finance_file,
+    ensure_finance_bucket,
+    get_finance_file,
+    upload_finance_file,
+)
 
 router = APIRouter(prefix="/api/handover", tags=["Handover"])
-
-
-class PaymentSchema(BaseModel):
-    amount: float
-    receipt_photo_url: str
-    payment_method: Optional[str] = "Tiền mặt"
-    payer_name: Optional[str] = None
-    note: Optional[str] = None
+logger = logging.getLogger(__name__)
 
 
 class DeliverSchema(BaseModel):
@@ -52,6 +64,64 @@ def get_handover_state(
     user: User = Depends(require_permission("task_node", "read")),
 ):
     return {"status": "success", "data": HO.get_state(db, task_node_id, user_id=user.id)}
+
+
+@router.get("/payment-receipts/{receipt_id}")
+def view_payment_receipt(
+    receipt_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Stream one private receipt to finance readers or the payment creator."""
+    row = db.execute(
+        text("""
+            select id, created_by_user_id, receipt_attachments
+            from public.cashflow_transactions
+            where receipt_attachments @> cast(:needle as jsonb)
+            limit 1
+        """),
+        {"needle": json.dumps([{"id": receipt_id}])},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bill/biên lai")
+    can_read_finance = check_user_permission(db, user, "finance", "read")
+    is_creator = str(row["created_by_user_id"] or "") == str(user.id)
+    if not can_read_finance and not is_creator:
+        raise HTTPException(status_code=403, detail="Không có quyền xem bill/biên lai này")
+
+    attachment = next(
+        (item for item in (row["receipt_attachments"] or []) if item.get("id") == receipt_id),
+        None,
+    )
+    if not attachment or not attachment.get("object_key"):
+        raise HTTPException(status_code=404, detail="Bill/biên lai không còn khả dụng")
+
+    try:
+        stored = get_finance_file(attachment["object_key"])
+    except Exception as exc:
+        logger.warning("Unable to read payment receipt %s: %s", receipt_id, exc)
+        raise HTTPException(status_code=404, detail="File bill/biên lai không tồn tại trên kho lưu trữ") from exc
+
+    body = stored["Body"]
+
+    def iter_body():
+        try:
+            yield from body.iter_chunks(chunk_size=64 * 1024)
+        finally:
+            body.close()
+
+    filename = str(attachment.get("filename") or "receipt")
+    content_type = str(attachment.get("content_type") or stored.get("ContentType") or "application/octet-stream")
+    disposition = "attachment" if content_type == "application/pdf" else "inline"
+    return StreamingResponse(
+        iter_body(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post("/{task_node_id}/deliver")
@@ -87,21 +157,73 @@ def deliver(
 @router.post("/{task_node_id}/payments")
 def record_payment(
     task_node_id: str,
-    payload: PaymentSchema,
+    amount: float = Form(...),
+    payment_method: str = Form("Tiền mặt"),
+    payer_name: Optional[str] = Form(None),
+    note: Optional[str] = Form(None),
+    receipt_files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read")),
 ):
     """Làn B — ghi nhận một đợt khách đưa tiền. Phiếu vào trạng thái Chờ duyệt."""
     if not check_user_permission(db, user, "finance", "create"):
         raise HTTPException(status_code=403, detail="Không có quyền ghi nhận thu tiền")
-    result = HO.record_payment(
-        db, task_node_id,
-        amount=payload.amount,
-        receipt_photo_url=payload.receipt_photo_url,
-        payment_method=payload.payment_method,
-        payer_name=payload.payer_name,
-        note=payload.note,
-        actor_id=user.id,
-    )
-    db.commit()
-    return {"status": "success", "data": result}
+    if not receipt_files:
+        raise HTTPException(status_code=422, detail="Bắt buộc đính bill/biên lai")
+    if len(receipt_files) > MAX_RECEIPT_FILES:
+        raise HTTPException(status_code=422, detail=f"Mỗi đợt thanh toán chỉ được đính tối đa {MAX_RECEIPT_FILES} file")
+
+    uploaded_keys: list[str] = []
+    attachments: list[dict] = []
+    batch_id = uuid.uuid4().hex
+    try:
+        ensure_finance_bucket()
+        for upload in receipt_files:
+            file_bytes = upload.file.read(MAX_RECEIPT_BYTES + 1)
+            try:
+                receipt = validate_receipt(upload.filename, upload.content_type, file_bytes)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+            metadata = build_receipt_metadata(task_node_id, batch_id, receipt)
+            upload_finance_file(
+                io.BytesIO(receipt.data),
+                metadata["object_key"],
+                content_type=receipt.content_type,
+                metadata={
+                    "receipt-id": metadata["id"],
+                    "sha256": metadata["sha256"],
+                },
+            )
+            uploaded_keys.append(metadata["object_key"])
+            attachments.append(metadata)
+
+        result = HO.record_payment(
+            db,
+            task_node_id,
+            amount=amount,
+            receipt_attachments=attachments,
+            payment_method=payment_method,
+            payer_name=payer_name,
+            note=note,
+            actor_id=user.id,
+        )
+        db.commit()
+        return {"status": "success", "data": result}
+    except HTTPException:
+        db.rollback()
+        for object_key in uploaded_keys:
+            try:
+                delete_finance_file(object_key)
+            except Exception:
+                logger.exception("Unable to clean up rejected receipt object %s", object_key)
+        raise
+    except Exception as exc:
+        db.rollback()
+        for object_key in uploaded_keys:
+            try:
+                delete_finance_file(object_key)
+            except Exception:
+                logger.exception("Unable to clean up failed receipt object %s", object_key)
+        logger.exception("Unable to record payment receipt")
+        raise HTTPException(status_code=503, detail="Không lưu được bill/biên lai. Vui lòng thử lại.") from exc

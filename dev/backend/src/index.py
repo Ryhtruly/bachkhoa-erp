@@ -32,6 +32,8 @@ from src.routes.routes_legal_submissions import router as legal_submissions_rout
 from src.routes.routes_legal_dossiers import router as legal_dossiers_router
 from src.routes.routes_handover import router as handover_router
 from src.routes.routes_survey_records import router as survey_records_router
+from src.routes.routes_payroll import router as payroll_router
+from src.routes.routes_piece_rates import router as piece_rates_router
 
 from src.db.database import engine, Base, SessionLocal
 from src.services.storage_service import ensure_bucket, set_bucket_public
@@ -185,6 +187,8 @@ app.include_router(legal_submissions_router)
 app.include_router(legal_dossiers_router)
 app.include_router(handover_router)
 app.include_router(survey_records_router)
+app.include_router(payroll_router)
+app.include_router(piece_rates_router)
 
 @app.get("/")
 def read_root():
