@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
+import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { PlusCircle, RefreshCw, AlertCircle, Link, RotateCcw } from 'lucide-react';
@@ -46,7 +46,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
     if (propIsDirector === undefined && !propUser) {
       apiFetch('/api/auth/me').then(u => setCurrentUser(u)).catch(() => {});
     }
-  }, [propIsDirector, propUser]);
+  }, []);
 
   const isDirector = propIsDirector !== undefined
     ? propIsDirector
@@ -266,7 +266,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
               label="Chi thực tế theo hóa đơn"
               required
               error={error}
-              hint={actualDisplay ? docSoTiengViet(parseAmt(actualDisplay)) : ''}
+              hint={actualDisplay ? spellVietnameseCurrency(parseAmt(actualDisplay)) : ''}
             >
               <input
                 className="form-control"

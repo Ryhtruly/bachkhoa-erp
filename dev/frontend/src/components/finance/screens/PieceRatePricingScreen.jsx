@@ -5,7 +5,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
 
-export default function BangGiaKhoanScreen() {
+export default function PieceRatePricingScreen({ isDirector = false }) {
   const { addToast } = useToast();
   const [rates, setRates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -195,7 +195,7 @@ export default function BangGiaKhoanScreen() {
         </strong>
       )
     },
-    {
+    ...(isDirector ? [{
       key: 'actions',
       label: 'THAO TÁC',
       width: 100,
@@ -225,7 +225,7 @@ export default function BangGiaKhoanScreen() {
           </button>
         </div>
       ),
-    },
+    }] : []),
   ];
 
   return (
@@ -270,23 +270,25 @@ export default function BangGiaKhoanScreen() {
             />
           </div>
 
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={openAddModal}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              height: 38,
-              padding: '0 16px',
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: '0.88rem'
-            }}
-          >
-            <Plus size={16} /> Cập nhật đơn giá
-          </button>
+          {isDirector && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={openAddModal}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                height: 38,
+                padding: '0 16px',
+                borderRadius: 8,
+                fontWeight: 700,
+                fontSize: '0.88rem'
+              }}
+            >
+              <Plus size={16} /> Cập nhật đơn giá
+            </button>
+          )}
         </div>
       </div>
 

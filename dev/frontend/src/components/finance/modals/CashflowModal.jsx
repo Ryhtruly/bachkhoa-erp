@@ -21,8 +21,8 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
   const [type, setType] = useState(defaultType);
   const [amtDisplay, setAmtDisplay] = useState('');
   const [form, setForm] = useState(createEmptyCashflowForm);
-  const [hangMuc, setHangMuc] = useState('Sinh hoạt gia đình');
-  const [customHangMuc, setCustomHangMuc] = useState('');
+  const [category, setCategory] = useState('Sinh hoạt gia đình');
+  const [customCategory, setCustomCategory] = useState('');
   const [description, setDescription] = useState('');
   const [projects, setProjects] = useState([]);
   const [contracts, setContracts] = useState([]);
@@ -35,8 +35,8 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
       setType(defaultType);
       setAmtDisplay('');
       setForm(createEmptyCashflowForm());
-      setHangMuc('Sinh hoạt gia đình');
-      setCustomHangMuc('');
+      setCategory('Sinh hoạt gia đình');
+      setCustomCategory('');
       setDescription('');
       setError('');
       fetch(`${API}/api/finance/projects`)
@@ -55,10 +55,10 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     const amount = parseAmt(amtDisplay);
     if (!amount) { setError('Nhập số tiền hợp lệ'); return; }
 
-    const finalCategory = (hangMuc === 'Khác' ? (customHangMuc.trim() || 'Khác') : hangMuc) + ': ' + description.trim();
+    const finalCategory = (category === 'Khác' ? (customCategory.trim() || 'Khác') : category) + ': ' + description.trim();
 
     // Validation constraint for "Chi thụ lý bản vẽ"
-    if (hangMuc === 'Chi thụ lý bản vẽ' && !form.contract_id && !form.project_id) {
+    if (category === 'Chi thụ lý bản vẽ' && !form.contract_id && !form.project_id) {
       setError("Hạng mục 'Chi thụ lý bản vẽ' bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án!");
       return;
     }
@@ -93,15 +93,15 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     finally { setSubmitting(false); }
   };
 
-  const isThu = type === 'Thu';
-  const accent = isThu ? '#10b981' : '#ef4444';
+  const isIncome = type === 'Thu';
+  const accent = isIncome ? '#10b981' : '#ef4444';
 
   return (
     <Modal open={open} onClose={onClose} size="md"
       title={
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {isThu ? <PlusCircle size={18} color={accent} /> : <MinusCircle size={18} color={accent} />}
-          <span style={{ color: accent }}>Lập {isThu ? 'Phiếu Thu' : 'Phiếu Chi'}</span>
+          {isIncome ? <PlusCircle size={18} color={accent} /> : <MinusCircle size={18} color={accent} />}
+          <span style={{ color: accent }}>Lập {isIncome ? 'Phiếu Thu' : 'Phiếu Chi'}</span>
         </span>
       }
     >
@@ -148,13 +148,13 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           <FormRow label="Người nhận / nộp" required>
             <input required className="form-control" value={form.payer_payee}
               onChange={e => setForm({ ...form, payer_payee: e.target.value })}
-              placeholder={isThu ? 'Người nộp tiền...' : 'Người nhận tiền...'} />
+              placeholder={isIncome ? 'Người nộp tiền...' : 'Người nhận tiền...'} />
           </FormRow>
           <FormRow label="Hạng mục" required>
             <Dropdown
-              value={hangMuc}
+              value={category}
               onChange={(val) => {
-                setHangMuc(val);
+                setCategory(val);
                 const mapping = CATEGORY_AUTO_MAPPING[val];
                 if (mapping) {
                   setForm(prev => ({
@@ -185,26 +185,26 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
               ]}
             />
           </FormRow>
-          {hangMuc === 'Khác' && (
+          {category === 'Khác' && (
             <FormRow label="Hạng mục tự nhập" required>
-              <input required className="form-control" value={customHangMuc}
-                onChange={e => setCustomHangMuc(e.target.value)}
+              <input required className="form-control" value={customCategory}
+                onChange={e => setCustomCategory(e.target.value)}
                 placeholder="Nhập tên hạng mục khác..." />
             </FormRow>
           )}
-          <FormRow label="Diễn giải chi tiết" required cols={hangMuc === 'Khác' ? 2 : 1}>
+          <FormRow label="Diễn giải chi tiết" required cols={category === 'Khác' ? 2 : 1}>
             <input required className="form-control" value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Nhập chi tiết diễn giải giao dịch..." />
           </FormRow>
-          <FormRow label="Hợp đồng liên kết" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.project_id}>
+          <FormRow label="Hợp đồng liên kết" required={category === 'Chi thụ lý bản vẽ' && !form.project_id}>
             <input type="text" className="form-control" placeholder="Nhập ID hợp đồng..." value={form.contract_id || ''} onChange={e => setForm({ ...form, contract_id: e.target.value })} />
           </FormRow>
-          <FormRow label="Hồ sơ / Dự án" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.contract_id}>
+          <FormRow label="Hồ sơ / Dự án" required={category === 'Chi thụ lý bản vẽ' && !form.contract_id}>
             <input type="text" className="form-control" placeholder="Nhập ID hồ sơ..." value={form.project_id || ''} onChange={e => setForm({ ...form, project_id: e.target.value })} />
           </FormRow>
         </FormGrid>
-        {!isThu && form.payment_method === 'Tiền mặt' && (
+        {!isIncome && form.payment_method === 'Tiền mặt' && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, fontSize: '0.82rem', color: '#f59e0b' }}>
             Hệ thống tự kiểm tra số dư quỹ tiền mặt trước khi ghi nhận.
           </div>
@@ -218,7 +218,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           <button type="button" className="btn btn-secondary" onClick={onClose}>Hủy</button>
           <button type="submit" className="btn" disabled={submitting}
             style={{ background: accent, color: '#fff', padding: '0 24px', opacity: submitting ? 0.6 : 1 }}>
-            {submitting ? 'Đang xử lý...' : `Ghi nhận ${isThu ? 'Phiếu Thu' : 'Phiếu Chi'}`}
+            {submitting ? 'Đang xử lý...' : `Ghi nhận ${isIncome ? 'Phiếu Thu' : 'Phiếu Chi'}`}
           </button>
         </div>
       </form>

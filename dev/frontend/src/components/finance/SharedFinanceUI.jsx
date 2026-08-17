@@ -1,7 +1,7 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
 import { DatePicker, Dropdown } from '../ui';
-import { fmt, fmtShort, docSoTiengViet } from './utils';
+import { fmt, fmtShort, spellVietnameseCurrency } from './utils';
 
 export function FinanceScreenHeader({ title, subtitle, onRefresh, actions, children }) {
   return (
@@ -227,7 +227,7 @@ export function ExcelGridTable({
           <td colSpan={4} style={{ padding: '12px 10px', fontSize: '0.98rem', borderBottom: showSignature ? '2px solid #000' : 'none' }}>
             <span style={{ fontWeight: 'bold' }}>Số tiền (bằng chữ): </span>
             <span style={{ fontStyle: 'italic', textDecoration: 'underline', color: 'var(--text-secondary)' }}>
-              {amountDisplay ? docSoTiengViet(amountDisplay.toString().replace(/[^\d]/g, '')) : 'Không đồng'}
+              {amountDisplay ? spellVietnameseCurrency(amountDisplay.toString().replace(/[^\d]/g, '')) : 'Không đồng'}
             </span>
           </td>
         </tr>

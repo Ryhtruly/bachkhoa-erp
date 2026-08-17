@@ -56,14 +56,14 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
 
   const chartCategoriesData = (d.categories || []).map(c => ({
     name: c.name,
-    income: c.income ?? c.thu ?? 0,
-    expense: c.expenditure ?? c.expense ?? c.chi ?? 0
+    income: c.income ?? 0,
+    expense: c.expenditure ?? c.expense ?? 0
   })).filter(c => c.income > 0 || c.expense > 0);
 
   const chartDepartmentsData = (d.departments || []).map(dept => ({
     name: dept.name,
-    income: dept.income ?? dept.thu ?? 0,
-    expense: dept.expenditure ?? dept.expense ?? dept.chi ?? 0
+    income: dept.income ?? 0,
+    expense: dept.expenditure ?? dept.expense ?? 0
   })).filter(dept => dept.income > 0 || dept.expense > 0);
 
   return (
@@ -90,23 +90,16 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>Chọn tháng:</span>
-            <DatePicker
-              selectionMode="month"
-              value={month}
-              onChange={setMonth}
-              placeholder="Chọn tháng báo cáo"
-              dialogLabel="Chọn tháng báo cáo thu chi"
-              clearable={false}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 12, background: '#f1f5f9', padding: '6px 12px', borderRadius: 8, fontSize: '0.85rem' }}>
-            <div><span style={{ color: '#64748b' }}>Tháng:</span> <strong style={{ color: '#0f172a' }}>{d.month}</strong></div>
-            <div style={{ width: 1, background: '#cbd5e1' }}></div>
-            <div><span style={{ color: '#64748b' }}>Năm:</span> <strong style={{ color: '#0f172a' }}>{d.year}</strong></div>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#475569' }}>Chọn tháng:</span>
+          <DatePicker
+            selectionMode="month"
+            value={month}
+            onChange={setMonth}
+            placeholder="Chọn tháng báo cáo"
+            dialogLabel="Chọn tháng báo cáo thu chi"
+            clearable={false}
+          />
         </div>
       </div>
 
@@ -248,8 +241,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
                     </tr>
                   ) : (
                     d.departments.map((dept, idx) => {
-                      const inc = dept.income ?? dept.thu ?? 0;
-                      const exp = dept.expenditure ?? dept.expense ?? dept.chi ?? 0;
+                      const inc = dept.income ?? 0;
+                      const exp = dept.expenditure ?? 0;
                       return (
                         <tr key={idx} style={{ 
                           borderBottom: '1px solid #f1f5f9',

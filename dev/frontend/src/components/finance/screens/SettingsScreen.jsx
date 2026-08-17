@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DatePicker, DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING, getLocalISOTime, VOUCHER_SIGNERS } from '../utils';
+import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING, getLocalISOTime, VOUCHER_SIGNERS } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { Check, AlertCircle, Settings, Link, RefreshCw, PlusCircle, Wallet, Building2, History, ShieldCheck } from 'lucide-react';
@@ -11,16 +11,16 @@ import CashflowDetailModal from '../modals/CashflowDetailModal';
 
 
 export default function SettingsScreen() {
-  const [ngayChot, setNgayChot] = useState(getLocalISOTime());
-  const [soDuHeThongTM, setSoDuHeThongTM] = useState(0);
-  const [soDuThucTeTM, setSoDuThucTeTM] = useState('');
-  const [ghiChuTM, setGhiChuTM] = useState('');
+  const [reconcileMoment, setReconcileMoment] = useState(getLocalISOTime());
+  const [systemCashBalance, setSystemCashBalance] = useState(0);
+  const [actualCashBalance, setActualCashBalance] = useState('');
+  const [cashNote, setCashNote] = useState('');
 
-  const [soDuHeThongCK, setSoDuHeThongCK] = useState(0);
-  const [soDuThucTeCK, setSoDuThucTeCK] = useState('');
-  const [ghiChuCK, setGhiChuCK] = useState('');
+  const [systemBankBalance, setSystemBankBalance] = useState(0);
+  const [actualBankBalance, setActualBankBalance] = useState('');
+  const [bankNote, setBankNote] = useState('');
 
-  const [nguoiChot, setNguoiChot] = useState(VOUCHER_SIGNERS.director);
+  const [reconciledBy, setReconciledBy] = useState(VOUCHER_SIGNERS.director);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState([]);
@@ -35,14 +35,14 @@ export default function SettingsScreen() {
 
   const filteredHistory = useMemo(() => {
     if (!filterMonth) return history;
-    const [filterYr, filterMo] = filterMonth.split('-');
+    const [filterYear, filterMonthNum] = filterMonth.split('-');
     return history.filter(row => {
       const dateVal = row.effective_date;
       if (!dateVal) return false;
       const parts = dateVal.split(' ')[0].split('/');
       if (parts.length < 3) return false;
       const [d, m, y] = parts;
-      return y === filterYr && m === filterMo;
+      return y === filterYear && m === filterMonthNum;
     });
   }, [history, filterMonth]);
 
@@ -84,7 +84,7 @@ export default function SettingsScreen() {
     }
   };
 
-  const fetchSystemBalance = useCallback(async (closingMoment = ngayChot) => {
+  const fetchSystemBalance = useCallback(async (closingMoment = reconcileMoment) => {
     setLoading(true);
     try {
       const isoString = new Date(closingMoment).toISOString();
@@ -95,8 +95,8 @@ export default function SettingsScreen() {
       if (resTM.ok && resCK.ok) {
         const dTM = await resTM.json();
         const dCK = await resCK.json();
-        setSoDuHeThongTM(dTM.system_balance || 0);
-        setSoDuHeThongCK(dCK.system_balance || 0);
+        setSystemCashBalance(dTM.system_balance || 0);
+        setSystemBankBalance(dCK.system_balance || 0);
       } else {
         addToast('Không thể tính toán số dư từ hệ thống', 'error');
       }
@@ -105,7 +105,7 @@ export default function SettingsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [ngayChot, addToast]);
+  }, [reconcileMoment, addToast]);
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -128,38 +128,38 @@ export default function SettingsScreen() {
     fetchSettings();
   }, [fetchSystemBalance, fetchHistory, fetchSettings]);
 
-  const valThucTeTM = soDuThucTeTM === '' ? 0 : Number(soDuThucTeTM);
-  const chenhLechTM = soDuThucTeTM === '' ? 0 : valThucTeTM - soDuHeThongTM;
+  const numActualCash = actualCashBalance === '' ? 0 : Number(actualCashBalance);
+  const diffCash = actualCashBalance === '' ? 0 : numActualCash - systemCashBalance;
 
-  const valThucTeCK = soDuThucTeCK === '' ? 0 : Number(soDuThucTeCK);
-  const chenhLechCK = soDuThucTeCK === '' ? 0 : valThucTeCK - soDuHeThongCK;
+  const numActualBank = actualBankBalance === '' ? 0 : Number(actualBankBalance);
+  const diffBank = actualBankBalance === '' ? 0 : numActualBank - systemBankBalance;
 
   const formatInputDisplay = (val) => {
     if (val === '') return '';
     return Number(val).toLocaleString('vi-VN');
   };
 
-  const getChenhLechMeta = (cl, hasInput) => {
+  const getDiscrepancyMeta = (diff, hasInput) => {
     if (!hasInput) return { color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', msg: 'Chưa nhập số thực tế' };
-    if (cl === 0) return { color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', msg: 'Khớp quỹ hoàn toàn' };
-    if (cl < 0) return { color: '#ef4444', bg: '#fef2f2', border: '#fecaca', msg: 'Thiếu (Tự sinh PC)' };
+    if (diff === 0) return { color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', msg: 'Khớp quỹ hoàn toàn' };
+    if (diff < 0) return { color: '#ef4444', bg: '#fef2f2', border: '#fecaca', msg: 'Thiếu (Tự sinh PC)' };
     return { color: '#ef4444', bg: '#eff6ff', border: '#bfdbfe', msg: 'Thừa (Tự sinh PT)' };
   };
 
-  const clMetaTM = getChenhLechMeta(chenhLechTM, soDuThucTeTM !== '');
-  const clMetaCK = getChenhLechMeta(chenhLechCK, soDuThucTeCK !== '');
+  const discrepancyMetaCash = getDiscrepancyMeta(diffCash, actualCashBalance !== '');
+  const discrepancyMetaBank = getDiscrepancyMeta(diffBank, actualBankBalance !== '');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (soDuThucTeTM === '' && soDuThucTeCK === '') {
+    if (actualCashBalance === '' && actualBankBalance === '') {
       addToast('Vui lòng nhập ít nhất một số dư thực tế để chốt quỹ!', 'warning');
       return;
     }
-    if (soDuThucTeTM !== '' && chenhLechTM !== 0 && !ghiChuTM.trim()) {
+    if (actualCashBalance !== '' && diffCash !== 0 && !cashNote.trim()) {
       addToast('Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Tiền Mặt!', 'warning');
       return;
     }
-    if (soDuThucTeCK !== '' && chenhLechCK !== 0 && !ghiChuCK.trim()) {
+    if (actualBankBalance !== '' && diffBank !== 0 && !bankNote.trim()) {
       addToast('Bắt buộc phải nhập giải trình lý do chênh lệch cho Quỹ Chuyển Khoản!', 'warning');
       return;
     }
@@ -167,35 +167,35 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       const promises = [];
-      const isoString = new Date(ngayChot).toISOString();
+      const isoString = new Date(reconcileMoment).toISOString();
 
-      if (soDuThucTeTM !== '') {
+      if (actualCashBalance !== '') {
         promises.push(
           fetch(`${API}/api/finance/fund-balances/close`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               payment_method: 'Tiền mặt',
-              actual_amount: valThucTeTM,
+              actual_amount: numActualCash,
               closing_date: isoString,
-              notes: ghiChuTM,
-              closing_user: nguoiChot
+              notes: cashNote,
+              closing_user: reconciledBy
             })
           })
         );
       }
 
-      if (soDuThucTeCK !== '') {
+      if (actualBankBalance !== '') {
         promises.push(
           fetch(`${API}/api/finance/fund-balances/close`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               payment_method: 'Chuyển khoản',
-              actual_amount: valThucTeCK,
+              actual_amount: numActualBank,
               closing_date: isoString,
-              notes: ghiChuCK,
-              closing_user: nguoiChot
+              notes: bankNote,
+              closing_user: reconciledBy
             })
           })
         );
@@ -206,10 +206,10 @@ export default function SettingsScreen() {
 
       if (allOk) {
         addToast('Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
-        setSoDuThucTeTM('');
-        setGhiChuTM('');
-        setSoDuThucTeCK('');
-        setGhiChuCK('');
+        setActualCashBalance('');
+        setCashNote('');
+        setActualBankBalance('');
+        setBankNote('');
         fetchSystemBalance();
         fetchHistory();
       } else {
@@ -250,13 +250,13 @@ export default function SettingsScreen() {
               <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mốc thời gian chốt</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 112px', gap: 8 }}>
                 <DatePicker
-                  value={ngayChot.slice(0, 10)}
+                  value={reconcileMoment.slice(0, 10)}
                   onChange={(value) => {
                     if (!value) return;
-                    const nextClosingMoment = `${value}T${ngayChot.slice(11, 16) || '00:00'}`;
-                    setNgayChot(nextClosingMoment);
-                    setSoDuThucTeTM('');
-                    setSoDuThucTeCK('');
+                    const nextClosingMoment = `${value}T${reconcileMoment.slice(11, 16) || '00:00'}`;
+                    setReconcileMoment(nextClosingMoment);
+                    setActualCashBalance('');
+                    setActualBankBalance('');
                     fetchSystemBalance(nextClosingMoment);
                   }}
                   placeholder="Chọn ngày chốt"
@@ -268,12 +268,12 @@ export default function SettingsScreen() {
                   type="time"
                   aria-label="Giờ chốt quỹ"
                   style={{ width: '100%', height: 42, padding: '0 10px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
-                  value={ngayChot.slice(11, 16)}
+                  value={reconcileMoment.slice(11, 16)}
                   onChange={(e) => {
-                    const nextClosingMoment = `${ngayChot.slice(0, 10)}T${e.target.value}`;
-                    setNgayChot(nextClosingMoment);
-                    setSoDuThucTeTM('');
-                    setSoDuThucTeCK('');
+                    const nextClosingMoment = `${reconcileMoment.slice(0, 10)}T${e.target.value}`;
+                    setReconcileMoment(nextClosingMoment);
+                    setActualCashBalance('');
+                    setActualBankBalance('');
                     fetchSystemBalance(nextClosingMoment);
                   }}
                   required
@@ -285,8 +285,8 @@ export default function SettingsScreen() {
               <input
                 type="text"
                 style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
-                value={nguoiChot}
-                onChange={(e) => setNguoiChot(e.target.value)}
+                value={reconciledBy}
+                onChange={(e) => setReconciledBy(e.target.value)}
                 required
               />
             </div>
@@ -304,7 +304,7 @@ export default function SettingsScreen() {
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
                   <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
-                    {loading ? 'Đang tải...' : `${soDuHeThongTM.toLocaleString('vi-VN')}₫`}
+                    {loading ? 'Đang tải...' : `${systemCashBalance.toLocaleString('vi-VN')}₫`}
                   </div>
                 </div>
 
@@ -314,35 +314,35 @@ export default function SettingsScreen() {
                     <input
                       type="text"
                       style={{ width: '100%', fontWeight: 800, fontSize: '1.3rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
-                      value={formatInputDisplay(soDuThucTeTM)}
-                      onChange={(e) => setSoDuThucTeTM(e.target.value.replace(/[^\d]/g, ''))}
+                      value={formatInputDisplay(actualCashBalance)}
+                      onChange={(e) => setActualCashBalance(e.target.value.replace(/[^\d]/g, ''))}
                       placeholder="0"
                     />
                     <span style={{ position: 'absolute', right: 2, fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>₫</span>
                   </div>
                 </div>
 
-                <div style={{ background: clMetaTM.bg, border: `1px solid ${clMetaTM.border}`, borderRadius: 12, padding: 16 }}>
+                <div style={{ background: discrepancyMetaCash.bg, border: `1px solid ${discrepancyMetaCash.border}`, borderRadius: 12, padding: 16 }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: clMetaTM.color, margin: '6px 0' }}>
-                    {soDuThucTeTM === '' ? '—' : (chenhLechTM === 0 ? '±0₫' : (chenhLechTM > 0 ? `+${chenhLechTM.toLocaleString('vi-VN')}₫` : `-${Math.abs(chenhLechTM).toLocaleString('vi-VN')}₫`))}
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: discrepancyMetaCash.color, margin: '6px 0' }}>
+                    {actualCashBalance === '' ? '—' : (diffCash === 0 ? '±0₫' : (diffCash > 0 ? `+${diffCash.toLocaleString('vi-VN')}₫` : `-${Math.abs(diffCash).toLocaleString('vi-VN')}₫`))}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: clMetaTM.color, fontSize: '0.75rem', fontWeight: 700 }}>
-                    {soDuThucTeTM !== '' && (chenhLechTM === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
-                    <span>{clMetaTM.msg}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: discrepancyMetaCash.color, fontSize: '0.75rem', fontWeight: 700 }}>
+                    {actualCashBalance !== '' && (diffCash === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
+                    <span>{discrepancyMetaCash.msg}</span>
                   </div>
                 </div>
 
                 <div>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
-                    Giải trình chênh lệch {soDuThucTeTM !== '' && chenhLechTM !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
+                    Giải trình chênh lệch {actualCashBalance !== '' && diffCash !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
                   </label>
                   <textarea
                     style={{ width: '100%', height: 60, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.88rem', outline: 'none', resize: 'none', lineHeight: 1.4, boxSizing: 'border-box' }}
-                    value={ghiChuTM}
-                    onChange={(e) => setGhiChuTM(e.target.value)}
-                    placeholder={soDuThucTeTM !== '' && chenhLechTM !== 0 ? "Bắt buộc nhập lý do chênh lệch tiền mặt..." : "Ghi chú kiểm kê két sắt..."}
-                    required={soDuThucTeTM !== '' && chenhLechTM !== 0}
+                    value={cashNote}
+                    onChange={(e) => setCashNote(e.target.value)}
+                    placeholder={actualCashBalance !== '' && diffCash !== 0 ? "Bắt buộc nhập lý do chênh lệch tiền mặt..." : "Ghi chú kiểm kê két sắt..."}
+                    required={actualCashBalance !== '' && diffCash !== 0}
                   />
                 </div>
               </div>
@@ -357,7 +357,7 @@ export default function SettingsScreen() {
                 <div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
                   <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
-                    {loading ? 'Đang tải...' : `${soDuHeThongCK.toLocaleString('vi-VN')}₫`}
+                    {loading ? 'Đang tải...' : `${systemBankBalance.toLocaleString('vi-VN')}₫`}
                   </div>
                 </div>
 
@@ -367,35 +367,35 @@ export default function SettingsScreen() {
                     <input
                       type="text"
                       style={{ width: '100%', fontWeight: 800, fontSize: '1.3rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
-                      value={formatInputDisplay(soDuThucTeCK)}
-                      onChange={(e) => setSoDuThucTeCK(e.target.value.replace(/[^\d]/g, ''))}
+                      value={formatInputDisplay(actualBankBalance)}
+                      onChange={(e) => setActualBankBalance(e.target.value.replace(/[^\d]/g, ''))}
                       placeholder="0"
                     />
                     <span style={{ position: 'absolute', right: 2, fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>₫</span>
                   </div>
                 </div>
 
-                <div style={{ background: clMetaCK.bg, border: `1px solid ${clMetaCK.border}`, borderRadius: 12, padding: 16 }}>
+                <div style={{ background: discrepancyMetaBank.bg, border: `1px solid ${discrepancyMetaBank.border}`, borderRadius: 12, padding: 16 }}>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: clMetaCK.color, margin: '6px 0' }}>
-                    {soDuThucTeCK === '' ? '—' : (chenhLechCK === 0 ? '±0₫' : (chenhLechCK > 0 ? `+${chenhLechCK.toLocaleString('vi-VN')}₫` : `-${Math.abs(chenhLechCK).toLocaleString('vi-VN')}₫`))}
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: discrepancyMetaBank.color, margin: '6px 0' }}>
+                    {actualBankBalance === '' ? '—' : (diffBank === 0 ? '±0₫' : (diffBank > 0 ? `+${diffBank.toLocaleString('vi-VN')}₫` : `-${Math.abs(diffBank).toLocaleString('vi-VN')}₫`))}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: clMetaCK.color, fontSize: '0.75rem', fontWeight: 700 }}>
-                    {soDuThucTeCK !== '' && (chenhLechCK === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
-                    <span>{clMetaCK.msg}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: discrepancyMetaBank.color, fontSize: '0.75rem', fontWeight: 700 }}>
+                    {actualBankBalance !== '' && (diffBank === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
+                    <span>{discrepancyMetaBank.msg}</span>
                   </div>
                 </div>
 
                 <div>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
-                    Giải trình chênh lệch {soDuThucTeCK !== '' && chenhLechCK !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
+                    Giải trình chênh lệch {actualBankBalance !== '' && diffBank !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
                   </label>
                   <textarea
                     style={{ width: '100%', height: 60, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.88rem', outline: 'none', resize: 'none', lineHeight: 1.4, boxSizing: 'border-box' }}
-                    value={ghiChuCK}
-                    onChange={(e) => setGhiChuCK(e.target.value)}
-                    placeholder={soDuThucTeCK !== '' && chenhLechCK !== 0 ? "Bắt buộc nhập lý do chênh lệch chuyển khoản..." : "Ghi chú kiểm kê app bank..."}
-                    required={soDuThucTeCK !== '' && chenhLechCK !== 0}
+                    value={bankNote}
+                    onChange={(e) => setBankNote(e.target.value)}
+                    placeholder={actualBankBalance !== '' && diffBank !== 0 ? "Bắt buộc nhập lý do chênh lệch chuyển khoản..." : "Ghi chú kiểm kê app bank..."}
+                    required={actualBankBalance !== '' && diffBank !== 0}
                   />
                 </div>
               </div>

@@ -13,8 +13,8 @@ import ReceivablesScreen from '../components/finance/screens/ReceivablesScreen';
 import DebtCollection from './DebtCollection';
 import PayablesScreen from '../components/finance/screens/PayablesScreen';
 import AnalyticsScreen from '../components/finance/screens/AnalyticsScreen';
-import LuongKhoan3PScreen from '../components/finance/screens/LuongKhoan3PScreen';
-import BangGiaKhoanScreen from '../components/finance/screens/BangGiaKhoanScreen';
+import PieceRatePayrollScreen from '../components/finance/screens/PieceRatePayrollScreen';
+import PieceRatePricingScreen from '../components/finance/screens/PieceRatePricingScreen';
 import PayrollOfficeScreen from '../components/finance/screens/PayrollOfficeScreen';
 
 export default function Cashflow({ landing, user, isDirector }) {
@@ -31,9 +31,9 @@ export default function Cashflow({ landing, user, isDirector }) {
       case 'debt-collection': return <DebtCollection user={user} isDirector={isDirector} />;
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
-      case 'cashflow-settings': return <SettingsScreen user={user} isDirector={isDirector} />;
-      case 'payroll-worker': return <LuongKhoan3PScreen user={user} isDirector={isDirector} />;
-      case 'bang-gia': return <BangGiaKhoanScreen user={user} isDirector={isDirector} />;
+      case 'cashflow-settings': return isDirector ? <SettingsScreen user={user} isDirector={isDirector} /> : <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'payroll-worker': return <PieceRatePayrollScreen user={user} isDirector={isDirector} />;
+      case 'bang-gia': return <PieceRatePricingScreen user={user} isDirector={isDirector} />;
       case 'payroll-office': return <PayrollOfficeScreen user={user} isDirector={isDirector} />;
 
       case 'contracts': return <ContractsScreen user={user} isDirector={isDirector} />;

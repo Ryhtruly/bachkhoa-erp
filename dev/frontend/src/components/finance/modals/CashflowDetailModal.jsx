@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ConfirmationModal, DatePicker, Modal, FormRow, FormGrid, Dropdown, SensitiveActionModal, Badge } from '../../ui';
 import { useToast } from '../../../contexts/ToastContext';
 import { AlertCircle, Link, Check, X, ShieldAlert, Trash2, Printer } from 'lucide-react';
-import { API } from '../financeConstants';
-import { parseAmt, docSoTiengViet } from '../utils';
+import { parseAmt, spellVietnameseCurrency } from '../utils';
 import { apiFetch } from '../../../lib/api';
 import { VoucherTemplate } from '../screens/PrintVoucherScreen';
 import { printElement } from '../print/printDocument';
@@ -224,11 +223,11 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
 
   if (!open) return null;
 
-  const isThu = detail?.type === 'Thu' || detail?.transaction_type === 'Thu';
-  const accent = isThu ? '#10b981' : '#ef4444';
+  const isIncomeTransaction = detail?.type === 'Thu' || detail?.transaction_type === 'Thu';
+  const accent = isIncomeTransaction ? '#10b981' : '#ef4444';
   const brandAccent = '#eb4a23';
   const transactionType = detail?.type || detail?.transaction_type;
-  const voucherTitle = isThu
+  const voucherTitle = isIncomeTransaction
     ? 'PHIẾU THU'
     : transactionType === 'Tạm ứng'
       ? 'PHIẾU CHI TẠM ỨNG'
@@ -263,7 +262,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                   </td>
                   <td colSpan={2} style={{ textAlign: 'center', padding: '15px 10px', verticalAlign: 'middle' }}>
                     <h2 style={{ margin: 0, fontSize: '1.25rem', textTransform: 'uppercase', color: accent }}>
-                      PHIẾU {isThu ? 'THU TIỀN' : 'CHI TIỀN'}
+                      PHIẾU {isIncomeTransaction ? 'THU TIỀN' : 'CHI TIỀN'}
                     </h2>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                       Số: <strong style={{ fontFamily: 'monospace' }}>{transactionId}</strong>
@@ -365,7 +364,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                   <td colSpan={4} style={{ padding: '10px' }}>
                     <span style={{ fontWeight: 'bold' }}>Số tiền (bằng chữ): </span>
                     <i style={{ color: 'var(--text-secondary)' }}>
-                      {form.amount ? docSoTiengViet(form.amount) : 'Không đồng'}
+                      {form.amount ? spellVietnameseCurrency(form.amount) : 'Không đồng'}
                     </i>
                   </td>
                 </tr>
@@ -453,10 +452,10 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
             voucherId={transactionId || detail.id}
             date={form.transaction_date}
             personName={form.payer_payee}
-            labelPerson={isThu ? 'Người nộp tiền' : 'Người nhận tiền'}
+            labelPerson={isIncomeTransaction ? 'Người nộp tiền' : 'Người nhận tiền'}
             description={form.description}
             amount={form.amount}
-            amountWords={form.amount ? docSoTiengViet(form.amount) : ''}
+            amountWords={form.amount ? spellVietnameseCurrency(form.amount) : ''}
             category={form.category}
             paymentMethod={form.payment_method}
             department={detail.department_code}
