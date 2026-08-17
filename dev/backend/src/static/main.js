@@ -312,12 +312,12 @@ async function handleCreateHoso(e) {
   }
 }
 
-async function updateHosoStatus(maHs, newStatus) {
-  if (!confirm(`Chuyển "${maHs}" sang trạng thái "${newStatus}"?`)) return
+async function updateHosoStatus(dossierId, newStatus) {
+  if (!confirm(`Chuyển "${dossierId}" sang trạng thái "${newStatus}"?`)) return
   try {
     const res = await fetch("/api/hoso/update-status", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ Mã_hồ_sơ: maHs, Trạng_thái: newStatus })
+      body: JSON.stringify({ Mã_hồ_sơ: dossierId, Trạng_thái: newStatus })
     })
     if (res.ok) {
       toast("Đã cập nhật trạng thái!", "success")
@@ -391,8 +391,8 @@ function renderContracts() {
 }
 
 function populateContractFormFromHoso() {
-  const maHs = document.getElementById("form-hd-hoso-select").value
-  const hs = app.hoso.find(h => (h.id || h.task_id) === maHs)
+  const dossierId = document.getElementById("form-hd-hoso-select").value
+  const hs = app.hoso.find(h => (h.id || h.task_id) === dossierId)
   if (!hs) return
   ;["form-hd-name","form-hd-phone","form-hd-address"].forEach(id => document.getElementById(id).value = "")
   const nameEl = document.getElementById("form-hd-name")
@@ -460,10 +460,10 @@ async function loadThuchi() {
       return
     }
     list.forEach(t => {
-      const isChi = t.type === "Chi" || t.transaction_type === "Chi"
-      const cls = isChi ? "badge badge-danger" : "badge badge-success"
-      const amtCls = isChi ? "text-danger" : "text-success"
-      const prefix = isChi ? "−" : "+"
+      const isExpense = t.type === "Chi" || t.transaction_type === "Chi"
+      const cls = isExpense ? "badge badge-danger" : "badge badge-success"
+      const amtCls = isExpense ? "text-danger" : "text-success"
+      const prefix = isExpense ? "−" : "+"
       tbody.innerHTML += `<tr>
         <td class="mono">${t.date || t.transaction_date || ""}</td>
         <td><strong class="mono">${t.id || ""}</strong></td>

@@ -17,7 +17,7 @@ from src.core.auth import check_user_permission, get_current_user, require_permi
 from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import handover as HO
-from src.dossiers.actor_guard import assert_can_act_on_node, ghi_chu_xu_ly_thay
+from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note
 from src.files.payment_receipts import (
     MAX_RECEIPT_BYTES,
     MAX_RECEIPT_FILES,
@@ -142,12 +142,12 @@ def deliver(
     actor = assert_can_act_on_node(
         db, task_node_id=task_node_id, user_id=user.id,
         on_behalf_reason=payload.on_behalf_reason,
-        viec_gi="xác nhận bàn giao cho công việc này",
+        action_description="xác nhận bàn giao cho công việc này",
     )
     result = HO.mark_delivered(
         db, task_node_id,
         acknowledged_debt=payload.acknowledged_debt,
-        note=ghi_chu_xu_ly_thay(actor, payload.note),
+        note=format_on_behalf_note(actor, payload.note),
         actor_id=user.id,
     )
     db.commit()

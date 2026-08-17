@@ -345,7 +345,7 @@ def list_contract_workspace(
     # Cột contracts.status chưa bao giờ được cập nhật nên mọi hợp đồng đều hiện
     # "Chưa cập nhật" — vô nghĩa với người dùng. Suy ra từ quy trình và phiếu thu
     # đã duyệt thì không bao giờ lệch.
-    tien_va_tien_do = {}
+    financial_progress_by_contract = {}
     if contract_ids:
         for r in db.execute(
             text(f"""
@@ -355,10 +355,10 @@ def list_contract_workspace(
                          where t.contract_id = c.id
                            and t.transaction_type in ({_INCOME_SQL})
                            and t.status in ({_APPROVED_SQL})
-                       ), 0) as da_thu,
-                       count(wi.id)                                       as so_quy_trinh,
-                       count(*) filter (where wi.status = 'completed')     as so_xong,
-                       count(*) filter (where wi.status = 'cancelled')     as so_huy
+                       ), 0) as paid_amount,
+                       count(wi.id)                                       as workflow_count,
+                       count(*) filter (where wi.status = 'completed')     as completed_count,
+                       count(*) filter (where wi.status = 'cancelled')     as cancelled_count
                 from public.contracts c
                 left join public.service_lines sl on sl.contract_id = c.id
                 left join public.workflow_instances wi on wi.service_line_id = sl.id
@@ -367,35 +367,35 @@ def list_contract_workspace(
             """),
             {"ids": list(contract_ids)},
         ).mappings():
-            tien_va_tien_do[r["id"]] = dict(r)
+            financial_progress_by_contract[r["id"]] = dict(r)
 
-    def _tien_do(info: dict, tong: float) -> str:
-        if not info or not info["so_quy_trinh"]:
+    def _resolve_contract_progress_status(info: dict, total_val: float) -> str:
+        if not info or not info["workflow_count"]:
             return "Chưa có quy trình"
-        if info["so_huy"] == info["so_quy_trinh"]:
+        if info["cancelled_count"] == info["workflow_count"]:
             return "Đã huỷ"
-        if info["so_xong"] == info["so_quy_trinh"]:
+        if info["completed_count"] == info["workflow_count"]:
             # Nhãn phải vừa một dòng trong cột trạng thái; số nợ cụ thể đã nằm
             # ngay cột bên cạnh nên ở đây chỉ cần nói vì sao chưa chốt được.
-            return "Hoàn thành" if float(info["da_thu"] or 0) >= tong - 0.01 else "Xong, còn nợ"
+            return "Hoàn thành" if float(info["paid_amount"] or 0) >= total_val - 0.01 else "Xong, còn nợ"
         return "Đang thực hiện"
 
     rows = []
     for contract_id in contract_ids:
         contract, customer = contract_by_id[contract_id]
         service_lines = lines_by_contract.get(contract_id, [])
-        tong = _money_value(contract.total_value)
-        info = tien_va_tien_do.get(contract_id)
-        da_thu = float(info["da_thu"] or 0) if info else 0.0
+        total_contract_value = _money_value(contract.total_value)
+        info = financial_progress_by_contract.get(contract_id)
+        paid_amount = float(info["paid_amount"] or 0) if info else 0.0
         rows.append({
             "id": contract.id,
             "customer_name": customer.full_name if customer else "Chưa cập nhật",
             "customer_phone": customer.phone if customer else "",
             "date_signed": _date_value(contract.date_signed),
-            "total_value": tong,
-            "paid_amount": da_thu,
-            "remaining_amount": max(0.0, tong - da_thu),
-            "status": _tien_do(info, tong),
+            "total_value": total_contract_value,
+            "paid_amount": paid_amount,
+            "remaining_amount": max(0.0, total_contract_value - paid_amount),
+            "status": _resolve_contract_progress_status(info, total_contract_value),
             "service_location": contract.service_location or "",
             "file_link": contract.file_link or "",
             "service_lines": service_lines,

@@ -93,12 +93,12 @@ def _validate(action: str, current: str, sub_status: str | None) -> str:
 
     froms, to = _TRANSITIONS[action]
     if current not in froms:
-        lam_duoc = ", ".join(ACTION_LABELS[a] for a in available_actions(current)) or "không có"
+        allowed_actions_str = ", ".join(ACTION_LABELS[a] for a in available_actions(current)) or "không có"
         raise HTTPException(
             status_code=409,
             detail=(
                 f"Hồ sơ đang ở '{STATUS_LABELS.get(current, current)}' nên không "
-                f"{ACTION_LABELS[action].lower()} được. Hiện chỉ làm được: {lam_duoc}."
+                f"{ACTION_LABELS[action].lower()} được. Hiện chỉ làm được: {allowed_actions_str}."
             ),
         )
 
@@ -144,7 +144,7 @@ def apply_transition(
     # điểm MỞ GIAO DỊCH và đứng yên suốt giao dịch đó. Đo khoảng thời gian bằng
     # now() thì một giao dịch mở sẵn từ trước sẽ cho ra 0 giây — KPI luôn bằng 0
     # mà không ai biết vì sao.
-    _CONG_DON_TAM_DUNG = (
+    _ACCUMULATED_PAUSE_SQL = (
         "total_pending_seconds = total_pending_seconds + "
         "coalesce(extract(epoch from (clock_timestamp() - pending_since))::bigint, 0)"
     )
@@ -157,7 +157,7 @@ def apply_transition(
     elif action == PAUSE:
         sets.append("pending_since = clock_timestamp()")
     elif action == RESUME:
-        sets.append(_CONG_DON_TAM_DUNG)
+        sets.append(_ACCUMULATED_PAUSE_SQL)
         sets.append("pending_since = null")
     elif action == CLOSE:
         sets.append("closed_at = clock_timestamp()")
@@ -165,7 +165,7 @@ def apply_transition(
         params["note"] = note
         # Đóng hồ sơ trong lúc đang tạm dừng thì vẫn phải chốt nốt quãng đó
         if current == PENDING:
-            sets.append(_CONG_DON_TAM_DUNG)
+            sets.append(_ACCUMULATED_PAUSE_SQL)
             sets.append("pending_since = null")
 
     db.execute(
@@ -183,16 +183,16 @@ def apply_transition(
     )
 
     # Tạm dừng vì bản vẽ sai ranh -> đẩy ngược việc về bên đo vẽ
-    day_nguoc = False
+    reopened_survey = False
     if action == PAUSE and sub_status == SURVEYOR:
-        day_nguoc = reopen_survey_work(db, dossier)
+        reopened_survey = reopen_survey_work(db, dossier)
 
     return {
         "id": dossier_id,
         "from_status": current,
         "to_status": new_status,
         "sub_status": sub_status,
-        "reopened_survey": day_nguoc,
+        "reopened_survey": reopened_survey,
     }
 
 
@@ -220,11 +220,11 @@ def reopen_survey_work(db: Session, dossier: dict) -> bool:
         text("""
             update public.task_nodes
             set status = 'rework_required',
-                notes = concat_ws(' | ', notes, :ly_do),
+                notes = concat_ws(' | ', notes, :reason),
                 updated_at = now()
             where id = :i and status not in ('cancelled', 'skipped')
         """),
-        {"i": task_node_id, "ly_do": "Pháp lý trả về: bản vẽ cần chỉnh lại"},
+        {"i": task_node_id, "reason": "Pháp lý trả về: bản vẽ cần chỉnh lại"},
     )
     return True
 

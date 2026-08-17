@@ -104,8 +104,8 @@ class FinanceService:
 
             # 6. Project vs Non-project classification of project_id
             is_operational = False
-            op_keywords = ["văn phòng phẩm", "tiếp khách", "điện nước", "bảo hiểm", "công tác phí", "shipper", "vận hành", "quản lý"]
-            for kw in op_keywords:
+            operational_expense_keywords = ["văn phòng phẩm", "tiếp khách", "điện nước", "bảo hiểm", "công tác phí", "shipper", "vận hành", "quản lý"]
+            for kw in operational_expense_keywords:
                 if kw in category.lower() or kw in desc.lower():
                     is_operational = True
                     break
@@ -652,22 +652,22 @@ class FinanceService:
             try:
                 dt_utc = datetime.fromisoformat(payload.closing_date.replace("Z", "+00:00"))
                 tz_vietnam = timezone(timedelta(hours=7))
-                dt_chot = dt_utc.astimezone(tz_vietnam)
+                closing_moment = dt_utc.astimezone(tz_vietnam)
             except ValueError:
                 try:
-                    dt_chot = datetime.strptime(payload.closing_date, "%Y-%m-%d %H:%M:%S")
-                    dt_chot = dt_chot.replace(tzinfo=timezone(timedelta(hours=7)))
+                    closing_moment = datetime.strptime(payload.closing_date, "%Y-%m-%d %H:%M:%S")
+                    closing_moment = closing_moment.replace(tzinfo=timezone(timedelta(hours=7)))
                 except ValueError:
                     raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
 
-            system_balance = FinanceRepository.get_running_balance(db, payload.payment_method, up_to_datetime=dt_chot)
+            system_balance = FinanceRepository.get_running_balance(db, payload.payment_method, up_to_datetime=closing_moment)
             difference = payload.actual_amount - system_balance
             closing_user_name = payload.closing_user or "Kế toán"
             
             fob = FundOpeningBalance(
                 payment_method=payload.payment_method,
                 opening_balance=payload.actual_amount,
-                effective_date=dt_chot,
+                effective_date=closing_moment,
                 closing_user=closing_user_name,
                 notes=payload.notes
             )
@@ -677,10 +677,10 @@ class FinanceService:
             if difference != 0:
                 tx_type = "Thu" if difference > 0 else "Chi"
                 category = "Thu chênh lệch kiểm kê quỹ" if difference > 0 else "Chi chênh lệch kiểm kê quỹ"
-                new_id = FinanceRepository.generate_voucher_id(tx_type, db, dt_chot.date())
+                new_id = FinanceRepository.generate_voucher_id(tx_type, db, closing_moment.date())
                 
                 bal_tm, bal_ck, bal_sau = calculate_balances(db, tx_type, abs(difference), payload.payment_method)
-                voucher_time = dt_chot - timedelta(seconds=1)
+                voucher_time = closing_moment - timedelta(seconds=1)
                 
                 tc = CashflowTransaction(
                     id=new_id,
@@ -689,7 +689,7 @@ class FinanceService:
                     category_code=category,
                     payer_payee_name=closing_user_name,
                     payment_method=payload.payment_method,
-                    transaction_date=dt_chot.date(),
+                    transaction_date=closing_moment.date(),
                     created_at=voucher_time,
                     document_number=new_id,
                     description=f"{category}: {payload.notes or ''}",

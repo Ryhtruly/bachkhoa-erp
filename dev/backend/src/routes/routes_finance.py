@@ -110,13 +110,13 @@ def cashflow_cash(
     )
     
     approved_set = {"Hoàn thành", "Đã duyệt", "COMPLETED", "approved", None, ""}
-    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
-    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
+    filtered_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
 
     return {
         "balance": balance,
-        "total_income": initial_income + filtered_thu,
-        "total_expenditure": initial_expense + filtered_chi,
+        "total_income": initial_income + filtered_income,
+        "total_expenditure": initial_expense + filtered_expenditure,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
 
@@ -141,13 +141,13 @@ def cashflow_bank(
     )
     
     approved_set = {"Hoàn thành", "Đã duyệt", "COMPLETED", "approved", None, ""}
-    filtered_thu = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
-    filtered_chi = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
+    filtered_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
 
     return {
         "balance": balance,
-        "total_income": initial_income + filtered_thu,
-        "total_expenditure": initial_expense + filtered_chi,
+        "total_income": initial_income + filtered_income,
+        "total_expenditure": initial_expense + filtered_expenditure,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
 
@@ -458,16 +458,16 @@ def calculate_system_balance(
     user: User = Depends(require_permission("finance", "read"))
 ):
     try:
-        dt_chot = datetime.fromisoformat(closing_date.replace("Z", "+00:00"))
+        closing_moment = datetime.fromisoformat(closing_date.replace("Z", "+00:00"))
         tz_vietnam = timezone(timedelta(hours=7))
-        dt_chot = dt_chot.astimezone(tz_vietnam)
+        closing_moment = closing_moment.astimezone(tz_vietnam)
     except ValueError:
         try:
-            dt_chot = datetime.strptime(closing_date, "%Y-%m-%d %H:%M:%S")
+            closing_moment = datetime.strptime(closing_date, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
 
-    bal = FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=dt_chot)
+    bal = FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=closing_moment)
     return {"status": "success", "system_balance": bal}
 
 @router.get("/fund-balances/history")

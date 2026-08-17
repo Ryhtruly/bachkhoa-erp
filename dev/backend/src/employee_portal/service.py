@@ -261,6 +261,31 @@ class EmployeePortalService:
         }
 
     @staticmethod
+    def get_my_payroll(db: Session, employee: Employee) -> dict:
+        """Siêu tối ưu: Chỉ tính riêng phiếu lương cá nhân mà không load toàn bộ cây tasks, checklists, attendance."""
+        department = None
+        if employee.department_id:
+            department = db.query(Department).filter(Department.id == employee.department_id).first()
+        period_start = date.today().replace(day=1)
+        payroll_row = db.execute(
+            _CURRENT_PAYROLL_QUERY,
+            {"employee_id": employee.id, "period_start": period_start},
+        ).mappings().first()
+
+        return {
+            "employee": {
+                "id": employee.id,
+                "full_name": employee.full_name,
+                "avatar_url": employee.avatar_url,
+                "department": department.name if department else employee.department,
+                "job_title": employee.job_title,
+                "base_salary": _number_value(employee.base_salary or 0),
+                "is_active": bool(employee.is_active),
+            },
+            "latest_payroll": EmployeePortalService._format_payroll_row(period_start, payroll_row),
+        }
+
+    @staticmethod
     def submit_checklist_evidence(
         db: Session,
         employee: Employee,

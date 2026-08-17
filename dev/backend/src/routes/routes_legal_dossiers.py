@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from src.core.auth import check_user_permission, require_permission
 from src.db.database import get_db
 from src.db.models import User
-from src.dossiers.actor_guard import assert_can_act_on_node, ghi_chu_xu_ly_thay
+from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note
 from src.dossiers.legal_lifecycle import (
     ACTION_LABELS,
     CLOSE_RESULTS,
@@ -39,9 +39,9 @@ _BASE_SQL = """
            sl.service_type as service_line_name,
            cu.full_name as customer_name,
            n.status as node_status, n.deadline_at,
-           (select count(*) from public.legal_submissions s where s.dossier_id = d.id) as so_lan_nop,
+           (select count(*) from public.legal_submissions s where s.dossier_id = d.id) as submission_count,
            (select max(s.receipt_code) from public.legal_submissions s
-             where s.dossier_id = d.id and s.receipt_code is not null) as bien_nhan_moi_nhat
+             where s.dossier_id = d.id and s.receipt_code is not null) as latest_receipt_code
     from public.legal_dossiers d
     left join public.employees e on e.id = d.assigned_employee_id
     left join public.service_lines sl on sl.id = d.service_line_id
@@ -190,13 +190,13 @@ def transition(
         task_node_id=dossier["task_node_id"],
         user_id=user.id,
         on_behalf_reason=payload.on_behalf_reason,
-        viec_gi="xử lý vòng đời hồ sơ này",
+        action_description="xử lý vòng đời hồ sơ này",
     )
 
     result = apply_transition(
         db, dossier_id, payload.action,
         sub_status=payload.sub_status,
-        note=ghi_chu_xu_ly_thay(actor, payload.note),
+        note=format_on_behalf_note(actor, payload.note),
         actor_user_id=user.id,
     )
     db.commit()
@@ -222,7 +222,7 @@ def add_submission(
     assert_can_act_on_node(
         db, task_node_id=dossier["task_node_id"], user_id=user.id,
         on_behalf_reason=payload.note,
-        viec_gi="thêm lần nộp mới cho hồ sơ này",
+        action_description="thêm lần nộp mới cho hồ sơ này",
     )
     if dossier["status"] == "CLOSED":
         raise HTTPException(status_code=409, detail="Hồ sơ đã đóng, không nộp thêm được")

@@ -51,14 +51,14 @@ class FinanceRepository:
             CashflowTransaction.status.in_(["Hoàn thành", "Đã duyệt", "COMPLETED", "approved", ""])
         )
 
-        q_thu = db.query(func.sum(CashflowTransaction.amount)).filter(
+        query_income = db.query(func.sum(CashflowTransaction.amount)).filter(
             CashflowTransaction.transaction_type == "Thu",
             CashflowTransaction.payment_method == payment_method,
             CashflowTransaction.scope == "Công ty",
             approved_cond
         )
         
-        q_chi = db.query(func.sum(CashflowTransaction.amount)).filter(
+        query_expense = db.query(func.sum(CashflowTransaction.amount)).filter(
             CashflowTransaction.transaction_type == "Chi",
             CashflowTransaction.payment_method == payment_method,
             CashflowTransaction.scope == "Công ty",
@@ -66,16 +66,16 @@ class FinanceRepository:
         )
         
         if start_date:
-            q_thu = q_thu.filter(CashflowTransaction.transaction_date > start_date)
-            q_chi = q_chi.filter(CashflowTransaction.transaction_date > start_date)
+            query_income = query_income.filter(CashflowTransaction.transaction_date > start_date)
+            query_expense = query_expense.filter(CashflowTransaction.transaction_date > start_date)
             
         if up_to_datetime:
             up_to_date = up_to_datetime.astimezone(tz_vn).date() if up_to_datetime.tzinfo else up_to_datetime.replace(tzinfo=timezone.utc).astimezone(tz_vn).date()
-            q_thu = q_thu.filter(CashflowTransaction.transaction_date <= up_to_date)
-            q_chi = q_chi.filter(CashflowTransaction.transaction_date <= up_to_date)
+            query_income = query_income.filter(CashflowTransaction.transaction_date <= up_to_date)
+            query_expense = query_expense.filter(CashflowTransaction.transaction_date <= up_to_date)
             
-        income_sum = float(q_thu.scalar() or 0.0)
-        expenditure_sum = float(q_chi.scalar() or 0.0)
+        income_sum = float(query_income.scalar() or 0.0)
+        expenditure_sum = float(query_expense.scalar() or 0.0)
         
         return start_bal + income_sum - expenditure_sum
 
@@ -242,9 +242,9 @@ class FinanceRepository:
         ).all()
         contracts_map = {}
         contracts_customer_map = {}
-        for c, cust_name, rep_name in contracts_q:
+        for c, cust_name, representative_name in contracts_q:
             contracts_map[c.id] = float(c.total_value or 0)
-            contracts_customer_map[c.id] = cust_name or rep_name or ""
+            contracts_customer_map[c.id] = cust_name or representative_name or ""
 
         # Batch pre-fetch all pending refund transactions in 1 single query
         pending_refunds = db.query(CashflowTransaction).filter(
