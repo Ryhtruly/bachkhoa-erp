@@ -97,7 +97,16 @@ flowchart TD
 2. Tại cột Xử lý, bấm nút **`[Hoàn tiền thừa]`**.
 3. Điền lý do hoàn trả $\rightarrow$ Hệ thống tự động tạo **Phiếu Chi hoàn tiền** ở trạng thái `Chờ duyệt` gửi Giám đốc phê duyệt xuất quỹ.
 
-### 3.4. Quyết Toán Hoàn Ứng Cho Nhân Viên
+### 3.4. Lập Phiếu Tạm Ứng Cho Nhân Viên Đi Hiện Trường
+1. Vào tab **Đề Xuất Tạm Ứng** $\rightarrow$ Bấm **`[+ Tạo Phiếu Tạm Ứng]`**.
+2. Nhập các thông tin theo đề xuất của nhân viên:
+   - **Nhân viên nhận tiền**: Chọn đúng tên kỹ sư/chuyên viên cần tạm ứng.
+   - **Mã Hợp Đồng / Hồ Sơ thực hiện**: Gắn đúng mã công trình để đối soát và hạch toán chi phí dự án.
+   - **Số tiền xin tạm ứng** & **Lý do chi tiết** (Xăng xe, cắm mốc ranh, trích lục bản đồ, công tác phí...).
+   - **Hình thức**: `Tiền mặt` hoặc `Chuyển khoản`.
+3. Bấm **`[Lưu Đề Xuất]`** $\rightarrow$ Phiếu chuyển sang trạng thái `Chờ duyệt` để Ban Giám Đốc phê duyệt xuất quỹ.
+
+### 3.5. Quyết Toán Hoàn Ứng Cho Nhân Viên
 1. Vào tab **Quyết Toán Hoàn Ứng** $\rightarrow$ Chọn phiếu tạm ứng của nhân viên cần quyết toán.
 2. Nhập **Số tiền chi thực tế** theo chứng từ/hóa đơn nhân viên nộp lại.
 3. Hệ thống tự động tính toán:
@@ -105,7 +114,7 @@ flowchart TD
    - **Nếu chi > tạm ứng**: Công ty chi bù thêm $\rightarrow$ Tự sinh Phiếu Chi bù tiền.
 4. Bấm **`[Xác nhận quyết toán]`**.
 
-### 3.5. Soạn Thảo & In Chứng Từ Kế Toán Hàng Ngày
+### 3.6. Soạn Thảo & In Chứng Từ Kế Toán Hàng Ngày
 1. Vào tab **Chứng Từ In (Thu/Chi)** *(chỉ Kế toán mới có tab này)*.
 2. Chọn loại phiếu (**Phiếu Thu Mẫu 01-TT** hoặc **Phiếu Chi Mẫu 02-TT**).
 3. Nhập đầy đủ thông tin: Họ tên người nộp/nhận, địa chỉ, lý do, số tiền, chứng từ gốc đính kèm.
@@ -115,19 +124,24 @@ flowchart TD
 
 ## 4. HƯỚNG DẪN DÀNH CHO NHÂN VIÊN (KHẢO SÁT / ĐO VẼ / PHÁP LÝ)
 
-> **Đối tượng**: Kỹ sư đo trắc địa, Đội trưởng hiện trường, Chuyên viên thụ lý hồ sơ đất đai.
+> **Đối tượng**: Kỹ sư đo trắc địa, Đội trưởng hiện trường, Chuyên viên thụ lý hồ sơ đất đai.  
+> **Quyền hạn hệ thống**: Truy cập qua **Cổng Thông Tin Nhân Viên (Employee Portal)**.
 
-### 4.1. Lập Đề Xuất Xin Tạm Ứng
-1. Vào tab **Đề Xuất Tạm Ứng** $\rightarrow$ Bấm **`[+ Lập Đề Xuất Tạm Ứng]`**.
-2. Điền các thông tin:
-   - **Mã Hợp Đồng / Hồ Sơ thực hiện**: Gắn đúng mã công trình để tính chi phí dự án.
-   - **Số tiền xin tạm ứng**.
-   - **Lý do tạm ứng**: Chi tiết công việc (Xăng xe, cắm mốc ranh, trích lục bản đồ, công tác phí...).
-   - **Hình thức nhận tiền**: `Tiền mặt` hoặc `Chuyển khoản`.
-3. Bấm **`[Gửi Đề Xuất]`** và chờ Ban Giám Đốc phê duyệt trực tuyến.
+### 4.1. Đề Xuất Tạm Ứng Chi Phí Hiện Trường
+1. Trước khi đi công tác/thực địa hoặc nộp lệ phí hành chính, nhân viên gửi thông tin đề xuất tạm ứng cho **Bộ phận Kế toán**:
+   - **Mã Hợp Đồng / Hồ Sơ thực hiện**: Mã dự án cần triển khai.
+   - **Số tiền xin tạm ứng** & **Bảng kê chi tiết** (xăng xe, cắm mốc, trích lục, công chứng...).
+   - **Hình thức nhận tiền**: Tiền mặt tại két hoặc chuyển khoản vào số tài khoản cá nhân.
+2. Kế toán viên lập phiếu trên hệ thống, Ban Giám Đốc phê duyệt trực tuyến và Thủ quỹ thực hiện giải ngân.
 
-### 4.2. Bàn Giao Hóa Đơn & Quyết Toán
-- Sau khi hoàn thành nhiệm vụ hiện trường, nhân viên tập hợp toàn bộ hóa đơn, biên nhận, phiếu thu lệ phí và bàn giao cho Bộ phận Kế toán để thực hiện thủ tục quyết toán hoàn ứng.
+### 4.2. Bàn Giao Hóa Đơn & Quyết Toán Hoàn Ứng
+1. Sau khi hoàn thành nhiệm vụ, nhân viên tập hợp toàn bộ hóa đơn, biên nhận, phiếu thu lệ phí hợp lệ.
+2. Bàn giao chứng từ gốc cho Bộ phận Kế toán để thực hiện đối soát quyết toán tại tab **Quyết Toán Hoàn Ứng** (nộp lại tiền thừa hoặc nhận chi bù nếu phát sinh thêm).
+
+### 4.3. Theo Dõi Phiếu Lương Cá Nhân
+- Nhân viên vào mục **Lương Của Tôi** trên Cổng Nhân Viên để kiểm tra:
+  - Lương cơ bản và danh mục Lương khoán 3P chi tiết theo từng hồ sơ mình đã thực hiện.
+  - Phụ cấp, thưởng hiệu suất, phạt và tổng thu nhập NET thực nhận sau khi kỳ lương được Giám đốc chốt.
 
 ---
 

@@ -25,7 +25,7 @@ export const CHECKLIST_STATUS = Object.freeze({
 
 // Đúng bộ trạng thái mà máy chủ chấp nhận khi nộp nghiệm thu — xem
 // submit_task_node_for_acceptance trong contracts/workflow_runtime.py.
-const CHECKLIST_DAT = new Set(['approved', 'late_approved', 'not_applicable'])
+const CHECKLIST_PASSED_STATUSES = new Set(['approved', 'late_approved', 'not_applicable'])
 
 const CHECKLIST_STATUS_LABEL = {
   approved: 'Đã duyệt',
@@ -78,6 +78,46 @@ function AssigneeAvatars({ assignees = [] }) {
   </div>
 }
 
+// Việc đã nghiệm thu thì đếm ngược tới hạn là vô nghĩa — nhân viên nhìn thẻ đã
+// xong mà thấy "Còn 17 ngày" sẽ tưởng chưa làm. Xong rồi thì thứ đáng nói là
+// làm sớm hay trễ so với hạn, chứ không phải còn bao lâu.
+const COMPLETED_NODE_STATUSES = new Set(['accepted', 'completed'])
+
+const formatDurationHoursDays = (milliseconds) => {
+  const totalHours = Math.ceil(milliseconds / 3_600_000)
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  const parts = []
+  if (days) parts.push(`${days} ngày`)
+  if (hours) parts.push(`${hours} giờ`)
+  return parts.join(' ')
+}
+
+const finishedTimeLabel = (deadlineAt, finishedAt) => {
+  if (!finishedAt) return 'Đã xong'
+  if (!deadlineAt) return `Xong ${new Date(finishedAt).toLocaleDateString('vi-VN')}`
+  const difference = new Date(deadlineAt).getTime() - new Date(finishedAt).getTime()
+  if (Math.abs(difference) < 3_600_000) return 'Xong đúng hạn'
+  return difference > 0
+    ? `Xong sớm ${formatDurationHoursDays(difference)}`
+    : `Xong trễ ${formatDurationHoursDays(-difference)}`
+}
+
+const remainingTimeLabel = (deadlineAt) => {
+  if (!deadlineAt) return 'Không đặt hạn'
+  const difference = new Date(deadlineAt).getTime() - Date.now()
+  const overdue = difference < 0
+  const absoluteDifference = Math.abs(difference)
+  if (absoluteDifference < 3_600_000) return `${overdue ? 'Trễ' : 'Còn'} dưới 1 giờ`
+  const totalHours = Math.ceil(absoluteDifference / 3_600_000)
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  const parts = []
+  if (days) parts.push(`${days} ngày`)
+  if (hours) parts.push(`${hours} giờ`)
+  return `${overdue ? 'Trễ' : 'Còn'} ${parts.join(' ')}`
+}
+
 function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
   const checklistCount = task.checklist?.length || 0
   const visibleChecklist = (task.checklist || []).slice(0, 3)
@@ -101,10 +141,10 @@ function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
     >
       <strong>{task.name || task.node_code}</strong>
       <span className={`employee-workspace-node-card__remaining${
-        task.is_overdue && !NODE_DA_XONG.has(task.status) ? ' is-overdue' : ''
-      }${NODE_DA_XONG.has(task.status) ? ' is-done' : ''}`}>
-        {task.is_overdue && !NODE_DA_XONG.has(task.status) && <AlertTriangle size={11} />}
-        {NODE_DA_XONG.has(task.status)
+        task.is_overdue && !COMPLETED_NODE_STATUSES.has(task.status) ? ' is-overdue' : ''
+      }${COMPLETED_NODE_STATUSES.has(task.status) ? ' is-done' : ''}`}>
+        {task.is_overdue && !COMPLETED_NODE_STATUSES.has(task.status) && <AlertTriangle size={11} />}
+        {COMPLETED_NODE_STATUSES.has(task.status)
           ? finishedTimeLabel(task.deadline_at, task.completion_date)
           : remainingTimeLabel(task.deadline_at)}
       </span>
@@ -120,46 +160,6 @@ function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
     </div>
     <footer><AssigneeAvatars assignees={task.assignees || []} /></footer>
   </article>
-}
-
-// Việc đã nghiệm thu thì đếm ngược tới hạn là vô nghĩa — nhân viên nhìn thẻ đã
-// xong mà thấy "Còn 17 ngày" sẽ tưởng chưa làm. Xong rồi thì thứ đáng nói là
-// làm sớm hay trễ so với hạn, chứ không phải còn bao lâu.
-const NODE_DA_XONG = new Set(['accepted', 'completed'])
-
-const khoangCach = (milliseconds) => {
-  const totalHours = Math.ceil(milliseconds / 3_600_000)
-  const days = Math.floor(totalHours / 24)
-  const hours = totalHours % 24
-  const parts = []
-  if (days) parts.push(`${days} ngày`)
-  if (hours) parts.push(`${hours} giờ`)
-  return parts.join(' ')
-}
-
-const finishedTimeLabel = (deadlineAt, finishedAt) => {
-  if (!finishedAt) return 'Đã xong'
-  if (!deadlineAt) return `Xong ${new Date(finishedAt).toLocaleDateString('vi-VN')}`
-  const difference = new Date(deadlineAt).getTime() - new Date(finishedAt).getTime()
-  if (Math.abs(difference) < 3_600_000) return 'Xong đúng hạn'
-  return difference > 0
-    ? `Xong sớm ${khoangCach(difference)}`
-    : `Xong trễ ${khoangCach(-difference)}`
-}
-
-const remainingTimeLabel = (deadlineAt) => {
-  if (!deadlineAt) return 'Không đặt hạn'
-  const difference = new Date(deadlineAt).getTime() - Date.now()
-  const overdue = difference < 0
-  const absoluteDifference = Math.abs(difference)
-  if (absoluteDifference < 3_600_000) return `${overdue ? 'Trễ' : 'Còn'} dưới 1 giờ`
-  const totalHours = Math.ceil(absoluteDifference / 3_600_000)
-  const days = Math.floor(totalHours / 24)
-  const hours = totalHours % 24
-  const parts = []
-  if (days) parts.push(`${days} ngày`)
-  if (hours) parts.push(`${hours} giờ`)
-  return `${overdue ? 'Trễ' : 'Còn'} ${parts.join(' ')}`
 }
 
 function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
@@ -191,11 +191,11 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
     if (file) body.append('file', file)
     if (note) body.append('note', note)
     if (lateReason.trim()) body.append('late_reason', lateReason.trim())
-    const coDinhKem = Boolean(file || note || lateReason.trim())
+    const hasAttachment = Boolean(file || note || lateReason.trim())
     try {
       await apiFetch(`/api/employee-portal/tasks/${taskNodeId}/checklist/${item.id}/submit`, {
         method: 'POST',
-        ...(coDinhKem ? { body } : {}),
+        ...(hasAttachment ? { body } : {}),
       })
       addToast('Đã nộp minh chứng, chờ duyệt', 'success')
       setFile(null)
@@ -312,18 +312,18 @@ function NodeActionBar({ task, onChanged }) {
     </button>
   }
   if (task.status === 'in_progress') {
-    const chuaDat = (task.checklist || []).filter(item => !CHECKLIST_DAT.has(item.status))
-    const chuaTich = chuaDat.filter(item => item.status === 'pending' || item.status === 'failed')
-    const nut = <button type="button" className="btn btn-primary btn-sm"
-      disabled={busy || chuaDat.length > 0} onClick={submitForAcceptance}>
+    const unapprovedChecklistItems = (task.checklist || []).filter(item => !CHECKLIST_PASSED_STATUSES.has(item.status))
+    const pendingChecklistItems = unapprovedChecklistItems.filter(item => item.status === 'pending' || item.status === 'failed')
+    const submitButton = <button type="button" className="btn btn-primary btn-sm"
+      disabled={busy || unapprovedChecklistItems.length > 0} onClick={submitForAcceptance}>
       <Send size={14} /> Nộp nghiệm thu
     </button>
-    if (chuaDat.length === 0) return nut
+    if (unapprovedChecklistItems.length === 0) return submitButton
     return <div className="employee-workspace-task-modal__gate">
-      {nut}
+      {submitButton}
       <small>
-        {chuaTich.length > 0
-          ? `Tích xong checklist bên dưới rồi mới nộp nghiệm thu được — còn ${chuaTich.length} việc`
+        {pendingChecklistItems.length > 0
+          ? `Tích xong checklist bên dưới rồi mới nộp nghiệm thu được — còn ${pendingChecklistItems.length} việc`
           : 'Checklist đã nộp, đang chờ quản lý duyệt'}
       </small>
     </div>
@@ -483,7 +483,7 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
       <div className="employee-workspace-node-modal">
         <div className="employee-workspace-node-card__summary">
           <strong>{WORKFLOW_NODE_STATUS_LABELS[selectedTask.status] || selectedTask.status}</strong>
-          <span>{NODE_DA_XONG.has(selectedTask.status)
+          <span>{COMPLETED_NODE_STATUSES.has(selectedTask.status)
             ? finishedTimeLabel(selectedTask.deadline_at, selectedTask.completion_date)
             : remainingTimeLabel(selectedTask.deadline_at)}</span>
         </div>

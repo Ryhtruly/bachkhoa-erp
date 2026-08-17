@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, LogOut, Settings, UserRound } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, UserRound, Wallet } from 'lucide-react';
 import { initialsOf, avatarColorFor, avatarUrlFor } from '../lib/avatar';
 import { useDropdownPosition } from '../lib/useDropdownPosition';
+import { Modal } from './ui';
+import MyPayroll from '../features/employee-portal/MyPayroll';
 
 export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const [avatarFailed, setAvatarFailed] = useState(false);
+  const [payslipOpen, setPayslipOpen] = useState(false);
   const style = useDropdownPosition(open, triggerRef, panelRef, 220);
   const name = user?.full_name || user?.username || 'Đang tải...';
   const avatarUrl = avatarUrlFor(user?.avatar_url);
@@ -45,6 +48,18 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
             <strong>{name}</strong>
             <span>{user?.email || 'Chưa có email'}</span>
           </div>
+          {user?.username !== 'admin' && (
+            <button
+              type="button"
+              className="header-user-menu__item"
+              onClick={() => {
+                onOpenChange?.(false);
+                setPayslipOpen(true);
+              }}
+            >
+              <Wallet size={16} color="#10b981" /> Phiếu lương của tôi
+            </button>
+          )}
           <button type="button" className="header-user-menu__item" disabled title="Chưa có chức năng">
             <UserRound size={16} /> Hồ sơ cá nhân
           </button>
@@ -56,6 +71,17 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
           </button>
         </div>,
         document.body,
+      )}
+
+      {payslipOpen && (
+        <Modal
+          open={payslipOpen}
+          onClose={() => setPayslipOpen(false)}
+          title="Phiếu Lương Cá Nhân"
+          size="md"
+        >
+          <MyPayroll />
+        </Modal>
       )}
     </div>
   );

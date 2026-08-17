@@ -87,8 +87,8 @@ export default function LegalDossierActions({ dossier, onDone, addToast, readOnl
         <span className={`legal-actions__pill legal-actions__pill--${STATUS_TONE[dossier.status] || 'neutral'}`}>
           {dossier.status_label}
         </span>
-        {dossier.so_lan_nop > 1 && (
-          <span className="legal-actions__meta">Đã nộp {dossier.so_lan_nop} lần</span>
+        {dossier.submission_count > 1 && (
+          <span className="legal-actions__meta">Đã nộp {dossier.submission_count} lần</span>
         )}
         {dossier.working_seconds > 0 && (
           <span className="legal-actions__meta">

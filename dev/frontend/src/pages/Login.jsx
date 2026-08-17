@@ -18,14 +18,14 @@ import { applyTheme, getInitialTheme } from '../lib/theme';
  * header hay bất cứ khung nào của app bọc quanh.
  */
 
-const TEN_DA_NHO = 'bachkhoa_login_username';
+const REMEMBERED_USERNAME_STORAGE_KEY = 'bachkhoa_login_username';
 
 export default function Login({ onLogin }) {
   // Không điền sẵn tài khoản nào. Chỉ khôi phục tên mà chính người dùng đã chọn
   // ghi nhớ ở lần đăng nhập trước.
-  const [username, setUsername] = useState(() => localStorage.getItem(TEN_DA_NHO) || '');
+  const [username, setUsername] = useState(() => localStorage.getItem(REMEMBERED_USERNAME_STORAGE_KEY) || '');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(TEN_DA_NHO)));
+  const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(REMEMBERED_USERNAME_STORAGE_KEY)));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState(getInitialTheme);
@@ -47,8 +47,8 @@ export default function Login({ onLogin }) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Không thể đăng nhập');
-      if (remember) localStorage.setItem(TEN_DA_NHO, username.trim());
-      else localStorage.removeItem(TEN_DA_NHO);
+      if (remember) localStorage.setItem(REMEMBERED_USERNAME_STORAGE_KEY, username.trim());
+      else localStorage.removeItem(REMEMBERED_USERNAME_STORAGE_KEY);
       onLogin(payload.token);
     } catch (loginError) {
       setError(loginError.message === 'Failed to fetch'

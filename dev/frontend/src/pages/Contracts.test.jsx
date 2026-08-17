@@ -34,14 +34,14 @@ describe('Contracts', () => {
     await waitFor(() => expect(container.querySelector('.contract-add-button')).toBeInTheDocument())
     fireEvent.click(container.querySelector('.contract-add-button'))
 
-    const tinh = await screen.findByLabelText(/Tỉnh \/ Thành phố/)
-    const phuong = screen.getByLabelText(/Phường \/ Xã/)
-    expect(phuong).toBeDisabled()
+    const provinceSelect = await screen.findByLabelText(/Tỉnh \/ Thành phố/)
+    const wardSelect = screen.getByLabelText(/Phường \/ Xã/)
+    expect(wardSelect).toBeDisabled()
 
     await waitFor(() => expect(screen.getByRole('option', { name: 'TP. Hồ Chí Minh' })).toBeInTheDocument())
-    fireEvent.change(tinh, { target: { value: '79' } })
+    fireEvent.change(provinceSelect, { target: { value: '79' } })
 
-    expect(phuong).not.toBeDisabled()
+    expect(wardSelect).not.toBeDisabled()
     await waitFor(() => expect(screen.getByRole('option', { name: 'Phường Bến Nghé' })).toBeInTheDocument())
   })
 
@@ -61,10 +61,10 @@ describe('Contracts', () => {
     await waitFor(() => expect(container.querySelector('.contract-add-button')).toBeInTheDocument())
     fireEvent.click(container.querySelector('.contract-add-button'))
 
-    const gia = await screen.findByLabelText(/Giá trị hợp đồng/)
-    fireEvent.change(gia, { target: { value: '18500000' } })
+    const priceInput = await screen.findByLabelText(/Giá trị hợp đồng/)
+    fireEvent.change(priceInput, { target: { value: '18500000' } })
 
-    expect(gia.value).toBe('18.500.000')
+    expect(priceInput.value).toBe('18.500.000')
     expect(screen.getByText('Mười tám triệu năm trăm nghìn đồng')).toBeInTheDocument()
   })
 })
