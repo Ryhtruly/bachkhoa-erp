@@ -49,7 +49,7 @@ def render_current_contract_document(db: Session, contract_id: str) -> Response:
     """Render a DOCX from the current persisted contract data without storing a file."""
     document_data, filename = build_current_contract_document_data(db, contract_id)
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
-    if contract.contract_template_id:
+    if contract.contract_template_id is not None:
         template = (
             db.query(ContractTemplate)
             .filter(ContractTemplate.id == contract.contract_template_id)

@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from docx import Document
+from fastapi import HTTPException
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -13,6 +14,46 @@ if str(BACKEND_DIR) not in sys.path:
 
 from src.core import doc_generator
 from src.routes import routes_contracts
+
+
+def _current_document_db(contract_template_id, template_rows):
+    current_rows = {
+        "Contract": SimpleNamespace(
+            id="2004/BK-2026",
+            customer_id="customer-1",
+            lead_id=None,
+            contract_template_id=contract_template_id,
+            service_type="Đo hiện trạng",
+            total_value=18500000,
+            date_signed="2026-08-14",
+        ),
+        "Customer": None,
+        "ServiceLine": None,
+        "Receivable": None,
+        "LeadPipeline": None,
+        "ContractGeneratedDocument": None,
+        "ContractTemplate": template_rows,
+    }
+
+    class CurrentDataQuery:
+        def __init__(self, rows):
+            self.rows = rows if isinstance(rows, list) else [rows]
+
+        def filter(self, *criteria):
+            for criterion in criteria:
+                key = getattr(getattr(criterion, "left", None), "key", None)
+                value = getattr(getattr(criterion, "right", None), "value", None)
+                if key is not None:
+                    self.rows = [row for row in self.rows if getattr(row, key, None) == value]
+            return self
+
+        def order_by(self, *_ordering):
+            return self
+
+        def first(self):
+            return self.rows[0] if self.rows else None
+
+    return SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
 
 
 class ContractDocumentRendererTests(unittest.TestCase):
@@ -208,6 +249,70 @@ class ContractDocumentRendererTests(unittest.TestCase):
 
         self.assertEqual(response.body, b"PK-docx")
         self.assertEqual(requested_template_keys, ["contract-templates/archived/v1.docx"])
+
+    def test_document_route_rejects_empty_string_selected_template_id(self):
+        """Catches an empty but non-null selection falling back to another published template."""
+        db = _current_document_db(
+            "",
+            [
+                SimpleNamespace(
+                    id="published-v2",
+                    status="published",
+                    version=2,
+                    template_storage_key="contract-templates/current/v2.docx",
+                )
+            ],
+        )
+        original_renderer = routes_contracts.doc_generator.render_contract_document
+        original_reader = routes_contracts.get_contract_template
+        routes_contracts.doc_generator.render_contract_document = lambda *_args, **_kwargs: b"PK-docx"
+        routes_contracts.get_contract_template = lambda _key: b"PK-private-template"
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                routes_contracts.get_contract_document("2004/BK-2026", db, None)
+        finally:
+            routes_contracts.doc_generator.render_contract_document = original_renderer
+            routes_contracts.get_contract_template = original_reader
+
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_document_route_rejects_missing_selected_template(self):
+        """Catches a selected ID silently switching to a current published template."""
+        db = _current_document_db(
+            "deleted-template",
+            [
+                SimpleNamespace(
+                    id="published-v2",
+                    status="published",
+                    version=2,
+                    template_storage_key="contract-templates/current/v2.docx",
+                )
+            ],
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            routes_contracts.get_contract_document("2004/BK-2026", db, None)
+
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_document_route_rejects_selected_template_without_private_key(self):
+        """Catches a selected template without its private DOCX key being rendered by fallback."""
+        db = _current_document_db(
+            "selected-template",
+            [
+                SimpleNamespace(
+                    id="selected-template",
+                    status="archived",
+                    version=1,
+                    template_storage_key="",
+                )
+            ],
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            routes_contracts.get_contract_document("2004/BK-2026", db, None)
+
+        self.assertEqual(raised.exception.status_code, 409)
 
     def test_renders_docx_bytes_without_creating_generated_docs_directory(self):
         """A new contract document must remain in memory, not in static/generated_docs."""
