@@ -36,3 +36,9 @@
 
 - Backend focused tests: 30 passed; bao gồm regression payroll.
 - Frontend: 15 test files / 22 tests passed và production build passed; lint còn các warning tồn tại từ trước ở module finance.
+
+## Task 5 — Atomic bootstrap contract template (19/08/2026)
+
+- Đã thay kiểm tra `HEAD` rồi upload bằng đúng một lệnh `PutObject` có `IfNoneMatch="*"`; object đã có trả `FileExistsError`, lỗi storage khác được ném lại nguyên trạng.
+- Giữ private bucket, object key và `ContentType` DOCX. Không thao tác cloud hoặc DB.
+- RED: 2 test thất bại trên code cũ vì không gửi conditional create và không ánh xạ conflict. GREEN: `pytest --noconftest -p no:cacheprovider tests/test_bootstrap_contract_template.py -q` → 2 passed.
