@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.db.database import get_db
 from src.core.auth import check_user_permission, require_authenticated_user, require_permission, User
-from src.db.models import Contract, ContractGeneratedDocument, Customer, Role, ServiceLine, ServicePackage, TaskType, UserRole
+from src.db.models import Contract, ContractGeneratedDocument, ContractTemplate, Customer, Role, ServiceLine, ServicePackage, TaskType, UserRole
 from src.core import doc_generator
 from src.contracts.services import build_current_contract_document_data
 from src.contracts import (
@@ -31,6 +31,7 @@ from src.contracts.workflow_runtime import (
 )
 from src.contracts.timeline import project_node_timeline
 from src.services.timeline_realtime import publish_timeline_change, timeline_event_stream
+from src.services.storage_service import get_contract_template
 
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
 
@@ -47,8 +48,34 @@ DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingm
 def render_current_contract_document(db: Session, contract_id: str) -> Response:
     """Render a DOCX from the current persisted contract data without storing a file."""
     document_data, filename = build_current_contract_document_data(db, contract_id)
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if contract.contract_template_id:
+        template = (
+            db.query(ContractTemplate)
+            .filter(ContractTemplate.id == contract.contract_template_id)
+            .first()
+        )
+        template_key = getattr(template, "template_storage_key", None)
+        if not template or not template_key:
+            raise HTTPException(
+                status_code=409,
+                detail="Mẫu hợp đồng đã chọn không còn tồn tại hoặc chưa có tệp DOCX riêng tư.",
+            )
+    else:
+        template = (
+            db.query(ContractTemplate)
+            .filter(ContractTemplate.status == "published")
+            .order_by(ContractTemplate.version.desc())
+            .first()
+        )
+        template_key = getattr(template, "template_storage_key", None)
+    template_bytes = get_contract_template(template_key) if template_key else None
     try:
-        document_bytes = doc_generator.render_contract_document(document_data, "mau_hop_dong_v1")
+        document_bytes = doc_generator.render_contract_document(
+            document_data,
+            "mau_hop_dong_v1",
+            template_bytes=template_bytes,
+        )
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=500, detail="Không thể tạo lại tài liệu hợp đồng.") from exc
 
@@ -1326,6 +1353,23 @@ def generate_and_save_contract(
     user: User = Depends(require_permission("contract", "create")),
 ):
     return ContractService.generate_and_save_contract(db, payload, actor_id=user.id)
+
+
+@router.get("/templates")
+def list_published_contract_templates(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("contract", "create")),
+):
+    rows = (
+        db.query(ContractTemplate)
+        .filter(ContractTemplate.status == "published")
+        .order_by(ContractTemplate.code.asc(), ContractTemplate.version.desc())
+        .all()
+    )
+    return [
+        {"id": row.id, "code": row.code, "version": row.version, "name": row.name}
+        for row in rows
+    ]
 
 
 @router.get("/{contract_id:path}/document")
