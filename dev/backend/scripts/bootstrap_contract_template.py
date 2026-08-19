@@ -35,7 +35,7 @@ def bootstrap_contract_template(template_path: Path, object_key: str) -> str:
     except ClientError as error:
         error_code = error.response.get("Error", {}).get("Code")
         status_code = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-        if error_code == "PreconditionFailed" or status_code == 412:
+        if error_code in {"PreconditionFailed", "ConditionalRequestConflict"} or status_code in {412, 409}:
             raise FileExistsError(f"Immutable contract template already exists: {object_key}") from error
         raise
     return object_key

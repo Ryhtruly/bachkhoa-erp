@@ -42,3 +42,9 @@
 - Đã thay kiểm tra `HEAD` rồi upload bằng đúng một lệnh `PutObject` có `IfNoneMatch="*"`; object đã có trả `FileExistsError`, lỗi storage khác được ném lại nguyên trạng.
 - Giữ private bucket, object key và `ContentType` DOCX. Không thao tác cloud hoặc DB.
 - RED: 2 test thất bại trên code cũ vì không gửi conditional create và không ánh xạ conflict. GREEN: `pytest --noconftest -p no:cacheprovider tests/test_bootstrap_contract_template.py -q` → 2 passed.
+
+## Task 5 — ConditionalRequestConflict regression (19/08/2026)
+
+- Bổ sung mapping `ConditionalRequestConflict` và HTTP `409` sang `FileExistsError`, cùng kết quả không ghi đè như `PreconditionFailed`/`412`.
+- RED: test mới thất bại với `ClientError(ConditionalRequestConflict, 409)` trên mã cũ. GREEN: `pytest --noconftest -p no:cacheprovider tests/test_bootstrap_contract_template.py -q` → 3 passed.
+- Không gọi cloud hoặc DB; test dùng Fake S3 cục bộ.
