@@ -28,6 +28,7 @@ vi.mock('../features/contracts/ContractComposer', () => ({
       contract_id: '2004/BK-2026',
       customer_name: 'Lê Thị Kiểm Thử',
       contract_value: 18500000,
+      contract_template_id: 'do-dac-v1',
     })}>
       Lưu hợp đồng
     </button>
@@ -44,7 +45,12 @@ describe('Contracts document actions', () => {
     vi.clearAllMocks();
     window.open = vi.fn();
     requestDocxSaveHandle.mockResolvedValue({ handle: { id: 'save-handle' } });
-    apiFetch.mockResolvedValue({ download_url: '/api/contracts/2004/BK-2026/document' });
+    apiFetch.mockImplementation((url) => {
+      if (url === '/api/contracts/templates') {
+        return Promise.resolve([{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }]);
+      }
+      return Promise.resolve({ download_url: '/api/contracts/2004/BK-2026/document' });
+    });
     fetchProtectedDocumentBlob.mockResolvedValue(new Blob(['docx']));
     writeBlobToFileHandle.mockResolvedValue({ success: true, method: 'picker' });
     vi.stubGlobal('fetch', vi.fn((url) => {
@@ -69,7 +75,10 @@ describe('Contracts document actions', () => {
       order.push('picker');
       return { handle: { id: 'save-handle' } };
     });
-    apiFetch.mockImplementation(async () => {
+    apiFetch.mockImplementation(async (url) => {
+      if (url === '/api/contracts/templates') {
+        return [{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }];
+      }
       order.push('create');
       return { download_url: '/api/contracts/2004/BK-2026/document' };
     });

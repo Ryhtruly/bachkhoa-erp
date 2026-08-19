@@ -43,6 +43,9 @@ export default function Contracts() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
   const [contractView, setContractView] = useState('list');
   const [selectedContract, setSelectedContract] = useState(null);
   const [documentUrl, setDocumentUrl] = useState('');
@@ -130,6 +133,30 @@ export default function Contracts() {
   }, [addToast, filterValues.service, page, searchTerm, signedDate, sort]);
 
   const openContractModal = async () => {
+    setTemplatesLoading(true);
+    setTemplatesError('');
+    let catalog;
+    try {
+      catalog = await apiFetch('/api/contracts/templates');
+    } catch {
+      const message = 'Không thể tải mẫu hợp đồng để soạn hợp đồng mới';
+      setTemplates([]);
+      setTemplatesError(message);
+      addToast(message, 'error');
+      setTemplatesLoading(false);
+      return;
+    }
+
+    if (!Array.isArray(catalog) || catalog.length === 0) {
+      const message = 'Chưa có mẫu hợp đồng đã ban hành để soạn hợp đồng mới';
+      setTemplates([]);
+      setTemplatesError(message);
+      addToast(message, 'error');
+      setTemplatesLoading(false);
+      return;
+    }
+    setTemplates(catalog);
+
     try {
       const response = await fetch('/api/contracts/next-code');
       if (response.ok) {
@@ -138,10 +165,13 @@ export default function Contracts() {
       } else {
         addToast('Không thể tạo mã hợp đồng mới', 'error');
       }
+      setIsModalOpen(true);
     } catch {
       addToast('Không thể kết nối để tạo mã hợp đồng mới', 'error');
+      setIsModalOpen(true);
+    } finally {
+      setTemplatesLoading(false);
     }
-    setIsModalOpen(true);
   };
 
   useEffect(() => {
@@ -440,6 +470,9 @@ export default function Contracts() {
         open={isModalOpen}
         code={formData.contract_id}
         services={config.services}
+        templates={templates}
+        templatesLoading={templatesLoading}
+        templatesError={templatesError}
         saving={savingContract}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleGenerateContract}

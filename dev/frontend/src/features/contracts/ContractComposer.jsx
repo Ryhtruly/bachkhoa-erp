@@ -102,10 +102,20 @@ const QUICK_DENOMINATIONS = [
   { label: '+10 triệu', value: 1e7 },
 ]
 
-export default function ContractComposer({ open, code, services = [], saving = false, onClose, onSubmit }) {
+export default function ContractComposer({
+  open,
+  code,
+  services = [],
+  templates = [],
+  templatesLoading = false,
+  templatesError = '',
+  saving = false,
+  onClose,
+  onSubmit,
+}) {
   const [form, setForm] = useState(() => ({
     customer_name: '', phone: '', service_type: '', sales_source: '',
-    contract_value: '', detail: '',
+    contract_value: '', detail: '', contract_template_id: '',
     date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
   }))
   const [geoBoundary, setGeoBoundary] = useState({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
@@ -120,7 +130,7 @@ export default function ContractComposer({ open, code, services = [], saving = f
     if (!open) return
     setForm({
       customer_name: '', phone: '', service_type: '', sales_source: '',
-      contract_value: '', detail: '',
+      contract_value: '', detail: '', contract_template_id: '',
       date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
     })
     setGeoBoundary({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
@@ -161,6 +171,7 @@ export default function ContractComposer({ open, code, services = [], saving = f
     ['provinceCode', geoBoundary.provinceCode],
     ['wardCode', geoBoundary.wardCode],
     ['service_type', form.service_type],
+    ['contract_template_id', form.contract_template_id],
     ['sales_source', form.sales_source],
     ['contract_value', form.contract_value],
     ['date_signed', form.date_signed],
@@ -207,7 +218,7 @@ export default function ContractComposer({ open, code, services = [], saving = f
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault()
-    if (saving) return
+    if (saving || templatesLoading) return
     if (missingRequiredKeys.length) {
       setMissingFields(missingRequiredKeys)
       const badElement = bodyRef.current?.querySelector('.bad')
@@ -221,6 +232,7 @@ export default function ContractComposer({ open, code, services = [], saving = f
       customer_name: form.customer_name.trim(),
       phone: form.phone.trim(),
       service_type: form.service_type,
+      contract_template_id: form.contract_template_id,
       sales_source: form.sales_source.trim(),
       contract_value: numericValue,
       address: fullAddress,
@@ -328,6 +340,22 @@ export default function ContractComposer({ open, code, services = [], saving = f
                   value={form.sales_source} onChange={handleFieldChange('sales_source')} />
               </div>
             </div>
+            {templatesError && <p className="hint" role="alert">{templatesError}</p>}
+            <div className="row">
+              <div>
+                <label htmlFor="hd-mau">Mẫu hợp đồng<u>*</u></label>
+                <select className={getValidationClass('contract_template_id').trim()} id="hd-mau"
+                  value={form.contract_template_id} disabled={templatesLoading}
+                  onChange={handleFieldChange('contract_template_id')}>
+                  <option value="">{templatesLoading ? 'Đang tải mẫu hợp đồng…' : 'Chọn mẫu hợp đồng'}</option>
+                  {templates.map(template => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} — v{template.version}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <div className="row">
               <div className="tien">
                 <label htmlFor="dv-gia">Giá trị hợp đồng<u>*</u><small>gõ tắt được: 18.5tr, 500k</small></label>
@@ -387,8 +415,8 @@ export default function ContractComposer({ open, code, services = [], saving = f
             </span>
           </div>
           <button className="btn" type="button" disabled={saving} onClick={() => onClose?.()}>Huỷ</button>
-          <button className="btn pri" type="submit" disabled={saving}>
-            {saving ? 'Đang lưu…' : 'Lưu hợp đồng'}
+          <button className="btn pri" type="submit" disabled={saving || templatesLoading}>
+            {saving ? 'Đang lưu…' : templatesLoading ? 'Đang tải mẫu…' : 'Lưu hợp đồng'}
           </button>
         </footer>
 
