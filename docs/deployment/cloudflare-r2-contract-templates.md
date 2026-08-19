@@ -60,14 +60,27 @@ private object key.
 
 ## 4. Upload both private templates before switching traffic
 
-Run these commands from `dev/backend` with the production R2 variables loaded.
-The resulting keys must exactly match the two published catalog rows. Do not
-overwrite an existing immutable versioned key.
+Any production R2 upload, overwrite, bucket configuration, or bucket-policy
+change requires explicit approval from the production operator. Only that
+approved operator performs the approved R2 action. Do not run these commands,
+retry an upload, change a policy, or alter bucket settings on another
+operator's behalf.
+
+After that approval, the approved operator runs these commands from
+`dev/backend` with the production R2 variables loaded. The resulting keys must
+exactly match the two published catalog rows.
 
 ```powershell
 & .\.venv\Scripts\python.exe .\scripts\bootstrap_contract_template.py .\src\templates\mau_hop_dong.docx contract-templates/HOP_DONG_DICH_VU_KHUNG_BACH_KHOA/v1.docx
 & .\.venv\Scripts\python.exe .\scripts\bootstrap_contract_template.py .\src\templates\Mau_Hop_Dong_Do_Dac_Bach_Khoa.docx contract-templates/MAU_HOP_DONG_DO_DAC_BACH_KHOA/v1.docx
 ```
+
+The bootstrap script first checks the exact fully prefixed
+`contract-templates/.../vN.docx` key and stops with `FileExistsError` before
+uploading if it already exists. If it stops, do not retry or overwrite that
+key: record the result, confirm the existing object through the approved
+read-only check, and use a new versioned key only through a separately
+approved catalog/update release.
 
 Keep the bucket private; the key is not a public URL. Verify each returned key
 is readable through the backend storage service before sending application
