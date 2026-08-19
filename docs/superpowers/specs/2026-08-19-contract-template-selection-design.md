@@ -52,14 +52,28 @@ The browser never receives an object-storage credential or direct object URL.
 
 ## Migration and release order
 
-1. Apply the existing storage-key migration.
-2. Apply a follow-up migration that adds the nullable contract foreign key and
-   indexes it, then upserts the two template catalog rows by `(code, version)`.
-3. Verify both referenced objects are readable from the configured storage
-   backend.
-4. Deploy the backend that accepts and persists `contract_template_id`.
-5. Verify a new contract renders from its selected template and a legacy
-   contract still opens during the transition.
+1. An approved production operator confirms the Supabase project reference and
+   reviews its linked migration history. The operator confirms
+   `20260818120000_contract_template_storage_key.sql` comes before
+   `20260819082921_contract_template_selection.sql`; no application database,
+   `DATABASE_URL`, `TEST_DATABASE_URL`, or ad-hoc SQL DDL is used for this
+   step.
+2. Only after explicit production approval, the operator applies the
+   project-approved migration command. The selection migration adds the
+   nullable contract foreign key and index, and upserts the two catalog rows by
+   `(code, version)`.
+3. Immediately perform a read-only catalog query for the two listed codes and
+   confirm exactly two `published` rows with their expected
+   `template_storage_key` values. Release output never includes credentials.
+4. Upload both DOCX files to private R2 using the exact immutable keys in the
+   catalog, then prove the backend storage service can read each object before
+   traffic cutover.
+5. Deploy the backend that accepts and persists `contract_template_id`. With a
+   `contract:read` and `contract:create` user, verify the catalog and protected
+   document endpoints, create one contract per template, Save As each DOCX,
+   open each with the in-app viewer, and verify the persisted selected ID.
+6. Open one legacy null-ID contract and confirm the temporary transition
+   fallback still renders.
 
 ## Validation
 
