@@ -11,6 +11,7 @@ from src.db.models import (
     AuditLog,
     Contract,
     ContractGeneratedDocument,
+    ContractTemplate,
     Customer,
     LeadPipeline,
     Receivable,
@@ -64,6 +65,25 @@ def build_contract_document_metadata(contract_id: str, customer_name: str | None
         f"HopDong_{safe_contract_id}_{safe_customer_name}.docx",
         f"/api/contracts/{quote(normalized_contract_id, safe='/')}/document",
     )
+
+
+def resolve_published_contract_template(db: Session, template_id: str) -> ContractTemplate:
+    template = (
+        db.query(ContractTemplate)
+        .filter(
+            ContractTemplate.id == template_id,
+            ContractTemplate.status == "published",
+        )
+        .first()
+    )
+    if not template:
+        raise HTTPException(
+            status_code=422,
+            detail="Mẫu hợp đồng không tồn tại hoặc chưa được ban hành",
+        )
+    if not template.template_storage_key:
+        raise HTTPException(status_code=422, detail="Mẫu hợp đồng chưa có tệp DOCX riêng tư")
+    return template
 
 
 def _document_date(value) -> str:
@@ -155,6 +175,7 @@ class ContractService:
     @staticmethod
     def create_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
+            template = resolve_published_contract_template(db, payload.contract_template_id)
             cust_name = payload.customer_name
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             service_type = payload.service_type
@@ -172,7 +193,8 @@ class ContractService:
                 customer_id=customer.id,
                 service_type=service_type,
                 total_value=contract_val,
-                date_signed=datetime.now().date()
+                date_signed=datetime.now().date(),
+                contract_template_id=template.id,
             )
             db.add(new_hd)
 
@@ -219,6 +241,8 @@ class ContractService:
                 "id": new_hd.id,
                 "service_line_id": service_line.id,
             }
+        except HTTPException:
+            raise
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
@@ -226,6 +250,7 @@ class ContractService:
     @staticmethod
     def generate_and_save_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
+            template = resolve_published_contract_template(db, payload.contract_template_id)
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             cust_name = payload.customer_name
             document_filename, document_route = build_contract_document_metadata(contract_id, cust_name)
@@ -258,6 +283,7 @@ class ContractService:
                 total_value=contract_val,
                 date_signed=d_signed,
                 file_link=document_route,
+                contract_template_id=template.id,
             )
             db.add(new_hd)
 
@@ -282,6 +308,7 @@ class ContractService:
 
             db.add(ContractGeneratedDocument(
                 contract_id=contract_id,
+                template_id=template.id,
                 status="generated",
                 output_file_link=document_route,
                 output_file_name=document_filename,

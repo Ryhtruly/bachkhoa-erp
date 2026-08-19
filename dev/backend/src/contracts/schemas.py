@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 class ContractCreateSchema(BaseModel):
     contract_id: str = ""
+    contract_template_id: str = Field(min_length=1, max_length=50)
     task_id: str
     customer_name: str
     service_type: str
@@ -13,6 +14,7 @@ class ContractCreateSchema(BaseModel):
 
 class ContractGenerateSchema(BaseModel):
     contract_id: str = ""
+    contract_template_id: str = Field(min_length=1, max_length=50)
     task_id: Optional[str] = ""
     customer_name: str
     phone: str
