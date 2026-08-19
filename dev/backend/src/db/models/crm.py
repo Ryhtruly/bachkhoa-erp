@@ -68,6 +68,11 @@ class Contract(Base):
     id = Column(String, primary_key=True) # e.g. 128/BK-2026
     customer_id = Column(String, ForeignKey("customers.id"))
     lead_id = Column(String, ForeignKey("leads_pipeline.id"), nullable=True)
+    contract_template_id = Column(
+        String,
+        ForeignKey("contract_templates.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     service_type = Column(String, nullable=True)
     total_value = Column(Numeric, nullable=True)
     date_signed = Column(Date, nullable=True)
@@ -136,6 +141,8 @@ class ContractTemplate(Base):
     description = Column(Text, nullable=True)
     template_file_name = Column(Text, nullable=True)
     template_file_link = Column(Text, nullable=True)
+    template_storage_key = Column(Text, nullable=True)
+    storage_provider = Column(Text, nullable=False, default="s3-compatible")
     placeholder_schema = Column(JSONB, nullable=False, default=list)
     render_rules = Column(JSONB, nullable=False, default=dict)
     status = Column(String, nullable=False, default="draft")
