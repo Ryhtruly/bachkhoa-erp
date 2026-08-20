@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import ContractComposer from './ContractComposer'
@@ -11,7 +11,10 @@ vi.mock('../../lib/api', () => ({
 }))
 
 describe('ContractComposer', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
 
   it('submits the explicitly chosen template ID', async () => {
     apiFetch.mockImplementation(async (url) => {
@@ -73,5 +76,52 @@ describe('ContractComposer', () => {
       contract_template_id: 'do-dac-v1',
       task_type_id: 'tt-1',
     })))
+  })
+
+  it('resets customer name, phone, and identity fields when switching between customer types', async () => {
+    apiFetch.mockResolvedValue({ data: [] })
+    render(
+      <ContractComposer
+        open
+        code="001/BK-2026"
+        services={[]}
+        templates={[{ id: 't-1', code: 'MAU_1', version: 1, name: 'Mẫu 1' }]}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    // Nhập dữ liệu cá nhân
+    const nameInput = screen.getByLabelText(/Tên khách hàng/)
+    const phoneInput = screen.getByLabelText(/Số điện thoại/)
+    fireEvent.change(nameInput, { target: { value: 'Nguyễn Văn A' } })
+    fireEvent.change(phoneInput, { target: { value: '0901234567' } })
+    expect(nameInput.value).toBe('Nguyễn Văn A')
+    expect(phoneInput.value).toBe('0901234567')
+
+    // Chuyển sang Doanh nghiệp
+    const businessTab = screen.getByRole('tab', { name: 'Doanh nghiệp' })
+    fireEvent.click(businessTab)
+
+    // Ô Tên công ty và Số điện thoại phải được xoá trắng
+    const companyInput = screen.getByLabelText(/Tên công ty/)
+    const phoneInputAfter = screen.getByLabelText(/Số điện thoại/)
+    expect(companyInput.value).toBe('')
+    expect(phoneInputAfter.value).toBe('')
+
+    // Nhập dữ liệu doanh nghiệp
+    fireEvent.change(companyInput, { target: { value: 'Công ty ABC' } })
+    fireEvent.change(phoneInputAfter, { target: { value: '0283888888' } })
+    expect(companyInput.value).toBe('Công ty ABC')
+    expect(phoneInputAfter.value).toBe('0283888888')
+
+    // Chuyển lại sang Cá nhân
+    const individualTab = screen.getByRole('tab', { name: 'Cá nhân' })
+    fireEvent.click(individualTab)
+
+    const individualNameAfter = screen.getByLabelText(/Tên khách hàng/)
+    const phoneInputFinal = screen.getByLabelText(/Số điện thoại/)
+    expect(individualNameAfter.value).toBe('')
+    expect(phoneInputFinal.value).toBe('')
   })
 })
