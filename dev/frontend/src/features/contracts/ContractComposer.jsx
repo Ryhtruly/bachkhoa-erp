@@ -178,6 +178,20 @@ export default function ContractComposer({
     return () => { huy = true }
   }, [open])
 
+  // Tự động chọn Gói đầu tiên và Hạng mục đầu tiên của gói đó
+  useEffect(() => {
+    if (open && danhMuc.length > 0 && !goiChon) {
+      const firstGoi = danhMuc[0]
+      const goiKey = firstGoi.id || firstGoi.code
+      setGoiChon(goiKey)
+      if (firstGoi.task_types?.length > 0) {
+        const firstTask = firstGoi.task_types[0]
+        setHangMucChon(firstTask.id)
+        setForm(f => ({ ...f, service_type: firstTask.name }))
+      }
+    }
+  }, [open, danhMuc, goiChon])
+
   // Tự động chọn mẫu hợp đồng đầu tiên nếu có danh sách mẫu
   useEffect(() => {
     if (open && templates.length > 0 && !form.contract_template_id) {
@@ -545,8 +559,19 @@ export default function ContractComposer({
                 <label htmlFor="dv-goi">Gói dịch vụ<u>*</u></label>
                 <select className={getValidationClass('hangMucChon').trim()} id="dv-goi"
                   value={goiChon}
-                  onChange={(e) => { setGoiChon(e.target.value); setHangMucChon(''); setForm(f => ({ ...f, service_type: '' })) }}>
-                  <option value="">Chọn gói</option>
+                  onChange={(e) => {
+                    const selectedGoiKey = e.target.value
+                    setGoiChon(selectedGoiKey)
+                    const goi = danhMuc.find(g => (g.id || g.code) === selectedGoiKey)
+                    if (goi?.task_types?.length > 0) {
+                      const firstTask = goi.task_types[0]
+                      setHangMucChon(firstTask.id)
+                      setForm(f => ({ ...f, service_type: firstTask.name }))
+                    } else {
+                      setHangMucChon('')
+                      setForm(f => ({ ...f, service_type: '' }))
+                    }
+                  }}>
                   {danhMuc.map(g => <option key={g.id || g.code} value={g.id || g.code}>{g.name}</option>)}
                 </select>
               </div>
@@ -561,7 +586,6 @@ export default function ContractComposer({
                     const hm = goi?.task_types?.find(t => t.id === id)
                     setForm(f => ({ ...f, service_type: hm?.name || '' }))
                   }}>
-                  <option value="">{goiChon ? 'Chọn hạng mục' : 'Chọn gói trước'}</option>
                   {(danhMuc.find(g => (g.id || g.code) === goiChon)?.task_types || []).map(hm => (
                     <option key={hm.id} value={hm.id}>{hm.name}</option>
                   ))}
