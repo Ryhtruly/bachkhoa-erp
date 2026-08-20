@@ -7,6 +7,7 @@ import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, C
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch } from '../../lib/api'
 import AvatarImage from '../../components/AvatarImage'
+import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage'
 import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './employeePortalMappers'
 import { WORKFLOW_NODE_STATUS_LABELS } from '../../components/contracts/workflowLabels'
 import Modal from '../../components/ui/Modal'
@@ -174,6 +175,16 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
   const files = item.evidence_files || []
   const isPastDeadline = Boolean(deadlineAt && Date.now() > new Date(deadlineAt).getTime())
 
+  const openEvidence = async (event, evidenceFile) => {
+    if (!isPrivateObjectKey(evidenceFile.url)) return
+    event.preventDefault()
+    try {
+      await openPrivateObject(evidenceFile.url)
+    } catch (error) {
+      addToast(error.message || 'Không thể mở file minh chứng', 'error')
+    }
+  }
+
   const submit = async () => {
     if (item.require_evidence && !file) {
       fileInputRef.current?.click()
@@ -221,7 +232,13 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
     {files.length > 0 && (
       <div className="employee-workspace-checklist__files">
         {files.map((evidenceFile, index) => (
-          <a key={`${evidenceFile.url}-${index}`} href={evidenceFile.url} target="_blank" rel="noreferrer">
+          <a
+            key={`${evidenceFile.url}-${index}`}
+            href={isPrivateObjectKey(evidenceFile.url) ? '#' : evidenceFile.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => openEvidence(event, evidenceFile)}
+          >
             <Paperclip size={12} />{evidenceFile.name || `Minh chứng ${index + 1}`}
           </a>
         ))}

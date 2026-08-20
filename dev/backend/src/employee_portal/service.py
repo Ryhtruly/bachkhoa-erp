@@ -286,17 +286,15 @@ class EmployeePortalService:
         }
 
     @staticmethod
-    def submit_checklist_evidence(
+    def _authorized_checklist_for_submission(
         db: Session,
         employee: Employee,
         task_node_id: str,
         checklist_result_id: str,
-        evidence_url: str | None,
-        file_name: str | None,
-        note: str | None,
-        late_reason: str | None,
-        submitted_at: datetime,
-    ) -> dict:
+        *,
+        evidence_provided: bool,
+        lock: bool,
+    ):
         assigned = db.execute(
             text(
                 """
@@ -330,26 +328,66 @@ class EmployeePortalService:
         if not assigned:
             raise HTTPException(status_code=403, detail="Bạn không được phân công cho công việc này.")
 
+        checklist_query = """
+            select r.id, r.status, r.require_evidence, r.evidence_data,
+                   n.deadline_at
+            from public.task_node_checklist_results r
+            join public.task_nodes n on n.id = r.task_node_id
+            where r.id = :id and r.task_node_id = :task_node_id
+        """
+        if lock:
+            checklist_query += " for update of r, n"
         checklist = db.execute(
-            text(
-                """
-                select r.id, r.status, r.require_evidence, r.evidence_data,
-                       n.deadline_at
-                from public.task_node_checklist_results r
-                join public.task_nodes n on n.id = r.task_node_id
-                where r.id = :id and r.task_node_id = :task_node_id
-                for update of r, n
-                """
-            ),
+            text(checklist_query),
             {"id": checklist_result_id, "task_node_id": task_node_id},
         ).mappings().first()
         if not checklist:
             raise HTTPException(status_code=404, detail="Không tìm thấy checklist.")
         if checklist["status"] not in (ChecklistStatus.NOT_STARTED, ChecklistStatus.REJECTED):
             raise HTTPException(status_code=409, detail="Checklist này đã nộp hoặc đã được duyệt.")
-
-        if checklist["require_evidence"] and not evidence_url:
+        if checklist["require_evidence"] and not evidence_provided:
             raise HTTPException(status_code=422, detail="Checklist này bắt buộc phải nộp file minh chứng.")
+        return checklist
+
+    @staticmethod
+    def authorize_checklist_evidence_submission(
+        db: Session,
+        employee: Employee,
+        task_node_id: str,
+        checklist_result_id: str,
+        *,
+        evidence_provided: bool,
+    ) -> None:
+        """Reject unauthorized or invalid submissions before touching object storage."""
+        EmployeePortalService._authorized_checklist_for_submission(
+            db,
+            employee,
+            task_node_id,
+            checklist_result_id,
+            evidence_provided=evidence_provided,
+            lock=False,
+        )
+
+    @staticmethod
+    def submit_checklist_evidence(
+        db: Session,
+        employee: Employee,
+        task_node_id: str,
+        checklist_result_id: str,
+        evidence_url: str | None,
+        file_name: str | None,
+        note: str | None,
+        late_reason: str | None,
+        submitted_at: datetime,
+    ) -> dict:
+        checklist = EmployeePortalService._authorized_checklist_for_submission(
+            db,
+            employee,
+            task_node_id,
+            checklist_result_id,
+            evidence_provided=bool(evidence_url),
+            lock=True,
+        )
 
         next_status, is_overdue, normalized_late_reason = checklist_submission_state(
             deadline_at=checklist["deadline_at"],

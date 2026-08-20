@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { apiFetch } from '../../lib/api';
+import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage';
 import AvatarImage from '../AvatarImage';
 import {
   DEFAULT_WORKFLOW_LABELS,
@@ -521,6 +522,15 @@ export default function ContractWorkflowDesigner({
   targetType,
   targetNonce,
 }) {
+  const openEvidenceFile = useCallback(async (event, file) => {
+    if (!isPrivateObjectKey(file.url)) return;
+    event.preventDefault();
+    try {
+      await openPrivateObject(file.url);
+    } catch (error) {
+      addToast?.(error.message || 'Không thể mở file minh chứng', 'error');
+    }
+  }, [addToast]);
   const workflow = serviceLine?.workflow;
   const hasActiveRuntime = Boolean(workflow?.active_revision_id);
   const isWorkflowCancelled = workflow?.status === 'cancelled';
@@ -1684,8 +1694,14 @@ export default function ContractWorkflowDesigner({
                           <span>File minh chứng đã nộp</span>
                           {(item.runtime?.evidence_data?.files || []).length > 0 ? (
                             item.runtime.evidence_data.files.map((file, fileIndex) => (
-                              safeExternalUrl(file.url) ? (
-                                <a key={`${file.url}-${fileIndex}`} href={safeExternalUrl(file.url)} target="_blank" rel="noreferrer">
+                              safeExternalUrl(file.url) || isPrivateObjectKey(file.url) ? (
+                                <a
+                                  key={`${file.url}-${fileIndex}`}
+                                  href={isPrivateObjectKey(file.url) ? '#' : safeExternalUrl(file.url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(event) => openEvidenceFile(event, file)}
+                                >
                                   <FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}
                                   <ExternalLink size={11} />
                                 </a>

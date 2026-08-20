@@ -31,7 +31,7 @@ const workItem = {
   rates: [{ role_code: 'MAIN', amount: 150000 }],
 };
 
-function makeServiceLine({ active = false, changedActiveNode = false } = {}) {
+function makeServiceLine({ active = false, changedActiveNode = false, privateEvidence = false } = {}) {
   const node = {
     task_code: 'K01',
     name: changedActiveNode ? 'Bản sửa Node' : 'Nghiệm thu',
@@ -40,6 +40,7 @@ function makeServiceLine({ active = false, changedActiveNode = false } = {}) {
       key: 'check-1',
       name: 'Biên bản nghiệm thu',
       required: true,
+      require_evidence: privateEvidence,
       compensation: { is_payable: true, work_item_id: workItem.id },
     }],
     assignments: [{ employee_id: 'emp-1', full_name: 'Nguyễn Văn A', role_code: 'MAIN', is_primary: true }],
@@ -56,6 +57,12 @@ function makeServiceLine({ active = false, changedActiveNode = false } = {}) {
       active_graph: active ? { start_node: 'node-1', nodes: { 'node-1': activeNode }, ui: {} } : null,
       execution_nodes: active ? [{
         id: 'task-1', node_key: 'node-1', node_code: 'K01', status: 'in_progress',
+        checklist_results: privateEvidence ? [{
+          checklist_key: 'check-1',
+          checklist_name: 'Biên bản nghiệm thu',
+          require_evidence: true,
+          evidence_data: { files: [{ name: 'bien-ban.pdf', url: 'contracts/2004/service-lines/line-1/nodes/task-1/bien-ban.pdf' }] },
+        }] : [],
       }] : [{
         id: 'task-1', node_key: 'node-1', node_code: 'K01', status: 'submitted', pending_acceptance_id: 'acceptance-1',
       }],
@@ -91,6 +98,13 @@ describe('ContractWorkflowDesigner workflow activation', () => {
 
     expect(screen.getByText('Kết quả xử lý')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '— Chọn kết quả —' })).toBeInTheDocument();
+  });
+
+  it('renders a private workflow evidence object key as an actionable link', () => {
+    renderDesigner({ active: true, privateEvidence: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Checklist' }));
+
+    expect(screen.getByRole('link', { name: /bien-ban\.pdf/i })).toBeInTheDocument();
   });
 
   it('waits for the activation modal confirmation before sending one activation request', async () => {

@@ -2,8 +2,9 @@ import io
 import logging
 import re
 from datetime import datetime, timezone
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import text
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from src.db.database import get_db
 from src.db.models import Employee, User
 from src.employee_portal.service import EmployeePortalService
 from src.files.references import FileReference
-from src.services.storage_service import delete_file, ensure_bucket, upload_file
+from src.services.storage_service import AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX, delete_file, ensure_bucket, get_file, upload_file
 from src.services.timeline_realtime import publish_timeline_change
 
 
@@ -32,6 +33,63 @@ router = APIRouter(prefix="/api/employee-portal", tags=["Employee Portal"])
 ALLOWED_EVIDENCE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"}
 MAX_EVIDENCE_BYTES = 10 * 1024 * 1024
 logger = logging.getLogger(__name__)
+
+
+@router.get("/file")
+def read_private_file(
+    object_key: str = Query(..., min_length=1),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stream avatar/workflow objects without exposing the private bucket."""
+    if not object_key.startswith((AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX)):
+        raise HTTPException(status_code=400, detail="Đường dẫn tệp nội bộ không hợp lệ.")
+    if object_key.startswith(WORKFLOW_EVIDENCE_PREFIX):
+        match = re.fullmatch(
+            r"contracts/([^/]+)/service-lines/([^/]+)/nodes/([^/]+)/[^/]+",
+            object_key,
+        )
+        if not match:
+            raise HTTPException(status_code=400, detail="Đường dẫn tệp minh chứng không hợp lệ.")
+        contract_id, service_line_id, task_node_id = match.groups()
+        assigned = db.execute(
+            text(
+                """
+                select 1
+                from public.task_node_assignments a
+                join public.employees e on e.id = a.employee_id
+                join public.task_nodes n on n.id = a.task_node_id
+                join public.workflow_instances wi on wi.id = n.workflow_instance_id
+                join public.service_lines sl on sl.id = wi.service_line_id
+                where e.user_id = :user_id
+                  and coalesce(e.is_active, true)
+                  and a.assignment_status not in ('replaced', 'declined', 'cancelled')
+                  and n.id = :task_node_id
+                  and wi.service_line_id = :service_line_id
+                  and sl.contract_id = :contract_id
+                limit 1
+                """
+            ),
+            {
+                "user_id": user.id,
+                "contract_id": contract_id,
+                "service_line_id": service_line_id,
+                "task_node_id": task_node_id,
+            },
+        ).first()
+        if not assigned and not check_user_permission(db, user, "contracts", "read"):
+            raise HTTPException(status_code=403, detail="Không đủ quyền xem file minh chứng này.")
+    try:
+        stored = get_file(object_key)
+        return Response(
+            content=stored["Body"].read(),
+            media_type=stored.get("ContentType") or "application/octet-stream",
+            headers={"Cache-Control": "private, max-age=300"},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Đường dẫn tệp nội bộ không hợp lệ.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Tệp nội bộ không tồn tại.") from exc
 
 
 def _active_employee_for_user(db: Session, user_id: str) -> Employee | None:
@@ -58,7 +116,7 @@ def evidence_file_reference(db: Session, task_node_id: str, filename: str) -> Fi
     ).mappings().first()
     if not task_node:
         raise HTTPException(status_code=404, detail="Không tìm thấy công việc để lưu file minh chứng.")
-    return FileReference.from_task_node(task_node, filename)
+    return FileReference.from_task_node(task_node, f"{uuid4().hex}-{filename}")
 
 
 @router.get("/me")
@@ -135,6 +193,14 @@ async def submit_checklist_evidence(
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+
+    EmployeePortalService.authorize_checklist_evidence_submission(
+        db,
+        employee,
+        task_node_id,
+        checklist_result_id,
+        evidence_provided=file is not None,
+    )
 
     evidence_url = None
     safe_name = None

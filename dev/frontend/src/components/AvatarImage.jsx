@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { avatarColorFor, avatarUrlFor, initialsOf } from '../lib/avatar'
+import { fetchPrivateObjectBlob, isPrivateObjectKey } from '../lib/privateStorage'
 
 /** Render a safe avatar URL and degrade to deterministic initials on 404/load failure. */
 export default function AvatarImage({
@@ -13,12 +14,37 @@ export default function AvatarImage({
   fallback,
 }) {
   const safeSrc = avatarUrlFor(src)
+  const privateKey = isPrivateObjectKey(src) ? src : null
+  const [privateSrc, setPrivateSrc] = useState(null)
   const [imageFailed, setImageFailed] = useState(false)
 
-  useEffect(() => setImageFailed(false), [safeSrc])
+  useEffect(() => {
+    setImageFailed(false)
+    setPrivateSrc(null)
+    if (!privateKey) return undefined
 
-  if (safeSrc && !imageFailed) {
-    return <img className={className} src={safeSrc} alt={name} title={title} style={style} onError={() => setImageFailed(true)} />
+    let cancelled = false
+    let objectUrl = null
+    fetchPrivateObjectBlob(privateKey)
+      .then(blob => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setPrivateSrc(objectUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setImageFailed(true)
+      })
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [privateKey, safeSrc])
+
+  const resolvedSrc = safeSrc || privateSrc
+
+  if (resolvedSrc && !imageFailed) {
+    return <img className={className} src={resolvedSrc} alt={name} title={title} style={style} onError={() => setImageFailed(true)} />
   }
 
   if (fallback) return fallback

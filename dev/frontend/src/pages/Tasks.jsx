@@ -16,7 +16,7 @@ import {
   Badge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
-import { avatarColorFor, initialsOf } from '../lib/avatar';
+import AvatarImage from '../components/AvatarImage';
 import { isDossierLocked } from '../lib/dossierStatus';
 import './surveyRecords.css';
 
@@ -72,9 +72,13 @@ const formatDate = (value) => {
 
 function Avatar({ name, url }) {
   if (!name) return null;
-  return url
-    ? <img className="survey-avatar survey-avatar--img" src={url} alt={name} title={name} />
-    : <span className="survey-avatar" style={{ background: avatarColorFor(name) }} title={name}>{initialsOf(name)}</span>;
+  return <AvatarImage
+    className="survey-avatar survey-avatar--img"
+    fallbackClassName="survey-avatar"
+    src={url}
+    name={name}
+    title={name}
+  />;
 }
 
 function Field({ label, wide, editing, value, empty = 'Chưa có', children }) {
