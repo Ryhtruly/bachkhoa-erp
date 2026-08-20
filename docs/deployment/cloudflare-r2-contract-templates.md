@@ -2,7 +2,7 @@
 
 ## 1. Create one private bucket in Cloudflare
 
-Create `bachkhoa-erp-files`. Do not attach a public bucket policy. The ERP separates domains by private object-key prefixes: `wiki/`, `finance/`, `contract-templates/`, `workflow-evidence/`, and `avatars/`.
+Create `bachkhoa-erp-files`. Do not attach a public bucket policy. The ERP separates domains by private object-key prefixes: `wiki/`, `finance/`, `contract-templates/`, `contracts/<contract-id>/service-lines/<service-line-id>/nodes/<task-node-id>/`, and `avatars/`.
 
 ## 2. Configure the ERP backend
 

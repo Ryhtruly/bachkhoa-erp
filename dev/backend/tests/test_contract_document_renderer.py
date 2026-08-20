@@ -1,9 +1,11 @@
 import io
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from docx import Document
 from fastapi import HTTPException
@@ -111,7 +113,8 @@ class ContractDocumentRendererTests(unittest.TestCase):
         original_renderer = routes_contracts.doc_generator.render_contract_document
         routes_contracts.doc_generator.render_contract_document = lambda data, version, template_bytes=None: rendered.update(data) or b"PK-docx"
         try:
-            response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+            with patch.dict(os.environ, {"ENV": "development", "OBJECT_STORAGE_ENDPOINT": ""}):
+                response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
 
@@ -327,10 +330,11 @@ class ContractDocumentRendererTests(unittest.TestCase):
             original_backend_dir = doc_generator.BACKEND_DIR
             doc_generator.BACKEND_DIR = str(backend_dir)
             try:
-                output = doc_generator.render_contract_document(
-                    {"contract_id": "2004/BK-2026"},
-                    "mau_hop_dong_v1",
-                )
+                with patch.dict(os.environ, {"ENV": "development", "OBJECT_STORAGE_ENDPOINT": ""}):
+                    output = doc_generator.render_contract_document(
+                        {"contract_id": "2004/BK-2026"},
+                        "mau_hop_dong_v1",
+                    )
             finally:
                 doc_generator.BACKEND_DIR = original_backend_dir
 
@@ -351,6 +355,23 @@ class ContractDocumentRendererTests(unittest.TestCase):
         )
 
         self.assertIn("Nguyễn Thị A", "".join(p.text for p in Document(io.BytesIO(output)).paragraphs))
+
+    def test_repository_template_fallback_is_rejected_for_configured_production_storage(self):
+        with patch.dict(os.environ, {"ENV": "production", "OBJECT_STORAGE_ENDPOINT": "https://abc123.r2.cloudflarestorage.com"}):
+            with self.assertRaisesRegex(ValueError, "repository template fallback"):
+                doc_generator.render_contract_document(
+                    {"contract_id": "2004/BK-2026"},
+                    "mau_hop_dong_v1",
+                )
+
+    def test_document_route_rejects_missing_template_selection_in_managed_production(self):
+        db = _current_document_db(None, [])
+
+        with patch.dict(os.environ, {"ENV": "production", "OBJECT_STORAGE_ENDPOINT": "https://abc123.r2.cloudflarestorage.com"}):
+            with self.assertRaises(HTTPException) as raised:
+                routes_contracts.render_current_contract_document(db, "2004/BK-2026")
+
+        self.assertEqual(raised.exception.status_code, 409)
 
 
 if __name__ == "__main__":

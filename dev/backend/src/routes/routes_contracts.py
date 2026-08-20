@@ -69,6 +69,11 @@ def render_current_contract_document(db: Session, contract_id: str) -> Response:
             .first()
         )
         template_key = getattr(template, "template_storage_key", None)
+        if not template_key and not doc_generator.repository_template_fallback_allowed():
+            raise HTTPException(
+                status_code=409,
+                detail="Chưa cấu hình mẫu hợp đồng riêng tư cho môi trường này.",
+            )
     template_bytes = get_contract_template(template_key) if template_key else None
     try:
         document_bytes = doc_generator.render_contract_document(

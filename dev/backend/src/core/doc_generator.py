@@ -10,6 +10,14 @@ CONTRACT_TEMPLATE_VERSIONS = {
 }
 
 
+def repository_template_fallback_allowed(environ: dict[str, str] | None = None) -> bool:
+    """Allow the checked-in template only for explicit local development."""
+    values = os.environ if environ is None else environ
+    environment = values.get("ENV", "").strip().lower()
+    managed_endpoint = values.get("OBJECT_STORAGE_ENDPOINT", "").strip()
+    return environment in {"development", "dev", "local"} and not managed_endpoint
+
+
 def contract_template_filename(template_version: str) -> str:
     try:
         return CONTRACT_TEMPLATE_VERSIONS[template_version]
@@ -28,15 +36,20 @@ def _replace_document_placeholders(doc: Document, data: dict) -> None:
                     replace_placeholders_in_paragraph(paragraph, data)
 
 
-def render_contract_document(data: dict, template_version: str) -> bytes:
+def render_contract_document(data: dict, template_version: str, template_bytes: bytes | None = None) -> bytes:
     """Render an issued contract into memory without creating a server-side DOCX."""
-    template_path = os.path.join(
-        BACKEND_DIR,
-        "src",
-        "templates",
-        contract_template_filename(template_version),
-    )
-    doc = Document(template_path)
+    if template_bytes is not None:
+        doc = Document(io.BytesIO(template_bytes))
+    else:
+        if not repository_template_fallback_allowed():
+            raise ValueError("repository template fallback is disabled outside local development")
+        template_path = os.path.join(
+            BACKEND_DIR,
+            "src",
+            "templates",
+            contract_template_filename(template_version),
+        )
+        doc = Document(template_path)
     _replace_document_placeholders(doc, data)
     output = io.BytesIO()
     doc.save(output)
