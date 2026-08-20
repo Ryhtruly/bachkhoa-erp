@@ -136,7 +136,8 @@ export default function ContractComposer({
     tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
     email: '', zalo_phone: '', representative_name: '', representative_role: '',
   })
-  const [ketQuaTim, setKetQuaTim] = useState([])
+  const [ketQuaTimTen, setKetQuaTimTen] = useState([])
+  const [ketQuaTimMST, setKetQuaTimMST] = useState([])
   const [dangTim, setDangTim] = useState(false)
   const [dangTraCuu, setDangTraCuu] = useState(false)
   const [geoBoundary, setGeoBoundary] = useState({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
@@ -165,7 +166,8 @@ export default function ContractComposer({
     setKhachId('')
     setDinhDanh({ tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
       email: '', zalo_phone: '', representative_name: '', representative_role: '' })
-    setKetQuaTim([])
+    setKetQuaTimTen([])
+    setKetQuaTimMST([])
   }, [open])
 
   // Tải cây danh mục Gói → Hạng mục một lần khi mở form.
@@ -283,32 +285,52 @@ export default function ContractComposer({
     setMissingFields(cur => cur.filter(x => x !== k))
   }
 
-  // Tìm khách cũ theo tên/SĐT/CCCD/MST khi gõ ≥ 2 ký tự.
+  // Tìm khách cũ theo TÊN khi gõ ≥ 2 ký tự (lọc theo đúng loại khách Cá nhân/Doanh nghiệp).
   useEffect(() => {
-    const q = (form.customer_name || form.phone || '').trim()
-    if (!open || q.length < 2 || khachId) { setKetQuaTim([]); return }
+    const q = (form.customer_name || '').trim()
+    if (!open || q.length < 2 || khachId) { setKetQuaTimTen([]); return }
     let huy = false
     setDangTim(true)
     const t = setTimeout(() => {
-      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}`)
-        .then(res => { if (!huy) setKetQuaTim(res?.data || []) })
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}&customer_type=${loaiKhach}`)
+        .then(res => { if (!huy) setKetQuaTimTen(res?.data || []) })
         .catch(() => {})
         .finally(() => { if (!huy) setDangTim(false) })
     }, 350)
     return () => { huy = true; clearTimeout(t) }
-  }, [open, form.customer_name, form.phone, khachId])
+  }, [open, form.customer_name, loaiKhach, khachId])
+
+  // Tìm doanh nghiệp cũ theo MÃ SỐ THUẾ khi gõ ≥ 2 ký tự (chỉ ở tab Doanh nghiệp).
+  useEffect(() => {
+    if (loaiKhach !== 'business') { setKetQuaTimMST([]); return }
+    const q = (dinhDanh.tax_id || '').trim()
+    if (!open || q.length < 2 || khachId) { setKetQuaTimMST([]); return }
+    let huy = false
+    const t = setTimeout(() => {
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}&customer_type=business`)
+        .then(res => { if (!huy) setKetQuaTimMST(res?.data || []) })
+        .catch(() => {})
+    }, 350)
+    return () => { huy = true; clearTimeout(t) }
+  }, [open, dinhDanh.tax_id, loaiKhach, khachId])
 
   const chonKhachCu = (kh) => {
     setKhachId(kh.id)
     setLoaiKhach(kh.customer_type || 'individual')
-    setForm(cur => ({ ...cur, customer_name: kh.full_name || '', phone: kh.phone || '' }))
+    setForm(cur => ({
+      ...cur,
+      customer_name: kh.full_name || '',
+      phone: kh.phone || '',
+      detail: kh.address || cur.detail,
+    }))
     setDinhDanh({
       tax_id: kh.tax_id || '', id_card_number: kh.id_card_number || '',
       id_card_date: kh.id_card_date || '', id_card_place: kh.id_card_place || '',
       email: kh.email || '', zalo_phone: kh.zalo_phone || '',
       representative_name: kh.representative_name || '', representative_role: kh.representative_role || '',
     })
-    setKetQuaTim([])
+    setKetQuaTimTen([])
+    setKetQuaTimMST([])
   }
 
   // Tra cứu doanh nghiệp theo MST — tự điền tên công ty + địa chỉ (tiện ích).
@@ -431,10 +453,10 @@ export default function ContractComposer({
                 <input className={`in${getValidationClass('customer_name')}`} id="kh-ten" autoComplete="off"
                   placeholder={loaiKhach === 'business' ? 'Công ty TNHH ...' : 'Nguyễn Văn An'}
                   value={form.customer_name} onChange={handleFieldChange('customer_name')} />
-                {/* Gợi ý khách cũ — chọn để tự điền, tránh nhập lại và tạo trùng. */}
-                {ketQuaTim.length > 0 && (
+                {/* Gợi ý khách cũ theo tên */}
+                {ketQuaTimTen.length > 0 && (
                   <ul className="kh-goiy">
-                    {ketQuaTim.map(kh => (
+                    {ketQuaTimTen.map(kh => (
                       <li key={kh.id}><button type="button" onClick={() => chonKhachCu(kh)}>
                         <strong>{kh.full_name}</strong>
                         <small>{kh.customer_type === 'business' ? `MST ${kh.tax_id || '—'}` : `CCCD ${kh.id_card_number || '—'}`} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
@@ -452,7 +474,7 @@ export default function ContractComposer({
             {loaiKhach === 'business' ? (
               <>
                 <div className="row c2">
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label htmlFor="kh-mst">Mã số thuế<u>*</u></label>
                     <div className="kh-mst-row">
                       <input className={`in${getValidationClass('tax_id')}`} id="kh-mst" inputMode="numeric" placeholder="0312345678"
@@ -461,6 +483,17 @@ export default function ContractComposer({
                       <button type="button" className="kh-tracuu" disabled={dangTraCuu || (dinhDanh.tax_id || '').replace(/\D/g,'').length < 10}
                         onClick={traCuuMST}>{dangTraCuu ? '...' : 'Tra cứu'}</button>
                     </div>
+                    {/* Gợi ý doanh nghiệp cũ theo MST */}
+                    {ketQuaTimMST.length > 0 && (
+                      <ul className="kh-goiy">
+                        {ketQuaTimMST.map(kh => (
+                          <li key={kh.id}><button type="button" onClick={() => chonKhachCu(kh)}>
+                            <strong>{kh.full_name}</strong>
+                            <small>MST {kh.tax_id || '—'} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
+                          </button></li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div>
                     <label htmlFor="kh-email">Email</label>

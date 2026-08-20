@@ -1575,6 +1575,7 @@ def create_contract(
 @router.get("/customers/search")
 def search_customers(
     q: str = Query(..., min_length=2),
+    customer_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     _: User = Depends(require_permission("contract", "read")),
 ):
@@ -1583,21 +1584,28 @@ def search_customers(
     Trả kèm số hợp đồng đã có để người lập biết đây có phải khách quen không.
     """
     kw = f"%{q.strip()}%"
+    filter_sql = ""
+    params = {"kw": kw}
+    if customer_type in ("individual", "business"):
+        filter_sql = "and c.customer_type = :customer_type"
+        params["customer_type"] = customer_type
+
     rows = db.execute(
-        text("""
+        text(f"""
             select c.id, c.customer_type, c.full_name, c.phone, c.address,
                    c.tax_id, c.id_card_number, c.id_card_date, c.id_card_place,
                    c.email, c.zalo_phone, c.representative_name, c.representative_role,
                    count(ct.id) as so_hop_dong
             from public.customers c
             left join public.contracts ct on ct.customer_id = c.id
-            where c.full_name ilike :kw or c.phone ilike :kw
-               or c.tax_id ilike :kw or c.id_card_number ilike :kw
+            where (c.full_name ilike :kw or c.phone ilike :kw
+                or c.tax_id ilike :kw or c.id_card_number ilike :kw)
+                {filter_sql}
             group by c.id
             order by so_hop_dong desc, c.full_name
             limit 10
         """),
-        {"kw": kw},
+        params,
     ).mappings().all()
     return {"status": "success", "data": [
         {**dict(r),
