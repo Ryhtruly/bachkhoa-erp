@@ -442,7 +442,8 @@ export default function ContractComposer({
                     <label htmlFor="kh-mst">Mã số thuế<u>*</u></label>
                     <div className="kh-mst-row">
                       <input className={`in${getValidationClass('tax_id')}`} id="kh-mst" inputMode="numeric" placeholder="0312345678"
-                        value={dinhDanh.tax_id} onChange={doiDinhDanh('tax_id')} />
+                        value={dinhDanh.tax_id} onChange={doiDinhDanh('tax_id')}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); traCuuMST(); } }} />
                       <button type="button" className="kh-tracuu" disabled={dangTraCuu || (dinhDanh.tax_id || '').replace(/\D/g,'').length < 10}
                         onClick={traCuuMST}>{dangTraCuu ? '...' : 'Tra cứu'}</button>
                     </div>
