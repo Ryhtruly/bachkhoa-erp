@@ -1392,8 +1392,11 @@
 .wcl-add-inline:hover:not(:disabled) { border-color: var(--orange-500); color: var(--orange-600); background: rgba(235, 74, 35, 0.05); }
 .wcl-add-inline:disabled { opacity: .5; cursor: default; }
 
-/* Đơn giá khoán — đọc gọn "Chính · Phụ", số 0 làm mờ */
-.wcl-prop--pay { flex-wrap: wrap; }
+/* Đơn giá khoán & Minh chứng — hỗ trợ hàng phụ xuống dòng gọn gàng */
+.wcl-prop--pay, .wcl-prop--evidence { flex-wrap: wrap; }
+.wcl-prop__row { flex: 1 1 100%; display: flex; align-items: center; gap: 10px; }
+.wcl-evidence-extra { flex-basis: 100%; padding-left: 98px; margin-top: 4px; }
+.wcl-prop .workflow-evidence-files { flex-basis: 100%; margin-left: 98px; margin-top: 8px; }
 .wcl-rate-readout { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 16px; padding-left: 98px; }
 .wcl-rr { font-size: 0.74rem; color: var(--text-tertiary); }
 .wcl-rr strong { color: var(--green-600, #15803d); font-weight: 700; }

@@ -2195,23 +2195,27 @@ export default function ContractWorkflowDesigner({
                   </div>
 
                   {/* Hàng: Minh chứng */}
-                  <div className="wcl-prop">
-                    <span className="wcl-prop__label"><Paperclip size={13} /> Minh chứng</span>
-                    {item.require_evidence ? (
-                      <div className="wcl-prop__field">
-                        <input
-                          className="wcl-inline-input"
-                          disabled={!checklistEditable}
-                          placeholder="Mô tả minh chứng cần nộp…"
-                          value={item.evidence_description || ''}
-                          onChange={event => updateChecklistItem(index, { evidence_description: event.target.value })}
-                        />
-                        {checklistEditable && (
-                          <button type="button" className="wcl-prop__clear" onClick={() => updateChecklistItem(index, { require_evidence: false })} title="Bỏ yêu cầu minh chứng">
-                            <X size={13} />
-                          </button>
-                        )}
-                        {safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url) && (
+                  {item.require_evidence ? (
+                    <div className="wcl-prop wcl-prop--evidence">
+                      <div className="wcl-prop__row">
+                        <span className="wcl-prop__label"><Paperclip size={13} /> Minh chứng</span>
+                        <div className="wcl-prop__field">
+                          <input
+                            className="wcl-inline-input"
+                            disabled={!checklistEditable}
+                            placeholder="Mô tả minh chứng cần nộp…"
+                            value={item.evidence_description || ''}
+                            onChange={event => updateChecklistItem(index, { evidence_description: event.target.value })}
+                          />
+                          {checklistEditable && (
+                            <button type="button" className="wcl-prop__clear" onClick={() => updateChecklistItem(index, { require_evidence: false })} title="Bỏ yêu cầu minh chứng">
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url) && (
+                        <div className="wcl-evidence-extra">
                           <a
                             className="workflow-evidence-link"
                             href={safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url)}
@@ -2220,65 +2224,40 @@ export default function ContractWorkflowDesigner({
                           >
                             <FolderOpen size={14} /> Mở liên kết minh chứng cũ <ExternalLink size={12} />
                           </a>
-                        )}
-                        <small>Nhân viên nộp file trực tiếp lên MinIO khi thực hiện checklist; không cần khai báo link Google Drive.</small>
+                        </div>
+                      )}
+                      {(item.runtime?.evidence_data?.files || []).length > 0 && (
                         <div className="workflow-evidence-files">
                           <span>File minh chứng đã nộp</span>
-                          {(item.runtime?.evidence_data?.files || []).length > 0 ? (
-                            item.runtime.evidence_data.files.map((file, fileIndex) => (
-                              safeExternalUrl(file.url) || isPrivateObjectKey(file.url) ? (
-                                <a
-                                  key={`${file.url}-${fileIndex}`}
-                                  href={isPrivateObjectKey(file.url) ? '#' : safeExternalUrl(file.url)}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(event) => openEvidenceFile(event, file)}
-                                >
-                                  <FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}
-                                  <ExternalLink size={11} />
-                                </a>
-                              ) : (
-                                <span key={`${file.name}-${fileIndex}`}><FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}</span>
-                              )
-                            ))
-                          ) : (
-                            <small>Chưa có file minh chứng nào trong dữ liệu thực thi.</small>
-                          )}
+                          {item.runtime.evidence_data.files.map((file, fileIndex) => (
+                            safeExternalUrl(file.url) || isPrivateObjectKey(file.url) ? (
+                              <a
+                                key={`${file.url}-${fileIndex}`}
+                                href={isPrivateObjectKey(file.url) ? '#' : safeExternalUrl(file.url)}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(event) => openEvidenceFile(event, file)}
+                              >
+                                <FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}
+                                <ExternalLink size={11} />
+                              </a>
+                            ) : (
+                              <span key={`${file.name}-${fileIndex}`}><FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}</span>
+                            )
+                          ))}
                         </div>
-                      </div>
-                    ) : checklistEditable ? (
-                      <button type="button" className="wcl-prop__add" onClick={() => updateChecklistItem(index, { require_evidence: true })}>
-                        <Plus size={12} /> Thêm yêu cầu minh chứng
-                      </button>
-                    ) : (
-                      <span className="wcl-prop__none">Không yêu cầu</span>
-                    )}
-                  </div>
-
-                  {['pending_approval', 'late_pending_approval'].includes(item.runtime?.status) && canReviewChecklist && (
-                    <div className="workflow-evidence-review">
-                      <span><CircleDashed size={13} /> {item.runtime.status === 'late_pending_approval' ? 'Nộp trễ, chờ duyệt' : 'Đã nộp, chờ duyệt'}</span>
-                      {item.runtime.is_overdue && <small>Lý do trễ: {item.runtime.late_reason || 'Chưa ghi nhận'}</small>}
-                      <div className="workflow-evidence-review__actions">
-                        {item.runtime.status !== 'late_pending_approval' && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            disabled={reviewingChecklistId === item.runtime.id}
-                            onClick={() => reviewChecklistEvidence(item.runtime.id, 'failed')}
-                          >
-                            <XCircle size={14} /> Từ chối
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={reviewingChecklistId === item.runtime.id}
-                          onClick={() => reviewChecklistEvidence(item.runtime.id, 'approved')}
-                        >
-                          <CheckCircle2 size={14} /> Duyệt đạt
+                      )}
+                    </div>
+                  ) : (
+                    <div className="wcl-prop">
+                      <span className="wcl-prop__label"><Paperclip size={13} /> Minh chứng</span>
+                      {checklistEditable ? (
+                        <button type="button" className="wcl-prop__add" onClick={() => updateChecklistItem(index, { require_evidence: true })}>
+                          <Plus size={12} /> Thêm yêu cầu minh chứng
                         </button>
-                      </div>
+                      ) : (
+                        <span className="wcl-prop__none">Không yêu cầu</span>
+                      )}
                     </div>
                   )}
 
