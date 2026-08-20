@@ -38,7 +38,7 @@ from src.routes.routes_payroll import router as payroll_router
 from src.routes.routes_piece_rates import router as piece_rates_router
 
 from src.db.database import engine, Base, SessionLocal
-from src.services.storage_service import ensure_bucket, set_bucket_public
+from src.services.storage_service import ensure_bucket, ensure_contract_template_bucket, ensure_finance_bucket, set_bucket_public
 from src.db.models import *
 from src.contracts.read_model import (
     CONTRACT_CACHE_REFRESH_SECONDS,
@@ -61,12 +61,15 @@ if settings.seed_admin_enabled:
     except Exception as e:
         logger.warning(f"Seed admin user failed (may already exist): {e}")
 
-# Ensure MinIO bucket exists and is public
+# Local MinIO can create buckets automatically. Managed production storage is
+# configured to skip creation and public policy changes.
 if not os.getenv("TESTING"):
     try:
         ensure_bucket()
+        ensure_finance_bucket()
+        ensure_contract_template_bucket()
         set_bucket_public()
-        logger.info("MinIO bucket ready (public)")
+        logger.info("Object-storage buckets ready")
     except Exception as e:
         logger.warning(f"MinIO bucket setup failed: {e}")
 

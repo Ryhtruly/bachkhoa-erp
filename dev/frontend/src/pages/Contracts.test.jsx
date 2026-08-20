@@ -20,6 +20,9 @@ describe('Contracts', () => {
         return Promise.resolve({ ok: true, json: async () => ({ data: [], pagination: {} }) })
       }
       if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ personnel: [], services: ['Tách thửa'] }) })
+      if (u === '/api/contracts/templates') {
+        return Promise.resolve({ ok: true, json: async () => ([{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }]) })
+      }
       if (u === '/api/contracts/next-code') return Promise.resolve({ ok: true, json: async () => ({ contract_id: '001/BK-2026' }) })
       if (u === '/api/survey-records/wards/provinces') {
         return Promise.resolve({ ok: true, json: async () => ([{ code: '79', name: 'TP. Hồ Chí Minh' }]) })
@@ -52,6 +55,9 @@ describe('Contracts', () => {
         return Promise.resolve({ ok: true, json: async () => ({ data: [], pagination: {} }) })
       }
       if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ personnel: [], services: [] }) })
+      if (u === '/api/contracts/templates') {
+        return Promise.resolve({ ok: true, json: async () => ([{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }]) })
+      }
       if (u === '/api/contracts/next-code') return Promise.resolve({ ok: true, json: async () => ({ contract_id: '001/BK-2026' }) })
       if (u === '/api/survey-records/wards/provinces') return Promise.resolve({ ok: true, json: async () => ([]) })
       return Promise.reject(new Error(`Unexpected fetch: ${url}`))

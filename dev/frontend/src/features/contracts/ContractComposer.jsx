@@ -104,10 +104,21 @@ const QUICK_DENOMINATIONS = [
   { label: '+10 triệu', value: 1e7 },
 ]
 
-export default function ContractComposer({ open, code, services = [], isDirector = false, saving = false, onClose, onSubmit }) {
+export default function ContractComposer({
+  open,
+  code,
+  services = [],
+  templates = [],
+  templatesLoading = false,
+  templatesError = '',
+  isDirector = false,
+  saving = false,
+  onClose,
+  onSubmit,
+}) {
   const [form, setForm] = useState(() => ({
     customer_name: '', phone: '', service_type: '', sales_source: '',
-    contract_value: '', detail: '',
+    contract_value: '', detail: '', contract_template_id: '',
     date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
   }))
   // Ô chọn 2 tầng Gói → Hạng mục. Lưu task_type_id (khoá), không lưu tên —
@@ -140,7 +151,7 @@ export default function ContractComposer({ open, code, services = [], isDirector
     if (!open) return
     setForm({
       customer_name: '', phone: '', service_type: '', sales_source: '',
-      contract_value: '', detail: '',
+      contract_value: '', detail: '', contract_template_id: '',
       date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
     })
     setGeoBoundary({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
@@ -200,6 +211,7 @@ export default function ContractComposer({ open, code, services = [], isDirector
     ['provinceCode', geoBoundary.provinceCode],
     ['wardCode', geoBoundary.wardCode],
     ['hangMucChon', hangMucChon],
+    ['contract_template_id', form.contract_template_id],
     ['sales_source', form.sales_source],
     ['contract_value', form.contract_value],
     ['date_signed', form.date_signed],
@@ -296,7 +308,7 @@ export default function ContractComposer({ open, code, services = [], isDirector
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault()
-    if (saving) return
+    if (saving || templatesLoading) return
     if (missingRequiredKeys.length) {
       setMissingFields(missingRequiredKeys)
       const badElement = bodyRef.current?.querySelector('.bad')
@@ -329,6 +341,7 @@ export default function ContractComposer({ open, code, services = [], isDirector
       customer_name: form.customer_name.trim(),
       phone: form.phone.trim(),
       service_type: form.service_type,
+      contract_template_id: form.contract_template_id,
       task_type_id: hangMucChon,
       priority: isDirector ? uuTien : 'NORMAL',
       priority_reason: (isDirector && uuTien !== 'NORMAL') ? uuTienLyDo.trim() : null,
@@ -526,7 +539,7 @@ export default function ContractComposer({ open, code, services = [], isDirector
                   value={goiChon}
                   onChange={(e) => { setGoiChon(e.target.value); setHangMucChon(''); setForm(f => ({ ...f, service_type: '' })) }}>
                   <option value="">Chọn gói</option>
-                  {danhMuc.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  {danhMuc.map(g => <option key={g.id || g.code} value={g.id || g.code}>{g.name}</option>)}
                 </select>
               </div>
               <div>
@@ -536,12 +549,12 @@ export default function ContractComposer({ open, code, services = [], isDirector
                   onChange={(e) => {
                     const id = e.target.value
                     setHangMucChon(id)
-                    const goi = danhMuc.find(g => g.id === goiChon)
-                    const hm = goi?.task_types.find(t => t.id === id)
+                    const goi = danhMuc.find(g => (g.id || g.code) === goiChon)
+                    const hm = goi?.task_types?.find(t => t.id === id)
                     setForm(f => ({ ...f, service_type: hm?.name || '' }))
                   }}>
                   <option value="">{goiChon ? 'Chọn hạng mục' : 'Chọn gói trước'}</option>
-                  {(danhMuc.find(g => g.id === goiChon)?.task_types || []).map(hm => (
+                  {(danhMuc.find(g => (g.id || g.code) === goiChon)?.task_types || []).map(hm => (
                     <option key={hm.id} value={hm.id}>{hm.name}</option>
                   ))}
                 </select>
@@ -552,6 +565,22 @@ export default function ContractComposer({ open, code, services = [], isDirector
                 <label htmlFor="dv-sale">Sale / nguồn<u>*</u></label>
                 <input className={`in${getValidationClass('sales_source')}`} id="dv-sale" placeholder="Trần Minh"
                   value={form.sales_source} onChange={handleFieldChange('sales_source')} />
+              </div>
+            </div>
+            {templatesError && <p className="hint" role="alert">{templatesError}</p>}
+            <div className="row">
+              <div>
+                <label htmlFor="hd-mau">Mẫu hợp đồng<u>*</u></label>
+                <select className={getValidationClass('contract_template_id').trim()} id="hd-mau"
+                  value={form.contract_template_id} disabled={templatesLoading}
+                  onChange={handleFieldChange('contract_template_id')}>
+                  <option value="">{templatesLoading ? 'Đang tải mẫu hợp đồng…' : 'Chọn mẫu hợp đồng'}</option>
+                  {templates.map(template => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} — v{template.version}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="row">
@@ -650,8 +679,8 @@ export default function ContractComposer({ open, code, services = [], isDirector
             </span>
           </div>
           <button className="btn" type="button" disabled={saving} onClick={() => onClose?.()}>Huỷ</button>
-          <button className="btn pri" type="submit" disabled={saving}>
-            {saving ? 'Đang lưu…' : 'Lưu hợp đồng'}
+          <button className="btn pri" type="submit" disabled={saving || templatesLoading}>
+            {saving ? 'Đang lưu…' : templatesLoading ? 'Đang tải mẫu…' : 'Lưu hợp đồng'}
           </button>
         </footer>
 

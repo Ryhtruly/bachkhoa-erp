@@ -47,10 +47,9 @@ import {
   XCircle,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
-import { apiFetch } from '../../lib/api';
 import { giuKhiChuaLuu } from '../../lib/canhBaoChuaLuu';
 import { dauVanTayGraph } from './workflowDirty';
-import AvatarImage from '../AvatarImage';
+import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage';
 import {
   DEFAULT_WORKFLOW_LABELS,
   WORKFLOW_NODE_STATUS_LABELS,
@@ -541,6 +540,15 @@ export default function ContractWorkflowDesigner({
   targetType,
   targetNonce,
 }) {
+  const openEvidenceFile = useCallback(async (event, file) => {
+    if (!isPrivateObjectKey(file.url)) return;
+    event.preventDefault();
+    try {
+      await openPrivateObject(file.url);
+    } catch (error) {
+      addToast?.(error.message || 'Không thể mở file minh chứng', 'error');
+    }
+  }, [addToast]);
   const workflow = serviceLine?.workflow;
   const hasActiveRuntime = Boolean(workflow?.active_revision_id);
   const isWorkflowCancelled = workflow?.status === 'cancelled';
@@ -2201,42 +2209,74 @@ export default function ContractWorkflowDesigner({
                             <X size={13} />
                           </button>
                         )}
+                        {safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url) && (
+                          <a
+                            className="workflow-evidence-link"
+                            href={safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <FolderOpen size={14} /> Mở liên kết minh chứng cũ <ExternalLink size={12} />
+                          </a>
+                        )}
+                        <small>Nhân viên nộp file trực tiếp lên MinIO khi thực hiện checklist; không cần khai báo link Google Drive.</small>
+                        <div className="workflow-evidence-files">
+                          <span>File minh chứng đã nộp</span>
+                          {(item.runtime?.evidence_data?.files || []).length > 0 ? (
+                            item.runtime.evidence_data.files.map((file, fileIndex) => (
+                              safeExternalUrl(file.url) || isPrivateObjectKey(file.url) ? (
+                                <a
+                                  key={`${file.url}-${fileIndex}`}
+                                  href={isPrivateObjectKey(file.url) ? '#' : safeExternalUrl(file.url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(event) => openEvidenceFile(event, file)}
+                                >
+                                  <FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}
+                                  <ExternalLink size={11} />
+                                </a>
+                              ) : (
+                                <span key={`${file.name}-${fileIndex}`}><FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}</span>
+                              )
+                            ))
+                          ) : (
+                            <small>Chưa có file minh chứng nào trong dữ liệu thực thi.</small>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <button type="button" className="wcl-add-inline" disabled={!checklistEditable} onClick={() => updateChecklistItem(index, { require_evidence: true })}>
-                        <Plus size={13} /> Thêm minh chứng
+                    ) : checklistEditable ? (
+                      <button type="button" className="wcl-prop__add" onClick={() => updateChecklistItem(index, { require_evidence: true })}>
+                        <Plus size={12} /> Thêm yêu cầu minh chứng
                       </button>
+                    ) : (
+                      <span className="wcl-prop__none">Không yêu cầu</span>
                     )}
                   </div>
 
-                  {/* Link cũ + file đã nộp (khi đang chạy) */}
-                  {item.require_evidence && safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url) && (
-                    <a
-                      className="workflow-evidence-link"
-                      href={safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <FolderOpen size={14} /> Mở liên kết minh chứng cũ <ExternalLink size={12} />
-                    </a>
-                  )}
-                  {item.require_evidence && item.runtime && (
-                    <div className="workflow-evidence-files">
-                      <span>File minh chứng đã nộp</span>
-                      {(item.runtime?.evidence_data?.files || []).length > 0 ? (
-                        item.runtime.evidence_data.files.map((file, fileIndex) => (
-                          safeExternalUrl(file.url) ? (
-                            <a key={`${file.url}-${fileIndex}`} href={safeExternalUrl(file.url)} target="_blank" rel="noreferrer">
-                              <FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}
-                              <ExternalLink size={11} />
-                            </a>
-                          ) : (
-                            <span key={`${file.name}-${fileIndex}`}><FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}</span>
-                          )
-                        ))
-                      ) : (
-                        <small>Chưa có file minh chứng nào trong dữ liệu thực thi.</small>
-                      )}
+                  {['pending_approval', 'late_pending_approval'].includes(item.runtime?.status) && canReviewChecklist && (
+                    <div className="workflow-evidence-review">
+                      <span><CircleDashed size={13} /> {item.runtime.status === 'late_pending_approval' ? 'Nộp trễ, chờ duyệt' : 'Đã nộp, chờ duyệt'}</span>
+                      {item.runtime.is_overdue && <small>Lý do trễ: {item.runtime.late_reason || 'Chưa ghi nhận'}</small>}
+                      <div className="workflow-evidence-review__actions">
+                        {item.runtime.status !== 'late_pending_approval' && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={reviewingChecklistId === item.runtime.id}
+                            onClick={() => reviewChecklistEvidence(item.runtime.id, 'failed')}
+                          >
+                            <XCircle size={14} /> Từ chối
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={reviewingChecklistId === item.runtime.id}
+                          onClick={() => reviewChecklistEvidence(item.runtime.id, 'approved')}
+                        >
+                          <CheckCircle2 size={14} /> Duyệt đạt
+                        </button>
+                      </div>
                     </div>
                   )}
 

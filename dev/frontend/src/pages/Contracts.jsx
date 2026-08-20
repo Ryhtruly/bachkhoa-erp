@@ -43,6 +43,9 @@ export default function Contracts({ isDirector = false }) {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
   const [contractView, setContractView] = useState('list');
   const [selectedContract, setSelectedContract] = useState(null);
   const [documentUrl, setDocumentUrl] = useState('');
@@ -140,6 +143,30 @@ export default function Contracts({ isDirector = false }) {
   }, [addToast, filterValues.task_type_id, page, searchTerm, signedDate, sort]);
 
   const openContractModal = async () => {
+    setTemplatesLoading(true);
+    setTemplatesError('');
+    let catalog;
+    try {
+      catalog = await apiFetch('/api/contracts/templates');
+    } catch {
+      const message = 'Không thể tải mẫu hợp đồng để soạn hợp đồng mới';
+      setTemplates([]);
+      setTemplatesError(message);
+      addToast(message, 'error');
+      setTemplatesLoading(false);
+      return;
+    }
+
+    if (!Array.isArray(catalog) || catalog.length === 0) {
+      const message = 'Chưa có mẫu hợp đồng đã ban hành để soạn hợp đồng mới';
+      setTemplates([]);
+      setTemplatesError(message);
+      addToast(message, 'error');
+      setTemplatesLoading(false);
+      return;
+    }
+    setTemplates(catalog);
+
     try {
       const data = await apiFetch('/api/contracts/next-code');
       if (data?.contract_id) {
@@ -147,10 +174,13 @@ export default function Contracts({ isDirector = false }) {
       } else {
         addToast('Không thể tạo mã hợp đồng mới', 'error');
       }
+      setIsModalOpen(true);
     } catch {
       addToast('Không thể kết nối để tạo mã hợp đồng mới', 'error');
+      setIsModalOpen(true);
+    } finally {
+      setTemplatesLoading(false);
     }
-    setIsModalOpen(true);
   };
 
   useEffect(() => {
@@ -472,6 +502,9 @@ export default function Contracts({ isDirector = false }) {
         code={formData.contract_id}
         services={config.services}
         isDirector={isDirector}
+        templates={templates}
+        templatesLoading={templatesLoading}
+        templatesError={templatesError}
         saving={savingContract}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleGenerateContract}

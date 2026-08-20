@@ -47,3 +47,12 @@ def test_route_resolves_contract_owned_reference_before_uploading():
     reference = evidence_file_reference(_DbWithTaskOwnership(), "node-7", "evidence.pdf")
 
     assert reference.object_key.startswith("contracts/001_BK-2026/service-lines/line-4/nodes/node-7/")
+
+
+def test_route_allocates_an_immutable_key_for_each_evidence_upload():
+    first = evidence_file_reference(_DbWithTaskOwnership(), "node-7", "evidence.pdf")
+    second = evidence_file_reference(_DbWithTaskOwnership(), "node-7", "evidence.pdf")
+
+    assert first.object_key != second.object_key
+    assert first.object_key.endswith("-evidence.pdf")
+    assert second.object_key.endswith("-evidence.pdf")

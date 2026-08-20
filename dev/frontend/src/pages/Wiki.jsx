@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Book, UploadCloud, Link as LinkIcon, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow } from '../components/ui';
+import { getAccessToken } from '../lib/api';
+import { fetchProtectedDocumentBlob } from '../lib/fileSave';
 
 export default function Wiki() {
   const [documents, setDocuments] = useState([]);
@@ -94,6 +96,23 @@ export default function Wiki() {
     }
   };
 
+  const handleOpenDocument = async (docId) => {
+    const viewer = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+      const blob = await fetchProtectedDocumentBlob(
+        `/api/wiki/download/${encodeURIComponent(docId)}`,
+        getAccessToken(),
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      if (viewer) viewer.location.href = objectUrl;
+      else window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      viewer?.close();
+      showMessage('Không thể mở tài liệu Wiki', 'error');
+    }
+  };
+
   return (
     <section className="tab-pane active" id="tab-wiki">
       <div className="toolbar card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
@@ -166,9 +185,9 @@ export default function Wiki() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <a href={`/api/wiki/download/${doc.id}`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <button type="button" onClick={() => handleOpenDocument(doc.id)} className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <FileText size={14} /> Mở file
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))
@@ -291,7 +310,7 @@ export default function Wiki() {
                       Nhấp vào đây hoặc kéo thả file để tải lên
                     </span>
                     <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                      Hỗ trợ PDF, DOCX, XLSX, PNG, JPG...
+                      Hỗ trợ PDF, DOCX, XLSX, PNG, JPG... tối đa 25MB
                     </span>
                   </>
                 )}
