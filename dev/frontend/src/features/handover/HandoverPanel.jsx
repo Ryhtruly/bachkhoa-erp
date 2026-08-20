@@ -412,7 +412,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
       </Modal>
 
       {/* ── Xác nhận bàn giao khi còn nợ ───────────────────────── */}
-      <Modal open={showDeliver} onClose={() => setShowDeliver(false)} title="Xác nhận bàn giao">
+      <Modal open={showDeliver} onClose={() => setShowDeliver(false)} title="Xác nhận bàn giao" overlayClassName="modal-overlay--top">
         <div className="handover__form">
           {hasOutstandingDebt ? (
             <div className="handover__confirm">

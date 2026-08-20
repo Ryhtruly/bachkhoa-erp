@@ -30,3 +30,488 @@
 [ 2870985ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
 [ 3409591ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
 [ 3409594ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/employee-portal/me:0
+[ 9210263ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210263ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210264ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210264ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210264ms] [ERROR] Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING @ http://localhost:3000/api/notifications/events:0
+[ 9210265ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210266ms] [ERROR] Failed to load resource: net::ERR_SOCKET_NOT_CONNECTED @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210267ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210267ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210267ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210267ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210267ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210267ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/DebtCollection.jsx?t=1787198596823:0
+[ 9210267ms] [ERROR] [vite] Failed to reload /src/pages/DebtCollection.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210269ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210269ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210269ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210269ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210269ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210269ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210271ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210271ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210271ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210271ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210271ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210271ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210279ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210279ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210279ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210281ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210281ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210281ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210283ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210283ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210283ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210283ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210283ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210283ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210285ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210285ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210285ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210285ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210285ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210285ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210286ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/handover/HandoverPanel.jsx?t=1787198596825:0
+[ 9210286ms] [ERROR] [vite] Failed to reload /src/features/handover/HandoverPanel.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210287ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/notifications/summary:0
+[ 9210287ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210287ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210287ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/employee-portal/me:0
+[ 9210289ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210290ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/HeaderUserMenu.jsx?t=1787198596827:0
+[ 9210290ms] [ERROR] [vite] Failed to reload /src/components/HeaderUserMenu.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210291ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210291ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/Login.jsx?t=1787198596829:0
+[ 9210291ms] [ERROR] [vite] Failed to reload /src/pages/Login.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210292ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9210293ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/Cashflow.jsx?t=1787198596831:0
+[ 9210293ms] [ERROR] [vite] Failed to reload /src/pages/Cashflow.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210294ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/SettingsScreen.jsx?t=1787198596834:0
+[ 9210294ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/SettingsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210297ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/employee-portal/MyPayroll.jsx?t=1787198596836:0
+[ 9210298ms] [ERROR] [vite] Failed to reload /src/features/employee-portal/MyPayroll.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210299ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/employee-portal/EmployeeWorkspaceCalendar.jsx?t=1787198596838:0
+[ 9210300ms] [ERROR] [vite] Failed to reload /src/features/employee-portal/EmployeeWorkspaceCalendar.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210303ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/ContractsScreen.jsx?t=1787198596840:0
+[ 9210303ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/ContractsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210304ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/approvals/PendingApprovals.jsx?t=1787198596842:0
+[ 9210304ms] [ERROR] [vite] Failed to reload /src/features/approvals/PendingApprovals.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210305ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowModal.jsx?t=1787198596844:0
+[ 9210305ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210307ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/Wiki.jsx?t=1787198596846:0
+[ 9210307ms] [ERROR] [vite] Failed to reload /src/pages/Wiki.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210308ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowDetailModal.jsx?t=1787198596848:0
+[ 9210308ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowDetailModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210310ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/MonthlyDashboardScreen.jsx?t=1787198596850:0
+[ 9210310ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/MonthlyDashboardScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210311ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/FinanceNav.jsx?t=1787198596852:0
+[ 9210311ms] [ERROR] [vite] Failed to reload /src/components/finance/FinanceNav.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210314ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/CashflowScreen.jsx?t=1787198596854:0
+[ 9210314ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/CashflowScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210316ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AnalyticsScreen.jsx?t=1787198596856:0
+[ 9210316ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AnalyticsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210318ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/legal-dossier/LegalDossierActions.jsx?t=1787198596858:0
+[ 9210318ms] [ERROR] [vite] Failed to reload /src/features/legal-dossier/LegalDossierActions.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210321ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/MonthlyDashboardScreen.jsx?t=1787198596860:0
+[ 9210321ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/MonthlyDashboardScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210321ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/ContractsScreen.jsx?t=1787198596860:0
+[ 9210321ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/ContractsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210321ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/SettingsScreen.jsx?t=1787198596860:0
+[ 9210321ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/SettingsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210321ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PrintVoucherScreen.jsx?t=1787198596860:0
+[ 9210321ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PrintVoucherScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210321ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/CashflowScreen.jsx?t=1787198596860:0
+[ 9210322ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/CashflowScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210322ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceClearScreen.jsx?t=1787198596860:0
+[ 9210322ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceClearScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210324ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PayrollOfficeScreen.jsx?t=1787198596860:0
+[ 9210324ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PayrollOfficeScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210324ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowModal.jsx?t=1787198596860:0
+[ 9210324ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210324ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PayablesScreen.jsx?t=1787198596860:0
+[ 9210324ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PayablesScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210324ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AnalyticsScreen.jsx?t=1787198596860:0
+[ 9210324ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AnalyticsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210324ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/ReceivablesScreen.jsx?t=1787198596860:0
+[ 9210324ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/ReceivablesScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210325ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceRequestScreen.jsx?t=1787198596860:0
+[ 9210325ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceRequestScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210326ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/SharedFinanceUI.jsx?t=1787198596860:0
+[ 9210326ms] [ERROR] [vite] Failed to reload /src/components/finance/SharedFinanceUI.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210326ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/BangGiaKhoanScreen.jsx?t=1787198596860:0
+[ 9210327ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/BangGiaKhoanScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210327ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PieceRatePayrollScreen.jsx?t=1787198596860:0
+[ 9210327ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PieceRatePricingScreen.jsx?t=1787198596860:0
+[ 9210327ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PieceRatePayrollScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210327ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PieceRatePricingScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210327ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowDetailModal.jsx?t=1787198596860:0
+[ 9210327ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowDetailModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210327ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/LuongKhoan3PScreen.jsx?t=1787198596860:0
+[ 9210327ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/LuongKhoan3PScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210330ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/SharedFinanceUI.jsx?t=1787198596862:0
+[ 9210330ms] [ERROR] [vite] Failed to reload /src/components/finance/SharedFinanceUI.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210331ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/contracts/ContractComposer.jsx?t=1787198596864:0
+[ 9210331ms] [ERROR] [vite] Failed to reload /src/features/contracts/ContractComposer.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210333ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceClearScreen.jsx?t=1787198596866:0
+[ 9210333ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceClearScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210334ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PrintVoucherScreen.jsx?t=1787198596868:0
+[ 9210334ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PrintVoucherScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210335ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceRequestScreen.jsx?t=1787198596870:0
+[ 9210335ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceRequestScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210337ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/HeaderUserMenu.jsx?t=1787198626861:0
+[ 9210337ms] [ERROR] [vite] Failed to reload /src/components/HeaderUserMenu.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210339ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceClearScreen.jsx?t=1787198626863:0
+[ 9210340ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceClearScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210340ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/MonthlyDashboardScreen.jsx?t=1787198626863:0
+[ 9210340ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/MonthlyDashboardScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210340ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PrintVoucherScreen.jsx?t=1787198626863:0
+[ 9210340ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PrintVoucherScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210340ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/CashflowScreen.jsx?t=1787198626863:0
+[ 9210340ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/CashflowScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210342ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/SettingsScreen.jsx?t=1787198626863:0
+[ 9210342ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/SettingsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210342ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/ContractsScreen.jsx?t=1787198626863:0
+[ 9210342ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/ContractsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210342ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AnalyticsScreen.jsx?t=1787198626863:0
+[ 9210342ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AnalyticsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210342ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceRequestScreen.jsx?t=1787198626863:0
+[ 9210342ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceRequestScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210342ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/ReceivablesScreen.jsx?t=1787198626863:0
+[ 9210342ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/ReceivablesScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210342ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PayablesScreen.jsx?t=1787198626863:0
+[ 9210342ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PayablesScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210344ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowModal.jsx?t=1787198626863:0
+[ 9210344ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210344ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PayrollOfficeScreen.jsx?t=1787198626863:0
+[ 9210344ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PayrollOfficeScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210345ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PieceRatePayrollScreen.jsx?t=1787198626863:0
+[ 9210345ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PieceRatePayrollScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210345ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/BangGiaKhoanScreen.jsx?t=1787198626863:0
+[ 9210345ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/BangGiaKhoanScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210345ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PieceRatePricingScreen.jsx?t=1787198626863:0
+[ 9210345ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PieceRatePricingScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210345ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/LuongKhoan3PScreen.jsx?t=1787198626863:0
+[ 9210345ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/LuongKhoan3PScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210346ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/SharedFinanceUI.jsx?t=1787198626863:0
+[ 9210346ms] [ERROR] [vite] Failed to reload /src/components/finance/SharedFinanceUI.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210346ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowDetailModal.jsx?t=1787198626863:0
+[ 9210346ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowDetailModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210349ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/SharedFinanceUI.jsx?t=1787198626865:0
+[ 9210349ms] [ERROR] [vite] Failed to reload /src/components/finance/SharedFinanceUI.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210351ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/Login.jsx?t=1787198626868:0
+[ 9210351ms] [ERROR] [vite] Failed to reload /src/pages/Login.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210352ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/DebtCollection.jsx?t=1787198626871:0
+[ 9210352ms] [ERROR] [vite] Failed to reload /src/pages/DebtCollection.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210353ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/Cashflow.jsx?t=1787198626873:0
+[ 9210353ms] [ERROR] [vite] Failed to reload /src/pages/Cashflow.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210354ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/PrintVoucherScreen.jsx?t=1787198626875:0
+[ 9210354ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/PrintVoucherScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210360ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/employee-portal/MyPayroll.jsx?t=1787198626877:0
+[ 9210360ms] [ERROR] [vite] Failed to reload /src/features/employee-portal/MyPayroll.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210361ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/MonthlyDashboardScreen.jsx?t=1787198626879:0
+[ 9210361ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/MonthlyDashboardScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210363ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/legal-dossier/LegalDossierActions.jsx?t=1787198626881:0
+[ 9210363ms] [ERROR] [vite] Failed to reload /src/features/legal-dossier/LegalDossierActions.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210364ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AnalyticsScreen.jsx?t=1787198626883:0
+[ 9210364ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AnalyticsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210366ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/employee-portal/EmployeeWorkspaceCalendar.jsx?t=1787198626885:0
+[ 9210366ms] [ERROR] [vite] Failed to reload /src/features/employee-portal/EmployeeWorkspaceCalendar.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210367ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/ContractsScreen.jsx?t=1787198626887:0
+[ 9210367ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/ContractsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210368ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/approvals/PendingApprovals.jsx?t=1787198626889:0
+[ 9210369ms] [ERROR] [vite] Failed to reload /src/features/approvals/PendingApprovals.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210370ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowModal.jsx?t=1787198626891:0
+[ 9210370ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210371ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/handover/HandoverPanel.jsx?t=1787198626893:0
+[ 9210371ms] [ERROR] [vite] Failed to reload /src/features/handover/HandoverPanel.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210372ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/pages/Wiki.jsx?t=1787198626895:0
+[ 9210372ms] [ERROR] [vite] Failed to reload /src/pages/Wiki.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210374ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceClearScreen.jsx?t=1787198626897:0
+[ 9210374ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceClearScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210375ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/FinanceNav.jsx?t=1787198626899:0
+[ 9210375ms] [ERROR] [vite] Failed to reload /src/components/finance/FinanceNav.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210376ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/AdvanceRequestScreen.jsx?t=1787198626901:0
+[ 9210377ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/AdvanceRequestScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210378ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/features/contracts/ContractComposer.jsx?t=1787198626903:0
+[ 9210378ms] [ERROR] [vite] Failed to reload /src/features/contracts/ContractComposer.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210380ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/modals/CashflowDetailModal.jsx?t=1787198626905:0
+[ 9210380ms] [ERROR] [vite] Failed to reload /src/components/finance/modals/CashflowDetailModal.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210383ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/SettingsScreen.jsx?t=1787198626907:0
+[ 9210383ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/SettingsScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210385ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/finance/screens/CashflowScreen.jsx?t=1787198626909:0
+[ 9210385ms] [ERROR] [vite] Failed to reload /src/components/finance/screens/CashflowScreen.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210386ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/contracts/ContractWorkspace.jsx?t=1787198834966:0
+[ 9210386ms] [ERROR] [vite] Failed to reload /src/components/contracts/ContractWorkspace.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210388ms] [ERROR] Failed to load resource: net::ERR_EMPTY_RESPONSE @ http://localhost:3000/src/components/contracts/ContractWorkspace.jsx?t=1787198843696:0
+[ 9210388ms] [ERROR] [vite] Failed to reload /src/components/contracts/ContractWorkspace.jsx. This could be due to syntax errors or importing non-existent modules. (see errors above) @ http://localhost:3000/@vite/client:928
+[ 9210388ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:3000/@vite/client:992
+[ 9210970ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9211777ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9213283ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9214796ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9215268ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9216303ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9217810ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9218101ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9218949ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9219317ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9220261ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9220823ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9222334ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9223842ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9225261ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9225348ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9226098ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9226857ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9226939ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9228363ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9229870ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9230264ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9231375ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9232894ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9234098ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9234406ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9234937ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9235259ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9235920ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9237428ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9238937ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9240258ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9240462ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9241971ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9242093ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9242941ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9243481ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9244994ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9245262ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9246513ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9248023ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9249534ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9250096ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9250259ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9250934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9251042ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9252552ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9254060ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9255255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9255568ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9257076ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9258095ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9258582ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9258941ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9260088ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9260256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9261595ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9263102ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9264617ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9265256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9266097ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9266136ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9266936ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9267645ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9269155ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9270255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9270667ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9272180ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9273689ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9274091ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9274935ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9275198ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9275264ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9276714ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9278222ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9279733ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9280258ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9281240ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9282094ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9282747ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9282934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9284255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9285256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9285770ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9287277ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9288783ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9290092ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9290256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9290287ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9290937ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9291802ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9293319ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9294826ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9295257ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9296355ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9297865ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9298096ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9298934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9299376ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9300257ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9300886ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9302398ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9303906ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9305255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9305413ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9306092ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9306922ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9306934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9308432ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9309941ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9310257ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9311449ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9312955ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9314090ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9314463ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9314935ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9315257ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9315969ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9317478ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9318993ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9320260ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9320510ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9322026ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9322103ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9322934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9323540ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9325048ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9325256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9326556ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9328066ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9329580ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9330096ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9330254ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9330937ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9331089ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9332599ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9334104ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9335255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9335613ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9337119ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9338090ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9338641ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9338932ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9340165ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9340254ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9341674ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9343181ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9344693ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9345254ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9346090ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9346201ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9346935ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9347716ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9349229ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9350257ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9350739ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9352248ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9353755ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9354093ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9354934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9355254ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9355261ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9356768ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9358276ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9359782ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9360273ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9361291ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9362090ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9362808ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9362936ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9364317ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9365258ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9365833ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9367343ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9368850ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9370104ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9370256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9370367ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9370935ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9371880ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9373389ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9374900ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9375253ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9376415ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9377928ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9378094ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9378937ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9379438ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9380273ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9380946ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9382455ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9383965ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9385256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9385474ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9386094ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9386933ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9386986ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9388497ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9390008ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9390256ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9391516ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9393022ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9394090ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9394530ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9394933ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9395254ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9396039ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9397547ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9399065ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9400259ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9400584ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9402095ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9402096ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9402933ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9403602ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9405110ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9405255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9406620ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9408127ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9409638ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9410088ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9410260ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9410939ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9411147ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9412664ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9414172ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9415261ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9415679ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9417187ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9418091ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9418694ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9418933ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9420202ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9420255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9421710ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9423221ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9424729ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9425254ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9426092ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9426235ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9426931ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9427743ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9429251ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9430253ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9430757ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9432267ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9433783ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9434096ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9434934ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9435261ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9435290ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9436804ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9438313ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9439820ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9440255ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/summary:0
+[ 9441346ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9442096ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/?page=1&limit=20:0
+[ 9442854ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9442932ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/employee-portal/me:0
+[ 9444364ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/notifications/events:0
+[ 9452836ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=af4f107e:14335
+[10816270ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:3000/@vite/client:992
+[10816304ms] [ERROR] Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED @ http://localhost:3000/api/notifications/events:0
+[10816457ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=af4f107e:14335
+[17109080ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:3000/@vite/client:992
+[17109085ms] [ERROR] Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED @ http://localhost:3000/api/notifications/events:0
+[17109349ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=af4f107e:14335

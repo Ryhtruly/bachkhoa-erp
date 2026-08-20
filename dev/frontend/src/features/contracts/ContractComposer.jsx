@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { apiFetch } from '../../lib/api'
+import DatePicker from '../../components/ui/DatePicker'
 import './contractComposer.css'
 
 /**
@@ -461,9 +462,14 @@ export default function ContractComposer({ open, code, services = [], isDirector
                 </div>
                 <div className="row c2">
                   <div>
-                    <label htmlFor="kh-ngaycap">Ngày cấp</label>
-                    <input className="in" id="kh-ngaycap" type="date"
-                      value={dinhDanh.id_card_date} onChange={doiDinhDanh('id_card_date')} />
+                    <label>Ngày cấp</label>
+                    <DatePicker
+                      value={dinhDanh.id_card_date}
+                      onChange={(val) => setDinhDanh(cur => ({ ...cur, id_card_date: val }))}
+                      placement="auto"
+                      placeholder="Chọn ngày cấp"
+                      className="date-picker--fill"
+                    />
                   </div>
                   <div>
                     <label htmlFor="kh-noicap">Nơi cấp</label>
@@ -597,14 +603,30 @@ export default function ContractComposer({ open, code, services = [], isDirector
             <div className="sec-hd"><h2>Thời hạn</h2><i /></div>
             <div className="row c-date">
               <div>
-                <label htmlFor="th-ky">Ngày ký<u>*</u></label>
-                <input className={`in${getValidationClass('date_signed')}`} id="th-ky" type="date"
-                  value={form.date_signed} onChange={handleFieldChange('date_signed')} />
+                <label>Ngày ký<u>*</u></label>
+                <DatePicker
+                  value={form.date_signed}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, date_signed: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'date_signed'))
+                  }}
+                  placement="top"
+                  placeholder="Chọn ngày ký"
+                  className={`date-picker--fill${getValidationClass('date_signed')}`}
+                />
               </div>
               <div>
-                <label htmlFor="th-han">Hạn hoàn thành<u>*</u></label>
-                <input className={`in${getValidationClass('due_date')}`} id="th-han" type="date"
-                  value={form.due_date} onChange={handleFieldChange('due_date')} />
+                <label>Hạn hoàn thành<u>*</u></label>
+                <DatePicker
+                  value={form.due_date}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, due_date: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'due_date'))
+                  }}
+                  placement="top"
+                  placeholder="Chọn hạn hoàn thành"
+                  className={`date-picker--fill${getValidationClass('due_date')}`}
+                />
               </div>
               {daysSpan !== null && (
                 <div className={`span${daysSpan < 0 ? ' is-bad' : ''}`}>

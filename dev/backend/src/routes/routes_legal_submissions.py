@@ -23,7 +23,7 @@ _LIST_BASE_SQL = f"""
            s.payment_status, s.legacy_gov_status as gov_status,
            -- Cùng một quy tắc khoá với bên Đo vẽ, do backend quyết định.
            s.legacy_gov_status = any({TERMINAL_SQL_ARRAY}) as is_locked,
-           s.received_date, s.expected_return_date,
+           s.received_date, s.expected_return_date, s.submitted_agency,
            s.is_first_submission, s.previous_submission_id, s.note, s.created_at, s.updated_at,
            sl.service_type as service_line_name, e.full_name as assigned_employee_name
     from public.legal_submissions s
@@ -43,6 +43,7 @@ class LegalSubmissionUpdateSchema(BaseModel):
     gov_status: Optional[str] = None
     received_date: Optional[str] = None
     expected_return_date: Optional[str] = None
+    submitted_agency: Optional[str] = None
     note: Optional[str] = None
 
 

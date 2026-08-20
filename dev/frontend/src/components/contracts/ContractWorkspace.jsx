@@ -79,6 +79,11 @@ function ServiceLinesTab({ workspace, selectedId, onSelect }) {
           >
             <span>{index + 1}</span>
             <div>
+              {line.service_package && (
+                <span className={`service-line-pkg service-line-pkg--${line.service_package_id || 'other'}`}>
+                  {line.service_package}
+                </span>
+              )}
               <strong>{line.task_type || line.service_type}</strong>
               <small>{line.workflow ? workflowLabel(WORKFLOW_INSTANCE_STATUS_LABELS, line.workflow.status, 'Chưa thiết lập') : 'Chưa thiết lập'}</small>
             </div>
@@ -279,6 +284,11 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
                     >
                       <span>{index + 1}</span>
                       <div>
+                        {line.service_package && (
+                          <span className={`service-line-pkg service-line-pkg--${line.service_package_id || 'other'}`}>
+                            {line.service_package}
+                          </span>
+                        )}
                         <strong>{line.task_type || line.service_type}</strong>
                         <small>
                           {line.workflow?.status === 'cancelled'

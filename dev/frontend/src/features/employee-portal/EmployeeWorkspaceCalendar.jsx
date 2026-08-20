@@ -319,9 +319,41 @@ function NodeActionBar({ task, onChanged }) {
     </button>
   }
   if (task.status === 'in_progress') {
-    // Cơ chế mới: KHÔNG còn nút "Nộp nghiệm thu". Nhân viên chỉ cần làm xong
-    // checklist; quản lý duyệt hết là bước TỰ hoàn thành. Ở đây chỉ nhắc còn gì.
-    const unapprovedChecklistItems = (task.checklist || []).filter(item => !CHECKLIST_PASSED_STATUSES.has(item.status))
+    const checklistItems = task.checklist || []
+
+    // Node KHÔNG có checklist → hiển thị nút [Nộp hoàn thành công việc] để
+    // nhân viên báo cáo xong, gửi quản lý / giám đốc duyệt nghiệm thu.
+    // Nếu không có nút này, node sẽ kẹt in_progress vĩnh viễn vì không có
+    // checklist nào để quản lý duyệt kích hoạt tự hoàn thành.
+    if (checklistItems.length === 0) {
+      const submitTask = async () => {
+        setBusy(true)
+        try {
+          await apiFetch(`/api/employee-portal/tasks/${task.id}/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: null }),
+          })
+          addToast('Đã nộp hoàn thành công việc — chờ quản lý duyệt', 'success')
+          await onChanged()
+        } catch (error) {
+          addToast(error.message || 'Không thể nộp hoàn thành', 'error')
+        } finally {
+          setBusy(false)
+        }
+      }
+      return <div className="employee-workspace-task-modal__gate">
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={submitTask}>
+          <CheckCircle2 size={14} /> Nộp hoàn thành công việc
+        </button>
+        <small style={{ marginTop: 6, display: 'block', opacity: 0.7 }}>
+          Bước này không có checklist — bấm nộp để quản lý duyệt nghiệm thu.
+        </small>
+      </div>
+    }
+
+    // Node CÓ checklist → cơ chế cũ: quản lý duyệt hết checklist là bước tự hoàn thành.
+    const unapprovedChecklistItems = checklistItems.filter(item => !CHECKLIST_PASSED_STATUSES.has(item.status))
     const pendingChecklistItems = unapprovedChecklistItems.filter(item => item.status === 'pending' || item.status === 'failed')
     return <div className="employee-workspace-task-modal__gate">
       <small>

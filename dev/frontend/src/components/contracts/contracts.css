@@ -527,6 +527,16 @@
 .service-line-list button small,
 .contract-workflow-services button small { color: var(--text-tertiary); font-size: var(--workflow-text-caption, 11px); font-weight: 500; line-height: 1.35; }
 
+/* Tên gói (Đo Vẽ / Pháp Lý / Xin Phép Xây Dựng) trên card Hạng mục — nhìn phát biết
+   ngay gói nào, hiểu vì sao có/không có vòng đời hồ sơ nộp cơ quan. Tô màu theo gói. */
+.service-line-pkg {
+  font-size: 0.62rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.03em; line-height: 1.2; color: var(--text-tertiary);
+}
+.service-line-pkg--sp_001 { color: #1d4ed8; } /* Đo Vẽ */
+.service-line-pkg--sp_002 { color: #c2410c; } /* Pháp Lý */
+.service-line-pkg--sp_003 { color: #15803d; } /* Xin Phép Xây Dựng */
+
 .service-line-detail { padding: 18px; }
 .service-line-detail__hero {
   display: flex;
