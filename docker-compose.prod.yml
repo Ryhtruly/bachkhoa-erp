@@ -1,0 +1,93 @@
+# =============================================================================
+# Docker Compose — Production (VPS)
+# =============================================================================
+# File này dùng trên VPS, pull image từ GHCR thay vì build local.
+# Đặt file này vào thư mục project trên VPS cùng cấp với dev/backend/.env
+#
+# ⚠️  YÊU CẦU: Tạo file dev/backend/.env trên VPS chứa các biến sau:
+#     DATABASE_URL, SUPABASE_URL, SUPABASE_KEY,
+#     MINIO_ACCESS_KEY, MINIO_SECRET_KEY, SECRET_KEY, ENV=production
+# =============================================================================
+
+name: bachkhoa-erp
+
+services:
+  redis-contracts:
+    image: redis:7.4.9-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Thiếu MINIO_ACCESS_KEY trong dev/backend/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Thiếu MINIO_SECRET_KEY trong dev/backend/.env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    # ⬇️ Pull từ GHCR thay vì build local
+    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:latest
+    restart: unless-stopped
+    env_file:
+      - ./dev/backend/.env
+    environment:
+      REDIS_URL: redis://redis-contracts:6379/0
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: wiki-files
+      MINIO_FINANCE_BUCKET: finance-files
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - contract-files:/app/static/contracts
+    depends_on:
+      redis-contracts:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    # ⬇️ Pull từ GHCR thay vì build local
+    image: ghcr.io/ryhtruly/bachkhoa-erp-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  contract-files:
+  minio-data:
