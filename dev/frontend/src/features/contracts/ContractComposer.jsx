@@ -1,8 +1,63 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Check, ChevronDown } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
 import DatePicker from '../../components/ui/DatePicker'
 import './contractComposer.css'
+
+function CustomSelect({ id, value, onChange, options, placeholder, disabled, className }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedOption = options.find(o => String(o.value) === String(value))
+
+  return (
+    <div className={`custom-select-container ${className || ''}`} ref={ref} id={id}>
+      <button
+        type="button"
+        className={`custom-select-trigger in ${open ? 'is-open' : ''}`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span>{selectedOption ? selectedOption.label : (placeholder || 'Chọn...')}</span>
+        <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="custom-select-menu">
+          {options.map((opt) => (
+            <button
+              type="button"
+              key={opt.value}
+              className={`custom-select-option ${String(opt.value) === String(value) ? 'is-selected' : ''}`}
+              onClick={() => {
+                onChange(opt.value)
+                setOpen(false)
+              }}
+            >
+              {String(opt.value) === String(value) ? (
+                <Check size={14} className="check-icon" />
+              ) : (
+                <span className="check-placeholder" />
+              )}
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * Form soạn hợp đồng mới.
@@ -699,12 +754,19 @@ export default function ContractComposer({
               <div className="row c2">
                 <div>
                   <label htmlFor="dv-uutien">Độ ưu tiên hồ sơ</label>
-                  <select className="in" id="dv-uutien" value={uuTien}
-                    onChange={(e) => { setUuTien(e.target.value); if (e.target.value === 'NORMAL') setUuTienLyDo('') }}>
-                    <option value="NORMAL">Bình thường</option>
-                    <option value="HIGH">Ưu tiên cao (×1,2)</option>
-                    <option value="URGENT">Gấp (×1,5)</option>
-                  </select>
+                  <CustomSelect
+                    id="dv-uutien"
+                    value={uuTien}
+                    onChange={(val) => {
+                      setUuTien(val)
+                      if (val === 'NORMAL') setUuTienLyDo('')
+                    }}
+                    options={[
+                      { value: 'NORMAL', label: 'Bình thường' },
+                      { value: 'HIGH', label: 'Ưu tiên cao (x1,2)' },
+                      { value: 'URGENT', label: 'Gấp (x1,5)' },
+                    ]}
+                  />
                 </div>
                 {uuTien !== 'NORMAL' && (
                   <div>
