@@ -380,6 +380,10 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none; transition: 0.3s;
 }
+/* Modal LỒNG bên trong một modal khác (vd hộp chọn lý do mở từ trong modal việc
+   của nhân viên, z-index 120) phải nổi lên trên, nếu không nó nằm sau lớp nền
+   modal cha → bấm không được, nhìn như bị đơ. */
+.modal-overlay.modal-overlay--top { z-index: 200; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
 .modal {
   width: 560px; max-width: 92vw; max-height: 85vh;

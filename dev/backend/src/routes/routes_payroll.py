@@ -1,5 +1,3 @@
-import json
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -11,26 +9,25 @@ from decimal import Decimal
 from src.db.database import get_db
 from src.core.auth import require_permission, User
 from src.db.models import Employee, Department
+from src.core.redis_utils import get_cached_json, set_cached_json
 
 router = APIRouter(prefix="/api/payroll", tags=["06. Payroll Ledger"])
 
-DEFAULT_NODE_RATES = {
-    'K01': (350000.0, 150000.0),  # Tiếp nhận & kiểm tra
-    'K02': (500000.0, 200000.0),  # Khảo sát & đo hiện trường
-    'K03': (450000.0, 180000.0),  # Chuẩn hoá tài liệu kỹ thuật
-    'K04': (400000.0, 160000.0),  # Xử lý bản vẽ & hồ sơ
-    'K05': (600000.0, 200000.0),  # Nộp hồ sơ cơ quan
-    'K06': (450000.0, 180000.0),  # Theo dõi thẩm tra
-    'K07': (350000.0, 150000.0),  # Kiểm tra kết quả
-    'K08': (300000.0, 120000.0),  # Nhận kết quả & bàn giao
-    'K09': (250000.0, 100000.0),  # Lưu trữ & đóng hồ sơ
-}
+# (Đã xoá DEFAULT_NODE_RATES — bảng giá ghi cứng theo mã node K01–K09. Đó là
+#  nguồn tiền thứ ba song song với work_item_rates, tự đẻ tiền cho node không có
+#  khoán checklist, và sai hoàn toàn với quy trình tự do không dùng mã K0x.
+#  Tiền khoán nay chỉ có một nguồn: checklist × work_item_rates.)
 
 @router.get("/options")
 def get_payroll_options(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payroll", "read"))
 ):
+    cache_key = "bachkhoa:payroll:options"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     departments = db.query(Department).all()
     dept_map = {d.id: d for d in departments}
     employees = db.query(Employee).filter(Employee.is_active == True).order_by(Employee.full_name.asc()).all()
@@ -84,7 +81,7 @@ def get_payroll_options(
         })
         
     now = datetime.now()
-    return {
+    result = {
         "status": "success",
         "data": {
             "departments": dept_list,
@@ -93,6 +90,8 @@ def get_payroll_options(
             "default_month": now.month
         }
     }
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
 
 @router.get("/employee-ledger")
 def get_employee_ledger(
@@ -108,6 +107,12 @@ def get_employee_ledger(
     year_val = year if isinstance(year, int) else curr_year
     month_val = month if isinstance(month, int) else curr_month
     emp_id_val = employee_id if (employee_id and isinstance(employee_id, str)) else None
+
+    if emp_id_val:
+        ledger_cache_key = f"bachkhoa:payroll:ledger:{emp_id_val}:{year_val}:{month_val}"
+        cached_ledger = get_cached_json(ledger_cache_key)
+        if cached_ledger is not None:
+            return cached_ledger
 
     if not emp_id_val:
         first_emp = db.execute(text("""
@@ -211,9 +216,14 @@ def get_employee_ledger(
     support_task_count = 0
     piece_rate_main = 0.0
     piece_rate_support = 0.0
-    total_allowance = 0.0
-    total_bonus = sum(a["amount"] for a in adjustments if a["type"] in ("bonus", "referral_commission", "holiday_bonus"))
-    total_penalty = sum(a["amount"] for a in adjustments if a["type"] == "penalty")
+    # Loại khoản dùng ĐÚNG giá trị ràng buộc DB (viết hoa): BONUS / ALLOWANCE /
+    # DEDUCTION / REIMBURSEMENT. Trước đây khớp chữ thường ('bonus'/'penalty') nên
+    # mọi khoản điều chỉnh hiện ra danh sách mà KHÔNG cộng vào lương.
+    def _loai(a):
+        return str(a.get("type") or "").upper()
+    total_bonus = sum(a["amount"] for a in adjustments if _loai(a) == "BONUS")
+    total_allowance = sum(a["amount"] for a in adjustments if _loai(a) in ("ALLOWANCE", "REIMBURSEMENT"))
+    total_penalty = sum(a["amount"] for a in adjustments if _loai(a) == "DEDUCTION")
     
     pending_record_count = 0
     pending_record_total = 0.0
@@ -224,13 +234,9 @@ def get_employee_ledger(
 
     for r in rows:
         role = "main" if (r["role_code"] or "").lower() == "main" or r["is_primary"] else "support"
-        code = r["node_code"] or "K01"
-        def_main, def_supp = DEFAULT_NODE_RATES.get(code, (350000.0, 150000.0))
-        
-        if r["entitlement_amount"] is not None:
-            base_rate = float(r["entitlement_amount"])
-        else:
-            base_rate = def_main if role == "main" else def_supp
+        # Sổ lương hiện đúng số khoán đã sinh từ checklist. Node chưa có khoán thì
+        # là 0 — không chiếu một con số ghi cứng lên rồi trả nhầm khi chốt.
+        base_rate = float(r["entitlement_amount"]) if r["entitlement_amount"] is not None else 0.0
 
         stake_allowance = 0.0
         cancellation_allowance = 0.0
@@ -331,7 +337,7 @@ def get_employee_ledger(
         "provisional_total": provisional_total,
     }
 
-    return {
+    result = {
         "status": "success",
         "data": {
             "employee": {
@@ -347,6 +353,9 @@ def get_employee_ledger(
             "warnings": []
         }
     }
+    if emp_id_val:
+        set_cached_json(f"bachkhoa:payroll:ledger:{emp_id_val}:{year_val}:{month_val}", result, ttl_seconds=120)
+    return result
 
 class ClosePeriodIn(BaseModel):
     employee_id: str
@@ -368,69 +377,35 @@ def close_employee_period(
             where a.employee_id = :emp_id and n.status in ('accepted', 'completed')
         """), {"emp_id": payload.employee_id}).mappings().all()
 
-        created_count = 0
+        # Chốt lương chỉ DUYỆT các khoán đã sinh từ checklist khi nghiệm thu.
+        # KHÔNG tự đẻ tiền: node đã nghiệm thu nhưng không gắn công việc khoán nào
+        # thì không có khoán — đúng quy tắc "không checklist thì không sinh tiền".
+        # (Trước đây chỗ này tạo entitlement bằng bảng giá ghi cứng DEFAULT_NODE_RATES
+        #  theo mã K01–K09; quy trình tự do không có mã đó nên luôn trả mặc định sai.)
+        approved_count = 0
+        skipped_count = 0
         for node in completed_nodes:
             exists = db.execute(text("""
-                select id from public.work_pay_entitlements 
+                select id from public.work_pay_entitlements
                 where task_node_id = :node_id and employee_id = :emp_id
             """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id}).scalar()
-            
-            if not exists:
-                role = "main" if (node["role_code"] or "").lower() == "main" else "support"
-                def_m, def_s = DEFAULT_NODE_RATES.get(node["node_code"], (350000.0, 150000.0))
-                amt = def_m if role == "main" else def_s
-                
-                idempotency_key = f"close_payroll:{node['task_node_id']}:{payload.employee_id}"
-                snapshot = json.dumps({
-                    "node_code": node["node_code"],
-                    "role_code": role,
-                    "amount": amt,
-                    "closed_by": user.id,
-                    "month": payload.month,
-                    "year": payload.year
-                })
 
-                acc_id = db.execute(text("""
-                    select id from public.task_node_acceptances 
-                    where task_node_id = :node_id 
-                    order by created_at desc limit 1
-                """), {"node_id": node["task_node_id"]}).scalar()
-
-                db.execute(text("""
-                    insert into public.work_pay_entitlements
-                    (id, workflow_instance_id, task_node_id, checklist_result_id, checklist_assignment_id,
-                     acceptance_id, work_item_rate_id, employee_id, role_code, amount, earned_at,
-                     status, calculation_snapshot, idempotency_key, approved_by, approved_at, created_at)
-                    values
-                    (:id, :wf_id, :node_id, NULL, NULL,
-                     :acc_id, NULL, :emp_id, :role_code, :amt, now(),
-                     'approved', cast(:snapshot as jsonb), :idempotency_key, :actor_id, now(), now())
-                """), {
-                    "id": f"wpe_{uuid.uuid4().hex[:16]}",
-                    "wf_id": node["workflow_id"],
-                    "node_id": node["task_node_id"],
-                    "acc_id": acc_id,
-                    "emp_id": payload.employee_id,
-                    "role_code": node["role_code"] or "MAIN",
-                    "amt": amt,
-                    "snapshot": snapshot,
-                    "idempotency_key": idempotency_key,
-                    "actor_id": user.id
-                })
-                created_count += 1
-            else:
+            if exists:
                 db.execute(text("""
                     update public.work_pay_entitlements
                     set status = 'approved', approved_by = :actor_id, approved_at = now()
                     where task_node_id = :node_id and employee_id = :emp_id and status != 'approved'
                 """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id, "actor_id": user.id})
-                created_count += 1
+                approved_count += 1
+            else:
+                # Không có khoán checklist cho node này → bỏ qua, không đẻ tiền.
+                skipped_count += 1
 
         db.commit()
         return {
             "status": "success",
             "message": f"Đã chốt sổ lương tháng {payload.month}/{payload.year}",
-            "data": {"created_count": created_count}
+            "data": {"approved_count": approved_count, "skipped_no_piece_rate": skipped_count}
         }
     except HTTPException:
         raise

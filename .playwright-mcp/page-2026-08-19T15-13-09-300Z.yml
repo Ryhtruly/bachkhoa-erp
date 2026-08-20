@@ -1,0 +1,101 @@
+- generic [active] [ref=f37e1]:
+  - generic [ref=f37e2436]:
+    - banner [ref=f37e2437]:
+      - img "Bách Khoa - Đo đạc - Kiến trúc - Xây dựng" [ref=f37e2439]
+      - generic [ref=f37e2440]:
+        - button "Chuyển sang nền tối" [ref=f37e2441] [cursor=pointer]:
+          - generic [ref=f37e2442]: 🌙
+        - generic [ref=f37e2443]:
+          - generic [ref=f37e2444]:
+            - term [ref=f37e2445]: Hệ thống
+            - definition [ref=f37e2446]: Quản trị đo vẽ & pháp lý
+          - generic [ref=f37e2447]:
+            - term [ref=f37e2448]: Phiên bản
+            - definition [ref=f37e2449]: "2.4"
+          - generic [ref=f37e2450]:
+            - term [ref=f37e2451]: Trạng thái
+            - definition [ref=f37e2452]: Đang hoạt động
+    - main [ref=f37e2454]:
+      - generic [ref=f37e2455]:
+        - generic [ref=f37e2456]:
+          - generic [ref=f37e2457]: "592400"
+          - generic [ref=f37e2458]: "592440"
+          - generic [ref=f37e2459]: "592480"
+          - generic [ref=f37e2460]: "592520"
+          - generic [ref=f37e2461]: "592560"
+          - generic [ref=f37e2462]: "592600"
+          - generic [ref=f37e2463]: "592640"
+          - generic [ref=f37e2464]: "592680"
+          - generic [ref=f37e2465]: "592720"
+          - generic [ref=f37e2466]: "592760"
+          - generic [ref=f37e2467]: "592800"
+          - generic [ref=f37e2468]: "592840"
+        - generic [ref=f37e2469]:
+          - paragraph [ref=f37e2470]: Sơ đồ ranh thửa · minh hoạ
+          - heading [level=1] [ref=f37e2472]:
+            - text: Quản lý hồ sơ đo vẽvà pháp lý
+            - emphasis [ref=f37e2473]: chính xác
+            - text: đến từng mốc toạ độ.
+          - paragraph [ref=f37e2474]: Từ tiếp cận khách hàng, đo đạc thực địa, đến bàn giao và thu tiền — toàn bộ quy trình được ghi lại xuyên suốt trên một hệ thống.
+        - img "Sơ đồ ranh thửa minh hoạ với sáu mốc toạ độ" [ref=f37e2476]:
+          - generic [ref=f37e2488]:
+            - generic [ref=f37e2489]: 42.6m
+            - generic [ref=f37e2490]: 51.3m
+            - generic [ref=f37e2491]: 36.8m
+            - generic [ref=f37e2492]: 28.4m
+            - generic [ref=f37e2493]: 44.1m
+            - generic [ref=f37e2494]: 39.2m
+            - generic [ref=f37e2495]: Hoàn công
+          - generic [ref=f37e2496]:
+            - generic [ref=f37e2497]: "X: 592481.6"
+            - generic [ref=f37e2498]: "Y: 1189203.4"
+            - generic [ref=f37e2499]: "Z: 2.14"
+          - generic [ref=f37e2500]: "N"
+          - generic [ref=f37e2506]:
+            - generic [ref=f37e2507]: "0"
+            - generic [ref=f37e2508]: 20m
+        - generic [ref=f37e2509]:
+          - generic [ref=f37e2510]:
+            - term [ref=f37e2511]: Diện tích
+            - definition [ref=f37e2512]: 1.284,7 m²
+          - generic [ref=f37e2513]:
+            - term [ref=f37e2514]: Số mốc
+            - definition [ref=f37e2515]: "06"
+          - generic [ref=f37e2516]:
+            - term [ref=f37e2517]: Hệ toạ độ
+            - definition [ref=f37e2518]: VN-2000
+          - generic [ref=f37e2519]:
+            - term [ref=f37e2520]: Cập nhật
+            - definition [ref=f37e2521]: 12/08/2026
+        - generic [ref=f37e2522]:
+          - generic [ref=f37e2523]: Mốc đã đo
+          - generic [ref=f37e2525]: Mốc mới nhất
+          - generic [ref=f37e2527]: Ranh hoàn công
+      - complementary [ref=f37e2529]:
+        - generic [ref=f37e2530]:
+          - generic [ref=f37e2531]: "01"
+          - generic [ref=f37e2532]:
+            - heading "Đăng nhập" [level=2] [ref=f37e2533]
+            - paragraph [ref=f37e2534]: Khung xác thực hệ thống
+        - generic [ref=f37e2535]:
+          - generic [ref=f37e2536]:
+            - generic [ref=f37e2537]: Tài khoản
+            - textbox "Tài khoản" [ref=f37e2538]
+          - generic [ref=f37e2539]:
+            - generic [ref=f37e2540]: Mật khẩu
+            - textbox "Mật khẩu" [ref=f37e2541]:
+              - /placeholder: ••••••••
+          - generic [ref=f37e2542]:
+            - generic [ref=f37e2543] [cursor=pointer]:
+              - checkbox "Ghi nhớ"
+              - text: Ghi nhớ
+            - link "Quên mật khẩu?" [ref=f37e2545] [cursor=pointer]:
+              - /url: "#"
+          - button "Truy cập hệ thống →" [ref=f37e2546] [cursor=pointer]
+        - generic [ref=f37e2547]:
+          - generic [ref=f37e2548]: BK-ERP-2026
+          - generic [ref=f37e2549]: Bảo mật SSL
+    - contentinfo [ref=f37e2550]:
+      - generic [ref=f37e2551]: © 2026 Bách Khoa ERP — Hệ thống quản trị đo vẽ & pháp lý
+      - generic [ref=f37e2552]: Hệ toạ độ VN-2000 · Múi 3°
+  - generic [ref=f37e970]: Nguyễn Thị Hồng

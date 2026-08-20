@@ -125,6 +125,11 @@ class ServiceLine(Base):
     property_address = Column(Text, nullable=True)
     property_metadata = Column(JSONB, nullable=True, default=dict)
     price = Column(Numeric, nullable=True)
+    # Ưu tiên hồ sơ (Q5): đặt từ đầu, khoá khi kích hoạt. Giám đốc mới đặt được.
+    priority = Column(String, nullable=False, default="NORMAL")
+    priority_reason = Column(Text, nullable=True)
+    priority_set_by = Column(String, nullable=True)
+    priority_set_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class ContractTemplate(Base):

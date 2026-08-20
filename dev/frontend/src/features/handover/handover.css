@@ -158,6 +158,7 @@
 .handover__inst-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
 .handover__inst-nobill { color: #dc2626; text-align: center; }
 .handover__inst-status { color: var(--text-tertiary); font-size: 0.74rem; text-align: right; }
+.handover__inst-status.is-waiting { color: #c2410c; font-weight: 600; }
 
 /* ── Hai việc, hai người ──────────────────────────────────────
    Việc xong rồi chỉ cần AI làm và LÚC NÀO, nên thẻ rút còn hai dòng. */
@@ -304,4 +305,44 @@
   font-size: 0.76rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+/* ── Bộ hồ sơ bàn giao ────────────────────────────────────────
+   Gom mọi tài liệu về một nút. Khoá lại khi chưa thu đủ và chưa ai xác nhận
+   cho giao — nói rõ lý do ngay đó thay vì để người dùng bấm rồi mới biết. */
+.handover__package {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+}
+.handover__package > div { flex: 1; min-width: 0; }
+.handover__package strong { display: block; font-size: 0.87rem; font-weight: 700; }
+.handover__package p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 0.79rem; line-height: 1.45; }
+.handover__package small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  color: #b45309;
+  font-size: 0.76rem;
+}
+.handover__package .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Bước vừa được tick là bàn giao nhưng chưa Áp dụng — nói rõ phải làm gì, thay
+   vì không hiện gì cả. */
+.handover--pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 11px 13px;
+  border-left: 3px solid var(--orange-400, #fb923c);
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.81rem;
+  line-height: 1.5;
 }

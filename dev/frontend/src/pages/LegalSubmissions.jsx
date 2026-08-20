@@ -226,9 +226,9 @@ export default function LegalSubmissions() {
       label: 'TÊN HỒ SƠ',
       width: 220,
       render: (val, row) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div className="survey-cell-stack">
           <strong>{val || 'Chưa có tên'}</strong>
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+          <span>
             {row.contract_id} · {row.service_line_name || 'Hạng mục'}
           </span>
         </div>
@@ -247,10 +247,10 @@ export default function LegalSubmissions() {
       label: 'PHỤ TRÁCH PHÁP LÝ',
       width: 180,
       render: (val, row) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span>{val || 'Chưa phân công'}</span>
+        <div className="survey-cell-stack">
+          <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.86rem' }}>{val || 'Chưa phân công'}</span>
           {row.contact_phone && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+            <span>
               <Phone size={11} /> {row.contact_phone}
             </span>
           )}
@@ -300,21 +300,16 @@ export default function LegalSubmissions() {
 
   return (
     <section className="tab-pane active phaply-page list-page-frame">
-      <div className="list-page-frame__toolbar">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-          <div>
-            <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: '1.3rem', fontWeight: 700 }}>
-              <FileCheck size={22} style={{ color: 'var(--orange-500)' }} />
-              Hồ Sơ Pháp Lý
-            </h2>
-            <div className="sub" style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: 2 }}>
-              Hồ sơ nộp cơ quan nhà nước — tự sinh khi Node Pháp lý bắt đầu, không tạo tay
-            </div>
-          </div>
+      <header className="contract-pane-title">
+        <div>
+          <FileCheck size={20} style={{ color: 'var(--orange-500)' }} />
+          <span>Hồ Sơ Pháp Lý</span>
+          <strong>{stats.total ?? pagination.total ?? submissions.length}</strong>
         </div>
+      </header>
 
-        <StatsGrid cols={5}>
-          <StatCard label="Tổng hồ sơ" value={stats.total || 0} icon={FileCheck} loading={statsLoading} />
+      <div className="list-page-frame__toolbar">
+        <StatsGrid cols={GOV_STATUS_OPTIONS.length}>
           {GOV_STATUS_OPTIONS.map(opt => (
             <StatCard key={opt} label={opt} value={stats[opt] || 0} loading={statsLoading} />
           ))}

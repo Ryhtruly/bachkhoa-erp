@@ -4,6 +4,7 @@ import { Badge, ConfirmationModal, DataTable, DatePicker, FormRow } from '../../
 import { useToast } from '../../../contexts/ToastContext';
 import { fmt, formatDate } from '../utils';
 import { API } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 
 const payrollPeriodLabels = {
   Open: 'Đang mở',
@@ -38,11 +39,7 @@ export default function LuongKhoan3PScreen({ user, isDirector = false }) {
     const loadOptions = async () => {
       try {
         setOptionsLoading(true);
-        const response = await fetch(`${API}/api/payroll/options`);
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.detail || 'Không tải được danh sách nhân viên');
-        }
+        const payload = await apiFetch(`${API}/api/payroll/options`);
         const data = payload.data || {};
         const departments = data.departments || [];
         const preferredDepartment = (
@@ -81,11 +78,7 @@ export default function LuongKhoan3PScreen({ user, isDirector = false }) {
         year: String(year),
         month: String(month),
       });
-      const response = await fetch(`${API}/api/payroll/employee-ledger?${params}`);
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.detail || 'Không tải được sổ lương nhân viên');
-      }
+      const payload = await apiFetch(`${API}/api/payroll/employee-ledger?${params}`);
       setLedger(payload.data);
     } catch (error) {
       setLedger(null);
@@ -146,8 +139,7 @@ export default function LuongKhoan3PScreen({ user, isDirector = false }) {
 
   const handleConfirmClosePayroll = async () => {
     try {
-      setClosing(true);
-      const response = await fetch(`${API}/api/payroll/close-employee-period`, {
+      const payload = await apiFetch(`${API}/api/payroll/close-employee-period`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -156,16 +148,12 @@ export default function LuongKhoan3PScreen({ user, isDirector = false }) {
           month,
         }),
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.detail || 'Không chốt được lương.');
-      }
-      const created = payload.data?.created_count || 0;
+      const created = payload?.data?.created_count || 0;
       addToast(
         created > 0
           ? `Đã chốt ${created} dòng lương.`
-          : 'Không có dòng lương mới cần chốt.',
-        created > 0 ? 'success' : 'info',
+          : 'Đã chốt sổ lương thành công!',
+        'success'
       );
       setClosePayrollOpen(false);
       await loadLedger();

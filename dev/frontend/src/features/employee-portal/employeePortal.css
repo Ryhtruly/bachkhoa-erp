@@ -126,3 +126,41 @@
 
 /* Ảnh đại diện thật ở màn hình nhân viên. */
 .employee-workspace-hero__avatar--img { object-fit: cover; }
+
+/* Checklist bị khoá vì bước chưa bắt đầu — nói lý do ngay đó, đừng để nhân viên
+   bấm rồi mới nhận lỗi đỏ. */
+.employee-workspace-checklist__locked {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-tertiary);
+  font-size: .74rem;
+  line-height: 1.45;
+}
+
+/* Đầu ra nghiệm thu — điều nhân viên phải làm ra ở bước này. */
+.employee-workspace-task-modal__outcome {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--border-default);
+  background: color-mix(in srgb, var(--bg-deep) 60%, transparent);
+  color: var(--text-secondary);
+  font-size: .81rem;
+  line-height: 1.55;
+}
+
+/* Nhãn ưu tiên + thưởng dự kiến trên thẻ việc của nhân viên (GĐ3, Q7) */
+.employee-workspace-node-card__prio {
+  display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 700; vertical-align: middle;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: rgba(245, 158, 11, 0.14); color: #b45309;
+}
+.employee-workspace-node-card__prio.is-urgent { background: rgba(239, 68, 68, 0.14); color: #b91c1c; }
+/* Thẻ việc hẹp (nhiều việc trùng giờ, cột bị chia nhỏ): bỏ đuôi "· thưởng dự kiến"
+   cho khỏi xuống dòng dồn cục — vẫn còn tooltip giải thích. */
+@container (max-width: 168px) {
+  .employee-workspace-node-card__prio-suffix { display: none; }
+}
+@container (max-width: 115px) {
+  .employee-workspace-node-card__prio { font-size: 0.6rem; padding: 1px 6px; }
+}

@@ -35,14 +35,29 @@ class ChecklistStatus(StrEnum):
 
 _TASKS_QUERY = text(
     """
-    select n.id, n.node_key, n.node_code, wn.name as node_name, n.occurrence_no,
+    select n.id, n.node_key, n.node_code, n.occurrence_no,
+           -- Tên và mô tả phải là thứ giám đốc đặt trong QUY TRÌNH này, không
+           -- phải tên chung trong danh mục. Đặt tên bước là "Bàn giao kết quả"
+           -- mà nhân viên vẫn thấy "Nhận kết quả & bàn giao" thì hai bên nói về
+           -- cùng một việc bằng hai cái tên khác nhau.
+           coalesce(
+             nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
+             wn.name
+           ) as node_name,
+           coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'description' as node_description,
+           -- Cờ nghiệp vụ của bước — để màn nhân viên chỉ hiện panel đặc biệt đúng
+           -- chỗ (bàn giao / hồ sơ nộp cơ quan), không bày nhầm lên mọi bước.
+           coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover')::boolean, false) as is_handover,
+           coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'requires_gov_submission')::boolean, false) as requires_gov_submission,
            n.status, n.outcome, n.started_at, n.deadline_at, n.is_overdue, n.completed_at,
-           a.role_code, a.is_primary, wi.service_line_id, sl.contract_id
+           a.role_code, a.is_primary, wi.service_line_id, sl.contract_id, sl.priority
     from public.task_node_assignments a
     join public.task_nodes n on n.id = a.task_node_id
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+    left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where a.employee_id = :employee_id
       and a.assignment_status not in ('replaced', 'declined')
     order by n.deadline_at asc nulls last, n.updated_at desc
@@ -220,8 +235,12 @@ class EmployeePortalService:
                     "node_code": task["node_code"],
                     "node_key": task["node_key"],
                     "service_line_id": task["service_line_id"],
+                    "priority": task["priority"] or "NORMAL",
                     "contract_id": task["contract_id"],
                     "name": task["node_name"],
+                    "description": task["node_description"],
+                    "is_handover": bool(task["is_handover"]),
+                    "requires_gov_submission": bool(task["requires_gov_submission"]),
                     "role_code": task["role_code"],
                     "is_primary": bool(task["is_primary"]),
                     "status": task["status"],
@@ -309,7 +328,7 @@ class EmployeePortalService:
             text(
                 """
                 select r.id, r.status, r.require_evidence, r.evidence_data,
-                       n.deadline_at
+                       n.deadline_at, n.status as node_status
                 from public.task_node_checklist_results r
                 join public.task_nodes n on n.id = r.task_node_id
                 where r.id = :id and r.task_node_id = :task_node_id
@@ -322,6 +341,25 @@ class EmployeePortalService:
             raise HTTPException(status_code=404, detail="Không tìm thấy checklist.")
         if checklist["status"] not in (ChecklistStatus.NOT_STARTED, ChecklistStatus.REJECTED):
             raise HTTPException(status_code=409, detail="Checklist này đã nộp hoặc đã được duyệt.")
+
+        # Phải bấm "Bắt đầu làm" trước đã. Nộp minh chứng cho một bước chưa khởi
+        # động thì mốc bắt đầu không có, thời hạn tính từ đâu cũng không biết, và
+        # trên sơ đồ bước đó vẫn nằm im như chưa ai đụng tới.
+        if checklist["node_status"] != "in_progress":
+            nhan = {
+                "pending": "chưa tới lượt",
+                "ready": "chưa bấm Bắt đầu làm",
+                "submitted": "đã nộp nghiệm thu, đang chờ duyệt",
+                "accepted": "đã nghiệm thu xong",
+                "completed": "đã hoàn thành",
+                "cancelled": "đã huỷ",
+                "blocked": "đang bị chặn",
+                "rework_required": "bị trả về, cần bấm Làm lại trước",
+            }.get(checklist["node_status"], checklist["node_status"])
+            raise HTTPException(
+                status_code=409,
+                detail=f"Bước này {nhan} — bấm Bắt đầu làm rồi mới nộp được minh chứng.",
+            )
 
         if checklist["require_evidence"] and not evidence_url:
             raise HTTPException(status_code=422, detail="Checklist này bắt buộc phải nộp file minh chứng.")

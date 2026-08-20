@@ -4,6 +4,7 @@ import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdow
 import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 import { PlusCircle, RefreshCw, AlertCircle, Link, DollarSign, Wallet, Building2, Clock, BarChart3, BarChart2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import CashflowModal from '../modals/CashflowModal';
@@ -15,7 +16,10 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/api/finance/summary`).then(r => r.json()).then(setSummary).catch(console.error).finally(() => setLoading(false));
+    apiFetch(`${API}/api/finance/summary`)
+      .then(d => setSummary(d || { cash_balance: 0, bank_balance: 0, net_advance: 0, monthly: [], profit_by_contract: [] }))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải dữ liệu...</div>;

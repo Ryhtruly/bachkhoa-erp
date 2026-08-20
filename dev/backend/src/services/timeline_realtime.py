@@ -26,6 +26,8 @@ def _redis_client() -> redis.Redis:
 
 def publish_timeline_change(source: str, *, entity_id: str | None = None) -> None:
     """Publish an invalidation only; protected Timeline data never enters Redis."""
+    from src.core.redis_utils import invalidate_cache
+
     payload = json.dumps(
         {
             "source": source,
@@ -36,6 +38,9 @@ def publish_timeline_change(source: str, *, entity_id: str | None = None) -> Non
     )
     try:
         _redis_client().publish(TIMELINE_CHANNEL, payload)
+        # Xóa cache notification và dashboard để khi client nhận tín hiệu realtime sẽ lấy dữ liệu mới nhất
+        invalidate_cache("bachkhoa:notifications:summary:*")
+        invalidate_cache("bachkhoa:dashboard:*")
     except RedisError as exc:
         # A failed notification must not roll back the business transaction.
         logger.warning("Timeline realtime publish failed: %s", exc)

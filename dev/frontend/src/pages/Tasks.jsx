@@ -320,16 +320,16 @@ export default function Tasks() {
 
   return (
     <section className="tab-pane active hoso-page list-page-frame" id="tab-hoso">
-      <div className="list-page-frame__toolbar">
-        <div className="survey-page-heading">
-          <div>
-            <h2><FolderKanban size={22} /> Hồ Sơ Đo Vẽ</h2>
-            <p>Tự sinh khi nhân viên bắt đầu bước đo vẽ — không tạo tay</p>
-          </div>
+      <header className="contract-pane-title">
+        <div>
+          <FolderKanban size={20} style={{ color: 'var(--orange-500)' }} />
+          <span>Hồ Sơ Đo Vẽ</span>
+          <strong>{stats.total ?? pagination.total ?? tasks.length}</strong>
         </div>
+      </header>
 
-        <StatsGrid cols={5}>
-          <StatCard label="Tổng hồ sơ" value={stats.total || 0} icon={FolderKanban} />
+      <div className="list-page-frame__toolbar">
+        <StatsGrid cols={STATUS_OPTIONS.length}>
           {STATUS_OPTIONS.map((status) => (
             <StatCard key={status} label={status} value={stats[status] || 0} />
           ))}

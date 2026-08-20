@@ -1,0 +1,7 @@
+[     112ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/react-dom_client.js?v=d1c6f410:14335
+[  122083ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/by-task-node/27eb367d-b67d-48bc-b2af-7d88498c90df:0
+[  122174ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/handover/27eb367d-b67d-48bc-b2af-7d88498c90df:0
+[  122304ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/api/legal-submissions/by-task-node/27eb367d-b67d-48bc-b2af-7d88498c90df:0
+[  122403ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/handover/27eb367d-b67d-48bc-b2af-7d88498c90df:0
+[  184077ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/handover/5c4d8cd4-0e7d-4f90-81f5-defdffcb50d9:0
+[  184304ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/handover/5c4d8cd4-0e7d-4f90-81f5-defdffcb50d9:0

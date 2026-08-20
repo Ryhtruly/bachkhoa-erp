@@ -29,8 +29,7 @@ export default function ReceivablesScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/finance/receivables`);
-      const d = await res.json();
+      const d = await apiFetch(`${API}/api/finance/receivables`);
       setData(Array.isArray(d) ? d : []);
     } catch (e) {
       console.error(e);

@@ -13,6 +13,7 @@ from src.core.auth import (
     verify_password,
 )
 from src.user_admin.service import complete_invite, get_invite_info
+from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
 
 router = APIRouter(prefix="/api/auth", tags=["01. Authentication & Security"])
 
@@ -27,24 +28,12 @@ class LoginResponse(BaseModel):
 class CompleteInviteSchema(BaseModel):
     password: str
 
-@router.post("/login", summary="User Login", description="Authenticate username/password credentials and issue JWT Access Token.")
-def login(body: LoginSchema, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == body.username).first()
-    if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Tài khoản đã bị vô hiệu hoá")
-    token = create_access_token(user.id)
-    return LoginResponse(
-        token=token,
-        user={"id": user.id, "username": user.username, "email": user.email},
-    )
+def _build_user_profile(user: User, db: Session) -> dict:
+    cache_key = f"bachkhoa:auth:me:{user.id}"
+    cached_profile = get_cached_json(cache_key)
+    if cached_profile:
+        return cached_profile
 
-@router.get("/me", summary="Get Current User Profile", description="Retrieve profile details for the authenticated user.")
-def get_me(
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
     employee = (
         db.query(Employee)
         .filter(Employee.user_id == user.id, Employee.is_active == True)
@@ -88,7 +77,7 @@ def get_me(
         resource: check_perm(resource, "read")
         for resource in (
             "survey_record", "legal_submission",
-            "finance", "crm", "contract", "hr", "settings",
+            "finance", "crm", "contract", "hr", "settings", "customer",
         )
     }
 
@@ -97,7 +86,7 @@ def get_me(
     can_approve_contract = check_perm("contract", "approve")
     can_approve_payroll = check_perm("payroll", "approve")
 
-    return {
+    profile_data = {
         "id": user.id,
         "username": user.username,
         "email": user.email,
@@ -116,6 +105,29 @@ def get_me(
             "can_approve_payroll": can_approve_payroll,
         }
     }
+    set_cached_json(cache_key, profile_data, ttl_seconds=300)
+    return profile_data
+
+@router.post("/login", summary="User Login", description="Authenticate username/password credentials and issue JWT Access Token.")
+def login(body: LoginSchema, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == body.username).first()
+    if not user or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Tài khoản đã bị vô hiệu hoá")
+    token = create_access_token(user.id)
+    profile_data = _build_user_profile(user, db)
+    return LoginResponse(
+        token=token,
+        user=profile_data,
+    )
+
+@router.get("/me", summary="Get Current User Profile", description="Retrieve profile details for the authenticated user.")
+def get_me(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _build_user_profile(user, db)
 
 @router.get(
     "/invite/{token}",

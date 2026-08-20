@@ -1,0 +1,4 @@
+- generic [ref=f32e4]:
+  - heading "Đang xác thực phiên làm việc..." [level=3] [ref=f32e6]
+  - paragraph [ref=f32e7]: Hệ thống đang kiểm tra phiên đăng nhập và tải quyền người dùng.
+  - button "Đăng nhập lại" [ref=f32e8] [cursor=pointer]

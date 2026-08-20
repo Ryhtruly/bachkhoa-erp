@@ -105,6 +105,23 @@ def list_legal_submissions(
     }
 
 
+@router.get("/by-task-node/{task_node_id}")
+def get_legal_submission_by_task_node(
+    task_node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("legal_submission", "read")),
+):
+    """Hồ sơ nộp cơ quan gắn với một Node việc — để màn Lịch của nhân viên pháp lý
+    điền số biên nhận ngay tại chỗ làm. Không có thì trả 404 để panel tự ẩn."""
+    row = db.execute(
+        text(f"{_LIST_BASE_SQL} where s.task_node_id = :task_node_id order by s.created_at desc limit 1"),
+        {"task_node_id": task_node_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Node này chưa có hồ sơ nộp cơ quan")
+    return {"status": "success", "data": dict(row)}
+
+
 @router.get("/{submission_id}")
 def get_legal_submission(
     submission_id: str,
@@ -161,11 +178,33 @@ def update_legal_submission(
             set {set_clause}, updated_at = now()
             where id = :submission_id
               and coalesce(legacy_gov_status, '') not in ('Hoàn thành', 'Nộp thành công')
-            returning id
+            returning id, task_node_id
         """),
         updates,
-    ).first()
+    ).mappings().first()
     if not result:
         raise HTTPException(status_code=409, detail="Hồ sơ đã hoàn tất và không thể chỉnh sửa.")
+
+    # Cập nhật biên nhận/tình trạng có thể là mảnh ghép cuối để bước NỘP CƠ QUAN xong:
+    # vừa chuyển sang "Hoàn thành" thì thử tự nghiệm thu node — lúc này checklist đã
+    # duyệt + hồ sơ đã đóng thì mới đủ điều kiện. Bọc savepoint để lưu biên nhận vẫn
+    # thành công dù tự nghiệm thu trục trặc.
+    node_finalized = False
+    if updates.get("gov_status") == "Hoàn thành" and result["task_node_id"]:
+        from src.contracts.workflow_runtime import auto_finalize_node_if_ready
+        try:
+            with db.begin_nested():
+                auto = auto_finalize_node_if_ready(
+                    db, task_node_id=result["task_node_id"], actor_id=user.id
+                )
+                node_finalized = bool(auto.get("finalized"))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Auto-finalize sau khi cập nhật biên nhận %s lỗi", submission_id)
+
     db.commit()
-    return {"status": "success", "data": {"id": submission_id}}
+    if node_finalized:
+        from src.core.redis_utils import invalidate_cache, invalidate_money_caches
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_money_caches()
+    return {"status": "success", "data": {"id": submission_id, "node_finalized": node_finalized}}

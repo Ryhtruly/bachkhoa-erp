@@ -206,3 +206,17 @@
   color: #9a3412;
   font-size: 0.81rem;
 }
+
+/* Phiếu kế toán đã gửi, đang nằm chờ giám đốc. Là biên nhận cho người vừa gửi,
+   nên phải khác màu hai khối trên — đây là việc đã làm, không phải việc kẹt. */
+.debt__pending {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  padding: 8px 11px;
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+  color: #1d4ed8;
+  font-size: 0.81rem;
+}

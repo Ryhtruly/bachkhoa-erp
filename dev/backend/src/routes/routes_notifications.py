@@ -7,6 +7,7 @@ from src.core.auth import check_user_permission, get_current_user
 from src.db.database import get_db
 from src.db.models import Employee, User
 from src.services.timeline_realtime import notification_event_stream
+from src.core.redis_utils import get_cached_json, set_cached_json
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
@@ -48,6 +49,39 @@ _MANAGER_CHECKLIST_REVIEW_QUERY = text(
     limit 50
     """
 )
+
+# Phiếu thu/chi kế toán đã lập, đang nằm chờ giám đốc duyệt. Không có dòng này
+# thì kế toán bấm gửi xong là tiền rơi vào im lặng: giám đốc không biết có gì để
+# duyệt, kế toán không biết phiếu của mình đã đi tới đâu.
+_MANAGER_CASHFLOW_APPROVAL_QUERY = text(
+    """
+    select t.id as voucher_id, t.transaction_type, t.amount,
+           t.payer_payee_name, t.contract_id,
+           coalesce(t.created_at, t.transaction_date::timestamptz) as created_at,
+           bg.task_node_id, bg.node_key, bg.service_line_id
+    from public.cashflow_transactions t
+    -- Bám vào bước bàn giao của hợp đồng nếu có, để bấm thông báo là mở đúng chỗ.
+    left join lateral (
+        select n.id as task_node_id, n.node_key, sl.id as service_line_id
+        from public.task_nodes n
+        join public.workflow_instances wi on wi.id = n.workflow_instance_id
+        join public.service_lines sl on sl.id = wi.service_line_id
+        left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
+        left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+        where sl.contract_id = t.contract_id
+          and n.status <> 'cancelled'
+          and coalesce((
+                coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover'
+              )::boolean, false)
+        order by n.created_at desc
+        limit 1
+    ) bg on true
+    where t.status in ('Chờ duyệt', 'PENDING', 'pending')
+    order by coalesce(t.created_at, t.transaction_date::timestamptz) asc
+    limit 50
+    """
+)
+
 
 _EMPLOYEE_NODE_START_QUERY = text(
     """
@@ -114,6 +148,11 @@ def get_notifications_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    cache_key = f"bachkhoa:notifications:summary:{user.id}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     items = []
 
     if check_user_permission(db, user, "contract", "update"):
@@ -135,6 +174,27 @@ def get_notifications_summary(
                 "service_line_id": row["service_line_id"],
                 "node_key": row["node_key"],
                 "task_node_id": row["task_node_id"],
+                "created_at": _iso(row["created_at"]),
+            })
+
+    # Người duyệt tiền là giám đốc. Kế toán lập phiếu xong thì phiếu phải hiện
+    # ở chuông của người duyệt, không để nằm chờ vô hạn trong sổ quỹ.
+    if check_user_permission(db, user, "finance", "approve"):
+        for row in db.execute(_MANAGER_CASHFLOW_APPROVAL_QUERY).mappings().all():
+            la_thu = row["transaction_type"] in ("Thu", "INCOME")
+            ten_phieu = "Phiếu thu" if la_thu else "Phiếu chi"
+            nguoi = row["payer_payee_name"] or "khách"
+            items.append({
+                "type": "cashflow_approval",
+                "label": (
+                    f"{ten_phieu} {row['voucher_id']} — {float(row['amount'] or 0):,.0f}₫ "
+                    f"từ {nguoi} chờ duyệt"
+                ),
+                "contract_id": row["contract_id"],
+                "service_line_id": row["service_line_id"],
+                "node_key": row["node_key"],
+                "task_node_id": row["task_node_id"],
+                "voucher_id": row["voucher_id"],
                 "created_at": _iso(row["created_at"]),
             })
 
@@ -191,7 +251,9 @@ def get_notifications_summary(
             })
 
     items.sort(key=lambda item: item["created_at"] or "")
-    return {"count": len(items), "items": items}
+    result = {"count": len(items), "items": items}
+    set_cached_json(cache_key, result, ttl_seconds=10)
+    return result
 
 
 @router.get("/events")

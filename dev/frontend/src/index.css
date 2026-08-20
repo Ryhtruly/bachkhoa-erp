@@ -79,6 +79,7 @@
 
 html {
   font-size: 15px;
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -88,6 +89,7 @@ body {
   overflow-x: hidden;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  scrollbar-gutter: stable;
 }
 
 /* ─── Scrollbar ─── */
@@ -412,14 +414,15 @@ body {
    (--shell-gap), cách viền phải/dưới màn hình (--shell-gap). Nội dung bên trong từng trang
    (padding riêng qua --main-pad-x) giữ nguyên như trước, chỉ đổi phần khung/khoảng cách bên ngoài. */
 .main {
-  --main-pad-x: 40px;
+  --main-pad-x: 2px;
   margin: calc(var(--header-h) + var(--shell-gap)) var(--shell-gap) var(--shell-gap) calc(var(--sidebar-w) + var(--shell-gap) * 2);
   flex: 1;
   width: calc(100% - var(--sidebar-w) - var(--shell-gap) * 3);
   max-width: calc(100vw - var(--sidebar-w) - var(--shell-gap) * 3);
   min-width: 0;
   min-height: calc(100vh - var(--header-h) - var(--shell-gap) * 2);
-  padding: 0 var(--main-pad-x) 40px;
+  padding: 2px;
+  scrollbar-gutter: stable;
 }
 
 /* ─── Top Header ─── */
@@ -442,15 +445,64 @@ body {
 .top-header__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
   height: 100%;
   width: var(--sidebar-w);
   flex-shrink: 0;
-  padding: 0 20px 0 32px;
+  padding: 0 14px;
 }
 
-.top-header__brand-logo { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
-.top-header__brand-title { height: 22px; object-fit: contain; }
+.top-header__brand-logo-svg {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(235, 74, 35, 0.25));
+}
+
+.top-header__brand-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.top-header__brand-name {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  color: var(--orange-600);
+}
+
+.top-header__brand-crosshair {
+  display: inline-block;
+  margin: 0 1px;
+  color: var(--orange-600);
+  flex-shrink: 0;
+}
+
+.top-header__brand-line {
+  width: 100%;
+  height: 1.5px;
+  margin: 2.5px 0 2px;
+  background: var(--orange-500);
+  border-radius: 1px;
+}
+
+.top-header__brand-sub {
+  font-family: var(--font-sans);
+  font-size: 0.44rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--orange-600);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 
 .top-header--scrolled {
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
@@ -569,14 +621,49 @@ body {
 }
 
 .main--hr {
-  --main-pad-x: 16px;
-  padding: 4px 16px 16px;
+  --main-pad-x: 2px;
+  padding: 2px;
 }
 
 /* Trang danh sách (Đo vẽ / Pháp lý) dùng đúng khoảng cách sát viền như tab Hợp Đồng. */
 .main--list {
   --main-pad-x: 2px;
   padding: 2px;
+}
+
+/* ─── Global Workspace Header Title Bar (Hợp Đồng, Timeline, Pháp Lý, Đo Vẽ) ─── */
+.contract-pane-title {
+  display: flex;
+  flex-shrink: 0;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--orange-500) 7%, var(--bg-card)), var(--bg-card));
+}
+
+.contract-pane-title > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-primary);
+  font-weight: 750;
+  font-size: 1.02rem;
+}
+
+.contract-pane-title > div strong {
+  display: grid;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--orange-600);
+  background: color-mix(in srgb, var(--orange-500) 12%, transparent);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .top-header h1 {
@@ -606,19 +693,7 @@ body {
 
 .tab-pane.active {
   display: block;
-  animation: fadeSlideIn 0.3s var(--ease-out);
-}
-
-@keyframes fadeSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  animation: none;
 }
 
 /* ==========================================
@@ -1142,6 +1217,13 @@ tbody tr:last-child td {
   pointer-events: auto;
 }
 
+/* Modal LỒNG trong một modal khác (vd hộp chọn lý do Tạm dừng/Đóng hồ sơ mở từ
+   trong modal việc của nhân viên pháp lý — lớp nền đó z-index 120) phải nổi lên
+   trên, nếu không nó nằm SAU nền modal cha → bấm nút mà "không hiện gì". Quy tắc
+   này BẮT BUỘC nằm ở index.css vì đây mới là file CSS được import; bản trong
+   assets/styles.css không được nạp nên vô tác dụng. */
+.modal-overlay.modal-overlay--top { z-index: 200; }
+
 .modal {
   width: 560px;
   max-width: 92vw;
@@ -1384,8 +1466,8 @@ tbody tr:last-child td {
 }
 
 /* ─── List page fixed layout: toolbar cố định trên, chỉ bảng cuộn, pagination cố định dưới ───
-   Dùng CHUNG một khuôn với tab Hợp Đồng: khung vuông sát viền (padding ngoài 2px), nhịp
-   đệm trong 16px. Trước đây trang danh sách đệm 40px còn Hợp Đồng 2px nên nhìn lệch hẳn. */
+   Đồng bộ liền khối: Khung bảng là 1 card hoàn chỉnh, bảng và pagination gắn kết liền mạch,
+   triệt tiêu viền đôi và góc bo lệch. */
 .tab-pane.active.list-page-frame {
   display: flex;
   flex-direction: column;
@@ -1397,22 +1479,62 @@ tbody tr:last-child td {
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
 }
-.list-page-frame__toolbar { flex-shrink: 0; padding: 14px 16px 0; }
+.list-page-frame__toolbar {
+  flex-shrink: 0;
+  padding: 12px 16px 10px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.list-page-frame__toolbar .stats-grid {
+  display: grid;
+  margin-bottom: 10px;
+}
+.list-page-frame__toolbar .filter-bar-modern {
+  margin-bottom: 0;
+}
 .list-page-frame__table {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  margin: 0 16px;
+  margin: 0;
   overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-bottom: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-card);
+  box-shadow: none;
 }
-.list-page-frame__table .dt-wrapper { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
-.list-page-frame__table .table-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+.list-page-frame__table .dt-wrapper {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.list-page-frame__table .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent;
+}
 .list-page-frame__table .dt-pagination { flex-shrink: 0; }
-/* Thanh phân trang nối liền đáy bảng thành một khối, không tách rời lơ lửng. */
-.list-page-frame .contract-server-pagination { flex-shrink: 0; margin: 0 16px 14px; }
+/* Thanh phân trang nối liền đáy bảng thành một khối, không tách rời hay thụt lề lơ lửng. */
+.list-page-frame .contract-server-pagination,
+.list-page-frame__table .contract-server-pagination {
+  flex-shrink: 0;
+  margin: 0 !important;
+  padding: 10px 16px;
+  border: none !important;
+  border-top: 1px solid var(--border-subtle) !important;
+  border-radius: 0 !important;
+  background: var(--bg-deep);
+}
 
 @media (max-width: 900px) {
   .tab-pane.active.list-page-frame { height: auto; overflow: visible; }
@@ -1422,31 +1544,79 @@ tbody tr:last-child td {
 
 /* ─── Hồ sơ đo vẽ ─── */
 .hoso-page .dt-wrapper {
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .hoso-page .table-wrap {
   background: var(--bg-card);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  border: none;
+  border-radius: 0;
 }
 
-.hoso-page .table-wrap table {
-  min-width: 2450px;
+.hoso-page .table-wrap table,
+.phaply-page .table-wrap table {
+  min-width: 100%;
 }
 
 .hoso-page .table-wrap th,
-.hoso-page .table-wrap td {
+.hoso-page .table-wrap td,
+.phaply-page .table-wrap th,
+.phaply-page .table-wrap td {
   background: var(--bg-card);
 }
 
-.hoso-page .table-wrap thead th {
+.hoso-page .table-wrap thead th,
+.phaply-page .table-wrap thead th {
   background: var(--bg-deep);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  padding: 10px 14px;
 }
 
-.hoso-page .table-wrap tbody tr:hover td {
+.hoso-page .table-wrap tbody tr:hover td,
+.phaply-page .table-wrap tbody tr:hover td {
   background: color-mix(in srgb, var(--orange-500) 5%, var(--bg-card));
+}
+
+/* ─── Standardized Table Cell Stack (Đo Vẽ & Pháp Lý) ─── */
+.survey-cell-stack,
+.legal-cell-stack,
+.table-cell-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.survey-cell-stack strong,
+.legal-cell-stack strong,
+.table-cell-stack strong {
+  overflow: hidden;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.survey-cell-stack span,
+.legal-cell-stack span,
+.table-cell-stack span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .hoso-table-note {
@@ -1682,7 +1852,8 @@ tbody tr:last-child td {
   top: 0;
   z-index: 10;
   background: var(--bg-deep);
-  box-shadow: 0 1px 0 var(--border-default);
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--border-subtle);
 }
 
 /* ─── Sticky Right Column (Actions / File) ─── */
@@ -3415,14 +3586,24 @@ tbody tr:hover td.dt-sticky-right {
 .date-picker__popover {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
-  z-index: 100;
+  left: 0;
+  z-index: 1200;
   width: 320px;
+  max-width: calc(100vw - 32px);
   padding: 14px;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--border-default, #dbe3ef);
   border-radius: 14px;
   background: #ffffff;
   box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+  opacity: 1;
+  backdrop-filter: none;
+}
+
+.date-picker__popover--top,
+.date-picker--top .date-picker__popover {
+  top: auto;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 -18px 45px rgba(15, 23, 42, 0.16);
 }
 
 .date-picker__header {

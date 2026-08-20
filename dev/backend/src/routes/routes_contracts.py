@@ -24,6 +24,8 @@ from src.contracts import (
 from src.contracts.workflow_runtime import (
     WorkflowValidationError,
     activate_workflow,
+    auto_finalize_node_if_ready,
+    validate_workflow_graph,
     cancel_workflow,
     replace_node_assignments,
     review_task_node_acceptance,
@@ -31,6 +33,10 @@ from src.contracts.workflow_runtime import (
 )
 from src.contracts.timeline import project_node_timeline
 from src.services.timeline_realtime import publish_timeline_change, timeline_event_stream
+from src.core.redis_utils import (
+    get_cached_json, set_cached_json, redis_distributed_lock,
+    invalidate_cache, invalidate_money_caches,
+)
 
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
 
@@ -63,6 +69,12 @@ class WorkflowRevisionPayload(BaseModel):
     graph: dict
     source_workflow_version_id: str | None = None
     change_reason: str | None = Field(default=None, max_length=1000)
+
+
+class WorkflowTemplateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    graph: dict
 
 
 class WorkflowAssignmentPayload(BaseModel):
@@ -273,6 +285,7 @@ def list_contracts(
 def list_contract_workspace(
     search: str = Query(None),
     service: str = Query(None),
+    task_type_id: str = Query(None),
     date_signed: str = Query(None),
     sort: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
@@ -281,8 +294,17 @@ def list_contract_workspace(
     user: User = Depends(require_permission("contract", "read")),
 ):
     """Danh sách vận hành mới: chỉ dùng contracts và service_lines."""
+    clean_search = (search or "").strip()
+    clean_service = (service or "").strip()
+    clean_task_type = (task_type_id or "").strip()
+    clean_date = (date_signed or "").strip()
+    cache_key = f"bachkhoa:contracts:workspace_list:{clean_search}:{clean_service}:{clean_task_type}:{clean_date}:{sort}:{page}:{page_size}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     id_query = (
-        db.query(Contract.id, Contract.date_signed)
+        db.query(Contract.id, Contract.date_signed, Contract.created_at)
         .join(ServiceLine, ServiceLine.contract_id == Contract.id)
         .outerjoin(Customer, Customer.id == Contract.customer_id)
     )
@@ -296,7 +318,11 @@ def list_contract_workspace(
             ServiceLine.service_type.ilike(keyword),
             ServiceLine.service_package.ilike(keyword),
         ))
-    if service and service != "All":
+    # Lọc theo KHOÁ hạng mục khi có — phân biệt được "Tách thửa" đo vẽ với pháp lý.
+    if clean_task_type and clean_task_type != "All":
+        id_query = id_query.filter(ServiceLine.task_type_id == clean_task_type)
+    elif service and service != "All":
+        # Đường cũ theo tên, giữ cho tương thích màn chưa nâng cấp.
         id_query = id_query.filter(or_(
             ServiceLine.service_type == service,
             ServiceLine.service_package == service,
@@ -306,10 +332,16 @@ def list_contract_workspace(
 
     distinct_ids = id_query.distinct()
     total_contracts = distinct_ids.count()
-    order_column = Contract.date_signed.asc() if sort == "asc" else Contract.date_signed.desc()
+    # "Mới nhất" = hợp đồng vừa thêm vào hệ thống lên đầu (theo created_at), không
+    # theo ngày ký — ngày ký có thể lùi quá khứ khi nhập hợp đồng cũ. Cùng mốc thì
+    # số hợp đồng lớn (mới hơn) lên trước.
+    if sort == "asc":
+        order_cols = (Contract.created_at.asc().nullsfirst(), Contract.id.asc())
+    else:
+        order_cols = (Contract.created_at.desc().nullslast(), Contract.id.desc())
     contract_ids = [row[0] for row in (
         distinct_ids
-        .order_by(order_column.nullslast(), Contract.id.asc())
+        .order_by(*order_cols)
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
@@ -334,34 +366,39 @@ def list_contract_workspace(
     )
     lines_by_contract = {}
     for line, task_type, package in line_rows:
-        lines_by_contract.setdefault(line.contract_id, []).append({
-            "id": line.id,
-            "name": task_type.name if task_type else line.service_type,
-            "package": package.name if package else line.service_package,
-            "price": _money_value(line.price),
-        })
+        lines_by_contract.setdefault(line.contract_id, []).append((line, task_type, package))
 
-    # Tiến độ và tiền: TÍNH SỐNG, không đọc cột status chết.
-    # Cột contracts.status chưa bao giờ được cập nhật nên mọi hợp đồng đều hiện
-    # "Chưa cập nhật" — vô nghĩa với người dùng. Suy ra từ quy trình và phiếu thu
-    # đã duyệt thì không bao giờ lệch.
     tien_va_tien_do = {}
     if contract_ids:
         for r in db.execute(
             text(f"""
                 select c.id,
+                       count(distinct sl.id)                                        as so_hang_muc,
+                       count(distinct wi.id)                                        as so_quy_trinh,
+                       count(distinct wi.id) filter (where wi.status = 'completed') as so_xong,
+                       count(distinct wi.id) filter (where wi.status = 'cancelled') as so_huy,
                        coalesce((
-                         select sum(t.amount) from public.cashflow_transactions t
+                         select sum(t.amount)
+                         from public.cashflow_transactions t
                          where t.contract_id = c.id
-                           and t.transaction_type in ({_INCOME_SQL})
                            and t.status in ({_APPROVED_SQL})
-                       ), 0) as da_thu,
-                       count(wi.id)                                       as so_quy_trinh,
-                       count(*) filter (where wi.status = 'completed')     as so_xong,
-                       count(*) filter (where wi.status = 'cancelled')     as so_huy
+                           and t.transaction_type in ({_INCOME_SQL})
+                       ), 0)                                                        as da_thu,
+                       coalesce(sum((
+                         select count(*)
+                         from jsonb_object_keys(coalesce(r.graph->'nodes', '{{}}'::jsonb)) k
+                         where k != coalesce(r.graph->>'start_node', '')
+                           and not exists (
+                             select 1
+                             from jsonb_each(r.graph->'nodes') n,
+                                  jsonb_each_text(coalesce(n.value->'transitions', '{{}}'::jsonb)) tr
+                             where tr.value = k
+                           )
+                       )), 0)                                              as so_buoc_roi
                 from public.contracts c
                 left join public.service_lines sl on sl.contract_id = c.id
                 left join public.workflow_instances wi on wi.service_line_id = sl.id
+                left join public.workflow_instance_revisions r on r.id = wi.active_revision_id
                 where c.id = any(:ids)
                 group by c.id
             """),
@@ -374,9 +411,9 @@ def list_contract_workspace(
             return "Chưa có quy trình"
         if info["so_huy"] == info["so_quy_trinh"]:
             return "Đã huỷ"
+        if info.get("so_buoc_roi"):
+            return "Thiếu đường nối"
         if info["so_xong"] == info["so_quy_trinh"]:
-            # Nhãn phải vừa một dòng trong cột trạng thái; số nợ cụ thể đã nằm
-            # ngay cột bên cạnh nên ở đây chỉ cần nói vì sao chưa chốt được.
             return "Hoàn thành" if float(info["da_thu"] or 0) >= tong - 0.01 else "Xong, còn nợ"
         return "Đang thực hiện"
 
@@ -387,6 +424,8 @@ def list_contract_workspace(
         tong = _money_value(contract.total_value)
         info = tien_va_tien_do.get(contract_id)
         da_thu = float(info["da_thu"] or 0) if info else 0.0
+        rem = max(0.0, tong - da_thu)
+        status_val = _tien_do(info, tong)
         rows.append({
             "id": contract.id,
             "customer_name": customer.full_name if customer else "Chưa cập nhật",
@@ -394,17 +433,29 @@ def list_contract_workspace(
             "date_signed": _date_value(contract.date_signed),
             "total_value": tong,
             "paid_amount": da_thu,
-            "remaining_amount": max(0.0, tong - da_thu),
-            "status": _tien_do(info, tong),
+            "remaining": rem,
+            "remaining_amount": rem,
+            "progress": status_val,
+            "status": status_val,
             "service_location": contract.service_location or "",
+            "service_area": contract.service_area,
+            "service_type": ", ".join(
+                [tt.name or line.service_type for line, tt, _ in service_lines if tt or line.service_type]
+            ) or "Chưa có",
             "file_link": contract.file_link or "",
-            "service_lines": service_lines,
-            "service_line_count": len(service_lines),
-            "service_line_total": sum(item["price"] for item in service_lines),
+            "service_lines": [
+                {
+                    "id": line.id,
+                    "name": task_type.name if task_type else (line.service_type or "Hạng mục chưa đặt tên"),
+                    "service_package": package.name if package else (line.service_package or ""),
+                }
+                for line, task_type, package in service_lines
+            ],
         })
 
-    total_pages = (total_contracts + page_size - 1) // page_size
-    return {
+    total_pages = max(1, (total_contracts + page_size - 1) // page_size) if total_contracts > 0 else 1
+    result = {
+        "status": "success",
         "data": rows,
         "pagination": {
             "page": page,
@@ -414,6 +465,8 @@ def list_contract_workspace(
             "total_pages": total_pages,
         },
     }
+    set_cached_json(cache_key, result, ttl_seconds=30)
+    return result
 
 
 @router.get("/timeline")
@@ -648,7 +701,13 @@ def get_contract_workspace(
     user: User = Depends(require_permission("contract", "read")),
 ):
     """Read model for the contract tabs and per-service-line workflow editor."""
-    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    clean_contract_id = (contract_id or "").strip()
+    cache_key = f"bachkhoa:contract_workspace:{clean_contract_id}:{user.id}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    contract = db.query(Contract).filter(Contract.id == clean_contract_id).first()
     if not contract:
         raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
 
@@ -913,77 +972,99 @@ def get_contract_workspace(
             "service_type": service_line.service_type,
             "target_property": service_line.target_property,
             "price": _money_value(service_line.price),
+            # Ưu tiên hồ sơ: khoá chỉ đọc một khi quy trình đã kích hoạt (Q5).
+            "priority": service_line.priority or "NORMAL",
+            "priority_reason": service_line.priority_reason,
+            "priority_locked": bool(
+                workflow and workflow.get("status") in ("running", "completed", "cancelled")
+            ),
             "workflow": workflow,
         })
 
-    workflow_catalog = [dict(row) for row in db.execute(
-        text(
-            """
-            select code, name, description
-            from public.workflow_nodes
-            where coalesce(is_active, true)
-            order by code
-            """
-        )
-    ).mappings().all()]
-
-    workflow_templates = [dict(row) for row in db.execute(
-        text(
-            """
-            select id, code, version, name, description, graph
-            from public.workflow_templates
-            where status = 'published'
-            order by name, version desc
-            """
-        )
-    ).mappings().all()]
-
-    assignment_options = [dict(row) for row in db.execute(
-        text(
-            """
-            select e.id, e.full_name, coalesce(d.name, e.department) as department_name,
-                   e.job_title
-            from public.employees e
-            left join public.departments d on d.id = e.department_id
-            where coalesce(e.is_active, true)
-            order by coalesce(d.display_order, 999), e.full_name, e.id
-            """
-        )
-    ).mappings().all()]
-
-    work_item_catalog = []
-    if can_view_compensation:
-        work_item_rows = db.execute(
+    # ── 1. Cache Workflow Node Catalog (K01–K09) ──
+    workflow_catalog = get_cached_json("bachkhoa:catalog:workflow_nodes")
+    if workflow_catalog is None:
+        workflow_catalog = [dict(row) for row in db.execute(
             text(
                 """
-                select wi.id, wi.code, wi.name, wi.output_definition,
-                       wr.id as rate_id, wr.role_code, wr.amount
-                from public.work_items wi
-                join public.work_item_rates wr on wr.work_item_id = wi.id
-                where wi.is_active
-                  and wr.status = 'published'
-                  and current_date <@ wr.effective_period
-                order by wi.name, wr.role_code
+                select code, name, description, checklist_template
+                from public.workflow_nodes
+                where coalesce(is_active, true)
+                order by code
                 """
             )
-        ).mappings().all()
-        work_item_by_id = {}
-        for row in work_item_rows:
-            item = work_item_by_id.setdefault(row["id"], {
-                "id": row["id"],
-                "code": row["code"],
-                "name": row["name"],
-                "output_definition": row["output_definition"],
-                "rates": [],
-            })
-            item["rates"].append({
-                "id": row["rate_id"],
-                "role_code": row["role_code"],
-                "amount": _money_value(row["amount"]),
-            })
-        work_item_catalog = list(work_item_by_id.values())
+        ).mappings().all()]
+        set_cached_json("bachkhoa:catalog:workflow_nodes", workflow_catalog, ttl_seconds=3600)
 
-    return {
+    # ── 2. Cache Workflow Templates ──
+    workflow_templates = get_cached_json("bachkhoa:catalog:workflow_templates")
+    if workflow_templates is None:
+        workflow_templates = [dict(row) for row in db.execute(
+            text(
+                """
+                select id, code, version, name, description, graph
+                from public.workflow_templates
+                where status = 'published'
+                order by name, version desc
+                """
+            )
+        ).mappings().all()]
+        set_cached_json("bachkhoa:catalog:workflow_templates", workflow_templates, ttl_seconds=3600)
+
+    # ── 3. Cache Assignment Options (Nhân viên phân công) ──
+    assignment_options = get_cached_json("bachkhoa:catalog:assignment_options")
+    if assignment_options is None:
+        assignment_options = [dict(row) for row in db.execute(
+            text(
+                """
+                select e.id, e.full_name, coalesce(d.name, e.department) as department_name,
+                       e.job_title
+                from public.employees e
+                left join public.departments d on d.id = e.department_id
+                where coalesce(e.is_active, true)
+                order by coalesce(d.display_order, 999), e.full_name, e.id
+                """
+            )
+        ).mappings().all()]
+        set_cached_json("bachkhoa:catalog:assignment_options", assignment_options, ttl_seconds=600)
+
+    # ── 4. Cache Work Items & Rates (Bảng giá khoán) ──
+    work_item_catalog = []
+    if can_view_compensation:
+        work_item_catalog = get_cached_json("bachkhoa:catalog:work_items")
+        if work_item_catalog is None:
+            work_item_rows = db.execute(
+                text(
+                    """
+                    select wi.id, wi.code, wi.name, wi.output_definition,
+                           wr.id as rate_id, wr.role_code, wr.amount
+                    from public.work_items wi
+                    join public.work_item_rates wr on wr.work_item_id = wi.id
+                    where wi.is_active
+                      and wr.status = 'published'
+                      and current_date <@ wr.effective_period
+                    order by wi.name, wr.role_code
+                    """
+                )
+            ).mappings().all()
+            work_item_by_id = {}
+            for row in work_item_rows:
+                item = work_item_by_id.setdefault(row["id"], {
+                    "id": row["id"],
+                    "code": row["code"],
+                    "name": row["name"],
+                    "output_definition": row["output_definition"],
+                    "rates": [],
+                })
+                item["rates"].append({
+                    "id": row["rate_id"],
+                    "role_code": row["role_code"],
+                    "amount": _money_value(row["amount"]),
+                })
+            work_item_catalog = list(work_item_by_id.values())
+            set_cached_json("bachkhoa:catalog:work_items", work_item_catalog, ttl_seconds=3600)
+
+    result = {
         "contract": {
             "id": contract.id,
             "customer_id": contract.customer_id,
@@ -1020,6 +1101,8 @@ def get_contract_workspace(
             "contract_documents": False,
         },
     }
+    set_cached_json(cache_key, result, ttl_seconds=60)
+    return result
 
 
 @router.put("/workflow/{service_line_id}/draft")
@@ -1052,6 +1135,8 @@ def save_service_line_workflow_draft(
             actor_id=user.id,
         )
         db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:contracts:*")
         publish_timeline_change("workflow_draft_saved", entity_id=service_line_id)
         return {
             "message": "Đã lưu bản nháp workflow",
@@ -1066,6 +1151,105 @@ def save_service_line_workflow_draft(
     except Exception:
         db.rollback()
         raise
+
+
+@router.get("/workflow/templates")
+def list_workflow_templates(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
+):
+    """Danh sách mẫu quy trình đang dùng được, kèm cờ cho biết mẫu nào tự tạo."""
+    rows = db.execute(
+        text("""
+            select t.id, t.code, t.version, t.name, t.description,
+                   t.created_by is not null as tu_tao,
+                   u.username as nguoi_tao,
+                   (select count(*) from jsonb_object_keys(t.graph->'nodes')) as so_buoc
+            from public.workflow_templates t
+            left join public.users u on u.id = t.created_by
+            where t.status = 'published'
+            order by t.created_by is not null, t.name, t.version desc
+        """)
+    ).mappings().all()
+    return {"data": [dict(row) for row in rows]}
+
+
+@router.post("/workflow/templates")
+def create_workflow_template(
+    payload: WorkflowTemplateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """Lưu quy trình đang dựng thành mẫu dùng lại cho hợp đồng sau.
+
+    Bốn mẫu gốc là dữ liệu hạt giống và không sửa được. Mẫu tự tạo mang created_by
+    để phân biệt, và đi qua đúng bộ kiểm tra như lúc kích hoạt quy trình — mẫu
+    hỏng mà lưu được thì mọi hợp đồng dùng nó sau này đều hỏng theo.
+    """
+    ten = payload.name.strip()
+    if not ten:
+        raise HTTPException(status_code=422, detail="Đặt tên cho mẫu quy trình")
+
+    try:
+        # Mẫu phải liền mạch — mẫu hỏng thì mọi hợp đồng dùng nó đều hỏng theo.
+        # Nhưng KHÔNG đòi phân công: mẫu là khung dùng chung, người phụ trách
+        # mỗi hợp đồng một khác, gán lúc áp mẫu vào hạng mục.
+        graph = validate_workflow_graph(db, payload.graph, require_connected=True)
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    trung = db.execute(
+        text("select 1 from public.workflow_templates where lower(name) = lower(:n) limit 1"),
+        {"n": ten},
+    ).scalar()
+    if trung:
+        raise HTTPException(status_code=409, detail=f"Đã có mẫu tên “{ten}”. Đặt tên khác.")
+
+    # Mã sinh từ thời điểm tạo: người dùng không phải nghĩ ra mã, và không đụng
+    # dải mã của bốn mẫu gốc (WF_DOVE, WF_PHAPLY...).
+    ma = f"WF_TUTAO_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    row = db.execute(
+        text("""
+            insert into public.workflow_templates
+                (code, version, name, description, status, graph, created_by)
+            values
+                (:ma, 1, :ten, :mota, 'published', cast(:graph as jsonb), :nguoi)
+            returning id, code, name
+        """),
+        {"ma": ma, "ten": ten, "mota": (payload.description or "").strip() or None,
+         "graph": json.dumps(graph, ensure_ascii=False), "nguoi": user.id},
+    ).mappings().first()
+    db.commit()
+    # Danh mục mẫu được cache 1 tiếng và nhúng luôn vào payload workspace. Không
+    # xoá thì mẫu vừa lưu phải chờ cache hết hạn mới hiện ra trong ô chọn — người
+    # dùng tưởng lưu hỏng, lưu lại lần nữa thì ăn lỗi trùng tên.
+    invalidate_cache("bachkhoa:catalog:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    return {"data": dict(row)}
+
+
+@router.delete("/workflow/templates/{template_id}")
+def delete_workflow_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """Chỉ xoá được mẫu tự tạo. Bốn mẫu gốc là nền của hệ thống, không cho xoá."""
+    row = db.execute(
+        text("select created_by, name from public.workflow_templates where id = :i"),
+        {"i": template_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy mẫu quy trình")
+    if not row["created_by"]:
+        raise HTTPException(status_code=403, detail="Mẫu gốc của hệ thống, không xoá được")
+
+    db.execute(text("delete from public.workflow_templates where id = :i"), {"i": template_id})
+    db.commit()
+    # Xoá rồi mà cache còn giữ thì mẫu đã chết vẫn nằm trong ô chọn cả tiếng.
+    invalidate_cache("bachkhoa:catalog:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    return {"data": {"id": template_id, "name": row["name"]}}
 
 
 @router.post("/workflow/{service_line_id}/activate")
@@ -1098,6 +1282,8 @@ def activate_service_line_workflow(
             actor_id=user.id,
         )
         db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:contracts:*")
         publish_timeline_change("workflow_revision_activated", entity_id=service_line_id)
         return {"message": "Đã kích hoạt workflow", **result}
     except WorkflowValidationError as exc:
@@ -1136,6 +1322,7 @@ def save_active_workflow_layout(
         db.rollback()
         raise HTTPException(status_code=404, detail="Workflow chưa được kích hoạt")
     db.commit()
+    invalidate_cache("bachkhoa:contract_workspace:*")
     return {"message": "Đã lưu bố cục workflow", **dict(row)}
 
 
@@ -1160,6 +1347,8 @@ def cancel_service_line_workflow(
             actor_id=user.id,
         )
         db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:contracts:*")
         publish_timeline_change("workflow_cancelled", entity_id=service_line_id)
         return {"message": "Đã hủy workflow", **result}
     except WorkflowValidationError as exc:
@@ -1200,6 +1389,7 @@ def update_task_node_assignments(
             actor_id=user.id,
         )
         db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
         publish_timeline_change("node_assignments_updated", entity_id=task_node_id)
         return {"message": "Đã cập nhật phân công", **result}
     except WorkflowValidationError as exc:
@@ -1224,7 +1414,7 @@ def review_checklist_evidence(
     checklist = db.execute(
         text(
             """
-            select id, status, is_payable, approver_role, is_overdue, late_reason
+            select id, task_node_id, status, is_payable, approver_role, is_overdue, late_reason
             from public.task_node_checklist_results
             where id = :id
             """
@@ -1272,9 +1462,40 @@ def review_checklist_evidence(
         ),
         {"id": checklist_result_id, "decision": next_status, "user_id": user.id, "note": payload.note},
     )
+
+    # Cơ chế nghiệm thu mới: duyệt xong checklist mà CẢ BƯỚC đã đạt hết thì hệ thống
+    # TỰ nghiệm thu bước — bỏ bước "Nộp nghiệm thu" thủ công. Bọc savepoint để dù
+    # auto-finalize có trục trặc cũng không làm hỏng việc duyệt checklist vừa rồi.
+    auto = {"finalized": False}
+    if next_status in ("approved", "late_approved"):
+        try:
+            with db.begin_nested():
+                auto = auto_finalize_node_if_ready(
+                    db, task_node_id=checklist["task_node_id"], actor_id=user.id
+                )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Auto-finalize node failed for checklist %s", checklist_result_id
+            )
+            auto = {"finalized": False}
+
     db.commit()
+    invalidate_cache("bachkhoa:contract_workspace:*")
     publish_timeline_change("checklist_reviewed", entity_id=checklist_result_id)
-    return {"id": checklist_result_id, "status": next_status}
+    if auto.get("finalized"):
+        # Bước vừa tự nghiệm thu: sinh khoán + mở bước kế → làm mới cache tiền/hợp đồng.
+        invalidate_money_caches()
+        publish_timeline_change("node_acceptance_reviewed", entity_id=auto.get("task_node_id"))
+    elif auto.get("submitted"):
+        # Bàn giao / rẽ nhánh: đã tự nộp, vào hàng chờ giám đốc nghiệm thu.
+        publish_timeline_change("node_submitted", entity_id=auto.get("task_node_id"))
+    return {
+        "id": checklist_result_id,
+        "status": next_status,
+        "node_finalized": bool(auto.get("finalized")),
+        "node_submitted": bool(auto.get("submitted")),
+    }
 
 
 @router.post("/workflow/acceptances/{acceptance_id}/review")
@@ -1295,6 +1516,8 @@ def review_node_acceptance(
             actor_id=user.id,
         )
         db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:contracts:*")
         publish_timeline_change("node_acceptance_reviewed", entity_id=acceptance_id)
         return result
     except WorkflowValidationError as exc:
@@ -1308,7 +1531,48 @@ def create_contract(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("contract", "create")),
 ):
-    return ContractService.create_contract(db, payload, actor_id=user.id)
+    lock_target = payload.customer_id or payload.code or "global"
+    with redis_distributed_lock(
+        f"contract:create:{lock_target}",
+        timeout_seconds=5,
+        custom_error_msg="Hệ thống đang xử lý tạo hợp đồng, vui lòng không nhấn gửi liên tiếp.",
+    ):
+        return ContractService.create_contract(db, payload, actor_id=user.id)
+
+
+@router.get("/customers/search")
+def search_customers(
+    q: str = Query(..., min_length=2),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("contract", "read")),
+):
+    """Tìm khách cũ để tự điền — theo tên, SĐT, CCCD, hoặc mã số thuế.
+
+    Trả kèm số hợp đồng đã có để người lập biết đây có phải khách quen không.
+    """
+    kw = f"%{q.strip()}%"
+    rows = db.execute(
+        text("""
+            select c.id, c.customer_type, c.full_name, c.phone, c.address,
+                   c.tax_id, c.id_card_number, c.id_card_date, c.id_card_place,
+                   c.email, c.zalo_phone, c.representative_name, c.representative_role,
+                   count(ct.id) as so_hop_dong
+            from public.customers c
+            left join public.contracts ct on ct.customer_id = c.id
+            where c.full_name ilike :kw or c.phone ilike :kw
+               or c.tax_id ilike :kw or c.id_card_number ilike :kw
+            group by c.id
+            order by so_hop_dong desc, c.full_name
+            limit 10
+        """),
+        {"kw": kw},
+    ).mappings().all()
+    return {"status": "success", "data": [
+        {**dict(r),
+         "id_card_date": r["id_card_date"].isoformat() if r["id_card_date"] else None,
+         "so_hop_dong": int(r["so_hop_dong"] or 0)}
+        for r in rows
+    ]}
 
 
 @router.get("/next-code")
@@ -1325,6 +1589,12 @@ def generate_and_save_contract(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("contract", "create")),
 ):
+    # Ưu tiên làm tăng chi phí (thưởng) — chỉ giám đốc đặt HIGH/URGENT (Q5).
+    if (payload.priority or "NORMAL") in ("HIGH", "URGENT"):
+        if not check_user_permission(db, user, "workflow", "approve"):
+            raise HTTPException(status_code=403, detail="Chỉ giám đốc được đặt độ ưu tiên cao")
+        if not (payload.priority_reason or "").strip():
+            raise HTTPException(status_code=422, detail="Nâng ưu tiên phải ghi lý do")
     return ContractService.generate_and_save_contract(db, payload, actor_id=user.id)
 
 
@@ -1358,7 +1628,9 @@ def override_handover(
     user: User = Depends(require_permission("contract", "approve")),
 ):
     """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K08."""
-    return ContractService.override_handover(db, contract_id, payload.reason, actor_id=user.id)
+    ket_qua = ContractService.override_handover(db, contract_id, payload.reason, actor_id=user.id)
+    invalidate_money_caches()
+    return ket_qua
 
 
 @router.post("/{contract_id:path}/write-off-debt")
@@ -1369,7 +1641,9 @@ def write_off_debt(
     user: User = Depends(require_permission("finance", "approve")),
 ):
     """Giám đốc duyệt xóa nợ / miễn giảm công nợ cho hợp đồng."""
-    return ContractService.write_off_debt(db, contract_id, payload.reason, actor_id=user.id)
+    ket_qua = ContractService.write_off_debt(db, contract_id, payload.reason, actor_id=user.id)
+    invalidate_money_caches()
+    return ket_qua
 
 
 @router.get("/{contract_id:path}/eligible-carry-forward-targets")
@@ -1390,6 +1664,223 @@ def carry_forward_debt(
     user: User = Depends(require_permission("finance", "approve")),
 ):
     """Giám đốc duyệt chuyển nợ hợp đồng cũ sang hợp đồng mới."""
-    return ContractService.carry_forward_debt(
+    ket_qua = ContractService.carry_forward_debt(
         db, contract_id, payload.target_contract_id, payload.reason, actor_id=user.id
     )
+    invalidate_money_caches()
+    return ket_qua
+
+
+class ServiceLinePriorityIn(BaseModel):
+    priority: str = Field(pattern="^(NORMAL|HIGH|URGENT)$")
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+@router.post("/service-lines/{service_line_id}/priority")
+def set_service_line_priority(
+    service_line_id: str,
+    payload: ServiceLinePriorityIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """Giám đốc đặt độ ưu tiên cho hồ sơ — chỉ khi quy trình CHƯA kích hoạt (Q5).
+
+    Ưu tiên làm tăng chi phí (thưởng), nên chỉ người có quyền duyệt quy trình mới
+    đặt được, và bắt buộc ghi lý do khi nâng lên HIGH/URGENT. Sau khi kích hoạt,
+    mức ưu tiên khoá cứng — không nâng/hạ giữa chừng.
+    """
+    line = db.execute(
+        text("""
+            select sl.id, wi.status as workflow_status
+            from public.service_lines sl
+            left join public.workflow_instances wi on wi.service_line_id = sl.id
+            where sl.id = :id
+        """),
+        {"id": service_line_id},
+    ).mappings().first()
+    if not line:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hạng mục")
+    if line["workflow_status"] in ("running", "completed", "cancelled"):
+        raise HTTPException(
+            status_code=409,
+            detail="Quy trình đã kích hoạt — không đổi được độ ưu tiên. Ưu tiên phải đặt từ đầu.",
+        )
+    if payload.priority in ("HIGH", "URGENT") and not (payload.reason or "").strip():
+        raise HTTPException(status_code=422, detail="Nâng ưu tiên phải ghi lý do")
+
+    db.execute(
+        text("""
+            update public.service_lines
+            set priority = :p,
+                priority_reason = :r,
+                priority_set_by = :u,
+                priority_set_at = case when :p = 'NORMAL' then null else now() end
+            where id = :id
+        """),
+        {"p": payload.priority,
+         "r": (payload.reason or "").strip() or None if payload.priority != "NORMAL" else None,
+         "u": user.id, "id": service_line_id},
+    )
+    db.commit()
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    return {"status": "success", "data": {"service_line_id": service_line_id, "priority": payload.priority}}
+
+
+def _priority_multiplier(db: Session, priority: str) -> float:
+    """Hệ số gợi ý đang hiệu lực cho một mức ưu tiên. NORMAL = 1 (không thưởng)."""
+    if priority not in ("HIGH", "URGENT"):
+        return 1.0
+    row = db.execute(
+        text("""
+            select multiplier from public.priority_multipliers
+            where priority = :p and status = 'published'
+              and current_date <@ daterange(effective_from, coalesce(effective_to,'infinity'::date), '[]')
+            order by effective_from desc limit 1
+        """),
+        {"p": priority},
+    ).scalar()
+    return float(row) if row is not None else 1.0
+
+
+@router.get("/{contract_id:path}/priority-bonus/preview")
+def priority_bonus_preview(
+    contract_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """Xem trước thưởng ưu tiên: mức ưu tiên, hệ số, và khoán từng người đã nhận.
+
+    Thưởng gợi ý = khoán người đó nhận × (hệ số − 1). Giám đốc sửa số cuối (Q6).
+    """
+    # Mức ưu tiên cao nhất trong các hạng mục của hợp đồng.
+    prio = db.execute(
+        text("""
+            select priority from public.service_lines
+            where contract_id = :c
+            order by case priority when 'URGENT' then 2 when 'HIGH' then 1 else 0 end desc
+            limit 1
+        """),
+        {"c": contract_id},
+    ).scalar() or "NORMAL"
+    he_so = _priority_multiplier(db, prio)
+
+    nguoi = db.execute(
+        text("""
+            select e.id as employee_id, e.full_name,
+                   coalesce(sum(wpe.amount), 0) as khoan
+            from public.work_pay_entitlements wpe
+            join public.workflow_instances wi on wi.id = wpe.workflow_instance_id
+            join public.service_lines sl on sl.id = wi.service_line_id
+            join public.employees e on e.id = wpe.employee_id
+            where sl.contract_id = :c and wpe.status <> 'void'
+            group by e.id, e.full_name
+            order by khoan desc
+        """),
+        {"c": contract_id},
+    ).mappings().all()
+
+    # Đã thưởng ưu tiên cho hợp đồng này chưa (tránh phát 2 lần).
+    da_thuong = {
+        r[0] for r in db.execute(
+            text("""
+                select employee_id from public.employee_pay_adjustments
+                where status <> 'void'
+                  and source_reference->>'kind' = 'PRIORITY_BONUS'
+                  and source_reference->>'contract_id' = :c
+            """),
+            {"c": contract_id},
+        ).all()
+    }
+
+    participants = []
+    for r in nguoi:
+        khoan = float(r["khoan"] or 0)
+        participants.append({
+            "employee_id": r["employee_id"],
+            "full_name": r["full_name"],
+            "khoan": khoan,
+            "suggested_bonus": round(khoan * (he_so - 1.0)),
+            "already_paid": r["employee_id"] in da_thuong,
+        })
+
+    return {"status": "success", "data": {
+        "contract_id": contract_id,
+        "priority": prio,
+        "multiplier": he_so,
+        "participants": participants,
+    }}
+
+
+class PriorityBonusAllocation(BaseModel):
+    employee_id: str = Field(min_length=1)
+    amount: float = Field(gt=0)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class PriorityBonusIn(BaseModel):
+    allocations: list[PriorityBonusAllocation] = Field(default_factory=list)
+
+
+@router.post("/{contract_id:path}/priority-bonus")
+def apply_priority_bonus(
+    contract_id: str,
+    payload: PriorityBonusIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """Giám đốc chốt thưởng ưu tiên — sinh khoản BONUS vào lương từng người.
+
+    Dùng `employee_pay_adjustments` (type BONUS, đánh dấu PRIORITY_BONUS trong
+    source_reference). Không phát lại cho người đã có thưởng của hợp đồng này.
+    """
+    if not payload.allocations:
+        raise HTTPException(status_code=422, detail="Chưa phân bổ cho ai")
+
+    prio = db.execute(
+        text("select priority from public.service_lines where contract_id = :c order by case priority when 'URGENT' then 2 when 'HIGH' then 1 else 0 end desc limit 1"),
+        {"c": contract_id},
+    ).scalar() or "NORMAL"
+    if prio == "NORMAL":
+        raise HTTPException(status_code=409, detail="Hợp đồng không có ưu tiên — không có thưởng")
+    he_so = _priority_multiplier(db, prio)
+
+    da_thuong = {
+        r[0] for r in db.execute(
+            text("""
+                select employee_id from public.employee_pay_adjustments
+                where status <> 'void' and source_reference->>'kind' = 'PRIORITY_BONUS'
+                  and source_reference->>'contract_id' = :c
+            """),
+            {"c": contract_id},
+        ).all()
+    }
+
+    created = 0
+    for a in payload.allocations:
+        if a.employee_id in da_thuong:
+            continue  # đã thưởng rồi, bỏ qua (idempotent)
+        source = json.dumps({
+            "kind": "PRIORITY_BONUS",
+            "contract_id": contract_id,
+            "priority": prio,
+            "multiplier": he_so,
+            "note": (a.note or "").strip() or None,
+        }, ensure_ascii=False)
+        db.execute(
+            text("""
+                insert into public.employee_pay_adjustments
+                    (id, employee_id, adjustment_type, amount, effective_date, reason,
+                     source_reference, status, created_by, approved_by, approved_at, created_at)
+                values
+                    (gen_random_uuid(), :emp, 'BONUS', :amt, current_date, :reason,
+                     cast(:src as jsonb), 'approved', :u, :u, now(), now())
+            """),
+            {"emp": a.employee_id, "amt": a.amount,
+             "reason": (a.note or "").strip() or f"Thưởng ưu tiên hợp đồng {contract_id}",
+             "src": source, "u": user.id},
+        )
+        created += 1
+
+    db.commit()
+    invalidate_cache("bachkhoa:payroll:*")
+    return {"status": "success", "data": {"created": created, "priority": prio, "multiplier": he_so}}

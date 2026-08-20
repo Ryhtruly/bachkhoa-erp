@@ -4,6 +4,7 @@ from sqlalchemy import func, text
 from src.db.database import get_db
 from src.db.models import Contract, Receivable, Customer, CashflowTransaction
 from src.core.auth import require_authenticated_user, User
+from src.core.redis_utils import get_cached_json, set_cached_json
 
 router = APIRouter(prefix="/api", tags=["02. Dashboard & Analytics"])
 
@@ -12,6 +13,11 @@ def get_dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(require_authenticated_user)
 ):
+    cache_key = "bachkhoa:dashboard:summary"
+    cached = get_cached_json(cache_key)
+    if cached:
+        return cached
+
     try:
         total_tasks = db.execute(text("select count(*) from public.service_lines")).scalar_one()
         completed = db.execute(text(
@@ -50,7 +56,7 @@ def get_dashboard(
             limit 10
         """)).mappings().all()]
 
-        return {
+        result = {
             "stats": {
                 "total_tasks": total_tasks,
                 "in_progress": in_progress,
@@ -63,16 +69,23 @@ def get_dashboard(
             },
             "recent_tasks": recent_tasks
         }
+        set_cached_json(cache_key, result, ttl_seconds=60)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/config")
-def get_config():
-    # Keep returning static config for now as UI dropdowns depend on it
+def get_config(db: Session = Depends(get_db)):
+    # `services` nay đọc từ DB (task_types) thay cho mảng ghi cứng cũ — mảng đó
+    # chỉ có 9 mục, sai chính tả ("Tách Thửa"), và mất cả gói Xây dựng.
+    # Giữ khoá `services` là danh sách phẳng để màn cũ không gãy; ô chọn 2 tầng
+    # Gói → Hạng mục lấy từ /api/catalog/service-packages.
+    from src.routes.routes_catalog import catalog_tree
+    services = [t["name"] for goi in catalog_tree(db) for t in goi["task_types"]]
     return {
         "departments": ["Phòng Giám đốc", "Phòng Kinh doanh", "Phòng Marketing", "Phòng Đo đạc", "Phòng Pháp lý"],
         "personnel": ["Giám đốc", "Lê Văn Dựng", "Tạ Khắc Tập", "Trương Tấn Quốc", "Nguyễn Minh Thông", "Võ Thành Minh", "Võ Tứ Hợp", "Lê Tấn Đạt"],
-        "services": ["Đo hiện trạng", "Cắm mốc", "Hoàn công", "Cấp đổi", "Hợp thửa", "Tách Thửa", "Cấp sổ lần đầu", "Chuyển mục đích", "Xin phép xây dựng"]
+        "services": services,
     }
 
 @router.get("/dashboard/charts")
@@ -80,9 +93,16 @@ def get_dashboard_charts(
     db: Session = Depends(get_db),
     user: User = Depends(require_authenticated_user)
 ):
+    cache_key = "bachkhoa:dashboard:charts"
+    cached = get_cached_json(cache_key)
+    if cached:
+        return cached
+
     try:
-        contracts = db.query(Contract).all()
-        receivables = db.query(Receivable).all()
+        contracts = db.query(Contract.id, Contract.customer_id, Contract.service_type, Contract.total_value, Contract.date_signed).all()
+        receivables = db.query(Receivable.contract_id, Receivable.remaining_amount).all()
+        
+        contracts_by_id = {c.id: c for c in contracts}
         
         revenue_by_month = {}
         for c in contracts:
@@ -93,10 +113,11 @@ def get_dashboard_charts(
             revenue_by_month[month]["revenue"] += float(c.total_value or 0)
             
         for r in receivables:
-            c = next((x for x in contracts if x.id == r.contract_id), None)
+            c = contracts_by_id.get(r.contract_id)
             if c and c.date_signed:
                 month = c.date_signed.strftime("%Y-%m")
-                revenue_by_month[month]["debt"] += float(r.remaining_amount or 0)
+                if month in revenue_by_month:
+                    revenue_by_month[month]["debt"] += float(r.remaining_amount or 0)
                 
         line_data = list(revenue_by_month.values())
         line_data.sort(key=lambda x: x["month"])
@@ -121,7 +142,7 @@ def get_dashboard_charts(
             for row in status_rows
         ]
         
-        cashflow = db.query(CashflowTransaction).filter(CashflowTransaction.transaction_type == "Chi").all()
+        cashflow = db.query(CashflowTransaction.category_code, CashflowTransaction.amount).filter(CashflowTransaction.transaction_type == "Chi").all()
         expense_cats = {}
         for tc in cashflow:
             cat = tc.category_code or "Khác"
@@ -138,29 +159,33 @@ def get_dashboard_charts(
         # Top Debtors
         debt_by_customer = {}
         for r in receivables:
-            c = next((x for x in contracts if x.id == r.contract_id), None)
+            c = contracts_by_id.get(r.contract_id)
             if c and c.customer_id:
                 debt_amt = float(r.remaining_amount or 0)
                 if debt_amt > 0:
                     debt_by_customer[c.customer_id] = debt_by_customer.get(c.customer_id, 0) + debt_amt
         
-        customers = db.query(Customer).filter(Customer.id.in_(list(debt_by_customer.keys()))).all()
+        customer_ids = list(debt_by_customer.keys())
+        customers = db.query(Customer.id, Customer.full_name).filter(Customer.id.in_(customer_ids)).all() if customer_ids else []
+        cust_map = {cust.id: cust.full_name for cust in customers}
+        
         top_debtors = []
         for cid, amt in debt_by_customer.items():
-            cust = next((x for x in customers if x.id == cid), None)
-            name = cust.full_name if cust else "Khách hàng"
-            # Giới hạn tên khách hàng không quá dài
+            name = cust_map.get(cid, "Khách hàng")
             if len(name) > 25: name = name[:22] + '...'
             top_debtors.append({"name": name, "debt": amt})
         
         top_debtors.sort(key=lambda x: x["debt"], reverse=True)
             
-        return {
+        result = {
             "lineData": line_data[-12:], # Last 12 months
             "barData": bar_data[:10], # Top 10
             "pieStatusData": pie_status_data,
             "pieExpenseData": pie_expense_data,
             "topDebtors": top_debtors[:5]
         }
+        set_cached_json(cache_key, result, ttl_seconds=120)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

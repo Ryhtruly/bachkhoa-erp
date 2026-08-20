@@ -49,7 +49,7 @@ export default function Login({ onLogin }) {
       if (!response.ok) throw new Error(payload.detail || 'Không thể đăng nhập');
       if (remember) localStorage.setItem(TEN_DA_NHO, username.trim());
       else localStorage.removeItem(TEN_DA_NHO);
-      onLogin(payload.token);
+      onLogin(payload.token, payload.user);
     } catch (loginError) {
       setError(loginError.message === 'Failed to fetch'
         ? 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.'

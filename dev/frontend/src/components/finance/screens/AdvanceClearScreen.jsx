@@ -30,10 +30,8 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/api/finance/advance`);
-      if (r.ok) {
-        setAdvances(await r.json());
-      }
+      const d = await apiFetch(`${API}/api/finance/advance`);
+      setAdvances(Array.isArray(d) ? d : []);
     } catch {
       // ignore
     } finally {
@@ -104,21 +102,19 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
 
     setSubmitting(true); setError('');
     try {
-      const res = await fetch(`${API}/api/finance/advance/clear`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const d = await apiFetch(`${API}/api/finance/advance/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ advance_id: selected.id, actual_amount: actual, note })
       });
-      if (res.ok) {
-        const d = await res.json();
-        setResult(d);
-        addToast('Đã quyết toán thành công!', 'success');
-        load();
-      } else {
-        const err = await res.json();
-        setError(err.detail || 'Lỗi server');
-      }
-    } catch { setError('Lỗi kết nối'); }
-    finally { setSubmitting(false); }
+      setResult(d);
+      addToast('Đã quyết toán thành công!', 'success');
+      load();
+    } catch (err) {
+      setError(err.message || 'Lỗi kết nối');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const cols = [

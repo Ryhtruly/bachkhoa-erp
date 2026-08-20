@@ -10,6 +10,8 @@ from datetime import date, datetime, timezone, timedelta
 from src.db.database import get_db
 from src.core.auth import require_permission, User
 from src.services.storage_service import delete_file, ensure_bucket, upload_file
+from src.services.timeline_realtime import publish_timeline_change
+from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json
 from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
@@ -157,7 +159,9 @@ def create_cashflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "create"))
 ):
-    return FinanceService.create_cashflow(db, payload, actor_id=user.id)
+    ket_qua = FinanceService.create_cashflow(db, payload, actor_id=user.id)
+    invalidate_money_caches()
+    return ket_qua
 
 @router.get("/cashflow/{transaction_id:path}")
 def get_cashflow_detail(
@@ -174,7 +178,9 @@ def update_cashflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "update"))
 ):
-    return FinanceService.update_cashflow(db, transaction_id, payload, actor_id=user.id)
+    ket_qua = FinanceService.update_cashflow(db, transaction_id, payload, actor_id=user.id)
+    invalidate_money_caches()
+    return ket_qua
 
 @router.post("/cashflow/{transaction_id:path}/void")
 def void_cashflow(
@@ -184,7 +190,9 @@ def void_cashflow(
     user: User = Depends(require_permission("finance", "delete"))
 ):
     actor = payload.actor_id or user.id
-    return FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
+    ket_qua = FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
+    invalidate_money_caches()
+    return ket_qua
 
 
 @router.post("/cashflow/{transaction_id:path}/approve")
@@ -194,7 +202,11 @@ def approve_cashflow(
     user: User = Depends(require_permission("finance", "approve"))
 ):
     """Duyệt phiếu chờ duyệt. Đây mới là lúc công nợ được ghi nhận."""
-    return FinanceService.approve_cashflow(db, transaction_id, actor_id=user.id)
+    ket_qua = FinanceService.approve_cashflow(db, transaction_id, actor_id=user.id)
+    # Duyệt xong thì phiếu rời hàng chờ — chuông phải bỏ dòng đó ngay.
+    publish_timeline_change("cashflow_approved", entity_id=transaction_id)
+    invalidate_money_caches()
+    return ket_qua
 
 
 @router.post("/cashflow/{transaction_id:path}/reject")
@@ -205,33 +217,59 @@ def reject_cashflow(
     user: User = Depends(require_permission("finance", "approve"))
 ):
     """Từ chối phiếu chờ duyệt, bắt buộc ghi lý do."""
-    return FinanceService.reject_cashflow(db, transaction_id, payload.reason, actor_id=user.id)
+    ket_qua = FinanceService.reject_cashflow(db, transaction_id, payload.reason, actor_id=user.id)
+    publish_timeline_change("cashflow_rejected", entity_id=transaction_id)
+    invalidate_money_caches()
+    return ket_qua
 
 
 # ══════════════════════════════════════════════════════════════
 # 2. CHỨNG TỪ & CÔNG NỢ
 # ══════════════════════════════════════════════════════════════
 
+from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+
 @router.get("/contracts")
 def list_contracts(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.list_contracts_with_payments(db)
+    cache_key = "bachkhoa:finance:contracts"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.list_contracts_with_payments(db)
+    set_cached_json(cache_key, result, ttl_seconds=120)
+    return result
 
 @router.get("/receivables")
 def list_receivables(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.list_receivables_formatted(db)
+    cache_key = "bachkhoa:finance:receivables"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.list_receivables_formatted(db)
+    set_cached_json(cache_key, result, ttl_seconds=120)
+    return result
 
 @router.get("/payables")
 def list_payables(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.list_payables_formatted(db)
+    cache_key = "bachkhoa:finance:payables"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.list_payables_formatted(db)
+    set_cached_json(cache_key, result, ttl_seconds=120)
+    return result
 
 
 # ══════════════════════════════════════════════════════════════
@@ -243,7 +281,14 @@ def list_advance(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.list_advances_formatted(db)
+    cache_key = "bachkhoa:finance:advance"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.list_advances_formatted(db)
+    set_cached_json(cache_key, result, ttl_seconds=120)
+    return result
 
 @router.post("/advance/create")
 def create_advance(
@@ -251,7 +296,9 @@ def create_advance(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "create"))
 ):
-    return FinanceService.create_advance(db, payload, actor_id=user.id)
+    result = FinanceService.create_advance(db, payload, actor_id=user.id)
+    invalidate_cache("bachkhoa:finance:*")
+    return result
 
 @router.post("/advance/clear")
 def clear_advance(
@@ -259,7 +306,9 @@ def clear_advance(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "update"))
 ):
-    return FinanceService.clear_advance(db, payload)
+    result = FinanceService.clear_advance(db, payload, actor_id=user.id)
+    invalidate_cache("bachkhoa:finance:*")
+    return result
 
 
 # ══════════════════════════════════════════════════════════════
@@ -394,7 +443,14 @@ def list_payroll_periods(
     user: User = Depends(require_permission("payroll", "read"))
 ):
     """Danh sách các kỳ lương kèm trạng thái chốt."""
-    return FinanceService.list_payroll_periods(db)
+    cache_key = "bachkhoa:finance:payroll_periods"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceService.list_payroll_periods(db)
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
 
 
 @router.post("/payroll/periods/{period_id}/lock")
@@ -404,7 +460,10 @@ def lock_payroll_period(
     user: User = Depends(require_permission("payroll", "approve"))
 ):
     """Giám đốc duyệt chốt bảng lương tháng (open -> locked)."""
-    return FinanceService.lock_payroll_period(db, period_id, actor_id=user.id)
+    result = FinanceService.lock_payroll_period(db, period_id, actor_id=user.id)
+    invalidate_cache("bachkhoa:finance:*")
+    invalidate_cache("bachkhoa:payroll:*")
+    return result
 
 
 @router.post("/payroll/periods/{period_id}/mark-paid")
@@ -414,7 +473,10 @@ def mark_paid_payroll_period(
     user: User = Depends(require_permission("payroll", "update"))
 ):
     """Kế toán/Giám đốc đánh dấu đã chi trả lương (locked -> paid)."""
-    return FinanceService.mark_paid_payroll_period(db, period_id, actor_id=user.id)
+    result = FinanceService.mark_paid_payroll_period(db, period_id, actor_id=user.id)
+    invalidate_cache("bachkhoa:finance:*")
+    invalidate_cache("bachkhoa:payroll:*")
+    return result
 
 
 # ══════════════════════════════════════════════════════════════
@@ -433,14 +495,28 @@ def list_projects(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.list_projects(db)
+    cache_key = "bachkhoa:finance:projects"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.list_projects(db)
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
 
 @router.get("/settings")
 def get_finance_settings(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.get_finance_settings(db)
+    cache_key = "bachkhoa:finance:settings"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.get_finance_settings(db)
+    set_cached_json(cache_key, result, ttl_seconds=600)
+    return result
 
 @router.post("/settings")
 def save_finance_settings(
@@ -448,7 +524,9 @@ def save_finance_settings(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "update"))
 ):
-    return FinanceService.save_settings(db, payload)
+    result = FinanceService.save_settings(db, payload)
+    invalidate_cache("bachkhoa:finance:*")
+    return result
 
 @router.get("/fund-balances/calculate")
 def calculate_system_balance(
@@ -509,7 +587,14 @@ def get_monthly_dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.get_monthly_dashboard(db, month)
+    cache_key = f"bachkhoa:finance:monthly_dashboard:{month}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.get_monthly_dashboard(db, month)
+    set_cached_json(cache_key, result, ttl_seconds=60)
+    return result
 
 @router.post("/contracts/{contract_id}/refund-excess")
 def create_refund_excess_voucher(

@@ -1,0 +1,180 @@
+- generic [ref=f11e1]:
+  - generic [ref=f11e9]:
+    - banner [ref=f11e10]:
+      - generic [ref=f11e11]:
+        - img "Logo" [ref=f11e12]
+        - img "Bách Khoa" [ref=f11e13]
+      - generic [ref=f11e14]:
+        - button "Làm mới" [ref=f11e15] [cursor=pointer]
+        - generic [ref=f11e21]:
+          - button "🌙" [ref=f11e22] [cursor=pointer]
+          - button "Thông báo việc cần xử lý" [ref=f11e25] [cursor=pointer]
+        - button "Ảnh đại diện dự phòng của admin admin" [ref=f11e31] [cursor=pointer]:
+          - generic "Ảnh đại diện dự phòng của admin" [ref=f11e32]: AD
+          - generic [ref=f11e33]: admin
+    - generic [ref=f11e36]:
+      - complementary [ref=f11e37]:
+        - navigation [ref=f11e38]:
+          - generic [ref=f11e39]: Điều hướng
+          - button "Tổng Quan" [ref=f11e40] [cursor=pointer]
+          - button "CRM Bán Hàng" [ref=f11e47] [cursor=pointer]
+          - button "Khách Hàng" [ref=f11e51] [cursor=pointer]
+          - button "Hồ Sơ Đo Vẽ" [ref=f11e58] [cursor=pointer]
+          - button "Hồ Sơ Pháp Lý" [ref=f11e62] [cursor=pointer]
+          - button "Hợp Đồng" [ref=f11e68] [cursor=pointer]
+          - button "Quản Lý Timeline" [ref=f11e73] [cursor=pointer]
+          - button "Thu Chi Sổ Quỹ" [ref=f11e76] [cursor=pointer]
+          - button "KPI Nhân Sự" [ref=f11e81] [cursor=pointer]
+          - button "Nhân Sự & Đào Tạo" [ref=f11e84] [cursor=pointer]
+          - generic [ref=f11e88]: Hệ thống
+          - button "Cấu Hình" [ref=f11e89] [cursor=pointer]
+      - main [ref=f11e94]:
+        - generic [ref=f11e97]:
+          - generic [ref=f11e99]:
+            - button "Quay lại danh sách" [ref=f11e100] [cursor=pointer]
+            - heading "Thiết lập quy trình · 010/BK-2026" [level=2] [ref=f11e103]
+            - button "Thưởng ưu tiên" [ref=f11e108] [cursor=pointer]
+          - generic [ref=f11e112]:
+            - generic [ref=f11e113]:
+              - generic [ref=f11e114]: Khách hàng
+              - strong [ref=f11e115]: Lê Thị Lan
+            - generic [ref=f11e119]:
+              - generic [ref=f11e120]: Điện thoại
+              - strong [ref=f11e121]: "0902000006"
+            - generic [ref=f11e124]:
+              - generic [ref=f11e125]: Địa điểm dịch vụ
+              - strong [ref=f11e126]: Chưa có
+            - generic [ref=f11e130]:
+              - generic [ref=f11e131]: Diện tích
+              - strong [ref=f11e132]: Chưa có
+            - generic [ref=f11e139]:
+              - generic [ref=f11e140]: Giá trị hợp đồng
+              - strong [ref=f11e141]: 18.000.000₫
+          - generic [ref=f11e142]:
+            - complementary [ref=f11e143]:
+              - generic [ref=f11e144]:
+                - generic [ref=f11e145]: Hạng mục
+                - strong [ref=f11e146]: "1"
+              - button "1 Hợp thửa Đang áp dụng" [ref=f11e147] [cursor=pointer]:
+                - generic [ref=f11e148]: "1"
+                - generic [ref=f11e149]:
+                  - strong [ref=f11e150]: Hợp thửa
+                  - generic [ref=f11e151]: Đang áp dụng
+            - generic [ref=f11e152]:
+              - generic [ref=f11e153]:
+                - strong [ref=f11e155]: Hợp thửa
+                - generic [ref=f11e156]:
+                  - generic [ref=f11e157]: Đang sửa Revision 1
+                  - combobox [ref=f11e162] [cursor=pointer]:
+                    - option "Tự thiết kế"
+                    - option "Quy trình Đo vẽ có hỗ trợ nộp · V1" [selected]
+                    - option "Quy trình Đo vẽ nhà (Không nộp) · V1"
+                    - option "Quy trình Pháp lý có hồ sơ · V1"
+                    - option "Quy trình Pháp lý không có hồ sơ · V1"
+                    - option "tách thửa có sẵn hồ sơ pháp lý · V1"
+                  - button "Thêm node" [ref=f11e164] [cursor=pointer]
+                  - button "Lưu thành mẫu" [ref=f11e167] [cursor=pointer]
+                  - button "Căn thông minh" [ref=f11e172] [cursor=pointer]
+                  - button "Lưu tạm" [ref=f11e175] [cursor=pointer]
+                  - button "Áp dụng" [ref=f11e180] [cursor=pointer]
+                  - button "Hủy" [ref=f11e183] [cursor=pointer]
+              - generic [ref=f11e187]:
+                - generic [ref=f11e191]:
+                  - generic [ref=f11e192]: Lý do sửa quy trình đang vận hành
+                  - textbox "Lý do sửa quy trình đang vận hành" [ref=f11e193]:
+                    - /placeholder: "Ví dụ: bổ sung bước kiểm tra hồ sơ và nhánh yêu cầu bổ sung"
+                - generic [ref=f11e194]: Bắt buộc khi áp dụng; Revision cũ vẫn được giữ nguyên để đối chiếu.
+              - generic [ref=f11e195]:
+                - application [ref=f11e197]:
+                  - generic [ref=f11e199]:
+                    - generic:
+                      - generic:
+                        - img:
+                          - group "Edge from submit to deliver" [ref=f11e200] [cursor=pointer]:
+                            - generic [ref=f11e201]: Hoàn thành
+                        - img:
+                          - group "Edge from survey to standardize" [ref=f11e203] [cursor=pointer]:
+                            - generic [ref=f11e204]: Hoàn thành
+                        - img:
+                          - group "Edge from deliver to archive" [ref=f11e206] [cursor=pointer]:
+                            - generic [ref=f11e207]: Hoàn thành
+                        - img:
+                          - group "Edge from receive to survey" [ref=f11e209] [cursor=pointer]:
+                            - generic [ref=f11e210]: Hoàn thành
+                        - img:
+                          - group "Edge from standardize to submit" [ref=f11e212] [cursor=pointer]:
+                            - generic [ref=f11e213]: Hoàn thành
+                      - generic:
+                        - group [ref=f11e215]:
+                          - generic [ref=f11e216]:
+                            - generic [ref=f11e218]:
+                              - generic [ref=f11e219]: K06
+                              - generic "Chờ xử lý" [ref=f11e220]
+                            - strong [ref=f11e221]: Nộp & theo dõi hồ sơ
+                            - paragraph [ref=f11e222]: Nộp cơ quan nhà nước, lấy biên nhận, theo dõi tới khi có kết quả. Bao gồm cả các lần nộp lại khi bị yêu cầu bổ sung.
+                            - generic [ref=f11e223]:
+                              - generic [ref=f11e224]: 0 mục
+                              - generic [ref=f11e228]: Chưa giao
+                        - group [ref=f11e242]:
+                          - generic [ref=f11e243]:
+                            - generic [ref=f11e245]:
+                              - generic [ref=f11e246]: K02
+                              - generic "Chờ xử lý" [ref=f11e247]
+                            - strong [ref=f11e248]: Khảo sát & đo hiện trường
+                            - paragraph [ref=f11e249]: Đo đạc thực địa, chụp ảnh hiện trạng, lấy toạ độ GPS
+                            - generic [ref=f11e250]:
+                              - generic [ref=f11e251]: 0 mục
+                              - generic [ref=f11e255]: Chưa giao
+                        - group [ref=f11e269]:
+                          - generic [ref=f11e270]:
+                            - generic [ref=f11e272]:
+                              - generic [ref=f11e273]: K09
+                              - generic "Chờ xử lý" [ref=f11e274]
+                            - strong [ref=f11e275]: Lưu trữ & đóng hồ sơ
+                            - paragraph [ref=f11e276]: Chuẩn hoá tên file, lưu vào thư mục Hạng mục, đóng hồ sơ
+                            - generic [ref=f11e277]:
+                              - generic [ref=f11e278]: 0 mục
+                              - generic [ref=f11e282]: Chưa giao
+                        - group [active] [ref=f11e296]:
+                          - generic [ref=f11e297]:
+                            - generic [ref=f11e299]:
+                              - generic [ref=f11e300]: K08
+                              - generic "Chờ xử lý" [ref=f11e301]
+                            - strong [ref=f11e302]: Nhận kết quả & bàn giao
+                            - paragraph [ref=f11e303]: Nhận kết quả, giao hồ sơ cho khách và lấy chữ ký xác nhận. Đồng thời phải thu đủ tiền hợp đồng thì mới đóng được bước này.
+                            - generic [ref=f11e304]:
+                              - generic [ref=f11e305]: 0 mục
+                              - generic [ref=f11e309]: Chưa giao
+                        - group [ref=f11e323]:
+                          - generic [ref=f11e324]:
+                            - generic [ref=f11e326]:
+                              - generic [ref=f11e327]: K01
+                              - generic "Chờ xử lý" [ref=f11e328]
+                            - strong [ref=f11e329]: Tiếp nhận & kiểm tra đầu vào
+                            - paragraph [ref=f11e330]: Tiếp nhận yêu cầu, kiểm tra sơ bộ giấy tờ đầu vào
+                            - generic [ref=f11e331]:
+                              - generic [ref=f11e332]: 0 mục
+                              - generic [ref=f11e336]: Chưa giao
+                        - group [ref=f11e350]:
+                          - generic [ref=f11e351]:
+                            - generic [ref=f11e353]:
+                              - generic [ref=f11e354]: K03
+                              - generic "Chờ xử lý" [ref=f11e355]
+                            - strong [ref=f11e356]: Chuẩn hoá tài liệu kỹ thuật
+                            - paragraph [ref=f11e357]: Xử lý số liệu, vẽ bản đồ, tính diện tích, tự kiểm định và chuẩn hoá bộ hồ sơ kỹ thuật. Nghiệm thu node này = bàn giao đo vẽ sang pháp lý.
+                            - generic [ref=f11e358]:
+                              - generic [ref=f11e359]: 0 mục
+                              - generic [ref=f11e363]: Chưa giao
+                  - generic "Control Panel" [ref=f11e377]:
+                    - button "Zoom In" [ref=f11e378] [cursor=pointer]
+                    - button "Zoom Out" [disabled]
+                    - button "Fit View" [ref=f11e381] [cursor=pointer]
+                  - img "Mini Map" [ref=f11e385]
+                  - link "React Flow attribution" [ref=f11e393] [cursor=pointer]:
+                    - /url: https://reactflow.dev/attribution
+                    - text: React Flow
+                - complementary [ref=f11e395]:
+                  - generic [ref=f11e396] [cursor=pointer]: K08
+                - button "Mở khung chi tiết"
+    - button [ref=f11e398] [cursor=pointer]
+  - generic [ref=f11e401]: CÔNG TY CỔ PHẦN FPT

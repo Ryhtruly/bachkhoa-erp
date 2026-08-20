@@ -1,7 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle2, Clock3, PauseCircle, PlayCircle, Send } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
+import { apiFetch } from '../../lib/api'
 import './legalDossier.css'
+
+// Danh mục lý do/kết quả tĩnh — fallback an toàn khi /meta chưa tải kịp hoặc lỗi
+// mạng, để dropdown không bao giờ rỗng (nút Xác nhận không bị kẹt disabled).
+// Phải khớp PAUSE_REASONS / CLOSE_RESULTS trong dossiers/legal_lifecycle.py.
+const DEFAULT_PAUSE_REASONS = [
+  { value: 'AGENCY', label: 'Chờ cơ quan — đang thẩm định, ra thông báo thuế, đòi bổ sung giấy tờ' },
+  { value: 'SURVEYOR', label: 'Chờ đo vẽ — bản vẽ sai ranh, phải đo lại' },
+  { value: 'INTERNAL', label: 'Chờ nội bộ — chờ sếp ký, chờ khách đóng thuế' },
+]
+const DEFAULT_CLOSE_RESULTS = [
+  { value: 'DONE', label: 'Lấy được kết quả' },
+  { value: 'REJECTED', label: 'Bị bác hẳn' },
+]
+const FALLBACK_OPTIONS = { pause_reasons: DEFAULT_PAUSE_REASONS, close_results: DEFAULT_CLOSE_RESULTS }
 
 /**
  * Bộ nút xử lý hồ sơ pháp lý: Tiếp nhận · Tạm dừng · Tiếp tục · Đóng hồ sơ.
@@ -39,26 +54,21 @@ export default function LegalDossierActions({ dossier, onDone, addToast, readOnl
 
   useEffect(() => {
     let alive = true
-    fetch('/api/legal-dossiers/meta')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive && d) setMeta(d.data) })
-      .catch(() => {})
+    // apiFetch tự gắn Bearer token — fetch trần bị 401, meta rỗng, dropdown kẹt.
+    apiFetch('/api/legal-dossiers/meta')
+      .then((d) => { if (alive && d?.data) setMeta(d.data) })
+      .catch(() => {}) // lỗi thì để FALLBACK_OPTIONS lo, không chặn thao tác
     return () => { alive = false }
   }, [])
 
   const send = useCallback(async (action, sub, ghiChu) => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/legal-dossiers/${dossier.id}/transition`, {
+      const payload = await apiFetch(`/api/legal-dossiers/${dossier.id}/transition`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, sub_status: sub || null, note: ghiChu || null }),
       })
-      const payload = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        addToast?.(payload.detail || 'Không thực hiện được thao tác', 'error')
-        return
-      }
       if (payload.data?.reopened_survey) {
         addToast?.('Đã đẩy việc ngược về bộ phận đo vẽ để sửa bản vẽ', 'info')
       } else {
@@ -68,8 +78,8 @@ export default function LegalDossierActions({ dossier, onDone, addToast, readOnl
       setSubStatus('')
       setNote('')
       onDone?.()
-    } catch {
-      addToast?.('Mất kết nối tới máy chủ', 'error')
+    } catch (error) {
+      addToast?.(error.message || 'Không thực hiện được thao tác', 'error')
     } finally {
       setSaving(false)
     }
@@ -79,7 +89,7 @@ export default function LegalDossierActions({ dossier, onDone, addToast, readOnl
 
   const actions = dossier.available_actions || []
   const optionsKey = pendingAction ? NEEDS_REASON[pendingAction.action] : null
-  const options = optionsKey ? (meta?.[optionsKey] || []) : []
+  const options = optionsKey ? (meta?.[optionsKey] || FALLBACK_OPTIONS[optionsKey] || []) : []
 
   return (
     <div className="legal-actions">
@@ -134,6 +144,7 @@ export default function LegalDossierActions({ dossier, onDone, addToast, readOnl
         open={Boolean(pendingAction)}
         onClose={() => setPendingAction(null)}
         title={pendingAction?.label || ''}
+        overlayClassName="modal-overlay--top"
       >
         <div className="legal-actions__form">
           <label>

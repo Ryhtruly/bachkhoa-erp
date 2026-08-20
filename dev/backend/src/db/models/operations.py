@@ -7,6 +7,8 @@ class TaskType(Base):
     __tablename__ = "task_types"
     id = Column(String, primary_key=True, default=lambda: f"tt_{uuid.uuid4().hex[:10]}")
     name = Column(String(100), unique=True, nullable=True)
+    # Mã ổn định để nối bằng khoá, không phụ thuộc tên tiếng Việt (SV_/LG_/CP_).
+    code = Column(String, unique=True, nullable=True)
     service_package_id = Column(String, ForeignKey("service_packages.id"), nullable=True)
 
 

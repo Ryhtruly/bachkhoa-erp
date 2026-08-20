@@ -199,8 +199,29 @@ def transition(
         note=ghi_chu_xu_ly_thay(actor, payload.note),
         actor_user_id=user.id,
     )
+
+    # Đóng hồ sơ = đã có kết quả từ cơ quan → thử NGHIỆM THU LUÔN bước nộp cơ quan
+    # (cơ chế mới) nếu checklist cũng đã được duyệt hết. Bọc savepoint để đóng hồ sơ
+    # luôn thành công dù việc tự nghiệm thu có trục trặc.
+    node_finalized = False
+    if result.get("to_status") == "CLOSED":
+        from src.contracts.workflow_runtime import auto_finalize_node_if_ready
+        try:
+            with db.begin_nested():
+                auto = auto_finalize_node_if_ready(
+                    db, task_node_id=dossier["task_node_id"], actor_id=user.id
+                )
+                node_finalized = bool(auto.get("finalized"))
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Auto-finalize sau khi đóng hồ sơ %s lỗi", dossier_id)
+
     db.commit()
-    return {"status": "success", "data": {**result, "on_behalf": actor["on_behalf"]}}
+    if node_finalized:
+        from src.core.redis_utils import invalidate_cache, invalidate_money_caches
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_money_caches()
+    return {"status": "success", "data": {**result, "on_behalf": actor["on_behalf"], "node_finalized": node_finalized}}
 
 
 @router.post("/{dossier_id}/submissions")

@@ -77,6 +77,13 @@ def upload_finance_file(
     client.upload_fileobj(file_obj, FINANCE_BUCKET, object_name, ExtraArgs=extra_args)
     return object_name
 
+def get_file(object_name: str) -> bytes:
+    """Đọc tệp trong kho tài liệu chính. Dùng khoá đối tượng, không qua HTTP —
+    địa chỉ lưu trong CSDL là địa chỉ dành cho trình duyệt, máy chủ gọi vào đó
+    không tới được."""
+    return _get_client().get_object(Bucket=BUCKET, Key=object_name)["Body"].read()
+
+
 def get_finance_file(object_name: str) -> dict:
     return _get_client().get_object(Bucket=FINANCE_BUCKET, Key=object_name)
 

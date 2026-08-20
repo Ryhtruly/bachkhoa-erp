@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { apiFetch } from '../../lib/api'
 import './contractComposer.css'
 
 /**
@@ -102,12 +103,30 @@ const MENH_GIA = [
   { nhan: '+10 triệu', so: 1e7 },
 ]
 
-export default function ContractComposer({ open, code, services = [], saving = false, onClose, onSubmit }) {
+export default function ContractComposer({ open, code, services = [], isDirector = false, saving = false, onClose, onSubmit }) {
   const [form, setForm] = useState(() => ({
     customer_name: '', phone: '', service_type: '', sales_source: '',
     contract_value: '', detail: '',
     date_signed: ngayHomNay(), due_date: congNgay(ngayHomNay(), 7),
   }))
+  // Ô chọn 2 tầng Gói → Hạng mục. Lưu task_type_id (khoá), không lưu tên —
+  // tên "Tách thửa" tồn tại ở cả gói Đo Vẽ lẫn Pháp Lý.
+  const [danhMuc, setDanhMuc] = useState([])
+  const [goiChon, setGoiChon] = useState('')
+  const [hangMucChon, setHangMucChon] = useState('')
+  // Ưu tiên hồ sơ (Q5) — chỉ giám đốc đặt, kèm lý do khi Cao/Gấp.
+  const [uuTien, setUuTien] = useState('NORMAL')
+  const [uuTienLyDo, setUuTienLyDo] = useState('')
+  // Khách hàng 2 loại (anh Huy 18/08): cá nhân (CCCD) / doanh nghiệp (MST + đại diện).
+  const [loaiKhach, setLoaiKhach] = useState('individual')
+  const [khachId, setKhachId] = useState('')  // id khách cũ đã chọn → ghép, không tạo trùng
+  const [dinhDanh, setDinhDanh] = useState({
+    tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
+    email: '', zalo_phone: '', representative_name: '', representative_role: '',
+  })
+  const [ketQuaTim, setKetQuaTim] = useState([])
+  const [dangTim, setDangTim] = useState(false)
+  const [dangTraCuu, setDangTraCuu] = useState(false)
   const [diaGioi, setDiaGioi] = useState({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
   const [tinhThanh, setTinhThanh] = useState([])
   const [phuongXa, setPhuongXa] = useState([])
@@ -126,6 +145,25 @@ export default function ContractComposer({ open, code, services = [], saving = f
     setDiaGioi({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
     setPhuongXa([])
     setThieu([])
+    setGoiChon('')
+    setHangMucChon('')
+    setUuTien('NORMAL')
+    setUuTienLyDo('')
+    setLoaiKhach('individual')
+    setKhachId('')
+    setDinhDanh({ tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
+      email: '', zalo_phone: '', representative_name: '', representative_role: '' })
+    setKetQuaTim([])
+  }, [open])
+
+  // Tải cây danh mục Gói → Hạng mục một lần khi mở form.
+  useEffect(() => {
+    if (!open) return
+    let huy = false
+    apiFetch('/api/catalog/service-packages')
+      .then(res => { if (!huy) setDanhMuc(res?.data || []) })
+      .catch(() => {})
+    return () => { huy = true }
   }, [open])
 
   useEffect(() => {
@@ -160,12 +198,12 @@ export default function ContractComposer({ open, code, services = [], saving = f
     ['phone', form.phone],
     ['provinceCode', diaGioi.provinceCode],
     ['wardCode', diaGioi.wardCode],
-    ['service_type', form.service_type],
+    ['hangMucChon', hangMucChon],
     ['sales_source', form.sales_source],
     ['contract_value', form.contract_value],
     ['date_signed', form.date_signed],
     ['due_date', form.due_date],
-  ]), [form, diaGioi])
+  ]), [form, diaGioi, hangMucChon])
 
   const conThieu = batBuoc.filter(([, v]) => !String(v || '').trim()).map(([k]) => k)
   const tienSo = soTuChuoi(form.contract_value)
@@ -205,6 +243,52 @@ export default function ContractComposer({ open, code, services = [], saving = f
     setThieu(cur => cur.filter(x => x !== 'contract_value'))
   }
 
+  const doiDinhDanh = (k) => (e) => { setKhachId(''); setDinhDanh(cur => ({ ...cur, [k]: e.target.value })) }
+
+  // Tìm khách cũ theo tên/SĐT/CCCD/MST khi gõ ≥ 2 ký tự.
+  useEffect(() => {
+    const q = (form.customer_name || form.phone || '').trim()
+    if (!open || q.length < 2 || khachId) { setKetQuaTim([]); return }
+    let huy = false
+    setDangTim(true)
+    const t = setTimeout(() => {
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}`)
+        .then(res => { if (!huy) setKetQuaTim(res?.data || []) })
+        .catch(() => {})
+        .finally(() => { if (!huy) setDangTim(false) })
+    }, 350)
+    return () => { huy = true; clearTimeout(t) }
+  }, [open, form.customer_name, form.phone, khachId])
+
+  const chonKhachCu = (kh) => {
+    setKhachId(kh.id)
+    setLoaiKhach(kh.customer_type || 'individual')
+    setForm(cur => ({ ...cur, customer_name: kh.full_name || '', phone: kh.phone || '' }))
+    setDinhDanh({
+      tax_id: kh.tax_id || '', id_card_number: kh.id_card_number || '',
+      id_card_date: kh.id_card_date || '', id_card_place: kh.id_card_place || '',
+      email: kh.email || '', zalo_phone: kh.zalo_phone || '',
+      representative_name: kh.representative_name || '', representative_role: kh.representative_role || '',
+    })
+    setKetQuaTim([])
+  }
+
+  // Tra cứu doanh nghiệp theo MST — tự điền tên công ty + địa chỉ (tiện ích).
+  const traCuuMST = async () => {
+    const ma = (dinhDanh.tax_id || '').replace(/\D/g, '')
+    if (ma.length < 10) return
+    setDangTraCuu(true)
+    try {
+      const res = await apiFetch(`/api/customers/lookup-tax/${ma}`)
+      const d = res?.data
+      if (d?.found) {
+        setForm(cur => ({ ...cur, customer_name: d.name || cur.customer_name, detail: d.address || cur.detail }))
+        setThieu(cur => cur.filter(x => x !== 'customer_name'))
+      }
+    } catch { /* im lặng — gõ tay được */ }
+    finally { setDangTraCuu(false) }
+  }
+
   const luu = useCallback((e) => {
     e.preventDefault()
     if (saving) return
@@ -215,19 +299,51 @@ export default function ContractComposer({ open, code, services = [], saving = f
       o?.focus?.()
       return
     }
+    // Nâng ưu tiên phải ghi lý do — chặn ở đây thay vì để backend trả 422.
+    if (isDirector && uuTien !== 'NORMAL' && !uuTienLyDo.trim()) {
+      setThieu(['uutien-lydo'])
+      bodyRef.current?.querySelector('#dv-uutien-lydo')?.focus?.()
+      return
+    }
+    // Định danh bắt buộc theo loại: doanh nghiệp cần MST + đại diện; cá nhân cần CCCD.
+    const thieuDinhDanh = []
+    if (loaiKhach === 'business') {
+      if (!dinhDanh.tax_id.trim()) thieuDinhDanh.push('tax_id')
+      if (!dinhDanh.representative_name.trim()) thieuDinhDanh.push('representative_name')
+    } else {
+      if (!dinhDanh.id_card_number.trim()) thieuDinhDanh.push('id_card_number')
+    }
+    if (thieuDinhDanh.length) {
+      setThieu(thieuDinhDanh)
+      bodyRef.current?.querySelector('.bad')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
     const diaChi = [form.detail.trim(), diaGioi.wardName, diaGioi.provinceName].filter(Boolean).join(', ')
     onSubmit?.({
       contract_id: code,
       customer_name: form.customer_name.trim(),
       phone: form.phone.trim(),
       service_type: form.service_type,
+      task_type_id: hangMucChon,
+      priority: isDirector ? uuTien : 'NORMAL',
+      priority_reason: (isDirector && uuTien !== 'NORMAL') ? uuTienLyDo.trim() : null,
+      customer_type: loaiKhach,
+      customer_id: khachId || null,
+      tax_id: dinhDanh.tax_id.trim() || null,
+      id_card_number: dinhDanh.id_card_number.trim() || null,
+      id_card_date: dinhDanh.id_card_date || null,
+      id_card_place: dinhDanh.id_card_place.trim() || null,
+      email: dinhDanh.email.trim() || null,
+      zalo_phone: dinhDanh.zalo_phone.trim() || null,
+      representative_name: dinhDanh.representative_name.trim() || null,
+      representative_role: dinhDanh.representative_role.trim() || null,
       sales_source: form.sales_source.trim(),
       contract_value: tienSo,
       address: diaChi,
       date_signed: form.date_signed,
       due_date: form.due_date,
     })
-  }, [saving, conThieu, form, diaGioi, code, tienSo, onSubmit])
+  }, [saving, conThieu, form, diaGioi, code, tienSo, hangMucChon, uuTien, uuTienLyDo, isDirector, loaiKhach, khachId, dinhDanh, onSubmit])
 
   if (!open) return null
 
@@ -261,11 +377,32 @@ export default function ContractComposer({ open, code, services = [], saving = f
 
           <section className="sec">
             <div className="sec-hd"><h2>Khách hàng</h2><i /></div>
+            {/* Nút gạt loại khách — quyết định bộ trường định danh hiện ra. */}
+            <div className="kh-loai" role="tablist">
+              {[['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, nhan]) => (
+                <button key={v} type="button" role="tab" aria-selected={loaiKhach === v}
+                  className={`kh-loai__nut${loaiKhach === v ? ' is-on' : ''}`}
+                  onClick={() => { setLoaiKhach(v); setKhachId('') }}>{nhan}</button>
+              ))}
+              {khachId && <span className="kh-loai__cu">✓ Khách cũ — đã tự điền</span>}
+            </div>
             <div className="row c2">
-              <div>
-                <label htmlFor="kh-ten">Tên khách hàng<u>*</u></label>
-                <input className={`in${xau('customer_name')}`} id="kh-ten" placeholder="Nguyễn Văn An"
+              <div style={{ position: 'relative' }}>
+                <label htmlFor="kh-ten">{loaiKhach === 'business' ? 'Tên công ty' : 'Tên khách hàng'}<u>*</u></label>
+                <input className={`in${xau('customer_name')}`} id="kh-ten" autoComplete="off"
+                  placeholder={loaiKhach === 'business' ? 'Công ty TNHH ...' : 'Nguyễn Văn An'}
                   value={form.customer_name} onChange={doi('customer_name')} />
+                {/* Gợi ý khách cũ — chọn để tự điền, tránh nhập lại và tạo trùng. */}
+                {ketQuaTim.length > 0 && (
+                  <ul className="kh-goiy">
+                    {ketQuaTim.map(kh => (
+                      <li key={kh.id}><button type="button" onClick={() => chonKhachCu(kh)}>
+                        <strong>{kh.full_name}</strong>
+                        <small>{kh.customer_type === 'business' ? `MST ${kh.tax_id || '—'}` : `CCCD ${kh.id_card_number || '—'}`} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
+                      </button></li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div>
                 <label htmlFor="kh-sdt">Số điện thoại<u>*</u></label>
@@ -273,6 +410,65 @@ export default function ContractComposer({ open, code, services = [], saving = f
                   placeholder="0901 234 567" value={form.phone} onChange={doi('phone')} />
               </div>
             </div>
+            {loaiKhach === 'business' ? (
+              <>
+                <div className="row c2">
+                  <div>
+                    <label htmlFor="kh-mst">Mã số thuế<u>*</u></label>
+                    <div className="kh-mst-row">
+                      <input className={`in${xau('tax_id')}`} id="kh-mst" inputMode="numeric" placeholder="0312345678"
+                        value={dinhDanh.tax_id} onChange={doiDinhDanh('tax_id')} />
+                      <button type="button" className="kh-tracuu" disabled={dangTraCuu || (dinhDanh.tax_id || '').replace(/\D/g,'').length < 10}
+                        onClick={traCuuMST}>{dangTraCuu ? '...' : 'Tra cứu'}</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="kh-email">Email</label>
+                    <input className="in" id="kh-email" type="email" placeholder="ketoan@congty.vn"
+                      value={dinhDanh.email} onChange={doiDinhDanh('email')} />
+                  </div>
+                </div>
+                <div className="row c2">
+                  <div>
+                    <label htmlFor="kh-dd">Người đại diện<u>*</u></label>
+                    <input className={`in${xau('representative_name')}`} id="kh-dd" placeholder="Nguyễn Văn Giám"
+                      value={dinhDanh.representative_name} onChange={doiDinhDanh('representative_name')} />
+                  </div>
+                  <div>
+                    <label htmlFor="kh-cv">Chức vụ</label>
+                    <input className="in" id="kh-cv" placeholder="Giám đốc"
+                      value={dinhDanh.representative_role} onChange={doiDinhDanh('representative_role')} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="row c2">
+                  <div>
+                    <label htmlFor="kh-cccd">Số CCCD<u>*</u></label>
+                    <input className={`in${xau('id_card_number')}`} id="kh-cccd" inputMode="numeric" placeholder="079300012345"
+                      value={dinhDanh.id_card_number} onChange={doiDinhDanh('id_card_number')} />
+                  </div>
+                  <div>
+                    <label htmlFor="kh-email2">Email</label>
+                    <input className="in" id="kh-email2" type="email" placeholder="tuỳ chọn"
+                      value={dinhDanh.email} onChange={doiDinhDanh('email')} />
+                  </div>
+                </div>
+                <div className="row c2">
+                  <div>
+                    <label htmlFor="kh-ngaycap">Ngày cấp</label>
+                    <input className="in" id="kh-ngaycap" type="date"
+                      value={dinhDanh.id_card_date} onChange={doiDinhDanh('id_card_date')} />
+                  </div>
+                  <div>
+                    <label htmlFor="kh-noicap">Nơi cấp</label>
+                    <input className="in" id="kh-noicap" placeholder="Cục CS QLHC về TTXH"
+                      value={dinhDanh.id_card_place} onChange={doiDinhDanh('id_card_place')} />
+                  </div>
+                </div>
+              </>
+            )}
           </section>
 
           <section className="sec">
@@ -315,13 +511,33 @@ export default function ContractComposer({ open, code, services = [], saving = f
             <div className="sec-hd"><h2>Dịch vụ &amp; giá trị</h2><i /></div>
             <div className="row c2">
               <div>
-                <label htmlFor="dv-loai">Dịch vụ<u>*</u></label>
-                <select className={xau('service_type').trim()} id="dv-loai"
-                  value={form.service_type} onChange={doi('service_type')}>
-                  <option value="">Chọn dịch vụ</option>
-                  {services.map(s => <option key={s} value={s}>{s}</option>)}
+                <label htmlFor="dv-goi">Gói dịch vụ<u>*</u></label>
+                <select className={xau('hangMucChon').trim()} id="dv-goi"
+                  value={goiChon}
+                  onChange={(e) => { setGoiChon(e.target.value); setHangMucChon(''); setForm(f => ({ ...f, service_type: '' })) }}>
+                  <option value="">Chọn gói</option>
+                  {danhMuc.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </div>
+              <div>
+                <label htmlFor="dv-loai">Hạng mục<u>*</u></label>
+                <select className={xau('hangMucChon').trim()} id="dv-loai"
+                  value={hangMucChon} disabled={!goiChon}
+                  onChange={(e) => {
+                    const id = e.target.value
+                    setHangMucChon(id)
+                    const goi = danhMuc.find(g => g.id === goiChon)
+                    const hm = goi?.task_types.find(t => t.id === id)
+                    setForm(f => ({ ...f, service_type: hm?.name || '' }))
+                  }}>
+                  <option value="">{goiChon ? 'Chọn hạng mục' : 'Chọn gói trước'}</option>
+                  {(danhMuc.find(g => g.id === goiChon)?.task_types || []).map(hm => (
+                    <option key={hm.id} value={hm.id}>{hm.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="row c2">
               <div>
                 <label htmlFor="dv-sale">Sale / nguồn<u>*</u></label>
                 <input className={`in${xau('sales_source')}`} id="dv-sale" placeholder="Trần Minh"
@@ -350,6 +566,27 @@ export default function ContractComposer({ open, code, services = [], saving = f
                 </div>
               </div>
             </div>
+            {/* Ưu tiên hồ sơ — chỉ giám đốc thấy (Q5). Đặt từ đầu, khoá khi kích hoạt. */}
+            {isDirector && (
+              <div className="row c2">
+                <div>
+                  <label htmlFor="dv-uutien">Độ ưu tiên hồ sơ</label>
+                  <select className="in" id="dv-uutien" value={uuTien}
+                    onChange={(e) => { setUuTien(e.target.value); if (e.target.value === 'NORMAL') setUuTienLyDo('') }}>
+                    <option value="NORMAL">Bình thường</option>
+                    <option value="HIGH">Ưu tiên cao (×1,2)</option>
+                    <option value="URGENT">Gấp (×1,5)</option>
+                  </select>
+                </div>
+                {uuTien !== 'NORMAL' && (
+                  <div>
+                    <label htmlFor="dv-uutien-lydo">Lý do ưu tiên<u>*</u></label>
+                    <input className="in" id="dv-uutien-lydo" placeholder="VD: Khách cần gấp trước 25/8"
+                      value={uuTienLyDo} onChange={(e) => setUuTienLyDo(e.target.value)} />
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="sec">

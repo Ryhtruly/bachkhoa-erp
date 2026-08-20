@@ -15,6 +15,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.routes.routes_contracts import router as contracts_router
 from src.routes.routes_dashboard import router as dashboard_router
+from src.routes.routes_catalog import router as catalog_router
+from src.routes.routes_customers import router as customers_router
 from src.routes.routes_webhook import router as webhook_router
 from src.routes.routes_quotations import router as quotations_router
 from src.routes.routes_ai import router as ai_router
@@ -172,6 +174,8 @@ app.include_router(auth_router)
 app.include_router(user_admin_router)
 app.include_router(employee_portal_router)
 app.include_router(dashboard_router)
+app.include_router(catalog_router)
+app.include_router(customers_router)
 app.include_router(contracts_router, prefix="/api/contracts")
 app.include_router(finance_router)
 app.include_router(cashflow_router)

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, CheckCircle2, Clock3, RotateCcw, XCircle } from 'lucide-react';
+import { Bell, CheckCircle2, Clock3, RotateCcw, Wallet, XCircle } from 'lucide-react';
 import { apiFetch, getAccessToken } from '../lib/api';
 import { useDropdownPosition } from '../lib/useDropdownPosition';
 
@@ -9,6 +9,7 @@ const TYPE_ICON = {
   checklist_review: <CheckCircle2 size={14} />,
   node_start: <RotateCcw size={14} />,
   checklist_resubmit: <XCircle size={14} />,
+  cashflow_approval: <Wallet size={14} />,
 };
 
 export default function NotificationBell({ open, onOpenChange, onNavigate }) {
@@ -138,7 +139,7 @@ export default function NotificationBell({ open, onOpenChange, onNavigate }) {
           ) : (
             <ul className="notification-bell__list">
               {items.map((item, index) => (
-                <li key={`${item.type}-${item.contract_id}-${item.node_key}-${index}`}>
+                <li key={`${item.type}-${item.voucher_id || item.contract_id}-${item.node_key}-${index}`}>
                   <button type="button" onClick={() => handleItemClick(item)}>
                     <span className={`notification-bell__type notification-bell__type--${item.type}`}>
                       {TYPE_ICON[item.type]}

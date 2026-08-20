@@ -1,0 +1,213 @@
+- generic [ref=f37e1]:
+  - generic [ref=f37e518]:
+    - banner [ref=f37e519]:
+      - generic [ref=f37e524]:
+        - generic [ref=f37e525]:
+          - generic [ref=f37e526]: BÁCH KH
+          - generic [ref=f37e530]: A
+        - generic [ref=f37e532]: ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG
+      - generic [ref=f37e533]:
+        - button "Làm mới" [ref=f37e534] [cursor=pointer]
+        - generic [ref=f37e540]:
+          - button "🌙" [ref=f37e541] [cursor=pointer]
+          - button "Thông báo việc cần xử lý" [ref=f37e544] [cursor=pointer]
+        - button "Ảnh đại diện dự phòng của admin admin" [active] [ref=f37e550] [cursor=pointer]:
+          - generic "Ảnh đại diện dự phòng của admin" [ref=f37e551]: AD
+          - generic [ref=f37e552]: admin
+    - generic [ref=f37e555]:
+      - complementary [ref=f37e556]:
+        - navigation [ref=f37e557]:
+          - generic [ref=f37e558]: Điều hướng
+          - button "Tổng Quan" [ref=f37e559] [cursor=pointer]
+          - button "CRM Bán Hàng" [ref=f37e566] [cursor=pointer]
+          - button "Khách Hàng" [ref=f37e570] [cursor=pointer]
+          - button "Hồ Sơ Đo Vẽ" [ref=f37e577] [cursor=pointer]
+          - button "Hồ Sơ Pháp Lý" [ref=f37e581] [cursor=pointer]
+          - button "Hợp Đồng" [ref=f37e587] [cursor=pointer]
+          - button "Quản Lý Timeline" [ref=f37e592] [cursor=pointer]
+          - button "Thu Chi Sổ Quỹ" [ref=f37e595] [cursor=pointer]
+          - button "KPI Nhân Sự" [ref=f37e600] [cursor=pointer]
+          - button "Nhân Sự & Đào Tạo" [ref=f37e603] [cursor=pointer]
+          - generic [ref=f37e607]: Hệ thống
+          - button "Cấu Hình" [ref=f37e608] [cursor=pointer]
+      - main [ref=f37e613]:
+        - generic [ref=f37e1375]:
+          - generic [ref=f37e1377]:
+            - button "Quay lại danh sách" [ref=f37e1378] [cursor=pointer]
+            - heading "Thiết lập quy trình · 011/BK-2026" [level=2] [ref=f37e1381]
+          - generic [ref=f37e1386]:
+            - generic [ref=f37e1387]:
+              - generic [ref=f37e1388]: Khách hàng
+              - strong [ref=f37e1389]: Nguyễn Thị Hồng
+            - generic [ref=f37e1393]:
+              - generic [ref=f37e1394]: Điện thoại
+              - strong [ref=f37e1395]: "0902000004"
+            - generic [ref=f37e1398]:
+              - generic [ref=f37e1399]: Địa điểm dịch vụ
+              - strong [ref=f37e1400]: Chưa có
+            - generic [ref=f37e1404]:
+              - generic [ref=f37e1405]: Diện tích
+              - strong [ref=f37e1406]: Chưa có
+            - generic [ref=f37e1413]:
+              - generic [ref=f37e1414]: Giá trị hợp đồng
+              - strong [ref=f37e1415]: 22.000.000₫
+          - generic [ref=f37e1416]:
+            - complementary [ref=f37e1417]:
+              - generic [ref=f37e1418]:
+                - generic [ref=f37e1419]: Hạng mục
+                - strong [ref=f37e1420]: "1"
+              - button "1 Chuyển nhượng Đang áp dụng" [ref=f37e2180] [cursor=pointer]:
+                - generic [ref=f37e1422]: "1"
+                - generic [ref=f37e1423]:
+                  - strong [ref=f37e1424]: Chuyển nhượng
+                  - generic [ref=f37e1425]: Đang áp dụng
+            - generic [ref=f37e1426]:
+              - generic [ref=f37e1427]:
+                - strong [ref=f37e1429]: Chuyển nhượng
+                - generic [ref=f37e1430]:
+                  - generic [ref=f37e2181]: Đang vận hành — bấm Sửa để đổi luồng
+                  - combobox [disabled] [ref=f37e1432]:
+                    - option "Tự thiết kế"
+                    - option "Quy trình Đo vẽ có hỗ trợ nộp · V1"
+                    - option "Quy trình Đo vẽ nhà (Không nộp) · V1"
+                    - option "Quy trình Pháp lý có hồ sơ · V1" [selected]
+                    - option "Quy trình Pháp lý không có hồ sơ · V1"
+                    - option "tách thửa có sẵn hồ sơ pháp lý · V1"
+                  - button "Thêm node" [disabled] [ref=f37e1434]
+                  - button "Căn thông minh" [ref=f37e1442] [cursor=pointer]
+                  - button "Sửa" [ref=f37e2186] [cursor=pointer]
+                  - button "Lưu bố cục" [ref=f37e2190] [cursor=pointer]
+                  - button "Hủy" [ref=f37e2195] [cursor=pointer]
+              - generic [ref=f37e1453]:
+                - application [ref=f37e1455]:
+                  - generic [ref=f37e1457]:
+                    - generic:
+                      - generic:
+                        - img:
+                          - group "Edge from submit to deliver" [ref=f37e2199] [cursor=pointer]:
+                            - generic [ref=f37e2200]: Hoàn thành
+                        - img:
+                          - group "Edge from deliver to archive" [ref=f37e2202] [cursor=pointer]:
+                            - generic [ref=f37e2203]: Hoàn thành
+                        - img:
+                          - group "Edge from prepare to submit" [ref=f37e2205] [cursor=pointer]:
+                            - generic [ref=f37e2206]: Hoàn thành
+                        - img:
+                          - group "Edge from receive to prepare" [ref=f37e2208] [cursor=pointer]:
+                            - generic [ref=f37e2209]: Hoàn thành
+                      - generic:
+                        - group [ref=f37e2211]:
+                          - generic [ref=f37e2212]:
+                            - generic [ref=f37e2214]:
+                              - generic [ref=f37e2215]: K06
+                              - generic "Chờ xử lý" [ref=f37e2216]
+                            - strong [ref=f37e2217]: Nộp & theo dõi hồ sơ
+                            - paragraph [ref=f37e2218]: Nộp cơ quan nhà nước, lấy biên nhận, theo dõi tới khi có kết quả. Bao gồm cả các lần nộp lại khi bị yêu cầu bổ sung.
+                            - generic [ref=f37e2219]:
+                              - generic [ref=f37e2220]: 0 mục
+                              - generic [ref=f37e2224]: 1 người
+                            - generic "Ảnh đại diện dự phòng của Nguyễn Văn A" [ref=f37e2238]: NA
+                        - group [ref=f37e2240]:
+                          - generic [ref=f37e2241]:
+                            - generic [ref=f37e2243]:
+                              - generic [ref=f37e2244]: K09
+                              - generic "Chờ xử lý" [ref=f37e2245]
+                            - strong [ref=f37e2246]: Lưu trữ & đóng hồ sơ
+                            - paragraph [ref=f37e2247]: Chuẩn hoá tên file, lưu vào thư mục Hạng mục, đóng hồ sơ
+                            - generic [ref=f37e2248]:
+                              - generic [ref=f37e2249]: 0 mục
+                              - generic [ref=f37e2253]: 1 người
+                            - generic "Ảnh đại diện dự phòng của Nguyễn Văn A" [ref=f37e2267]: NA
+                        - group [ref=f37e2269]:
+                          - generic [ref=f37e2270]:
+                            - generic [ref=f37e2272]:
+                              - generic [ref=f37e2273]: K08
+                              - generic "Chờ xử lý" [ref=f37e2274]
+                            - strong [ref=f37e2275]: Nhận kết quả & bàn giao
+                            - paragraph [ref=f37e2276]: Nhận kết quả, giao hồ sơ cho khách và lấy chữ ký xác nhận. Đồng thời phải thu đủ tiền hợp đồng thì mới đóng được bước này.
+                            - generic [ref=f37e2277]:
+                              - generic [ref=f37e2278]: 0 mục
+                              - generic [ref=f37e2282]: 1 người
+                            - generic "Ảnh đại diện dự phòng của Nguyễn Văn A" [ref=f37e2296]: NA
+                        - group [ref=f37e2298]:
+                          - generic [ref=f37e2299]:
+                            - generic [ref=f37e2301]:
+                              - generic [ref=f37e2302]: K05
+                              - generic "Chờ xử lý" [ref=f37e2303]
+                            - strong [ref=f37e2304]: Soạn bộ hồ sơ pháp lý
+                            - paragraph [ref=f37e2305]: Gom giấy tờ, soạn đơn, rà quy hoạch, hoàn thiện bộ hồ sơ trước khi nộp
+                            - generic [ref=f37e2306]:
+                              - generic [ref=f37e2307]: 0 mục
+                              - generic [ref=f37e2311]: 1 người
+                            - generic "Ảnh đại diện dự phòng của Nguyễn Văn A" [ref=f37e2325]: NA
+                        - group [ref=f37e2327]:
+                          - generic [ref=f37e2328]:
+                            - generic [ref=f37e2330]:
+                              - generic [ref=f37e2331]: K01
+                              - generic "Sẵn sàng thực hiện" [ref=f37e2332]
+                            - strong [ref=f37e2333]: Tiếp nhận & kiểm tra đầu vào
+                            - paragraph [ref=f37e2334]: Tiếp nhận yêu cầu, kiểm tra sơ bộ giấy tờ đầu vào
+                            - generic [ref=f37e2335]:
+                              - generic [ref=f37e2336]: 0 mục
+                              - generic [ref=f37e2340]: 1 người
+                            - img "Hồ Thị Mỹ Hằng" [ref=f37e2354]
+                  - generic "Control Panel" [ref=f37e1545]:
+                    - button "Zoom In" [ref=f37e1546] [cursor=pointer]
+                    - button "Zoom Out" [disabled]
+                    - button "Fit View" [ref=f37e1552] [cursor=pointer]
+                  - img "Mini Map" [ref=f37e1556]
+                  - link "React Flow attribution" [ref=f37e1561] [cursor=pointer]:
+                    - /url: https://reactflow.dev/attribution
+                    - text: React Flow
+                - complementary [ref=f37e1563]:
+                  - generic [ref=f37e1564]:
+                    - button "Node" [ref=f37e1565] [cursor=pointer]
+                    - button "Checklist" [ref=f37e1566] [cursor=pointer]
+                    - button "Phân công" [ref=f37e1567] [cursor=pointer]
+                    - button "Điều kiện" [ref=f37e1568] [cursor=pointer]
+                  - generic [ref=f37e1569]:
+                    - generic [ref=f37e2361]:
+                      - generic [ref=f37e2362]:
+                        - generic [ref=f37e2363]: Người thực hiện checklist trong Node
+                        - strong [ref=f37e2364]: 1 người
+                      - button "Thêm người thực hiện" [disabled] [ref=f37e2365]
+                    - article [ref=f37e2369]:
+                      - generic [ref=f37e2370]:
+                        - generic [ref=f37e2371]: "N"
+                        - generic [ref=f37e2372]:
+                          - strong [ref=f37e2373]: Nguyễn Văn A
+                          - generic "Phòng Đo vẽ" [ref=f37e2374]
+                        - button "Bỏ phân công" [disabled] [ref=f37e2375]
+                      - generic [ref=f37e2379]:
+                        - generic [ref=f37e2380]:
+                          - generic [ref=f37e2381]: Nhân viên
+                          - combobox "Nhân viên" [disabled] [ref=f37e2382]:
+                            - option "Nguyễn Văn A · Phòng Đo vẽ" [selected]
+                            - option "Hồ Thị Mỹ Hằng · Phòng Pháp lý"
+                            - option "Trần Thụy Tường Vy · Phòng Pháp lý"
+                            - option "Phạm Thị Kế Toán · Phòng Kế toán"
+                        - generic [ref=f37e2383]:
+                          - generic [ref=f37e2384]: Vai trò
+                          - combobox "Vai trò" [disabled] [ref=f37e2385]:
+                            - option "Phụ trách chính" [selected]
+                            - option "Phối hợp / phụ"
+                            - option "Soạn hồ sơ"
+                            - option "Đi nộp hồ sơ"
+                            - option "Nghiệm thu"
+                      - button "Chịu trách nhiệm chính" [disabled] [ref=f37e2386]
+                      - generic [ref=f37e2389]:
+                        - generic [ref=f37e2390]:
+                          - generic [ref=f37e2391]: Khoán dự kiến
+                          - strong [ref=f37e2395]: 0đ
+                        - generic [ref=f37e2396]: Chưa có mức khoán cho vai trò này
+                    - generic [ref=f37e2397]: Bấm “Lưu tạm” để giữ phần đang sửa mà không ảnh hưởng quy trình thật; chỉ “Áp dụng” mới có hiệu lực ngay.
+                - button "Thu khung chi tiết"
+    - button [ref=f37e967] [cursor=pointer]
+  - generic [ref=f37e970]: Nguyễn Thị Hồng
+  - generic [ref=f37e2402]:
+    - generic [ref=f37e2403]:
+      - strong [ref=f37e2404]: admin
+      - generic [ref=f37e2405]: admin@bachkhoa.local
+    - button "Hồ sơ cá nhân" [disabled] [ref=f37e2406]
+    - button "Cài đặt tài khoản" [disabled] [ref=f37e2410]
+    - button "Đăng xuất" [ref=f37e2414] [cursor=pointer]

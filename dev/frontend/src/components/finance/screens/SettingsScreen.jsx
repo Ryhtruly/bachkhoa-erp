@@ -4,6 +4,7 @@ import { DatePicker, DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubT
 import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING, getLocalISOTime, VOUCHER_SIGNERS } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 import { Check, AlertCircle, Settings, Link, RefreshCw, PlusCircle, Wallet, Building2, History, ShieldCheck } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import CashflowModal from '../modals/CashflowModal';
@@ -48,14 +49,11 @@ export default function SettingsScreen() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/finance/settings`);
-      if (res.ok) {
-        const d = await res.json();
-        setThresholds({
-          expense_approval_threshold: d.expense_approval_threshold ?? 2000000,
-          advance_admin_threshold: d.advance_admin_threshold ?? 5000000
-        });
-      }
+      const d = await apiFetch(`${API}/api/finance/settings`);
+      setThresholds({
+        expense_approval_threshold: d.expense_approval_threshold ?? 2000000,
+        advance_admin_threshold: d.advance_admin_threshold ?? 5000000
+      });
     } catch (e) {
       console.error("Lỗi lấy cấu hình tài chính", e);
     }
@@ -64,7 +62,7 @@ export default function SettingsScreen() {
   const handleSaveThresholds = async () => {
     setSavingThresholds(true);
     try {
-      const res = await fetch(`${API}/api/finance/settings`, {
+      await apiFetch(`${API}/api/finance/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -72,11 +70,7 @@ export default function SettingsScreen() {
           advance_admin_threshold: thresholds.advance_admin_threshold
         })
       });
-      if (res.ok) {
-        addToast('Giám đốc đã lưu cấu hình ngưỡng tài chính!', 'success');
-      } else {
-        addToast('Không thể lưu cấu hình', 'error');
-      }
+      addToast('Giám đốc đã lưu cấu hình ngưỡng tài chính!', 'success');
     } catch {
       addToast('Lỗi kết nối máy chủ', 'error');
     } finally {
@@ -88,33 +82,24 @@ export default function SettingsScreen() {
     setLoading(true);
     try {
       const isoString = new Date(closingMoment).toISOString();
-      const [resTM, resCK] = await Promise.all([
-        fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Tiền mặt')}&closing_date=${encodeURIComponent(isoString)}`),
-        fetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Chuyển khoản')}&closing_date=${encodeURIComponent(isoString)}`)
+      const [dTM, dCK] = await Promise.all([
+        apiFetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Tiền mặt')}&closing_date=${encodeURIComponent(isoString)}`),
+        apiFetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Chuyển khoản')}&closing_date=${encodeURIComponent(isoString)}`)
       ]);
-      if (resTM.ok && resCK.ok) {
-        const dTM = await resTM.json();
-        const dCK = await resCK.json();
-        setSoDuHeThongTM(dTM.system_balance || 0);
-        setSoDuHeThongCK(dCK.system_balance || 0);
-      } else {
-        addToast('Không thể tính toán số dư từ hệ thống', 'error');
-      }
+      setSoDuHeThongTM(dTM?.system_balance || 0);
+      setSoDuHeThongCK(dCK?.system_balance || 0);
     } catch {
       console.log("Lỗi kết nối API");
     } finally {
       setLoading(false);
     }
-  }, [ngayChot, addToast]);
+  }, [ngayChot]);
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${API}/api/finance/fund-balances/history`);
-      if (res.ok) {
-        const d = await res.json();
-        setHistory(d);
-      }
+      const d = await apiFetch(`${API}/api/finance/fund-balances/history`);
+      setHistory(Array.isArray(d) ? d : []);
     } catch (e) {
       console.error("Lỗi lấy lịch sử chốt quỹ", e);
     } finally {
@@ -128,11 +113,11 @@ export default function SettingsScreen() {
     fetchSettings();
   }, [fetchSystemBalance, fetchHistory, fetchSettings]);
 
-  const valThucTeTM = soDuThucTeTM === '' ? 0 : Number(soDuThucTeTM);
-  const chenhLechTM = soDuThucTeTM === '' ? 0 : valThucTeTM - soDuHeThongTM;
+  const valThucTeTM = parseAmt(soDuThucTeTM);
+  const chenhLechTM = soDuThucTeTM !== '' ? valThucTeTM - soDuHeThongTM : 0;
 
-  const valThucTeCK = soDuThucTeCK === '' ? 0 : Number(soDuThucTeCK);
-  const chenhLechCK = soDuThucTeCK === '' ? 0 : valThucTeCK - soDuHeThongCK;
+  const valThucTeCK = parseAmt(soDuThucTeCK);
+  const chenhLechCK = soDuThucTeCK !== '' ? valThucTeCK - soDuHeThongCK : 0;
 
   const formatInputDisplay = (val) => {
     if (val === '') return '';
@@ -171,7 +156,7 @@ export default function SettingsScreen() {
 
       if (soDuThucTeTM !== '') {
         promises.push(
-          fetch(`${API}/api/finance/fund-balances/close`, {
+          apiFetch(`${API}/api/finance/fund-balances/close`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -187,7 +172,7 @@ export default function SettingsScreen() {
 
       if (soDuThucTeCK !== '') {
         promises.push(
-          fetch(`${API}/api/finance/fund-balances/close`, {
+          apiFetch(`${API}/api/finance/fund-balances/close`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -201,22 +186,16 @@ export default function SettingsScreen() {
         );
       }
 
-      const results = await Promise.all(promises);
-      const allOk = results.every(res => res.ok);
-
-      if (allOk) {
-        addToast('Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
-        setSoDuThucTeTM('');
-        setGhiChuTM('');
-        setSoDuThucTeCK('');
-        setGhiChuCK('');
-        fetchSystemBalance();
-        fetchHistory();
-      } else {
-        addToast(' Lỗi hệ thống khi chốt quỹ', 'error');
-      }
+      await Promise.all(promises);
+      addToast('Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
+      setSoDuThucTeTM('');
+      setGhiChuTM('');
+      setSoDuThucTeCK('');
+      setGhiChuCK('');
+      fetchSystemBalance();
+      fetchHistory();
     } catch {
-      addToast(' Lỗi kết nối máy chủ', 'error');
+      addToast('Lỗi kết nối máy chủ', 'error');
     } finally {
       setSaving(false);
     }

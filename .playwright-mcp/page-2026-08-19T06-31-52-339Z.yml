@@ -1,0 +1,151 @@
+- generic [ref=f23e1]:
+  - generic [ref=f23e9]:
+    - banner [ref=f23e10]:
+      - generic [ref=f23e11]:
+        - img "Logo" [ref=f23e12]
+        - img "Bách Khoa" [ref=f23e13]
+      - generic [ref=f23e14]:
+        - button "Làm mới" [ref=f23e15] [cursor=pointer]
+        - generic [ref=f23e21]:
+          - button "🌙" [ref=f23e22] [cursor=pointer]
+          - button "Thông báo việc cần xử lý" [ref=f23e25] [cursor=pointer]
+        - button "Ảnh đại diện dự phòng của admin admin" [ref=f23e31] [cursor=pointer]:
+          - generic "Ảnh đại diện dự phòng của admin" [ref=f23e32]: AD
+          - generic [ref=f23e33]: admin
+    - generic [ref=f23e36]:
+      - complementary [ref=f23e37]:
+        - navigation [ref=f23e38]:
+          - generic [ref=f23e39]: Điều hướng
+          - button "Tổng Quan" [ref=f23e40] [cursor=pointer]
+          - button "CRM Bán Hàng" [ref=f23e47] [cursor=pointer]
+          - button "Khách Hàng" [ref=f23e51] [cursor=pointer]
+          - button "Hồ Sơ Đo Vẽ" [ref=f23e58] [cursor=pointer]
+          - button "Hồ Sơ Pháp Lý" [ref=f23e62] [cursor=pointer]
+          - button "Hợp Đồng" [ref=f23e68] [cursor=pointer]
+          - button "Quản Lý Timeline" [ref=f23e73] [cursor=pointer]
+          - button "Thu Chi Sổ Quỹ" [ref=f23e76] [cursor=pointer]
+          - button "KPI Nhân Sự" [ref=f23e81] [cursor=pointer]
+          - button "Nhân Sự & Đào Tạo" [ref=f23e84] [cursor=pointer]
+          - generic [ref=f23e88]: Hệ thống
+          - button "Cấu Hình" [ref=f23e89] [cursor=pointer]
+      - main [ref=f23e94]:
+        - generic [ref=f23e97]:
+          - generic [ref=f23e99]:
+            - button "Quay lại danh sách" [ref=f23e100] [cursor=pointer]
+            - heading "Thiết lập quy trình · 011/BK-2026" [level=2] [ref=f23e103]
+          - generic [ref=f23e108]:
+            - generic [ref=f23e109]:
+              - generic [ref=f23e110]: Khách hàng
+              - strong [ref=f23e111]: Nguyễn Thị Hồng
+            - generic [ref=f23e115]:
+              - generic [ref=f23e116]: Điện thoại
+              - strong [ref=f23e117]: "0902000004"
+            - generic [ref=f23e120]:
+              - generic [ref=f23e121]: Địa điểm dịch vụ
+              - strong [ref=f23e122]: Chưa có
+            - generic [ref=f23e126]:
+              - generic [ref=f23e127]: Diện tích
+              - strong [ref=f23e128]: Chưa có
+            - generic [ref=f23e135]:
+              - generic [ref=f23e136]: Giá trị hợp đồng
+              - strong [ref=f23e137]: 22.000.000₫
+          - generic [ref=f23e138]:
+            - complementary [ref=f23e139]:
+              - generic [ref=f23e140]:
+                - generic [ref=f23e141]: Hạng mục
+                - strong [ref=f23e142]: "1"
+              - button "1 Chuyển nhượng Chưa thiết lập" [ref=f23e143] [cursor=pointer]:
+                - generic [ref=f23e144]: "1"
+                - generic [ref=f23e145]:
+                  - strong [ref=f23e146]: Chuyển nhượng
+                  - generic [ref=f23e147]: Chưa thiết lập
+            - generic [ref=f23e148]:
+              - generic [ref=f23e149]:
+                - strong [ref=f23e151]: Chuyển nhượng
+                - generic [ref=f23e152]:
+                  - combobox [ref=f23e154] [cursor=pointer]:
+                    - option "Tự thiết kế" [selected]
+                    - option "Quy trình Đo vẽ có hỗ trợ nộp · V1"
+                    - option "Quy trình Đo vẽ nhà (Không nộp) · V1"
+                    - option "Quy trình Pháp lý có hồ sơ · V1"
+                    - option "Quy trình Pháp lý không có hồ sơ · V1"
+                    - option "tách thửa có sẵn hồ sơ pháp lý · V1"
+                  - button "Thêm node" [ref=f23e156] [cursor=pointer]
+                  - button "Lưu thành mẫu" [ref=f23e159] [cursor=pointer]
+                  - button "Căn thông minh" [ref=f23e164] [cursor=pointer]
+                  - button "Lưu tạm" [ref=f23e167] [cursor=pointer]
+                  - button "Kích hoạt" [ref=f23e172] [cursor=pointer]
+              - generic [ref=f23e175]:
+                - application [ref=f23e177]:
+                  - generic [ref=f23e179]:
+                    - generic:
+                      - generic:
+                        - img:
+                          - group "Edge from k01 to k02" [ref=f23e180] [cursor=pointer]:
+                            - generic [ref=f23e181]: Hoàn thành
+                        - img:
+                          - group "Edge from k02 to k09" [ref=f23e183] [cursor=pointer]:
+                            - generic [ref=f23e184]: Hoàn thành
+                      - generic:
+                        - group [ref=f23e186]:
+                          - generic [ref=f23e187]:
+                            - generic [ref=f23e189]:
+                              - generic [ref=f23e190]: K01
+                              - generic "Chờ xử lý" [ref=f23e191]
+                            - strong [ref=f23e192]: Tiếp nhận & kiểm tra đầu vào
+                            - paragraph [ref=f23e193]: Tiếp nhận yêu cầu, kiểm tra sơ bộ giấy tờ đầu vào
+                            - generic [ref=f23e194]:
+                              - generic [ref=f23e195]: 0 mục
+                              - generic [ref=f23e199]: Chưa giao
+                        - group [active] [ref=f23e213]:
+                          - generic [ref=f23e214]:
+                            - generic [ref=f23e216]:
+                              - generic [ref=f23e217]: K02
+                              - generic "Chờ xử lý" [ref=f23e218]
+                            - strong [ref=f23e219]: Khảo sát & đo hiện trường
+                            - paragraph [ref=f23e220]: Đo đạc thực địa, chụp ảnh hiện trạng, lấy toạ độ GPS
+                            - generic [ref=f23e221]:
+                              - generic [ref=f23e222]: 0 mục
+                              - generic [ref=f23e226]: Chưa giao
+                        - group [ref=f23e240]:
+                          - generic [ref=f23e241]:
+                            - generic [ref=f23e243]:
+                              - generic [ref=f23e244]: K09
+                              - generic "Chờ xử lý" [ref=f23e245]
+                            - strong [ref=f23e246]: Lưu trữ & đóng hồ sơ
+                            - paragraph [ref=f23e247]: Chuẩn hoá tên file, lưu vào thư mục Hạng mục, đóng hồ sơ
+                            - generic [ref=f23e248]:
+                              - generic [ref=f23e249]: 0 mục
+                              - generic [ref=f23e253]: Chưa giao
+                  - generic "Control Panel" [ref=f23e267]:
+                    - button "Zoom In" [ref=f23e268] [cursor=pointer]
+                    - button "Zoom Out" [ref=f23e271] [cursor=pointer]
+                    - button "Fit View" [ref=f23e274] [cursor=pointer]
+                  - img "Mini Map" [ref=f23e278]
+                  - link "React Flow attribution" [ref=f23e283] [cursor=pointer]:
+                    - /url: https://reactflow.dev/attribution
+                    - text: React Flow
+                - complementary [ref=f23e285]:
+                  - generic [ref=f23e286]:
+                    - button "Node" [ref=f23e287] [cursor=pointer]
+                    - button "Checklist" [ref=f23e288] [cursor=pointer]
+                    - button "Phân công" [ref=f23e289] [cursor=pointer]
+                    - button "Điều kiện" [ref=f23e290] [cursor=pointer]
+                  - generic [ref=f23e291]:
+                    - generic [ref=f23e292]:
+                      - generic [ref=f23e293]:
+                        - generic [ref=f23e294]: K02 · Node
+                        - strong [ref=f23e295]: Khảo sát & đo hiện trường
+                      - generic [ref=f23e296]:
+                        - button "Chỉnh sửa cấu hình bước" [ref=f23e297] [cursor=pointer]
+                        - button "Xóa Node" [ref=f23e301] [cursor=pointer]
+                    - generic [ref=f23e305]:
+                      - generic [ref=f23e306]: Chưa phân công ai
+                      - button "Thêm" [ref=f23e309] [cursor=pointer]
+                    - generic [ref=f23e313]:
+                      - emphasis [ref=f23e314]: Chờ xử lý
+                      - generic [ref=f23e315]: Chưa đặt thời hạn
+                    - paragraph [ref=f23e319]: Đo đạc thực địa, chụp ảnh hiện trạng, lấy toạ độ GPS
+                - button "Thu khung chi tiết"
+    - button [ref=f23e320] [cursor=pointer]
+  - generic [ref=f23e323]: Nguyễn Thị Hồng

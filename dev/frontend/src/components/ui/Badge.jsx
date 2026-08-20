@@ -83,6 +83,8 @@ const STATUS_MAPS = {
     'Hoàn thành': 'success',
     'Xong, còn nợ': 'warning',
     'Đang thực hiện': 'info',
+    // Quy trình đang chạy nhưng có bước không ai trỏ tới — chạy tới đó là tắc.
+    'Thiếu đường nối': 'danger',
     'Chưa có quy trình': 'neutral',
     'Đã huỷ': 'neutral',
     'Đã hủy': 'neutral',

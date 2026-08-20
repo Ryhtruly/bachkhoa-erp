@@ -25,8 +25,8 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
       const p = new URLSearchParams();
       if (month) p.set('month', month);
       const [resData, resPeriods] = await Promise.all([
-        fetch(`${API}/api/finance/payroll?${p}`).then(r => r.json()),
-        fetch(`${API}/api/finance/payroll/periods`).then(r => r.json()).catch(() => [])
+        apiFetch(`${API}/api/finance/payroll?${p}`).catch(() => []),
+        apiFetch(`${API}/api/finance/payroll/periods`).catch(() => [])
       ]);
       setData(Array.isArray(resData) ? resData : []);
       setPeriods(Array.isArray(resPeriods) ? resPeriods : []);

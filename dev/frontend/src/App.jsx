@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import Dashboard from './pages/Dashboard';
 import CRM from './pages/CRM';
+import CustomerDirectory from './pages/CustomerDirectory';
 import Tasks from './pages/Tasks';
 import LegalSubmissions from './pages/LegalSubmissions';
 import Settings from './pages/Settings';
@@ -17,6 +18,7 @@ import ChatWidget from './components/ChatWidget';
 import EmployeePortalDashboard from './features/employee-portal/EmployeePortalDashboard';
 import MyPayroll from './features/employee-portal/MyPayroll';
 import { apiFetch, clearAccessToken } from './lib/api';
+import { xinPhepRoiDi } from './lib/canhBaoChuaLuu';
 import { ToastProvider } from './contexts/ToastContext';
 import './index.css';
 
@@ -27,9 +29,18 @@ function App() {
   const [sessionLoading, setSessionLoading] = useState(() => Boolean(localStorage.getItem('bachkhoa_access_token')));
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  const handleLogin = (token) => {
+  const handleLogin = (token, initialUser) => {
     localStorage.setItem('bachkhoa_access_token', token);
-    setSessionLoading(true);
+    if (initialUser && initialUser.username) {
+      setProfile(initialUser);
+      setWorkspace(initialUser.default_workspace === 'employee' ? 'employee' : 'management');
+      if (initialUser.default_workspace !== 'employee' && initialUser.username !== 'admin') {
+        setActiveTab(initialUser.permissions?.finance ? 'cashflow' : 'contracts');
+      }
+      setSessionLoading(false);
+    } else {
+      setSessionLoading(true);
+    }
     setLoggedIn(true);
   };
 
@@ -137,6 +148,7 @@ function App() {
   const TABS = [
     { key: 'dashboard', Component: Dashboard, permission: 'finance', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'crm', Component: CRM, permission: 'crm', props: { user: profile, isDirector } },
+    { key: 'customers', Component: CustomerDirectory, permission: 'customer', props: { isDirector } },
     { key: 'tasks', Component: Tasks, permission: 'survey_record', props: { user: profile, isDirector } },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission', props: { user: profile, isDirector } },
     { key: 'settings', Component: Settings, permission: 'settings', directorOnly: true, props: { user: profile, isDirector } },
@@ -166,7 +178,25 @@ function App() {
     ? 'employee-dashboard'
     : activeTab;
 
-  const handleNotificationNavigate = (item) => {
+  // Bấm sang tab khác khi sơ đồ quy trình còn thay đổi chưa lưu thì hỏi trước.
+  // Màn nào đang giữ dữ liệu dở tự đăng ký chốt chặn (xem lib/canhBaoChuaLuu).
+  const doiTab = async (tab) => {
+    if (tab === activeTab) { setActiveTab(tab); return; }
+    if (await xinPhepRoiDi()) setActiveTab(tab);
+  };
+
+  const handleNotificationNavigate = async (item) => {
+    // Bấm thông báo cũng là rời khỏi màn đang mở — hỏi y như bấm đổi tab.
+    if (!(await xinPhepRoiDi())) return;
+    // Phiếu chờ duyệt nằm bên Thu Chi, không nằm trong sơ đồ quy trình —
+    // đưa giám đốc thẳng tới đúng phiếu để bấm duyệt.
+    if (item.type === 'cashflow_approval') {
+      setActiveTab('cashflow');
+      window.dispatchEvent(new CustomEvent('bachkhoa:open-cashflow-voucher', {
+        detail: { voucherId: item.voucher_id, nonce: Date.now() },
+      }));
+      return;
+    }
     // Nhân viên không có tab Hợp đồng (chỉ thấy không gian nhân viên) — phải mở thẳng
     // đúng công việc trong lịch làm việc, thay vì chuyển tab không tồn tại.
     if (employeeMode) {
@@ -195,12 +225,12 @@ function App() {
         <div className="app-body">
           <Sidebar
             activeTab={employeeMode ? employeeTab : activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={doiTab}
             mode={workspace}
             permissions={permissions}
             isDirector={isDirector}
           />
-          <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}${activeTab === 'timeline' ? ' main--timeline' : ''}${activeTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal'].includes(activeTab) ? ' main--list' : ''}`}>
+          <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}${activeTab === 'timeline' ? ' main--timeline' : ''}${activeTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers'].includes(activeTab) ? ' main--list' : ''}`}>
             {(employeeMode ? allowedEmployeeTabs : allowedTabs).map(({ key, Component, props }) => (
               <div key={key} style={{ display: (employeeMode ? employeeTab : activeTab) === key ? 'block' : 'none' }}>
                 <Component {...(props || {})} />

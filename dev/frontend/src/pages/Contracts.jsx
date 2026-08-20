@@ -8,7 +8,7 @@ import { apiFetch, getAccessToken } from '../lib/api';
 import ContractDocumentViewer from '../components/contracts/ContractDocumentViewer';
 import '../components/contracts/contracts.css';
 
-const ContractWorkspace = React.lazy(() => import('../components/contracts/ContractWorkspace'));
+import ContractWorkspace from '../components/contracts/ContractWorkspace';
 
 const CONTRACT_GROUPS_PER_PAGE = 15;
 function getContractId(contract) {
@@ -37,7 +37,7 @@ function getPaginationItems(currentPage, totalPages) {
     }, []);
 }
 
-export default function Contracts() {
+export default function Contracts({ isDirector = false }) {
   const [contracts, setContracts] = useState([]);
   const [config, setConfig] = useState({ personnel: [], services: [] });
   const [loading, setLoading] = useState(true);
@@ -67,7 +67,8 @@ export default function Contracts() {
   }, []);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterValues, setFilterValues] = useState({ service: 'All' });
+  const [filterValues, setFilterValues] = useState({ task_type_id: 'All' });
+  const [danhMucLoc, setDanhMucLoc] = useState([]);
   const [signedDate, setSignedDate] = useState('');
   const [sort, setSort] = useState('desc');
   const [page, setPage] = useState(1);
@@ -88,16 +89,28 @@ export default function Contracts() {
     provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '',
   });
 
+  useEffect(() => {
+    // Danh mục cho bộ lọc dịch vụ — lọc theo task_type_id để phân biệt trùng tên.
+    apiFetch('/api/catalog/service-packages')
+      .then(res => setDanhMucLoc(res?.data || []))
+      .catch(() => {});
+  }, []);
+
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch('/api/config');
-      if (res.ok) setConfig(await res.json());
+      const data = await apiFetch('/api/config');
+      // Gán thẳng `data` là mất mặc định mảng rỗng: chỉ cần payload thiếu một
+      // khoá là `config.services.map` nổ và cả trang hợp đồng trắng màn hình.
+      if (data) setConfig({
+        personnel: Array.isArray(data.personnel) ? data.personnel : [],
+        services: Array.isArray(data.services) ? data.services : [],
+      });
     } catch { }
   }, []);
 
-  const fetchContracts = useCallback(async () => {
+  const fetchContracts = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const params = new URLSearchParams({
         page: String(page),
         page_size: String(CONTRACT_GROUPS_PER_PAGE),
@@ -105,36 +118,32 @@ export default function Contracts() {
       });
       if (signedDate) params.set('date_signed', signedDate);
       if (searchTerm.trim()) params.set('search', searchTerm.trim());
-      if (filterValues.service !== 'All') params.set('service', filterValues.service);
+      if (filterValues.task_type_id !== 'All') params.set('task_type_id', filterValues.task_type_id);
 
-      const res = await fetch(`/api/contracts/workspace-list?${params}`);
-      if (res.ok) {
-        const payload = await res.json();
-        const rows = Array.isArray(payload) ? payload : payload.data || [];
-        setContracts(rows);
-        setSelectedContract(current => {
-          const matched = rows.find(item => getContractId(item) === getContractId(current));
-          if (matched) return matched;
-          // Đang được điều hướng tới 1 hợp đồng cụ thể mà nó không có trong trang này:
-          // giữ nguyên, tuyệt đối không đá về hợp đồng đầu trang.
-          if (navTargetContractRef.current && getContractId(current) === navTargetContractRef.current) return current;
-          return rows[0] || null;
-        });
-        if (payload.pagination) setPagination(payload.pagination);
-      }
+      const payload = await apiFetch(`/api/contracts/workspace-list?${params}`);
+      const rows = Array.isArray(payload) ? payload : payload?.data || [];
+      setContracts(rows);
+      setSelectedContract(current => {
+        const matched = rows.find(item => getContractId(item) === getContractId(current));
+        if (matched) return matched;
+        // Đang được điều hướng tới 1 hợp đồng cụ thể mà nó không có trong trang này:
+        // giữ nguyên, tuyệt đối không đá về hợp đồng đầu trang.
+        if (navTargetContractRef.current && getContractId(current) === navTargetContractRef.current) return current;
+        return rows[0] || null;
+      });
+      if (payload?.pagination) setPagination(payload.pagination);
     } catch {
       addToast('Lỗi tải danh sách hợp đồng', 'error');
     } finally {
       setLoading(false);
     }
-  }, [addToast, filterValues.service, page, searchTerm, signedDate, sort]);
+  }, [addToast, filterValues.task_type_id, page, searchTerm, signedDate, sort]);
 
   const openContractModal = async () => {
     try {
-      const response = await fetch('/api/contracts/next-code');
-      if (response.ok) {
-        const { contract_id: contractId } = await response.json();
-        setFormData(previous => ({ ...previous, contract_id: contractId }));
+      const data = await apiFetch('/api/contracts/next-code');
+      if (data?.contract_id) {
+        setFormData(previous => ({ ...previous, contract_id: data.contract_id }));
       } else {
         addToast('Không thể tạo mã hợp đồng mới', 'error');
       }
@@ -157,10 +166,12 @@ export default function Contracts() {
   }, []);
 
   // Vào sơ đồ quy trình rồi quay ra, trạng thái và công nợ đã đổi ở màn kia.
-  // Màn này không bị gỡ khỏi cây nên dữ liệu cũ nằm nguyên đó — người dùng thấy
-  // "Đang thực hiện" cho hợp đồng vừa nghiệm thu xong và phải tự F5.
+  // Thực hiện tải ngầm (Stale-While-Revalidate) mà KHÔNG bật lại spinner toàn màn hình,
+  // tránh giật lag hay chớp màn hình khi thoát khỏi sơ đồ quy trình.
   useEffect(() => {
-    if (contractView === 'list') fetchContracts();
+    if (contractView === 'list') {
+      fetchContracts(false);
+    }
   }, [contractView, fetchContracts]);
 
   const handleGenerateContract = async (payload) => {
@@ -185,10 +196,11 @@ export default function Contracts() {
       addToast('Đã hủy chọn nơi lưu; hợp đồng chưa được tạo.', 'info');
       return;
     }
-    if (fileSelection.reason === 'SaveLocationUnsupported') {
-      addToast('Trình duyệt không hỗ trợ chọn nơi lưu DOCX. Vui lòng dùng Chrome hoặc Edge.', 'info');
-      return;
-    }
+    // Safari trên macOS không có hộp chọn nơi lưu. Trước đây gặp trường hợp này
+    // là CHẶN LUÔN việc tạo hợp đồng — người dùng Safari không tạo được hợp đồng
+    // nào, chỉ vì trình duyệt thiếu một tính năng lưu file. Việc chính là ghi hợp
+    // đồng vào hệ thống; chỗ lưu file chỉ là phần phụ, không có thì tải về Downloads.
+    const tuTaiVe = fileSelection.reason === 'SaveLocationUnsupported';
 
     setSavingContract(true);
     try {
@@ -202,8 +214,20 @@ export default function Contracts() {
       try {
         if (!data?.download_url) throw new Error('Không nhận được đường dẫn tài liệu Word');
         const documentBlob = await fetchProtectedDocumentBlob(data.download_url, getAccessToken());
-        await writeBlobToFileHandle(fileSelection.handle, documentBlob);
-        addToast(`📁 Đã lưu tệp hợp đồng vào thư mục bạn chọn (${suggestedFileName})`, 'success');
+        if (tuTaiVe) {
+          const blobUrl = URL.createObjectURL(documentBlob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = suggestedFileName;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+          addToast(`📁 Đã tải ${suggestedFileName} về thư mục Tải xuống`, 'success');
+        } else {
+          await writeBlobToFileHandle(fileSelection.handle, documentBlob);
+          addToast(`📁 Đã lưu tệp hợp đồng vào thư mục bạn chọn (${suggestedFileName})`, 'success');
+        }
       } catch (fileErr) {
         console.warn('Không thể ghi tệp Word đã tạo vào máy:', fileErr);
         addToast('Hợp đồng đã lưu nhưng chưa thể ghi tệp Word. Bạn có thể mở tài liệu để xem lại.', 'error');
@@ -317,121 +341,128 @@ export default function Contracts() {
     <section className={`tab-pane active contract-page${contractView === 'list' ? ' contract-page--list' : ''}`} id="tab-hopdong">
       {contractView === 'list' ? (
         <div className="contract-master-detail">
-          <section className="contract-master-pane">
-            <header className="contract-pane-title">
-              <div><span>Danh sách hợp đồng</span><strong>{pagination.total_contracts || contracts.length}</strong></div>
-              <button type="button" className="contract-add-button" onClick={openContractModal} title="Soạn hợp đồng mới">
-                <Plus size={20} />
-              </button>
-            </header>
+          <header className="contract-pane-title">
+            <div><span>Danh sách hợp đồng</span><strong>{pagination.total_contracts || contracts.length}</strong></div>
+            <button type="button" className="contract-add-button" onClick={openContractModal} title="Soạn hợp đồng mới">
+              <Plus size={20} />
+            </button>
+          </header>
 
-            <div className="contract-master-filters">
-              <FilterBar
-                search={searchTerm}
-                onSearchChange={handleSearchChange}
-                searchPlaceholder="Tìm mã hợp đồng, khách hàng, địa điểm..."
-                filters={[
-                  {
-                    key: 'service',
-                    label: 'Dịch vụ',
-                    type: 'select',
-                    width: 180,
-                    options: config.services.map(s => ({ value: s, label: s }))
-                  }
-                ]}
-                values={filterValues}
-                onFilterChange={handleFilterChange}
-                onReset={handleResetFilters}
-                date={signedDate}
-                dateLabel="Chọn ngày ký"
-                onDateChange={(value) => { setSignedDate(value); setPage(1); }}
-                sort={sort}
-                onSortChange={(value) => { setSort(value); setPage(1); }}
-              />
-            </div>
-
-            <DataTable
-              columns={columns}
-              data={contracts}
-              loading={loading}
-              rowKey="id"
-              onRowClick={setSelectedContract}
-              rowClassName={(row) => {
-                return getContractId(row) === getContractId(selectedContract) ? 'contract-selected-row' : '';
-              }}
-              emptyText="Chưa có hợp đồng nào"
-              pageSize={0}
-            />
-            {pagination.total_pages > 0 && (
-              <div className="contract-server-pagination">
-                <span>
-                  {(pagination.page - 1) * CONTRACT_GROUPS_PER_PAGE + 1}
-                  –{Math.min(pagination.page * CONTRACT_GROUPS_PER_PAGE, pagination.total_groups)}
-                  {' / '}{pagination.total_contracts} hợp đồng
-                </span>
-                <div className="contract-server-pagination__controls">
-                  <button type="button" className="contract-page-button" disabled={page <= 1 || loading} onClick={() => setPage(1)} aria-label="Trang đầu"><ChevronsLeft size={16} /></button>
-                  <button type="button" className="contract-page-button" disabled={page <= 1 || loading} onClick={() => setPage(current => Math.max(1, current - 1))} aria-label="Trang trước"><ChevronLeft size={16} /></button>
-                  {getPaginationItems(pagination.page, pagination.total_pages).map((item, index) => (
-                    item === '…'
-                      ? <span key={`ellipsis-${index}`} className="contract-page-ellipsis">…</span>
-                      : <button type="button" key={item} className={`contract-page-button${pagination.page === item ? ' contract-page-button--active' : ''}`} disabled={loading} onClick={() => setPage(item)} aria-label={`Trang ${item}`}>{item}</button>
-                  ))}
-                  <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(current => Math.min(pagination.total_pages, current + 1))} aria-label="Trang sau"><ChevronRight size={16} /></button>
-                  <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(pagination.total_pages)} aria-label="Trang cuối"><ChevronsRight size={16} /></button>
-                </div>
+          <div className="contract-master-detail__body">
+            <section className="contract-master-pane">
+              <div className="contract-master-filters">
+                <FilterBar
+                  search={searchTerm}
+                  onSearchChange={handleSearchChange}
+                  searchPlaceholder="Tìm mã hợp đồng, khách hàng, địa điểm..."
+                  filters={[
+                    {
+                      key: 'task_type_id',
+                      label: 'Dịch vụ',
+                      type: 'select',
+                      width: 220,
+                      options: danhMucLoc.flatMap(g =>
+                        g.task_types.map(hm => ({ value: hm.id, label: `${g.name} · ${hm.name}` }))
+                      )
+                    }
+                  ]}
+                  values={filterValues}
+                  onFilterChange={handleFilterChange}
+                  onReset={handleResetFilters}
+                  date={signedDate}
+                  dateLabel="Chọn ngày ký"
+                  onDateChange={(value) => { setSignedDate(value); setPage(1); }}
+                  sort={sort}
+                  onSortChange={(value) => { setSort(value); setPage(1); }}
+                />
               </div>
-            )}
-          </section>
 
-          <aside className="contract-detail-pane">
-            {selectedContract ? (
-              <>
-                <header>
-                  <div className="contract-detail-pane__document"><FileText size={24} /></div>
-                  <div><span>Hợp đồng đang chọn</span><h3>{getContractId(selectedContract)}</h3></div>
-                  <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="contracts" />
-                </header>
-                <div className="contract-detail-pane__content">
-                  <div className="contract-detail-field"><UserRound size={17} /><div><span>Khách hàng</span><strong>{selectedContract.customer_name || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="contract-detail-field"><CalendarDays size={17} /><div><span>Ngày ký</span><strong>{selectedContract.date_signed || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="contract-detail-field"><CircleDollarSign size={17} /><div><span>Giá trị hợp đồng</span><strong>{formatVND(selectedContract.total_value)}</strong></div></div>
-                  <div className="contract-detail-field"><Layers3 size={17} /><div><span>Hạng mục</span><strong>{selectedContract.service_lines?.map(line => line.name).filter(Boolean).join(', ') || 'Chưa cập nhật'}</strong></div></div>
-                  <div className="contract-paper-preview">
-                    <FileText size={42} />
-                    <strong>Tài liệu hợp đồng</strong>
-                    <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
-                    {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><FileText size={15} /> Mở tài liệu</button>}
+              <DataTable
+                columns={columns}
+                data={contracts}
+                loading={loading}
+                rowKey="id"
+                onRowClick={setSelectedContract}
+                rowClassName={(row) => {
+                  return getContractId(row) === getContractId(selectedContract) ? 'contract-selected-row' : '';
+                }}
+                emptyText="Chưa có hợp đồng nào"
+                pageSize={0}
+              />
+              {pagination.total_pages > 0 && (
+                <div className="contract-server-pagination">
+                  <span>
+                    {(pagination.page - 1) * CONTRACT_GROUPS_PER_PAGE + 1}
+                    –{Math.min(pagination.page * CONTRACT_GROUPS_PER_PAGE, pagination.total_groups)}
+                    {' / '}{pagination.total_contracts} hợp đồng
+                  </span>
+                  <div className="contract-server-pagination__controls">
+                    <button type="button" className="contract-page-button" disabled={page <= 1 || loading} onClick={() => setPage(1)} aria-label="Trang đầu"><ChevronsLeft size={16} /></button>
+                    <button type="button" className="contract-page-button" disabled={page <= 1 || loading} onClick={() => setPage(current => Math.max(1, current - 1))} aria-label="Trang trước"><ChevronLeft size={16} /></button>
+                    {getPaginationItems(pagination.page, pagination.total_pages).map((item, index) => (
+                      item === '…'
+                        ? <span key={`ellipsis-${index}`} className="contract-page-ellipsis">…</span>
+                        : <button type="button" key={item} className={`contract-page-button${pagination.page === item ? ' contract-page-button--active' : ''}`} disabled={loading} onClick={() => setPage(item)} aria-label={`Trang ${item}`}>{item}</button>
+                    ))}
+                    <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(current => Math.min(pagination.total_pages, current + 1))} aria-label="Trang sau"><ChevronRight size={16} /></button>
+                    <button type="button" className="contract-page-button" disabled={page >= pagination.total_pages || loading} onClick={() => setPage(pagination.total_pages)} aria-label="Trang cuối"><ChevronsRight size={16} /></button>
                   </div>
                 </div>
-                <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
-                  <WorkflowIcon size={17} /> Quy trình
-                </button>
-              </>
-            ) : (
-              <div className="contract-detail-pane__empty">
-                <FileText size={38} />
-                <strong>Chọn một hợp đồng</strong>
-                <span>Thông tin chi tiết và nút thiết lập quy trình sẽ xuất hiện tại đây.</span>
-              </div>
-            )}
-          </aside>
+              )}
+            </section>
+
+            <aside className="contract-detail-pane">
+              {selectedContract ? (
+                <>
+                  <header>
+                    <div className="contract-detail-pane__document"><FileText size={20} /></div>
+                    <div className="contract-detail-pane__header-info"><span>Hợp đồng đang chọn</span><h3>{getContractId(selectedContract)}</h3></div>
+                    <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="contracts" />
+                  </header>
+                  <div className="contract-detail-pane__content">
+                    <div className="contract-detail-field"><UserRound size={17} /><div><span>Khách hàng</span><strong>{selectedContract.customer_name || 'Chưa cập nhật'}</strong></div></div>
+                    <div className="contract-detail-field"><CalendarDays size={17} /><div><span>Ngày ký</span><strong>{selectedContract.date_signed || 'Chưa cập nhật'}</strong></div></div>
+                    <div className="contract-detail-field"><CircleDollarSign size={17} /><div><span>Giá trị hợp đồng</span><strong>{formatVND(selectedContract.total_value)}</strong></div></div>
+                    <div className="contract-detail-field"><Layers3 size={17} /><div><span>Hạng mục</span><strong>{selectedContract.service_lines?.map(line => line.name).filter(Boolean).join(', ') || 'Chưa cập nhật'}</strong></div></div>
+                    <div className="contract-paper-preview">
+                      <FileText size={42} />
+                      <strong>Tài liệu hợp đồng</strong>
+                      <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
+                      {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><FileText size={15} /> Mở tài liệu</button>}
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
+                    <WorkflowIcon size={17} /> Quy trình
+                  </button>
+                </>
+              ) : (
+                <>
+                  <header className="contract-detail-pane__empty-header">
+                    <span>Chi tiết hợp đồng</span>
+                  </header>
+                  <div className="contract-detail-pane__empty">
+                    <FileText size={38} />
+                    <strong>Chọn một hợp đồng</strong>
+                    <span>Thông tin chi tiết và nút thiết lập quy trình sẽ xuất hiện tại đây.</span>
+                  </div>
+                </>
+              )}
+            </aside>
+          </div>
         </div>
       ) : (
-        <React.Suspense fallback={<div className="contract-workspace-loading">Đang mở trình thiết lập quy trình…</div>}>
-          <ContractWorkspace
-            tab="workflow"
-            contract={selectedContract}
-            contracts={contracts}
-            onContractChange={setSelectedContract}
-            onBack={() => setContractView('list')}
-            addToast={addToast}
-            targetServiceLineId={navTarget?.serviceLineId}
-            targetNodeKey={navTarget?.nodeKey}
-            targetType={navTarget?.type}
-            targetNonce={navTarget?.nonce}
-          />
-        </React.Suspense>
+        <ContractWorkspace
+          tab="workflow"
+          contract={selectedContract}
+          contracts={contracts}
+          onContractChange={setSelectedContract}
+          onBack={() => setContractView('list')}
+          addToast={addToast}
+          targetServiceLineId={navTarget?.serviceLineId}
+          targetNodeKey={navTarget?.nodeKey}
+          targetType={navTarget?.type}
+          targetNonce={navTarget?.nonce}
+        />
       )}
 
       {/* Form soạn hợp đồng — dựng theo bản thiết kế riêng, không dùng khung
@@ -440,6 +471,7 @@ export default function Contracts() {
         open={isModalOpen}
         code={formData.contract_id}
         services={config.services}
+        isDirector={isDirector}
         saving={savingContract}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleGenerateContract}

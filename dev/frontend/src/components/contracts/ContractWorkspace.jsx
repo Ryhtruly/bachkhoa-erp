@@ -20,6 +20,10 @@ import {
   WORKFLOW_REVISION_STATUS_LABELS,
   workflowLabel,
 } from './workflowLabels';
+import { apiFetch } from '../../lib/api';
+import { xinPhepRoiDi } from '../../lib/canhBaoChuaLuu';
+import PriorityBonusModal from './PriorityBonusModal';
+import { Sparkles } from 'lucide-react';
 
 const getContractId = contract => contract?.id || contract?.contract_id || '';
 
@@ -96,13 +100,20 @@ function DocumentsTab({ workspace }) {
   );
 }
 
+const workspaceMemoryCache = new Map();
+
 export default function ContractWorkspace({ tab, contract, contracts, onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce }) {
-  const [workspace, setWorkspace] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [selectedServiceLineId, setSelectedServiceLineId] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
   const contractId = getContractId(contract);
+  const contextKey = `${contractId}:${tab}`;
+  const [workspace, setWorkspace] = useState(() => workspaceMemoryCache.get(contextKey) || null);
+  const [bonusOpen, setBonusOpen] = useState(false);
+  const [loading, setLoading] = useState(() => !workspaceMemoryCache.has(contextKey));
+  const [error, setError] = useState('');
+  const [selectedServiceLineId, setSelectedServiceLineId] = useState(() => {
+    const cached = workspaceMemoryCache.get(contextKey);
+    return cached?.service_lines?.[0]?.id || '';
+  });
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Điều hướng từ chuông thông báo chỉ áp dụng 1 lần khi có mục tiêu mới —
   // không khoá người dùng vào Hạng mục đó mãi mỗi lần polling làm mới dữ liệu.
@@ -122,63 +133,61 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
   useEffect(() => {
     if (!contractId || tab === 'contracts') return undefined;
     let cancelled = false;
-    const contextKey = `${contractId}:${tab}`;
+
+    // Nếu đã có trong RAM cache, nạp ngay lập tức 0ms
+    if (workspaceMemoryCache.has(contextKey)) {
+      const cached = workspaceMemoryCache.get(contextKey);
+      setWorkspace(cached);
+      setSelectedServiceLineId(current => (
+        cached.service_lines?.some(item => item.id === current)
+          ? current
+          : cached.service_lines?.[0]?.id || ''
+      ));
+      setLoading(false);
+    }
 
     const loadWorkspace = (showLoading) => {
-      const controller = new AbortController();
       const requestId = (requestIdRef.current += 1);
       if (showLoading) {
         setLoading(true);
         setError('');
       }
-      fetch(`/api/contracts/workspace?contract_id=${encodeURIComponent(contractId)}`, { signal: controller.signal })
-        .then(async response => {
-          if (!response.ok) {
-            const payload = await response.json().catch(() => ({}));
-            throw new Error(payload.detail || 'Không tải được workspace hợp đồng');
-          }
-          return response.json();
-        })
+      apiFetch(`/api/contracts/workspace?contract_id=${encodeURIComponent(contractId)}`)
         .then(payload => {
-          if (cancelled) return;
+          if (cancelled || !payload) return;
           loadedContextRef.current = contextKey;
+          workspaceMemoryCache.set(contextKey, payload);
           setWorkspace(payload);
           const shouldApplyTarget = targetServiceLineId && !targetConsumedRef.current
-            && payload.service_lines.some(item => item.id === targetServiceLineId);
+            && payload.service_lines?.some(item => item.id === targetServiceLineId);
           if (targetServiceLineId) targetConsumedRef.current = true;
           setSelectedServiceLineId(current => (
             shouldApplyTarget
               ? targetServiceLineId
-              : payload.service_lines.some(item => item.id === current)
+              : payload.service_lines?.some(item => item.id === current)
                 ? current
-                : payload.service_lines[0]?.id || ''
+                : payload.service_lines?.[0]?.id || ''
           ));
         })
         .catch(fetchError => {
-          if (!cancelled && fetchError.name !== 'AbortError' && showLoading) setError(fetchError.message);
+          if (!cancelled && showLoading) setError(fetchError.message || 'Không tải được dữ liệu quy trình');
         })
         .finally(() => {
-          // Tắt cờ loading kể cả khi request bị huỷ, miễn là không có request mới hơn
-          // đang chạy — nếu không, một lần huỷ giữa chừng sẽ treo spinner vĩnh viễn.
-          if (showLoading && requestIdRef.current === requestId) setLoading(false);
+          if (requestIdRef.current === requestId) setLoading(false);
         });
-      return controller;
     };
 
-    // Chỉ bật spinner khi thật sự đổi hợp đồng/tab. Nếu chỉ là làm mới sau khi lưu
-    // (refreshKey), phải nạp NGẦM — bật spinner sẽ unmount cả cây designer bên dưới,
-    // xoá sạch state cục bộ đang sửa dở (checklist vừa thêm, node đang chọn, chế độ sửa).
-    const initialController = loadWorkspace(loadedContextRef.current !== contextKey);
-    // Cập nhật ngầm — không bật lại loading/spinner, giữ nguyên lựa chọn đang xem.
-    // 5s để khớp nhịp với chuông thông báo, admin thấy việc cần duyệt gần như tức thì.
+    // Nếu chưa có trong RAM cache thì mới hiện spinner ngắn lần đầu tiên,
+    // các lần sau hoặc chuyển qua lại tab đều mở tức thì 0ms.
+    const isFirstTime = !workspaceMemoryCache.has(contextKey);
+    loadWorkspace(isFirstTime);
     const pollId = setInterval(() => loadWorkspace(false), 5000);
 
     return () => {
       cancelled = true;
-      initialController.abort();
       clearInterval(pollId);
     };
-  }, [contractId, tab, refreshKey]);
+  }, [contractId, contextKey, tab, refreshKey]);
 
   const selectedServiceLine = useMemo(
     () => workspace?.service_lines.find(item => item.id === selectedServiceLineId) || workspace?.service_lines[0],
@@ -198,7 +207,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
               <button
                 type="button"
                 className="contract-page-heading__back"
-                onClick={onBack}
+                onClick={async () => { if (await xinPhepRoiDi()) onBack(); }}
                 title="Quay lại danh sách"
                 aria-label="Quay lại danh sách"
               >
@@ -209,6 +218,16 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
               <Workflow size={20} />
               {`Thiết lập quy trình · ${contractId}`}
             </h2>
+            {/* Thưởng ưu tiên — chỉ hiện khi có hạng mục đặt ưu tiên và người dùng
+                quản được khoán (giám đốc). Bấm để phân bổ thưởng khi hoàn thành. */}
+            {workspace?.service_lines?.some(sl => sl.priority && sl.priority !== 'NORMAL')
+              && workspace?.capabilities?.manage_workflow_compensation === true && (
+              <button type="button" className="btn btn-secondary btn-sm"
+                style={{ marginLeft: 'auto', color: '#f59e0b', borderColor: '#f59e0b44' }}
+                onClick={() => setBonusOpen(true)}>
+                <Sparkles size={15} /> Thưởng ưu tiên
+              </button>
+            )}
           </div>
         ) : (
           <div>
@@ -217,6 +236,10 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
           </div>
         )}
       </div>
+
+      <PriorityBonusModal open={bonusOpen} contractId={contractId}
+        onClose={() => setBonusOpen(false)} addToast={addToast}
+        onDone={() => setRefreshKey(k => k + 1)} />
 
       {/* Chỉ che bằng spinner khi CHƯA có dữ liệu nào. Đã có workspace thì luôn hiển thị,
           không để một cờ loading kẹt lại làm mất trắng cả màn hình quy trình. */}
@@ -247,7 +270,12 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
                       type="button"
                       key={line.id}
                       className={line.id === selectedServiceLine?.id ? 'active' : ''}
-                      onClick={() => setSelectedServiceLineId(line.id)}
+                      onClick={async () => {
+                        // Đổi hạng mục là thay cả sơ đồ đang mở — hỏi trước nếu
+                        // hạng mục hiện tại còn thay đổi chưa lưu.
+                        if (line.id === selectedServiceLineId) return;
+                        if (await xinPhepRoiDi()) setSelectedServiceLineId(line.id);
+                      }}
                     >
                       <span>{index + 1}</span>
                       <div>

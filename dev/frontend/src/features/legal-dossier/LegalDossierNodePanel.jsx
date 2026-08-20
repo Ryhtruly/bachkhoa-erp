@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FileClock } from 'lucide-react'
 import LegalDossierActions from './LegalDossierActions'
+import { apiFetch } from '../../lib/api'
 import './legalDossier.css'
 
 /**
@@ -21,8 +22,9 @@ export default function LegalDossierNodePanel({ taskNodeId, addToast, onChanged,
     if (!taskNodeId) { setDossier(null); setLoading(false); return }
     setLoading(true)
     try {
-      const res = await fetch(`/api/legal-dossiers/by-task-node/${taskNodeId}`)
-      setDossier(res.ok ? (await res.json()).data : null)
+      // apiFetch gắn Bearer token; không có hồ sơ (404) hoặc lỗi → throw → panel tự ẩn.
+      const res = await apiFetch(`/api/legal-dossiers/by-task-node/${taskNodeId}`)
+      setDossier(res?.data || null)
     } catch {
       setDossier(null)
     } finally {

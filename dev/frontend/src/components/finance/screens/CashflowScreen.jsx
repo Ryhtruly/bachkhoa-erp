@@ -12,7 +12,7 @@ import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 import { apiFetch } from '../../../lib/api';
 
-export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser }) {
+export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser, focusVoucher = null }) {
   const printDocumentRef = useRef(null);
   const { addToast } = useToast();
   const [data, setData] = useState([]);
@@ -40,6 +40,12 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     }
   }, [propIsDirector, propUser]);
 
+  // Bấm thông báo "phiếu chờ duyệt" thì mở thẳng phiếu đó. Modal tự tải theo mã
+  // phiếu nên không phụ thuộc bộ lọc tháng / hình thức thanh toán đang chọn.
+  useEffect(() => {
+    if (focusVoucher?.id) setDetailId(focusVoucher.id);
+  }, [focusVoucher?.id, focusVoucher?.nonce]);
+
   const isDirector = propIsDirector !== undefined
     ? propIsDirector
     : Boolean(
@@ -50,12 +56,10 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
 
   useEffect(() => {
     if (mode === 'all') {
-      fetch(`${API}/api/finance/contracts`)
-        .then(r => r.json())
+      apiFetch(`${API}/api/finance/contracts`)
         .then(d => setContracts(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
-      fetch(`${API}/api/finance/projects`)
-        .then(r => r.json())
+      apiFetch(`${API}/api/finance/projects`)
         .then(d => setProjects(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
     }
@@ -72,37 +76,25 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
       if (filters.payment_method !== 'All') p.set('payment_method', filters.payment_method);
       if (reconcileId) p.set(reconcileMode === 'contract' ? 'contract_id' : 'project_id', reconcileId);
 
-      // Mốc thời gian thực để tính số dư hiện tại
-      const bayGio = new Date().toISOString();
-
       if (mode === 'cash') {
-        const res = await fetch(`${API}/api/finance/cashflow/cash?${p}`);
-        if (res.ok) {
-          const json = await res.json();
-          setData(Array.isArray(json) ? json : (json.transactions || []));
-          setBalance({
-            balance: json.balance || 0,
-            total_income: json.total_income || 0,
-            total_expenditure: json.total_expenditure || 0
-          });
-        }
+        const json = await apiFetch(`${API}/api/finance/cashflow/cash?${p}`);
+        setData(Array.isArray(json) ? json : (json.transactions || []));
+        setBalance({
+          balance: json.balance || 0,
+          total_income: json.total_income || 0,
+          total_expenditure: json.total_expenditure || 0
+        });
       } else if (mode === 'bank') {
-        const res = await fetch(`${API}/api/finance/cashflow/bank?${p}`);
-        if (res.ok) {
-          const json = await res.json();
-          setData(Array.isArray(json) ? json : (json.transactions || []));
-          setBalance({
-            balance: json.balance || 0,
-            total_income: json.total_income || 0,
-            total_expenditure: json.total_expenditure || 0
-          });
-        }
+        const json = await apiFetch(`${API}/api/finance/cashflow/bank?${p}`);
+        setData(Array.isArray(json) ? json : (json.transactions || []));
+        setBalance({
+          balance: json.balance || 0,
+          total_income: json.total_income || 0,
+          total_expenditure: json.total_expenditure || 0
+        });
       } else {
-        const res = await fetch(`${API}/api/finance/cashflow?${p}`);
-        if (res.ok) {
-          const json = await res.json();
-          setData(Array.isArray(json) ? json : (json.transactions || []));
-        }
+        const json = await apiFetch(`${API}/api/finance/cashflow?${p}`);
+        setData(Array.isArray(json) ? json : (json.transactions || []));
       }
     } catch {
       // ignore

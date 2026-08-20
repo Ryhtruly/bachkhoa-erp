@@ -166,6 +166,8 @@ def validate_workflow_graph(
     graph: dict[str, Any],
     *,
     minimum_start_date: date | None = None,
+    require_connected: bool = False,
+    require_assignments: bool = False,
 ) -> dict[str, Any]:
     """Validate and normalize the JSON graph against live catalog/employee rows."""
     if not isinstance(graph, dict):
@@ -371,6 +373,57 @@ def validate_workflow_graph(
         if missing:
             raise WorkflowValidationError(f"Nhân viên không tồn tại hoặc đã ngừng hoạt động: {', '.join(missing)}")
 
+    # Mọi bước phải đi tới được từ bước bắt đầu — nhưng CHỈ khi kích hoạt.
+    #
+    # Bản nháp là bản đang vẽ dở: thêm một bước rồi mới nối là chuyện thường.
+    # Bắt liên thông ngay từ lúc lưu nháp thì quy trình nào lỡ kích hoạt với bước
+    # rời sẽ kẹt vĩnh viễn — bấm "Sửa" cũng bị chặn, tức là không còn đường nào
+    # sửa cho nó liền mạch lại.
+    if not require_connected and not require_assignments:
+        normalized["start_node"] = start_node
+        normalized["nodes"] = normalized_nodes
+        normalized["ui"] = graph.get("ui") if isinstance(graph.get("ui"), dict) else {}
+        return normalized
+
+    den_duoc: set[str] = set()
+    hang_doi = [start_node]
+    while hang_doi:
+        key = hang_doi.pop()
+        if key in den_duoc:
+            continue
+        den_duoc.add(key)
+        for dich in (normalized_nodes.get(key, {}).get("transitions") or {}).values():
+            if dich in normalized_nodes and dich not in den_duoc:
+                hang_doi.append(dich)
+
+    mo_coi = sorted(set(normalized_nodes) - den_duoc) if require_connected else []
+    if mo_coi:
+        ten = ", ".join(
+            f"{normalized_nodes[k].get('name') or k} ({normalized_nodes[k].get('task_code') or '?'})"
+            for k in mo_coi
+        )
+        raise WorkflowValidationError(
+            f"Có {len(mo_coi)} bước chưa nối vào quy trình: {ten}. "
+            "Nối chúng vào luồng hoặc xoá đi rồi kích hoạt lại."
+        )
+
+    # Bước không giao cho ai thì không hiện trong lịch làm việc của bất kỳ nhân
+    # viên nào — nó treo im lặng cho tới khi có người tình cờ mở sơ đồ ra xem.
+    # Cùng loại lỗi với bước chưa nối dây: cho chạy một quy trình không ai làm được.
+    chua_giao = sorted(
+        k for k, node in normalized_nodes.items()
+        if not (node.get("assignments") or [])
+    ) if require_assignments else []
+    if chua_giao:
+        ten = ", ".join(
+            f"{normalized_nodes[k].get('name') or k} ({normalized_nodes[k].get('task_code') or '?'})"
+            for k in chua_giao
+        )
+        raise WorkflowValidationError(
+            f"Có {len(chua_giao)} bước chưa giao cho ai: {ten}. "
+            "Vào tab Phân công giao người phụ trách rồi kích hoạt lại."
+        )
+
     normalized["start_node"] = start_node
     normalized["nodes"] = normalized_nodes
     normalized["ui"] = graph.get("ui") if isinstance(graph.get("ui"), dict) else {}
@@ -396,8 +449,14 @@ def save_workflow_draft(
     source_workflow_version_id: str | None,
     change_reason: str | None,
     actor_id: str,
+    require_connected: bool = False,
+    require_assignments: bool = False,
 ) -> dict[str, Any]:
-    """Upsert the sole draft revision for a service line without committing."""
+    """Upsert the sole draft revision for a service line without committing.
+
+    `require_connected` chỉ bật khi kích hoạt. Lưu nháp phải cho phép sơ đồ đang
+    vẽ dở, nếu không thì không ai thêm được bước mới trước khi kịp nối dây.
+    """
     service_context = db.execute(
         text("""
             select sl.id, c.date_signed
@@ -412,6 +471,8 @@ def save_workflow_draft(
     normalized_graph = validate_workflow_graph(
         db,
         graph,
+        require_connected=require_connected,
+        require_assignments=require_assignments,
         minimum_start_date=service_context["date_signed"],
     )
     _validate_template(db, source_workflow_version_id)
@@ -508,6 +569,68 @@ def save_workflow_draft(
         params,
     )
     return {**dict(revision), "graph": normalized_graph}
+
+
+def _chan_sua_buoc_dang_chay(db: Session, *, runtime_node: dict, desired_node: dict) -> None:
+    """Chặn đổi checklist / thời lượng của bước đã bắt đầu.
+
+    So định nghĩa mới với thứ đang chạy thật; chỉ báo lỗi khi có khác biệt, để
+    người dùng sửa bước khác trong cùng quy trình vẫn lưu được bình thường.
+    """
+    ten_buoc = desired_node.get("name") or runtime_node["node_code"]
+
+    cu = db.execute(
+        text("""
+            select checklist_key, checklist_name, is_required, require_evidence
+            from public.task_node_checklist_results
+            where task_node_id = :i
+            order by checklist_key
+        """),
+        {"i": runtime_node["id"]},
+    ).mappings().all()
+    dau_cu = sorted(
+        (r["checklist_key"], r["checklist_name"], bool(r["is_required"]), bool(r["require_evidence"]))
+        for r in cu
+    )
+    dau_moi = sorted(
+        (
+            str(item.get("key") or ""),
+            str(item.get("name") or ""),
+            item.get("required") is not False,
+            bool(item.get("require_evidence")),
+        )
+        for item in (desired_node.get("checklist") or [])
+    )
+    if dau_cu != dau_moi:
+        raise WorkflowValidationError(
+            f"Bước “{ten_buoc}” đã bắt đầu nên không đổi được checklist. "
+            "Nhân viên có thể đã nộp minh chứng theo danh sách cũ. "
+            "Cần đổi thì huỷ quy trình làm lại, hoặc thêm một bước mới."
+        )
+
+    # Thời lượng không nằm trên task_nodes mà trong graph của bản đã sinh ra bước.
+    dinh_nghia_cu = db.execute(
+        text("""
+            select r.graph->'nodes'->n.node_key as node_def
+            from public.task_nodes n
+            join public.workflow_instance_revisions r on r.id = n.defined_by_revision_id
+            where n.id = :i
+        """),
+        {"i": runtime_node["id"]},
+    ).scalar()
+    if isinstance(dinh_nghia_cu, dict):
+        def _so(v):
+            try:
+                return int(v or 0)
+            except (TypeError, ValueError):
+                return 0
+        if (_so(dinh_nghia_cu.get("duration_days")), _so(dinh_nghia_cu.get("duration_hours"))) != (
+            _so(desired_node.get("duration_days")), _so(desired_node.get("duration_hours"))
+        ):
+            raise WorkflowValidationError(
+                f"Bước “{ten_buoc}” đã bắt đầu nên không đổi được thời hạn. "
+                "Hạn của các bước sau đã tính theo mốc cũ."
+            )
 
 
 def _apply_workflow_amendment(
@@ -630,6 +753,15 @@ def _apply_workflow_amendment(
         runtime_node = runtime_by_key[node_key]
         desired_node = graph_nodes[node_key]
         desired_assignments = desired_node.get("assignments") or []
+
+        # Bước đã có người bấm Bắt đầu thì cấu trúc phải đứng yên: nhân viên đã
+        # nộp minh chứng theo checklist cũ, hạn đã tính từ mốc khởi động cũ. Đổi
+        # ngầm dưới chân người đang làm là cách chắc chắn nhất để mất dấu vết.
+        #
+        # Vẫn cho đổi tên, mô tả, phân công và vị trí trên sơ đồ — những thứ đó
+        # không đụng tới việc đang chạy.
+        if runtime_node["started_at"] is not None:
+            _chan_sua_buoc_dang_chay(db, runtime_node=runtime_node, desired_node=desired_node)
         active_assignments = db.execute(
             text("""
                 select employee_id, role_code, is_primary, notes
@@ -1116,6 +1248,8 @@ def activate_workflow(
         source_workflow_version_id=source_workflow_version_id,
         change_reason=change_reason,
         actor_id=actor_id,
+        require_connected=True,
+        require_assignments=True,
     )
     instance = db.execute(
         text("""
@@ -2089,31 +2223,35 @@ def review_task_node_acceptance(
             f"Không thể nghiệm thu Node vì còn checklist chưa được duyệt: {names}"
         )
 
-    # ── Cổng kiểm soát công nợ Node K08 (Bàn giao kết quả) ──
-    node_key_str = (acceptance.get("node_key") or "").upper()
-    if decision == "accepted" and ("K08" in node_key_str or "HANDOVER" in node_key_str or "BAN_GIAO" in node_key_str):
-        contract_info = db.execute(
+    # ── Cổng công nợ bước BÀN GIAO ──
+    # Nhận diện bằng CỜ is_handover (đọc bản đang chạy, lùi về bản định nghĩa),
+    # KHÔNG dò mã K08 — quy trình được phép đặt mã tự do. Công nợ tính SỐNG từ
+    # phiếu thu ĐÃ DUYỆT (cùng nguồn với màn Thu Công Nợ), không đọc receivables.
+    if decision == "accepted":
+        hv = db.execute(
             text("""
-                select wi.contract_id, c.total_value, c.completion_override,
-                       coalesce(r.paid_amount, 0) as paid_amount
-                from public.workflow_instances wi
-                left join public.contracts c on c.id = wi.contract_id
-                left join public.receivables r on r.contract_id = wi.contract_id
-                where wi.id = :instance_id
+                select sl.contract_id, c.total_value,
+                       coalesce((coalesce(r_act.graph, r_def.graph)
+                                 ->'nodes'->n.node_key->>'is_handover')::boolean, false) as is_handover
+                from public.task_nodes n
+                join public.workflow_instances wi on wi.id = n.workflow_instance_id
+                join public.service_lines sl on sl.id = wi.service_line_id
+                left join public.contracts c on c.id = sl.contract_id
+                left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+                left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
+                where n.id = :task_node_id
             """),
-            {"instance_id": acceptance["workflow_instance_id"]},
+            {"task_node_id": task_node_id},
         ).mappings().first()
 
-        if contract_info and contract_info["contract_id"]:
-            c_total = float(contract_info["total_value"] or 0)
-            c_paid = float(contract_info["paid_amount"] or 0)
-            c_debt = max(c_total - c_paid, 0.0)
-            has_override = bool(contract_info["completion_override"])
-
-            if c_debt > 0 and not has_override:
+        if hv and hv["is_handover"] and hv["contract_id"]:
+            from src.dossiers.handover import debt_summary
+            debt = debt_summary(db, hv["contract_id"], hv["total_value"])
+            if not debt["is_settled"]:
                 raise WorkflowValidationError(
-                    f"Chặn bàn giao: Hợp đồng {contract_info['contract_id']} còn nợ ({c_debt:,.0f}đ). "
-                    "Hệ thống chặn hoàn thành Node K08 trừ khi có Giám đốc duyệt cho nợ ngoại lệ."
+                    f"Chặn bàn giao: Hợp đồng {hv['contract_id']} còn nợ "
+                    f"({debt['remaining']:,.0f}đ). Cần Giám đốc duyệt cho nợ ngoại lệ "
+                    "mới hoàn thành được bước bàn giao."
                 )
 
     if decision == "rework_required":
@@ -2272,6 +2410,141 @@ def review_task_node_acceptance(
         "entitlement_count": entitlement_count,
         "entitlement_amount": entitlement_amount,
     }
+
+
+def auto_finalize_node_if_ready(db: Session, *, task_node_id: str, actor_id: str) -> dict[str, Any]:
+    """Cơ chế nghiệm thu mới: giám đốc duyệt hết checklist là XONG bước, không cần
+    nhân viên bấm 'Nộp nghiệm thu' rồi giám đốc bấm duyệt node lần nữa.
+
+    Gọi ngay sau khi một checklist được duyệt Đạt. Nếu MỌI checklist bắt buộc của
+    bước đã đạt và bước đang chạy, hệ thống tự nộp + nghiệm thu bước (tái dùng
+    nguyên logic gốc: sinh khoán, mở bước kế, chốt quy trình).
+
+    Bỏ qua BƯỚC BÀN GIAO: bước đó chốt bằng THU ĐỦ TIỀN (cổng công nợ), không phải
+    bằng checklist — giữ luồng nghiệm thu riêng có kiểm soát công nợ.
+    """
+    node = db.execute(
+        text(
+            """
+            select n.id, n.status, n.node_key,
+                   coalesce(
+                     (coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover')::boolean,
+                     false
+                   ) as is_handover,
+                   coalesce(
+                     (coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'requires_gov_submission')::boolean,
+                     false
+                   ) as requires_gov_submission,
+                   (select d.status from public.legal_dossiers d where d.task_node_id = n.id limit 1) as dossier_status,
+                   (select s.receipt_code from public.legal_submissions s where s.task_node_id = n.id order by s.created_at desc limit 1) as gov_receipt_code,
+                   (select s.legacy_gov_status from public.legal_submissions s where s.task_node_id = n.id order by s.created_at desc limit 1) as gov_submission_status,
+                   coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->'transitions' as transitions
+            from public.task_nodes n
+            join public.workflow_instances wi on wi.id = n.workflow_instance_id
+            left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+            left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
+            where n.id = :i
+            for update of n
+            """
+        ),
+        {"i": task_node_id},
+    ).mappings().first()
+    if not node or node["status"] != "in_progress":
+        return {"finalized": False, "reason": "skip"}
+
+    unresolved = db.execute(
+        text(
+            """
+            select 1 from public.task_node_checklist_results
+            where task_node_id = :i
+              and status not in ('approved', 'late_approved', 'not_applicable')
+            limit 1
+            """
+        ),
+        {"i": task_node_id},
+    ).first()
+    if unresolved:
+        return {"finalized": False, "reason": "checklist chưa đạt hết"}
+
+    # Bước NỘP CƠ QUAN: chưa đóng hồ sơ (chưa có kết quả từ cơ quan) thì việc chưa
+    # xong — dù checklist đã đạt. Chờ nhân viên pháp lý bấm "Đóng hồ sơ" rồi mới
+    # nghiệm thu. (Đóng hồ sơ sẽ tự gọi lại hàm này.)
+    if node["requires_gov_submission"] and node["dossier_status"] and node["dossier_status"] != "CLOSED":
+        return {"finalized": False, "reason": "chờ đóng hồ sơ nộp cơ quan"}
+
+    # ...và phải CẦM được biên nhận + cơ quan trả kết quả "Hoàn thành". Đóng hồ sơ và
+    # duyệt checklist thôi chưa đủ: chưa có số biên nhận hoặc cơ quan chưa "Hoàn thành"
+    # thì bước nộp cơ quan coi như chưa xong. Chỉ áp khi node thực sự có hồ sơ nộp cơ
+    # quan (có dòng legal_submissions); cập nhật biên nhận sẽ gọi lại hàm này để chốt.
+    if node["requires_gov_submission"] and node["gov_submission_status"] is not None:
+        receipt = (node["gov_receipt_code"] or "").strip()
+        if not receipt or node["gov_submission_status"] != "Hoàn thành":
+            return {"finalized": False, "reason": "chờ biên nhận & kết quả Hoàn thành từ cơ quan"}
+
+    # Checklist đạt hết = đi đường "hoàn thành". Rẽ nhánh (nhiều outcome, không rõ
+    # mặc định) thì để giám đốc chọn tay — không tự đoán sai luồng.
+    transitions = node["transitions"] or {}
+    outcome = None
+    branching = False
+    if transitions:
+        if "COMPLETED" in transitions:
+            outcome = "COMPLETED"
+        elif len(transitions) == 1:
+            outcome = next(iter(transitions))
+        else:
+            branching = True
+
+    # Bước BÀN GIAO chốt bằng THU ĐỦ TIỀN (cổng công nợ) và bước RẼ NHÁNH cần giám
+    # đốc chọn kết quả — hai loại này KHÔNG tự nghiệm thu, chỉ TỰ NỘP để vào hàng
+    # chờ của giám đốc (nếu không, gỡ nút "Nộp nghiệm thu" rồi thì chúng bị kẹt).
+    can_auto_accept = (not node["is_handover"]) and (not branching)
+
+    attempt_no = db.execute(
+        text("select coalesce(max(attempt_no), 0) + 1 from public.task_node_acceptances where task_node_id = :i"),
+        {"i": task_node_id},
+    ).scalar_one()
+    acceptance_id = db.execute(
+        text(
+            """
+            insert into public.task_node_acceptances
+                (task_node_id, attempt_no, status, submitted_by, submission_payload)
+            values (:i, :a, 'pending', :actor, cast(:p as jsonb))
+            returning id
+            """
+        ),
+        {"i": task_node_id, "a": attempt_no, "actor": actor_id, "p": json.dumps({"auto": True})},
+    ).scalar_one()
+    db.execute(
+        text("update public.task_nodes set status = 'submitted', submitted_at = now(), updated_at = now() where id = :i"),
+        {"i": task_node_id},
+    )
+    db.execute(
+        text(
+            """
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values (:i, 'NODE_SUBMITTED', 'in_progress', 'submitted', :actor, cast(:p as jsonb))
+            """
+        ),
+        {"i": task_node_id, "actor": actor_id, "p": json.dumps({"acceptance_id": acceptance_id, "auto": True})},
+    )
+    if not can_auto_accept:
+        # Bàn giao / rẽ nhánh: dừng ở "đã nộp", giám đốc nghiệm thu tay.
+        return {
+            "finalized": False,
+            "submitted": True,
+            "task_node_id": task_node_id,
+            "reason": "handover_or_branching",
+        }
+    result = review_task_node_acceptance(
+        db,
+        acceptance_id=acceptance_id,
+        decision="accepted",
+        outcome=outcome,
+        review_note="Tự nghiệm thu khi mọi checklist đã được duyệt",
+        actor_id=actor_id,
+    )
+    return {"finalized": True, **result}
 
 
 def _generate_work_pay_entitlements(

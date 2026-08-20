@@ -4,6 +4,7 @@ import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdow
 import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 import { PlusCircle, RefreshCw, AlertCircle, Link } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import CashflowModal from '../modals/CashflowModal';
@@ -16,7 +17,10 @@ export default function ContractsScreen() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/api/finance/contracts`).then(r => r.json()).then(setData).catch(console.error).finally(() => setLoading(false));
+    apiFetch(`${API}/api/finance/contracts`)
+      .then(d => setData(Array.isArray(d) ? d : []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = data.filter(c => !search ||

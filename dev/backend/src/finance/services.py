@@ -84,25 +84,26 @@ class FinanceService:
                             detail=f"Phát hiện đối tác '{payload.payer_payee}' có Hợp đồng. Vui lòng chọn rõ Hợp đồng, không để trống."
                         )
 
-            # 5. Check Receivables threshold
-            if payload.type == "Thu" and contract_id:
-                rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
-                if rec:
-                    if payload.amount > float(rec.remaining_amount or 0):
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Số tiền thu ({payload.amount:,.0f}₫) vượt quá công nợ còn lại ({float(rec.remaining_amount or 0):,.0f}₫)"
-                        )
-                else:
-                    c = db.query(Contract).filter(Contract.id == contract_id).first()
-                    total = float(c.total_value or 0) if c else 0.0
-                    if payload.amount > total:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Số tiền thu ({payload.amount:,.0f}₫) vượt quá giá trị hợp đồng ({total:,.0f}₫)"
-                        )
+            # 5. Thu tiền hợp đồng phải đi đường có bill.
+            # Màn Thu công nợ bắt buộc đính ảnh bill/biên lai; phiếu thu ở Sổ quỹ
+            # thì không có ô nào để đính. Để hở cả hai đường nghĩa là ai muốn né
+            # phần chứng từ chỉ cần lập phiếu bên Sổ quỹ — chặt một chỗ mà lỏng
+            # chỗ kia thì coi như không chặt. Khoản không gắn hợp đồng (lãi ngân
+            # hàng, thu khác…) vẫn lập bình thường ở đây.
+            if payload.type in INCOME_TX_TYPES and contract_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Thu tiền của hợp đồng phải ghi ở màn Thu công nợ để đính bill/biên lai. "
+                        "Phiếu thu ở Sổ quỹ chỉ dùng cho khoản không gắn hợp đồng."
+                    ),
+                )
 
-            # 6. Project vs Non-project classification of project_id
+            # (Ngưỡng công nợ của thu tiền hợp đồng nay do màn Thu công nợ kiểm —
+            #  xem `_ghi_nhan_thu_tien` trong dossiers/handover.py. Ở đây không
+            #  còn đường vào nào cho thu tiền gắn hợp đồng nữa.)
+
+            # 7. Project vs Non-project classification of project_id
             is_operational = False
             op_keywords = ["văn phòng phẩm", "tiếp khách", "điện nước", "bảo hiểm", "công tác phí", "shipper", "vận hành", "quản lý"]
             for kw in op_keywords:

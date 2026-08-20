@@ -25,13 +25,12 @@
 }
 
 .contract-master-detail {
-  display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(330px, 0.75fr);
+  display: flex;
+  flex-direction: column;
   min-height: calc(100vh - 132px);
   overflow: hidden;
   border: 1px solid var(--border-default);
-  /* Khung sát viền (padding .main--contract chỉ 2px) — bo góc không còn chỗ để render mượt,
-     gây chồng chéo vuông/tròn. Bỏ hẳn bo góc, cho vuông toàn bộ. */
+  /* Khung sát viền (padding .main--contract chỉ 2px) — phẳng toàn bộ */
   border-radius: 0;
   background: var(--bg-card);
   box-shadow: var(--shadow-card);
@@ -41,6 +40,14 @@
   height: auto;
   min-height: 0;
   flex: 1 1 auto;
+}
+
+.contract-master-detail__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(330px, 0.75fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .contract-master-pane {
@@ -70,17 +77,33 @@
 .contract-add-button { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 99px; color: #fff; background: linear-gradient(135deg, var(--orange-400), var(--orange-600)); box-shadow: 0 7px 16px rgba(235, 74, 35, 0.25); cursor: pointer; }
 .contract-add-button:hover { transform: translateY(-1px); box-shadow: 0 9px 20px rgba(235, 74, 35, 0.32); }
 
-.contract-master-filters { flex-shrink: 0; padding: 14px 14px 0; }
-.contract-master-filters .filter-bar-modern { margin-bottom: 10px; }
+.contract-master-filters {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.contract-master-filters .filter-bar-modern {
+  margin-bottom: 0;
+  gap: 8px;
+  width: 100%;
+}
 .contract-master-filters .filter-bar-modern__top,
-.contract-master-filters .filter-bar-modern__controls { flex-wrap: wrap; }
-.contract-master-pane .contract-table-hint { flex-shrink: 0; margin: 0 14px 8px; }
+.contract-master-filters .filter-bar-modern__controls {
+  flex-wrap: wrap;
+}
 .contract-page--list .contract-master-pane .dt-wrapper {
   min-height: 0;
   flex: 1 1 auto;
-  margin: 0 14px;
+  margin: 0;
   overflow: hidden;
-  /* Đồng bộ vuông toàn khung — bo góc ở đây từng chồng chéo với thanh phân trang vuông bên dưới. */
+  /* Đồng bộ phẳng sát viền — triệt tiêu hoàn toàn khoảng trắng thừa hai bên trái phải */
   border-radius: 0;
 }
 .contract-page--list .contract-master-pane .table-wrap {
@@ -90,10 +113,19 @@
   flex: 1 1 auto;
   overflow-y: auto;
   border-radius: 0;
+  border: 0;
+}
+.contract-page--list .contract-master-pane .table-wrap thead th {
+  border-bottom: 0;
+  box-shadow: 0 1px 0 var(--border-subtle);
 }
 .contract-master-pane .contract-server-pagination {
   flex: 0 0 auto;
-  padding: 12px 16px 15px;
+  padding: 10px 16px;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  border-radius: 0;
 }
 
 .contract-detail-pane {
@@ -106,22 +138,27 @@
   background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
 }
 
-.contract-detail-pane > header {
-  display: grid;
-  flex-shrink: 0;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+.contract-detail-pane > header,
+.contract-detail-pane__empty-header {
+  display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 86px;
-  padding: 16px 18px;
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  box-sizing: border-box;
+  padding: 0 16px;
+  gap: 10px;
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-card);
+  background: var(--bg-deep);
 }
 
-.contract-detail-pane > header > div:nth-child(2) { min-width: 0; }
-.contract-detail-pane > header span { color: var(--text-tertiary); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
-.contract-detail-pane > header h3 { margin-top: 4px; overflow: hidden; font-family: var(--font-mono); font-size: 0.98rem; text-overflow: ellipsis; white-space: nowrap; }
-.contract-detail-pane__document { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 12px; color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 11%, transparent); }
+.contract-detail-pane__header-info { min-width: 0; flex: 1; }
+.contract-detail-pane__header-info span,
+.contract-detail-pane__empty-header span { display: block; color: var(--text-tertiary); font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.1; }
+.contract-detail-pane__header-info h3 { margin: 1px 0 0; overflow: hidden; font-family: var(--font-mono); font-size: 0.92rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.contract-detail-pane__document { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 11%, transparent); flex-shrink: 0; }
 .contract-detail-pane__content { display: grid; align-content: start; gap: 10px; flex: 1; min-height: 0; padding: 18px; overflow-y: auto; }
 .contract-detail-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 11px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 11px; background: var(--bg-card); }
 .contract-detail-field > svg { color: var(--text-tertiary); }
@@ -657,6 +694,13 @@
   font-weight: 700;
   white-space: nowrap;
 }
+/* Đang chạy mà chưa bật chế độ sửa: luồng bị khoá. Tông trung tính để không
+   lẫn với "đang chạy tốt" màu xanh. */
+.workflow-active-badge.is-locked {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
+}
+
 .workflow-active-badge.cancelled {
   color: var(--red-500);
   background: color-mix(in srgb, var(--red-500) 10%, transparent);
@@ -726,8 +770,12 @@
 .workflow-designer__body {
   position: relative;   /* mốc neo cho nút thu/mở nổi ở ranh giới 2 cột */
   display: grid;
+  /* Khai báo thẳng, không để mỗi nơi tự đoán một giá trị dự phòng: nút thu/mở
+     neo theo đúng biến này, lệch một con số là nút rơi vào giữa khung chi tiết
+     thay vì nằm trên đường ranh. */
+  --workflow-inspector-w: 390px;
   /* Thu khung chi tiết lại thì sơ đồ quy trình lấy hết chỗ trống. */
-  grid-template-columns: minmax(480px, 1fr) var(--workflow-inspector-w, 340px);
+  grid-template-columns: minmax(480px, 1fr) var(--workflow-inspector-w);
   flex: 1; min-height: 420px; height: auto; overflow: hidden;
 }
 .workflow-designer__body:has(.workflow-inspector--collapsed) { --workflow-inspector-w: 40px; }
@@ -778,11 +826,37 @@
 .workflow-node__avatar--img { object-fit: cover; background: var(--bg-surface); }
 .workflow-node__avatar:first-child { margin-left: 0; }
 .workflow-node__avatar--more { background: var(--text-tertiary) !important; }
-.workflow-node__handle { width: 10px; height: 10px; border: 2px solid var(--bg-card); background: var(--orange-500); }
+/* Điểm nối giữa hai bước.
+   Chấm khai 10px nhưng sau khi trừ viền chỉ còn 6×6px thật — quá bé để bắt trúng
+   bằng chuột, người dùng kéo mãi không ra đường nối và tưởng hệ thống hỏng.
+   Giữ chấm nhỏ cho sơ đồ sạch, nhưng nới vùng bắt chuột ra 22px bằng một lớp
+   trong suốt phủ quanh. */
+.workflow-node__handle {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--bg-card);
+  background: var(--orange-500);
+  transition: transform .12s var(--ease-out, ease), box-shadow .12s;
+}
+.workflow-node__handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+}
+/* Rê tới thì chấm to lên để biết đang bắt đúng chỗ. */
+.workflow-node__handle:hover {
+  transform: scale(1.45);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--orange-500) 22%, transparent);
+}
+.react-flow__node:hover .workflow-node__handle { transform: scale(1.2); }
 .workflow-empty-canvas { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; pointer-events: none; color: var(--text-tertiary); }
 
-.workflow-inspector { position: relative; overflow-y: auto; border-left: 1px solid var(--border-subtle); background: var(--bg-card); }
-
+.workflow-inspector { position: relative; overflow-y: auto; border-left: 1px solid var(--border-subtle); background: #ffffff; }
+[data-theme='dark'] .workflow-inspector { background: #0f172a; }
 .workflow-inspector--collapsed { overflow: hidden; }
 
 /* ── Nút thu / mở khung chi tiết ────────────────────────────────────────────
@@ -791,9 +865,14 @@
    bị cắt mất, nhìn như bị chìm xuống dưới. Ẩn cho tới khi rê chuột vào. */
 .workflow-inspector-toggle {
   position: absolute;
+  /* Giữa đường ranh, cưỡi lên cả hai bên: nửa trái trên sơ đồ, nửa phải trên
+     khung chi tiết. */
   top: 50%;
-  right: var(--workflow-inspector-w, 340px);
-  z-index: 6;
+  right: var(--workflow-inspector-w);
+  /* Phải cao hơn hàng tab (z-index 20). Để 6 thì hàng tab dán dính (position:
+     sticky, nền trắng) phủ đè lên, cắt mất nửa phải của nút — nhìn như nút bị
+     chìm xuống dưới khung thay vì nổi trên đường ranh. */
+  z-index: 30;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -869,6 +948,116 @@
 .workflow-icon-button:hover { color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 10%, transparent); }
 .workflow-icon-button.is-active { color: var(--orange-500); border-color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 12%, transparent); }
 
+/* ── Menu chuột phải trên sơ đồ ───────────────────────────────
+   Bấm phải lên bước hoặc lên nhánh là ra ngay việc làm được với nó, khỏi phải
+   đi tìm nút ở thanh công cụ. */
+.workflow-ctx__backdrop { position: fixed; inset: 0; z-index: 50; }
+.workflow-ctx {
+  position: absolute;
+  z-index: 51;
+  min-width: 208px;
+  padding: 5px;
+  border: 1px solid var(--border-default);
+  border-radius: 9px;
+  /* --bg-card chỉ đục 85%, đặt lên sơ đồ thì chữ của node xuyên qua menu. Dùng
+     --bg-deep vì đây là token nền đặc duy nhất có cả ở giao diện sáng lẫn tối. */
+  background: var(--bg-deep);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .18);
+}
+.workflow-ctx__title {
+  margin: 0;
+  padding: 6px 9px 7px;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workflow-ctx button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.workflow-ctx button:hover { background: color-mix(in srgb, var(--orange-500) 10%, transparent); }
+.workflow-ctx button.is-danger { color: var(--red-500); }
+.workflow-ctx button.is-danger:hover { background: color-mix(in srgb, var(--red-500) 10%, transparent); }
+
+/* ── Danh sách bước để thêm vào quy trình ─────────────────────
+   Mỗi dòng nói rõ mã và việc của bước, để người dựng quy trình chọn đúng chứ
+   không phải đoán qua cái tên. */
+.workflow-node-picker { position: relative; display: inline-flex; }
+.workflow-node-picker__backdrop { position: fixed; inset: 0; z-index: 40; }
+.workflow-node-picker__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 41;
+  width: 360px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-card);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .16);
+}
+.workflow-node-picker__item {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.workflow-node-picker__item:hover { background: color-mix(in srgb, var(--orange-500) 9%, transparent); }
+.workflow-node-picker__item > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.workflow-node-picker__item strong { font-size: 13px; font-weight: 600; }
+.workflow-node-picker__item em {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  font-style: normal;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.workflow-node-picker__code {
+  flex: none;
+  align-self: flex-start;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--orange-500) 12%, transparent);
+  color: var(--orange-600, #c2410c);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.workflow-node-picker__empty { margin: 0; padding: 12px; color: var(--text-tertiary); font-size: 12.5px; line-height: 1.5; }
+
+.workflow-save-template { width: 330px; display: grid; gap: 8px; padding: 14px; }
+.workflow-save-template label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.workflow-save-template p { margin: 0; color: var(--text-tertiary); font-size: 11.5px; line-height: 1.5; }
+.workflow-save-template__footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
 /* ── Đầu khung chi tiết bước ──────────────────────────────────
    Tên bước là thứ đầu tiên mắt bám vào nên cho nó cỡ lớn hẳn; mã bước lùi lên
    thành dòng nhỏ phía trên. Trước đây tên bước cùng cỡ với mọi nhãn khác trong
@@ -921,10 +1110,58 @@
   line-height: 1.55;
 }
 
-.workflow-inspector__tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(4, 1fr); padding: 8px; border-bottom: 1px solid var(--border-subtle); background: var(--bg-card); }
-.workflow-inspector__tabs button { padding: 9px 4px; border: 0; border-radius: 8px; color: var(--text-tertiary); background: transparent; font: inherit; font-size: var(--workflow-text-control); font-weight: 600; line-height: 1.3; cursor: pointer; }
-.workflow-inspector__tabs button.active { color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 10%, transparent); }
-.workflow-inspector__content { display: grid; gap: 15px; padding: 16px; }
+.workflow-inspector__tabs {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+[data-theme='dark'] .workflow-inspector__tabs {
+  background: #0f172a;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.workflow-inspector__tabs button {
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  transition: all 0.15s ease-out;
+  cursor: pointer;
+}
+.workflow-inspector__tabs button:hover {
+  color: var(--text-primary);
+  background: var(--bg-deep);
+}
+.workflow-inspector__tabs button.active {
+  color: var(--orange-600, #ea580c);
+  background: #fff7ed;
+  border-color: #ffedd5;
+  box-shadow: 0 1px 2px rgba(234, 88, 12, 0.08);
+}
+[data-theme='dark'] .workflow-inspector__tabs button.active {
+  color: #fb923c;
+  background: rgba(234, 88, 12, 0.15);
+  border-color: rgba(234, 88, 12, 0.25);
+}
+
+.workflow-inspector__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 18px 90px 18px;
+}
 .workflow-inspector label { margin: 0; letter-spacing: 0; text-transform: none; }
 .workflow-inspector__content > label {
   display: grid;
@@ -938,197 +1175,554 @@
   text-transform: none;
 }
 .workflow-inspector .form-control {
-  height: 40px;
-  min-height: 40px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 38px;
+  min-height: 38px;
   margin: 0;
   padding: 0 12px;
-  font-size: var(--workflow-text-control);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-size: 13px;
   font-weight: 500;
-  line-height: 40px;
+  line-height: 38px;
   letter-spacing: 0;
   text-align: left;
   text-align-last: left;
   text-transform: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.workflow-inspector .form-control:focus {
+  border-color: var(--orange-500);
+  background: #ffffff;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(235, 74, 35, 0.12);
+}
+[data-theme='dark'] .workflow-inspector .form-control:focus {
+  background: #0f172a;
 }
 .workflow-inspector textarea.form-control {
-  min-height: 108px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 84px;
   padding: 10px 12px;
   line-height: 1.5;
   resize: vertical;
 }
 .workflow-inspector__heading,
-.workflow-inspector__section-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workflow-inspector__section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .workflow-inspector__heading > div,
-.workflow-inspector__section-title > div { display: grid; gap: 4px; }
+.workflow-inspector__section-title > div { display: grid; gap: 3px; }
 .workflow-inspector__heading span,
-.workflow-inspector__section-title span { color: var(--text-tertiary); font-size: var(--workflow-text-caption); font-weight: 600; line-height: 1.3; }
-.workflow-inspector__heading strong { font-size: var(--workflow-text-title); font-weight: 700; line-height: 1.35; }
-.workflow-inspector__section-title strong { font-size: var(--workflow-text-body); font-weight: 600; line-height: 1.35; }
-.workflow-inspector__empty { display: flex; min-height: 250px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--text-tertiary); text-align: center; }
-.workflow-inspector__empty strong { color: var(--text-primary); font-size: var(--workflow-text-body); font-weight: 600; }
-.workflow-inspector__empty span { font-size: var(--workflow-text-control); line-height: 1.5; }
-.workflow-inspector__empty.compact { min-height: 120px; border: 1px dashed var(--border-default); border-radius: 11px; }
-.workflow-check-row { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: 8px !important; }
-.workflow-check-row input { accent-color: var(--orange-500); }
-.workflow-start-button { width: 100%; min-height: 40px; }
-.workflow-start-button.active { border-color: color-mix(in srgb, var(--green-500) 45%, var(--border-default)); color: var(--green-500); background: color-mix(in srgb, var(--green-500) 8%, transparent); }
-.workflow-checklist-card { display: grid; gap: 9px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 11px; background: var(--bg-surface); }
-.workflow-node-deadline-banner { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--blue-500) 25%, var(--border-default)); border-radius: 10px; color: var(--text-secondary); background: color-mix(in srgb, var(--blue-500) 5%, var(--bg-card)); }
-.workflow-node-deadline-banner strong { grid-column: 2; color: var(--text-primary); font-size: var(--workflow-text-control); }
-.workflow-node-deadline-banner.is-overdue { border-color: color-mix(in srgb, var(--red-500) 35%, var(--border-default)); color: var(--red-500); background: color-mix(in srgb, var(--red-500) 6%, var(--bg-card)); }
-.workflow-checklist-card__heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.workflow-checklist-card__heading .danger-icon-button { width: 38px; height: 38px; }
+.workflow-inspector__section-title span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.workflow-inspector__heading strong { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.workflow-inspector__section-title strong { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.workflow-inspector__empty {
+  display: flex;
+  min-height: 250px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.workflow-inspector__empty strong { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.workflow-inspector__empty span { font-size: 12.5px; line-height: 1.5; }
+.workflow-inspector__empty.compact {
+  min-height: 110px;
+  border: 1px dashed var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-deep);
+}
+
+.workflow-check-row {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px !important;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.workflow-check-row input { accent-color: var(--orange-500); width: 16px; height: 16px; cursor: pointer; }
+.workflow-start-button {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+.workflow-start-button.active {
+  border-color: #10b981;
+  color: #059669;
+  background: #ecfdf5;
+}
+
+.workflow-checklist-card {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+[data-theme='dark'] .workflow-checklist-card {
+  border-color: #334155;
+  background: #1e293b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.workflow-checklist-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+}
+
+/* ===== Checklist — header công đoạn (xếp cột, không tràn panel) ===== */
+.wcl-section-head { display: flex; flex-direction: column; gap: 9px; margin-bottom: 10px; min-width: 0; }
+.wcl-section-head__meta { min-width: 0; display: grid; gap: 3px; }
+.wcl-section-title { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; font-weight: 700; color: var(--text-primary); min-width: 0; }
+.wcl-section-title em { font-style: normal; font-weight: 500; color: var(--text-tertiary); font-size: 0.82rem; white-space: nowrap; }
+.wcl-section-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-500); flex-shrink: 0; }
+.wcl-section-deadline { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--text-tertiary); min-width: 0; }
+.wcl-section-deadline > svg { flex-shrink: 0; }
+.wcl-section-deadline > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wcl-section-deadline strong { color: var(--text-secondary); font-weight: 600; }
+.wcl-section-deadline.is-overdue, .wcl-section-deadline.is-overdue strong { color: var(--red-500); }
+.wcl-section-actions { display: flex; align-items: center; gap: 8px; }
+.wcl-section-actions .wcl-btn { flex: 1; justify-content: center; }
+.wcl-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 36px; padding: 0 14px; border-radius: 9px;
+  font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+  border: 1px solid transparent; transition: background .15s, border-color .15s, color .15s;
+}
+.wcl-btn--ghost { border-color: var(--orange-500); background: rgba(235, 74, 35, 0.06); color: var(--orange-600); }
+.wcl-btn--ghost:hover { background: rgba(235, 74, 35, 0.12); }
+.wcl-btn--primary { background: var(--orange-500); color: #fff; box-shadow: 0 2px 8px var(--orange-glow); }
+.wcl-btn--primary:hover:not(:disabled) { background: var(--orange-600); }
+.wcl-btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
+
+/* ===== Checklist card — nhãn–giá trị theo hàng ===== */
+.workflow-checklist-card { gap: 9px; padding: 13px 14px; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.wcl-top, .wcl-prop { min-width: 0; }
+.workflow-checklist-card.is-dragging { opacity: .5; }
+
+/* Hàng đầu: handle · bắt buộc · tên · xoá */
+.wcl-top { display: flex; align-items: center; gap: 8px; }
+.wcl-handle { flex: 0 0 auto; display: grid; place-items: center; width: 18px; height: 28px; color: var(--text-tertiary); cursor: grab; }
+.wcl-handle:active { cursor: grabbing; }
+.wcl-req-pill {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--border-default); background: var(--bg-card);
+  color: var(--text-tertiary); font-size: 0.7rem; font-weight: 700; letter-spacing: .02em;
+  text-transform: uppercase; cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.wcl-req-pill.is-on { border-color: transparent; background: rgba(245, 158, 11, 0.16); color: #b45309; }
+.wcl-req-pill:disabled { opacity: .55; cursor: default; }
+.wcl-name-inline {
+  flex: 1; min-width: 0; height: 30px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 7px; background: transparent;
+  font-size: 0.9rem; font-weight: 600; color: var(--text-primary);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.wcl-name-inline:hover:not(:disabled) { background: var(--bg-deep); }
+.wcl-name-inline:focus { outline: 0; border-color: var(--orange-500); background: var(--bg-card); box-shadow: 0 0 0 3px rgba(235, 74, 35, 0.10); }
+.wcl-name-inline::placeholder { color: var(--text-tertiary); font-weight: 500; }
+.wcl-x {
+  flex: 0 0 28px; width: 28px; height: 28px; display: grid; place-items: center;
+  border: 0; border-radius: 7px; background: transparent; color: var(--text-tertiary);
+  cursor: pointer; transition: color .15s, background .15s;
+}
+.wcl-x:hover:not(:disabled) { color: var(--red-500); background: rgba(239, 68, 68, 0.08); }
+.wcl-x:disabled { opacity: .35; cursor: default; }
+
+/* Hàng thuộc tính: nhãn có icon (trái) + giá trị (phải), thụt vào ngang tên */
+.wcl-prop { display: flex; align-items: center; gap: 10px; padding-left: 26px; min-height: 30px; }
+.wcl-prop__label { flex: 0 0 88px; display: inline-flex; align-items: center; gap: 6px; font-size: 0.76rem; font-weight: 600; color: var(--text-tertiary); white-space: nowrap; }
+.wcl-prop__label > svg { opacity: .8; }
+.wcl-prop__field { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.wcl-inline-input, .wcl-inline-select {
+  flex: 1; min-width: 0; height: 30px; padding: 0 9px;
+  border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-card);
+  font-size: 0.8rem; color: var(--text-primary);
+  transition: border-color .15s, box-shadow .15s;
+}
+.wcl-inline-select { font-weight: 600; cursor: pointer; }
+.wcl-inline-input:focus, .wcl-inline-select:focus { outline: 0; border-color: var(--orange-500); box-shadow: 0 0 0 3px rgba(235, 74, 35, 0.10); }
+.wcl-prop__clear { flex: 0 0 26px; width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.wcl-prop__clear:hover { color: var(--red-500); background: rgba(239, 68, 68, 0.08); }
+.wcl-add-inline {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 11px; border-radius: 7px;
+  border: 1px dashed var(--border-default); background: transparent;
+  color: var(--text-secondary); font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.wcl-add-inline:hover:not(:disabled) { border-color: var(--orange-500); color: var(--orange-600); background: rgba(235, 74, 35, 0.05); }
+.wcl-add-inline:disabled { opacity: .5; cursor: default; }
+
+/* Đơn giá khoán — đọc gọn "Chính · Phụ", số 0 làm mờ */
+.wcl-prop--pay { flex-wrap: wrap; }
+.wcl-rate-readout { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 16px; padding-left: 98px; }
+.wcl-rr { font-size: 0.74rem; color: var(--text-tertiary); }
+.wcl-rr strong { color: var(--green-600, #15803d); font-weight: 700; }
+.wcl-rr.is-zero strong { color: var(--text-tertiary); font-weight: 600; }
+
+.workflow-node-deadline-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  color: #1e40af;
+  background: #eff6ff;
+}
+[data-theme='dark'] .workflow-node-deadline-banner {
+  border-color: #1e3a8a;
+  background: rgba(30, 58, 138, 0.2);
+  color: #93c5fd;
+}
+.workflow-node-deadline-banner strong { grid-column: 2; color: #1e3a8a; font-size: 13px; font-weight: 700; }
+[data-theme='dark'] .workflow-node-deadline-banner strong { color: #bfdbfe; }
+.workflow-node-deadline-banner.is-overdue {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.workflow-checklist-card__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+.workflow-checklist-card__heading .danger-icon-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
 .workflow-checklist-evidence {
   display: grid;
-  gap: 9px;
-  padding: 10px;
-  border: 1px dashed var(--border-default);
-  border-radius: 10px;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--blue-500) 2%, var(--bg-card));
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+[data-theme='dark'] .workflow-checklist-evidence {
+  border-color: #334155;
+  background: #0f172a;
 }
 .workflow-checklist-evidence.active {
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--blue-500) 30%, var(--border-default));
-  background: color-mix(in srgb, var(--blue-500) 5%, var(--bg-card));
+  border-color: #93c5fd;
+  background: #f0f7ff;
 }
-.workflow-checklist-evidence .workflow-check-row { font-size: var(--workflow-text-control); font-weight: 650; }
+[data-theme='dark'] .workflow-checklist-evidence.active {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+}
+.workflow-checklist-evidence .workflow-check-row { font-size: 13px; font-weight: 650; }
 .workflow-evidence-drive-field { display: grid; gap: 5px; }
-.workflow-evidence-drive-field > span { display: inline-flex; align-items: center; gap: 5px; font-size: var(--workflow-text-caption); font-weight: 650; }
+.workflow-evidence-drive-field > span { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 650; }
 .workflow-evidence-link,
 .workflow-evidence-files a {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  width: fit-content;
-  color: var(--blue-600, #2563eb);
-  font-size: var(--workflow-text-caption);
-  font-weight: 650;
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2563eb;
+  font-size: 12.5px;
+  font-weight: 600;
   text-decoration: none;
 }
-.workflow-evidence-files { display: grid; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
-.workflow-evidence-files > span:first-child { color: var(--text-secondary); font-size: var(--workflow-text-caption); font-weight: 700; }
-.workflow-evidence-files > span:not(:first-child) { display: inline-flex; align-items: center; gap: 5px; font-size: var(--workflow-text-caption); }
-.workflow-evidence-files small { color: var(--text-tertiary); font-size: 11px; line-height: 1.45; }
-.workflow-evidence-review { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px dashed var(--amber-500, #f59e0b); border-radius: 8px; background: color-mix(in srgb, var(--amber-500, #f59e0b) 8%, transparent); }
-.workflow-evidence-review > span { display: inline-flex; align-items: center; gap: 5px; color: var(--amber-600, #b45309); font-size: var(--workflow-text-caption); font-weight: 700; }
+.workflow-evidence-link:hover,
+.workflow-evidence-files a:hover {
+  text-decoration: underline;
+}
+.workflow-evidence-files {
+  display: grid;
+  gap: 7px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+.workflow-evidence-files > span:first-child {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.workflow-evidence-files > span:not(:first-child) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.workflow-evidence-files small { color: var(--text-tertiary); font-size: 11px; line-height: 1.45; word-break: break-word; }
+.workflow-evidence-review {
+  display: grid;
+  gap: 9px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  background: #fffbeb;
+}
+.workflow-evidence-review > span { display: inline-flex; align-items: center; gap: 5px; color: #b45309; font-size: 12px; font-weight: 700; }
 .workflow-evidence-review__actions { display: flex; gap: 8px; }
-.workflow-evidence-review__actions .btn { flex: 1 1 auto; justify-content: center; }
-.workflow-evidence-decision { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; font-size: var(--workflow-text-caption); font-weight: 650; }
-.workflow-evidence-decision--passed { color: #22a06b; }
-.workflow-evidence-decision--failed { color: #ef4444; }
-.workflow-status-pill { display: inline-flex; align-items: center; width: fit-content; margin-top: 2px; padding: 2px 9px; border-radius: 999px; color: var(--text-secondary); background: var(--bg-page); font-size: 11px; font-style: normal; font-weight: 700; line-height: 1.6; }
-.workflow-status-pill--in_progress { color: #b45309; background: color-mix(in srgb, #f59e0b 16%, transparent); }
-.workflow-status-pill--submitted { color: #b45309; background: color-mix(in srgb, #f59e0b 16%, transparent); }
-.workflow-status-pill--accepted { color: #22a06b; background: color-mix(in srgb, #22a06b 14%, transparent); }
-.workflow-status-pill--rework_required { color: #ef4444; background: color-mix(in srgb, #ef4444 12%, transparent); }
-.workflow-status-pill--blocked { color: #ef4444; background: color-mix(in srgb, #ef4444 12%, transparent); }
-.workflow-status-pill--ready { color: #0891b2; background: color-mix(in srgb, #0891b2 12%, transparent); }
-/* Nền mặc định là --bg-page, trùng nền khung nên "Chờ xử lý" nhìn như chữ trần
-   giữa các nhãn có nền. Cho nó một nền xám thấy được. */
-.workflow-status-pill--pending { color: var(--text-secondary); background: color-mix(in srgb, var(--text-tertiary) 14%, transparent); }
+.workflow-evidence-review__actions .btn { flex: 1 1 auto; justify-content: center; height: 34px; font-size: 12.5px; font-weight: 600; }
+.workflow-evidence-decision {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  width: fit-content;
+}
+.workflow-evidence-decision--passed { color: #065f46; background: #d1fae5; }
+.workflow-evidence-decision--failed { color: #991b1b; background: #fee2e2; }
+.workflow-status-pill { display: inline-flex; align-items: center; width: fit-content; margin-top: 2px; padding: 3px 10px; border-radius: 999px; color: var(--text-secondary); background: var(--bg-page); font-size: 11.5px; font-style: normal; font-weight: 700; line-height: 1.5; }
+.workflow-status-pill--in_progress { color: #92400e; background: #fef3c7; }
+.workflow-status-pill--submitted { color: #92400e; background: #fef3c7; }
+.workflow-status-pill--accepted { color: #065f46; background: #d1fae5; }
+.workflow-status-pill--rework_required { color: #991b1b; background: #fee2e2; }
+.workflow-status-pill--blocked { color: #991b1b; background: #fee2e2; }
+.workflow-status-pill--ready { color: #155e75; background: #cffafe; }
+.workflow-status-pill--pending { color: var(--text-secondary); background: #f1f5f9; }
 
-.workflow-review-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border-subtle); border-left: 3px solid var(--amber-500, #f59e0b); border-radius: 10px; background: var(--bg-surface); }
-.workflow-review-card__title { display: flex; align-items: center; gap: 6px; color: #b45309; font-size: var(--workflow-text-caption); font-weight: 700; }
-.workflow-review-card label { display: grid; gap: 4px; margin: 0; font-size: var(--workflow-text-caption); font-weight: 650; }
+.workflow-review-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 12px; background: #fffbeb; }
+[data-theme='dark'] .workflow-review-card { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
+.workflow-review-card__hint { color: var(--text-tertiary); font-weight: 500; text-transform: none; letter-spacing: 0; }
+.workflow-review-card__title { display: flex; align-items: center; gap: 6px; color: #b45309; font-size: 13px; font-weight: 700; }
+.workflow-review-card label { display: grid; gap: 4px; margin: 0; font-size: 12px; font-weight: 650; }
 .workflow-review-card__actions { display: flex; gap: 8px; }
 .workflow-review-card__actions .btn { flex: 1 1 0; justify-content: center; min-width: 0; }
 .workflow-checklist-pay {
   display: grid;
-  gap: 9px;
-  padding: 10px;
-  border: 1px dashed var(--border-default);
-  border-radius: 10px;
-  color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: var(--bg-deep);
 }
 .workflow-checklist-pay.active {
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--orange-500) 34%, var(--border-default));
-  background: color-mix(in srgb, var(--orange-500) 6%, var(--bg-card));
+  border-color: #fdba74;
+  background: #fff7ed;
 }
-.workflow-checklist-pay .workflow-check-row { font-size: var(--workflow-text-control); font-weight: 650; }
+[data-theme='dark'] .workflow-checklist-pay.active {
+  border-color: #ea580c;
+  background: rgba(234, 88, 12, 0.1);
+}
+.workflow-checklist-pay .workflow-check-row { font-size: 12.5px; font-weight: 650; }
 .workflow-checklist-pay__rates { display: flex; flex-wrap: wrap; gap: 6px; }
 .workflow-checklist-pay__rates span {
-  padding: 5px 7px;
-  border-radius: 7px;
+  padding: 4px 8px;
+  border-radius: 6px;
   color: var(--text-secondary);
-  background: var(--bg-surface);
-  font-size: var(--workflow-text-caption);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  font-size: 11.5px;
+}
+[data-theme='dark'] .workflow-checklist-pay__rates span {
+  background: #1e293b;
+  border-color: #334155;
 }
 .workflow-checklist-pay__rates strong { color: var(--orange-600); }
 .workflow-checklist-pay small { color: var(--text-tertiary); font-size: 11px; line-height: 1.45; }
-.workflow-transition-card { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--border-subtle); border-radius: 11px; color: var(--blue-500); }
-.workflow-transition-card > div { display: grid; gap: 3px; }
-.workflow-transition-card > div { flex: 1; }
-.workflow-transition-card .form-control { min-height: 36px; font-size: var(--workflow-text-control); }
-.workflow-transition-card span { font-size: var(--workflow-text-caption); font-weight: 700; }
-.workflow-transition-card strong { color: var(--text-primary); font-size: var(--workflow-text-control); font-weight: 600; line-height: 1.35; }
+
+.workflow-transition-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+}
+[data-theme='dark'] .workflow-transition-card {
+  border-color: #334155;
+  background: #1e293b;
+}
+.workflow-transition-card > div { display: grid; gap: 4px; flex: 1; }
+.workflow-transition-card .form-control { min-height: 38px; font-size: 13px; }
+.workflow-transition-card span { font-size: 11.5px; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: 0.03em; }
+.workflow-transition-card strong { color: var(--text-primary); font-size: 13px; font-weight: 600; line-height: 1.35; }
 .workflow-note-box { margin-top: 0; font-size: 12px; font-weight: 400; line-height: 1.55; }
 
 .workflow-assignment-panel { gap: 12px; }
 .workflow-assignment-card {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 11px;
+  padding: 13px 14px;
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-surface) 74%, var(--bg-card));
-}
-.workflow-assignment-card > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.workflow-assignment-card > header > div { display: grid; min-width: 0; gap: 2px; }
-.workflow-assignment-card > header span { color: var(--text-tertiary); font-size: var(--workflow-text-caption); }
-.workflow-assignment-card > header strong { overflow: hidden; font-size: var(--workflow-text-control); text-overflow: ellipsis; white-space: nowrap; }
-.workflow-assignment-card > header button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  place-items: center;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  color: var(--red-500);
+  border-radius: 14px;
   background: var(--bg-card);
-  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
-.workflow-assignment-card > label,
-.workflow-assignment-card__schedule label {
-  display: grid;
-  gap: 5px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+.workflow-assignment-card.is-primary {
+  border-color: color-mix(in srgb, var(--orange-500) 42%, var(--border-subtle));
 }
+[data-theme='dark'] .workflow-assignment-card { border-color: var(--border-default); background: var(--bg-card); }
+
+/* Header: người thực hiện */
+.wa-head { display: flex; align-items: center; gap: 10px; }
+.wa-ava {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 0.9rem; font-weight: 800; color: #fff;
+  background: linear-gradient(135deg, var(--blue-500, #3b82f6), #2563eb);
+}
+.workflow-assignment-card.is-primary .wa-ava { background: linear-gradient(135deg, var(--orange-400, #fb923c), var(--orange-600, #c23816)); }
+.wa-who { display: grid; gap: 1px; min-width: 0; flex: 1; }
+.wa-who strong { font-size: 0.88rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-who small { font-size: 0.72rem; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wa-x {
+  flex: 0 0 26px; width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border-default); border-radius: 8px;
+  color: var(--text-tertiary); background: transparent; cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.wa-x:hover:not(:disabled) { color: var(--red-500); border-color: var(--red-500); }
+.wa-x:disabled { opacity: .4; cursor: default; }
+
+/* Hai select cạnh nhau */
+.wa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.wa-field { display: grid; gap: 4px; min-width: 0; }
+.wa-field > span { font-size: 0.64rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); font-weight: 600; }
+.wa-field .form-control { min-width: 0; height: 34px; font-size: 0.82rem; padding: 0 8px; }
+
+/* Nút gạt "chịu trách nhiệm chính" — thay checkbox lặp chữ */
+.wa-primary-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border-radius: 9px;
+  border: 1px solid var(--border-default); background: var(--bg-deep);
+  color: var(--text-secondary); font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; text-align: left;
+  transition: border-color .15s var(--ease-out), background .15s var(--ease-out), color .15s var(--ease-out);
+}
+.wa-primary-toggle > svg { color: var(--text-tertiary); }
+.wa-primary-toggle.is-on { border-color: var(--orange-500); background: rgba(235, 74, 35, 0.08); color: var(--orange-600); }
+.wa-primary-toggle.is-on > svg { color: var(--orange-500); fill: var(--orange-500); }
+.wa-primary-toggle:disabled { opacity: .5; cursor: default; }
+
+/* Khoán dự kiến — gọn một khối */
+.wa-pay {
+  display: grid; gap: 4px;
+  padding: 9px 11px;
+  border: 1px dashed var(--border-default); border-radius: 10px;
+  background: var(--bg-deep);
+}
+.wa-pay.is-active {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--green-500) 32%, var(--border-default));
+  background: color-mix(in srgb, var(--green-500) 7%, var(--bg-card));
+}
+.wa-pay__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wa-pay__head > span { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; font-weight: 650; color: var(--text-secondary); }
+.wa-pay__head strong { font-size: 0.9rem; color: var(--text-tertiary); }
+.wa-pay.is-active .wa-pay__head strong { color: var(--green-600, #15803d); }
+.wa-pay__lines { display: grid; gap: 2px; }
+.wa-pay__lines small, .wa-pay__hint { font-size: 0.7rem; color: var(--text-tertiary); line-height: 1.4; }
+
+/* Lịch phân công (dùng nơi khác) */
 .workflow-assignment-card__schedule { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.workflow-assignment-card__schedule label { min-width: 0; }
+.workflow-assignment-card__schedule label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 12px; font-weight: 600; min-width: 0; }
 .workflow-assignment-card__schedule label > svg { display: none; }
 .workflow-assignment-card__schedule .form-control { min-width: 0; padding: 0 7px; font-size: 11px; }
 .workflow-schedule-limit { color: var(--orange-600); font-size: 10px; line-height: 1.45; }
-.workflow-assignment-card__pay {
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px dashed var(--border-default);
-  border-radius: 10px;
-  background: var(--bg-card);
+
+/* Team Bar — đội ngũ của bước ở đầu panel Node */
+.workflow-team-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 11px; margin-bottom: 6px;
+  border: 1px solid var(--border-subtle); border-radius: 12px;
+  background: var(--bg-deep);
 }
-.workflow-assignment-card__pay.active {
-  border-style: solid;
-  border-color: color-mix(in srgb, var(--green-500) 32%, var(--border-default));
-  background: color-mix(in srgb, var(--green-500) 6%, var(--bg-card));
+.workflow-team-bar__people { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; }
+.wtb-empty { font-size: 0.76rem; color: var(--text-tertiary); }
+.wtb-ava {
+  width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 0.78rem; font-weight: 800; color: #fff;
+  border: 2px solid var(--bg-deep);
+  background: linear-gradient(135deg, var(--blue-500, #3b82f6), #2563eb);
+  cursor: pointer; margin-left: -6px;
+  transition: transform .12s var(--ease-out);
 }
-.workflow-assignment-card__pay > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.workflow-assignment-card__pay span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); font-size: var(--workflow-text-caption); font-weight: 650; }
-.workflow-assignment-card__pay strong { color: var(--green-600, #15803d); font-size: var(--workflow-text-body); }
-.workflow-assignment-card__pay small { color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
-.workflow-assignment-card__pay em { color: var(--text-tertiary); font-size: 10px; font-style: normal; line-height: 1.4; }
+.workflow-team-bar__people .wtb-ava:first-child { margin-left: 0; }
+.wtb-ava:hover { transform: translateY(-2px); z-index: 2; }
+.wtb-ava.is-primary { background: linear-gradient(135deg, var(--orange-400, #fb923c), var(--orange-600, #c23816)); }
+
+.workflow-team-bar__add { position: relative; flex-shrink: 0; }
+.wtb-add-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px dashed var(--border-default); background: var(--bg-card);
+  color: var(--text-secondary); font-size: 0.76rem; font-weight: 600; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.wtb-add-btn:hover { border-color: var(--orange-500); color: var(--orange-600); }
+
+.wtb-picker {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  width: 230px; max-height: 260px; overflow-y: auto;
+  padding: 5px; border-radius: 12px;
+  border: 1px solid var(--border-default); background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+.wtb-picker > button {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 8px; background: transparent;
+  cursor: pointer; text-align: left;
+}
+.wtb-picker > button:hover { background: var(--bg-deep); }
+.wtb-picker__ava {
+  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 0.72rem; font-weight: 800; color: #fff;
+  background: linear-gradient(135deg, var(--blue-500, #3b82f6), #2563eb);
+}
+.wtb-picker__txt { display: grid; gap: 1px; min-width: 0; }
+.wtb-picker__txt strong { font-size: 0.82rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wtb-picker__txt small { font-size: 0.7rem; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wtb-picker__empty { padding: 12px; text-align: center; font-size: 0.76rem; color: var(--text-tertiary); }
 
 .workflow-cancellation-modal { display: grid; gap: 16px; }
 .workflow-cancellation-modal > label {
@@ -1316,4 +1910,20 @@
   .contract-page .table-wrap th:nth-child(2) { width: 120px !important; }
   .contract-page .table-wrap th:nth-child(5) { width: 165px !important; }
   .contract-page .table-wrap th:nth-child(6) { width: 66px !important; }
+}
+
+/* Xem trước bước bàn giao khi node CHƯA kích hoạt (chưa có tiền/hồ sơ thật) */
+.handover-preview {
+  margin-top: 14px; padding: 14px; border: 1.5px dashed var(--border-default, #cbd5e1);
+  border-radius: 12px; background: rgba(16, 185, 129, 0.04);
+}
+.handover-preview__title { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 0.9rem; color: #0f766e; margin-bottom: 12px; }
+.handover-preview__lane { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; }
+.handover-preview__lane strong { display: block; font-size: 0.86rem; color: #0f172a; }
+.handover-preview__lane small { color: #64748b; font-size: 0.76rem; }
+.handover-preview__dot { width: 10px; height: 10px; border-radius: 50%; background: #10b981; margin-top: 5px; flex-shrink: 0; }
+.handover-preview__dot.is-money { background: #f59e0b; }
+.handover-preview__note {
+  margin: 8px 0 0; padding-top: 10px; border-top: 1px dashed var(--border-subtle, #e2e8f0);
+  font-size: 0.78rem; color: #b45309;
 }

@@ -3,6 +3,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { DatePicker } from '../../ui';
 import { fmtShort, docSoTiengViet, CATEGORY_AUTO_MAPPING, VOUCHER_SIGNERS } from '../utils';
 import { API } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 import { COMPANY_IDENTITY } from '../../../lib/companyIdentity';
 import voucherPrintStyles from './PrintVoucherScreen.print.css?inline';
 import {
@@ -288,9 +289,8 @@ export default function PrintVoucherScreen({ month }) {
 
   const fetchTransactions = async () => {
     try {
-      const res = await fetch(`${API}/api/finance/cashflow`);
-      if (res.ok) setTransactions(await res.json());
-      else addToast('Không tải được danh sách phiếu', 'error');
+      const data = await apiFetch(`${API}/api/finance/cashflow`);
+      setTransactions(Array.isArray(data) ? data : []);
     } catch (e) {
       addToast('Lỗi kết nối khi tải danh sách phiếu', 'error');
     }
@@ -298,27 +298,27 @@ export default function PrintVoucherScreen({ month }) {
 
   const fetchActiveAdvances = async () => {
     try {
-      const res = await fetch(`${API}/api/finance/advance`);
-      if (res.ok) setActiveAdvances(await res.json());
+      const data = await apiFetch(`${API}/api/finance/advance`);
+      setActiveAdvances(Array.isArray(data) ? data : []);
     } catch (e) { }
   };
 
   const fetchContractsAndProjects = async () => {
     try {
-      const rC = await fetch(`${API}/api/finance/contracts`);
-      if (rC.ok) setContracts(await rC.json());
-      const rP = await fetch(`${API}/api/finance/projects`);
-      if (rP.ok) setProjects(await rP.json());
+      const [rC, rP] = await Promise.all([
+        apiFetch(`${API}/api/finance/contracts`).catch(() => []),
+        apiFetch(`${API}/api/finance/projects`).catch(() => [])
+      ]);
+      setContracts(Array.isArray(rC) ? rC : []);
+      setProjects(Array.isArray(rP) ? rP : []);
     } catch (e) { }
   };
 
   const fetchDepartments = async () => {
     try {
-      const res = await fetch(`${API}/api/finance/departments`);
-      if (res.ok) {
-        const data = await res.json();
-        setDepartments(Array.isArray(data) ? data : []);
-      }
+      // apiFetch mới đính token; fetch trần trả 401 nên danh sách phòng ban rỗng.
+      const data = await apiFetch(`${API}/api/finance/departments`);
+      setDepartments(Array.isArray(data) ? data : []);
     } catch (e) { }
   };
 
@@ -345,17 +345,15 @@ export default function PrintVoucherScreen({ month }) {
     if (mode === 'create') {
       const fetchNextId = async () => {
         try {
-          const res = await fetch(`${API}/api/finance/next-voucher-id?type=${txType}`);
-          if (res.ok) {
-            const d = await res.json();
-            setForm(prev => ({
-              ...emptyForm,
-              id: d.next_id,
-              transaction_date: getTodayIso(),
-              category: txType === 'Tạm ứng' ? 'Tạm ứng kinh phí' : (txType === 'Hoàn ứng' ? 'Quyết toán tạm ứng' : 'Khác'),
-              payment_method: txType === 'Tạm ứng' ? 'Tạm ứng' : 'Chuyển khoản'
-            }));
-          }
+          // Thiếu token thì số chứng từ để trống, kế toán không lập được phiếu.
+          const d = await apiFetch(`${API}/api/finance/next-voucher-id?type=${txType}`);
+          setForm({
+            ...emptyForm,
+            id: d.next_id,
+            transaction_date: getTodayIso(),
+            category: txType === 'Tạm ứng' ? 'Tạm ứng kinh phí' : (txType === 'Hoàn ứng' ? 'Quyết toán tạm ứng' : 'Khác'),
+            payment_method: txType === 'Tạm ứng' ? 'Tạm ứng' : 'Chuyển khoản'
+          });
         } catch (e) { }
       };
       fetchNextId();
@@ -540,9 +538,9 @@ export default function PrintVoucherScreen({ month }) {
 
     setLoading(true);
     try {
-      let res;
+      let saved;
       if (txType === 'Tạm ứng') {
-        res = await fetch(`${API}/api/finance/advance/create`, {
+        saved = await apiFetch(`${API}/api/finance/advance/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -554,7 +552,7 @@ export default function PrintVoucherScreen({ month }) {
           })
         });
       } else if (txType === 'Hoàn ứng') {
-        res = await fetch(`${API}/api/finance/advance/clear`, {
+        saved = await apiFetch(`${API}/api/finance/advance/clear`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -564,7 +562,7 @@ export default function PrintVoucherScreen({ month }) {
           })
         });
       } else {
-        res = await fetch(`${API}/api/finance/cashflow/create`, {
+        saved = await apiFetch(`${API}/api/finance/cashflow/create`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -584,19 +582,13 @@ export default function PrintVoucherScreen({ month }) {
         });
       }
 
-      if (res.ok) {
-        const saved = await res.json();
-        addToast('Lưu chứng từ thành công!', 'success');
-        await fetchTransactions();
-        await fetchActiveAdvances();
-        setMode('print');
-        setSelectedId(saved.id || (saved.auto_vouchers && saved.auto_vouchers[0] ? saved.auto_vouchers[0].id : ''));
-      } else {
-        const err = await res.json();
-        addToast(`Lỗi: ${err.detail || 'Không thể lưu chứng từ'}`, 'error');
-      }
+      addToast('Lưu chứng từ thành công!', 'success');
+      await fetchTransactions();
+      await fetchActiveAdvances();
+      setMode('print');
+      setSelectedId(saved?.id || (saved?.auto_vouchers && saved?.auto_vouchers[0] ? saved?.auto_vouchers[0].id : ''));
     } catch (e) {
-      addToast('Lỗi kết nối máy chủ khi lưu chứng từ', 'error');
+      addToast(e.message || 'Lỗi kết nối máy chủ khi lưu chứng từ', 'error');
     } finally {
       setLoading(false);
     }

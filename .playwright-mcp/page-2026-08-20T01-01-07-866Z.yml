@@ -1,0 +1,122 @@
+- generic [ref=f41e9]:
+  - banner [ref=f41e10]:
+    - generic [ref=f41e15]:
+      - generic [ref=f41e16]:
+        - generic [ref=f41e17]: BÁCH KH
+        - generic [ref=f41e21]: A
+      - generic [ref=f41e23]: ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG
+    - generic [ref=f41e24]:
+      - button "Làm mới" [ref=f41e25] [cursor=pointer]
+      - generic [ref=f41e31]:
+        - button "🌙" [ref=f41e32] [cursor=pointer]
+        - button "Thông báo việc cần xử lý" [ref=f41e35] [cursor=pointer]
+      - button "Hồ Thị Mỹ Hằng Hồ Thị Mỹ Hằng" [ref=f41e41] [cursor=pointer]:
+        - img "Hồ Thị Mỹ Hằng" [ref=f41e42]
+        - generic [ref=f41e43]: Hồ Thị Mỹ Hằng
+  - generic [ref=f41e46]:
+    - complementary [ref=f41e47]:
+      - navigation [ref=f41e48]:
+        - generic [ref=f41e49]: Điều hướng
+        - button "Lịch trình" [ref=f41e50] [cursor=pointer]
+        - button "Hồ Sơ Pháp Lý" [active] [ref=f41e57] [cursor=pointer]
+        - button "Lương" [ref=f41e63] [cursor=pointer]
+    - main [ref=f41e68]:
+      - generic [ref=f41e532]:
+        - generic [ref=f41e534]:
+          - generic [ref=f41e539]: Hồ Sơ Pháp Lý
+          - strong [ref=f41e540]: "3"
+        - generic [ref=f41e541]:
+          - generic [ref=f41e542]:
+            - generic [ref=f41e544]:
+              - paragraph [ref=f41e545]: Đang chi nhánh
+              - heading "3" [level=3] [ref=f41e546]
+            - generic [ref=f41e548]:
+              - paragraph [ref=f41e549]: Hoàn thành
+              - heading "0" [level=3] [ref=f41e550]
+            - generic [ref=f41e552]:
+              - paragraph [ref=f41e553]: Rút hồ sơ
+              - heading "0" [level=3] [ref=f41e554]
+            - generic [ref=f41e556]:
+              - paragraph [ref=f41e557]: Trả công văn
+              - heading "0" [level=3] [ref=f41e558]
+          - generic [ref=f41e559]:
+            - generic [ref=f41e560]:
+              - textbox "Tìm kiếm" [ref=f41e562]:
+                - /placeholder: Tìm theo tên hồ sơ, số biên nhận, mã hợp đồng...
+              - generic [ref=f41e563]:
+                - button "Bộ lọc" [ref=f41e564] [cursor=pointer]
+                - button "Làm mới" [ref=f41e571] [cursor=pointer]
+            - generic [ref=f41e578]:
+              - generic [ref=f41e579]: Tình trạng
+              - combobox "Tình trạng" [ref=f41e581] [cursor=pointer]:
+                - option "Tất cả tình trạng" [selected]
+                - option "Đang chi nhánh"
+                - option "Hoàn thành"
+                - option "Rút hồ sơ"
+                - option "Trả công văn"
+        - generic [ref=f41e582]:
+          - table [ref=f41e585]:
+            - rowgroup [ref=f41e586]:
+              - row [ref=f41e587]:
+                - columnheader "TÊN HỒ SƠ" [ref=f41e588]
+                - columnheader "SỐ BIÊN NHẬN" [ref=f41e590]
+                - columnheader "PHỤ TRÁCH PHÁP LÝ" [ref=f41e592]
+                - columnheader "TÌNH TRẠNG" [ref=f41e594]
+                - columnheader "NGÀY NHẬN" [ref=f41e596]
+                - columnheader "NGÀY HẸN TRẢ" [ref=f41e598]
+                - columnheader "THAO TÁC" [ref=f41e600]
+            - rowgroup [ref=f41e602]:
+              - row [ref=f41e603]:
+                - cell "Nguyễn Thị Hồng 011/BK-2026 · Chuyển nhượng" [ref=f41e604]:
+                  - generic [ref=f41e605]:
+                    - strong [ref=f41e606]: Nguyễn Thị Hồng
+                    - generic [ref=f41e607]: 011/BK-2026 · Chuyển nhượng
+                - cell "Chưa nộp" [ref=f41e608]
+                - cell "Hồ Thị Mỹ Hằng 0912345672" [ref=f41e609]:
+                  - generic [ref=f41e610]:
+                    - generic [ref=f41e611]: Hồ Thị Mỹ Hằng
+                    - generic [ref=f41e612]: "0912345672"
+                - cell "Đang chi nhánh" [ref=f41e615]
+                - cell "—" [ref=f41e617]
+                - cell "—" [ref=f41e618]
+                - cell [ref=f41e619]:
+                  - button "Chi tiết" [ref=f41e620] [cursor=pointer]
+              - row [ref=f41e624]:
+                - cell "Nguyễn Thị Hồng 008/BK-2026 · Tách thửa" [ref=f41e625]:
+                  - generic [ref=f41e626]:
+                    - strong [ref=f41e627]: Nguyễn Thị Hồng
+                    - generic [ref=f41e628]: 008/BK-2026 · Tách thửa
+                - cell [ref=f41e629]:
+                  - strong [ref=f41e630]: BN-2026/008-CN-04567
+                - cell "Hồ Thị Mỹ Hằng 0912345672" [ref=f41e631]:
+                  - generic [ref=f41e632]:
+                    - generic [ref=f41e633]: Hồ Thị Mỹ Hằng
+                    - generic [ref=f41e634]: "0912345672"
+                - cell "Trả công văn" [ref=f41e637]
+                - cell "—" [ref=f41e639]
+                - cell "25/8/2026" [ref=f41e640]
+                - cell [ref=f41e641]:
+                  - button "Chi tiết" [ref=f41e642] [cursor=pointer]
+              - row [ref=f41e646]:
+                - cell "NGÂN HÀNG TMCP NGOẠI THƯƠNG VIỆT NAM 006/BK-2026 · Cấp đổi" [ref=f41e647]:
+                  - generic [ref=f41e648]:
+                    - strong [ref=f41e649]: NGÂN HÀNG TMCP NGOẠI THƯƠNG VIỆT NAM
+                    - generic [ref=f41e650]: 006/BK-2026 · Cấp đổi
+                - cell "Chưa nộp" [ref=f41e651]
+                - cell "Hồ Thị Mỹ Hằng 0912345672" [ref=f41e652]:
+                  - generic [ref=f41e653]:
+                    - generic [ref=f41e654]: Hồ Thị Mỹ Hằng
+                    - generic [ref=f41e655]: "0912345672"
+                - cell "Đang chi nhánh" [ref=f41e658]
+                - cell "—" [ref=f41e660]
+                - cell "—" [ref=f41e661]
+                - cell [ref=f41e662]:
+                  - button "Chi tiết" [ref=f41e663] [cursor=pointer]
+          - generic [ref=f41e667]:
+            - generic [ref=f41e668]: 1–3 / 3 hồ sơ
+            - generic [ref=f41e669]:
+              - button "«" [disabled] [ref=f41e670]
+              - button "‹" [disabled] [ref=f41e671]
+              - generic [ref=f41e672] [cursor=pointer]: "1"
+              - button "›" [disabled] [ref=f41e673]
+              - button "»" [disabled] [ref=f41e674]

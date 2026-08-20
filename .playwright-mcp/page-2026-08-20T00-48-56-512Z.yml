@@ -1,0 +1,122 @@
+- generic [ref=f40e691]:
+  - banner [ref=f40e692]:
+    - generic [ref=f40e697]:
+      - generic [ref=f40e698]:
+        - generic [ref=f40e699]: BÁCH KH
+        - generic [ref=f40e703]: A
+      - generic [ref=f40e705]: ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG
+    - generic [ref=f40e706]:
+      - button "Làm mới" [ref=f40e707] [cursor=pointer]
+      - generic [ref=f40e713]:
+        - button "🌙" [ref=f40e714] [cursor=pointer]
+        - button "Thông báo việc cần xử lý" [ref=f40e717] [cursor=pointer]
+      - button "Hồ Thị Mỹ Hằng Hồ Thị Mỹ Hằng" [ref=f40e723] [cursor=pointer]:
+        - img "Hồ Thị Mỹ Hằng" [ref=f40e724]
+        - generic [ref=f40e725]: Hồ Thị Mỹ Hằng
+  - generic [ref=f40e728]:
+    - complementary [ref=f40e729]:
+      - navigation [ref=f40e730]:
+        - generic [ref=f40e731]: Điều hướng
+        - button "Lịch trình" [ref=f40e732] [cursor=pointer]
+        - button "Hồ Sơ Pháp Lý" [active] [ref=f40e739] [cursor=pointer]
+        - button "Lương" [ref=f40e745] [cursor=pointer]
+    - main [ref=f40e750]:
+      - generic [ref=f40e1244]:
+        - generic [ref=f40e1246]:
+          - generic [ref=f40e1251]: Hồ Sơ Pháp Lý
+          - strong [ref=f40e1252]: "3"
+        - generic [ref=f40e1253]:
+          - generic [ref=f40e1254]:
+            - generic [ref=f40e1256]:
+              - paragraph [ref=f40e1257]: Đang chi nhánh
+              - heading "3" [level=3] [ref=f40e1258]
+            - generic [ref=f40e1260]:
+              - paragraph [ref=f40e1261]: Hoàn thành
+              - heading "0" [level=3] [ref=f40e1262]
+            - generic [ref=f40e1264]:
+              - paragraph [ref=f40e1265]: Rút hồ sơ
+              - heading "0" [level=3] [ref=f40e1266]
+            - generic [ref=f40e1268]:
+              - paragraph [ref=f40e1269]: Trả công văn
+              - heading "0" [level=3] [ref=f40e1270]
+          - generic [ref=f40e1271]:
+            - generic [ref=f40e1272]:
+              - textbox "Tìm kiếm" [ref=f40e1274]:
+                - /placeholder: Tìm theo tên hồ sơ, số biên nhận, mã hợp đồng...
+              - generic [ref=f40e1275]:
+                - button "Bộ lọc" [ref=f40e1276] [cursor=pointer]
+                - button "Làm mới" [ref=f40e1283] [cursor=pointer]
+            - generic [ref=f40e1290]:
+              - generic [ref=f40e1291]: Tình trạng
+              - combobox "Tình trạng" [ref=f40e1293] [cursor=pointer]:
+                - option "Tất cả tình trạng" [selected]
+                - option "Đang chi nhánh"
+                - option "Hoàn thành"
+                - option "Rút hồ sơ"
+                - option "Trả công văn"
+        - generic [ref=f40e1294]:
+          - table [ref=f40e1297]:
+            - rowgroup [ref=f40e1298]:
+              - row [ref=f40e1299]:
+                - columnheader "TÊN HỒ SƠ" [ref=f40e1300]
+                - columnheader "SỐ BIÊN NHẬN" [ref=f40e1302]
+                - columnheader "PHỤ TRÁCH PHÁP LÝ" [ref=f40e1304]
+                - columnheader "TÌNH TRẠNG" [ref=f40e1306]
+                - columnheader "NGÀY NHẬN" [ref=f40e1308]
+                - columnheader "NGÀY HẸN TRẢ" [ref=f40e1310]
+                - columnheader "THAO TÁC" [ref=f40e1312]
+            - rowgroup [ref=f40e1314]:
+              - row [ref=f40e1315]:
+                - cell "Nguyễn Thị Hồng 011/BK-2026 · Chuyển nhượng" [ref=f40e1316]:
+                  - generic [ref=f40e1317]:
+                    - strong [ref=f40e1318]: Nguyễn Thị Hồng
+                    - generic [ref=f40e1319]: 011/BK-2026 · Chuyển nhượng
+                - cell "Chưa nộp" [ref=f40e1320]
+                - cell "Hồ Thị Mỹ Hằng 0912345672" [ref=f40e1321]:
+                  - generic [ref=f40e1322]:
+                    - generic [ref=f40e1323]: Hồ Thị Mỹ Hằng
+                    - generic [ref=f40e1324]: "0912345672"
+                - cell "Đang chi nhánh" [ref=f40e1327]
+                - cell "—" [ref=f40e1329]
+                - cell "—" [ref=f40e1330]
+                - cell [ref=f40e1331]:
+                  - button "Chi tiết" [ref=f40e1332] [cursor=pointer]
+              - row [ref=f40e1336]:
+                - cell "Nguyễn Thị Hồng 008/BK-2026 · Tách thửa" [ref=f40e1337]:
+                  - generic [ref=f40e1338]:
+                    - strong [ref=f40e1339]: Nguyễn Thị Hồng
+                    - generic [ref=f40e1340]: 008/BK-2026 · Tách thửa
+                - cell [ref=f40e1341]:
+                  - strong [ref=f40e1342]: BN-2026/008-CN-04567
+                - cell "Hồ Thị Mỹ Hằng 0912345672" [ref=f40e1343]:
+                  - generic [ref=f40e1344]:
+                    - generic [ref=f40e1345]: Hồ Thị Mỹ Hằng
+                    - generic [ref=f40e1346]: "0912345672"
+                - cell "Đang chi nhánh" [ref=f40e1349]
+                - cell "—" [ref=f40e1351]
+                - cell "—" [ref=f40e1352]
+                - cell [ref=f40e1353]:
+                  - button "Chi tiết" [ref=f40e1354] [cursor=pointer]
+              - row [ref=f40e1358]:
+                - cell "NGÂN HÀNG TMCP NGOẠI THƯƠNG VIỆT NAM 006/BK-2026 · Cấp đổi" [ref=f40e1359]:
+                  - generic [ref=f40e1360]:
+                    - strong [ref=f40e1361]: NGÂN HÀNG TMCP NGOẠI THƯƠNG VIỆT NAM
+                    - generic [ref=f40e1362]: 006/BK-2026 · Cấp đổi
+                - cell "Chưa nộp" [ref=f40e1363]
+                - cell "Hồ Thị Mỹ Hằng 0912345672" [ref=f40e1364]:
+                  - generic [ref=f40e1365]:
+                    - generic [ref=f40e1366]: Hồ Thị Mỹ Hằng
+                    - generic [ref=f40e1367]: "0912345672"
+                - cell "Đang chi nhánh" [ref=f40e1370]
+                - cell "—" [ref=f40e1372]
+                - cell "—" [ref=f40e1373]
+                - cell [ref=f40e1374]:
+                  - button "Chi tiết" [ref=f40e1375] [cursor=pointer]
+          - generic [ref=f40e1379]:
+            - generic [ref=f40e1380]: 1–3 / 3 hồ sơ
+            - generic [ref=f40e1381]:
+              - button "«" [disabled] [ref=f40e1382]
+              - button "‹" [disabled] [ref=f40e1383]
+              - generic [ref=f40e1384] [cursor=pointer]: "1"
+              - button "›" [disabled] [ref=f40e1385]
+              - button "»" [disabled] [ref=f40e1386]

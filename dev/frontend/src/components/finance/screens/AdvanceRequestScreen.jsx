@@ -49,10 +49,8 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/api/finance/advance`);
-      if (r.ok) {
-        setData(await r.json());
-      }
+      const d = await apiFetch(`${API}/api/finance/advance`);
+      setData(Array.isArray(d) ? d : []);
     } catch {
       // ignore
     } finally {
@@ -62,7 +60,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
 
   useEffect(() => {
     load();
-    fetch(`${API}/api/finance/projects`).then(r => r.json()).then(setProjects).catch(() => { });
+    apiFetch(`${API}/api/finance/projects`).then(setProjects).catch(() => { });
     if (propIsDirector === undefined && !propUser) {
       apiFetch('/api/auth/me').then(u => setCurrentUser(u)).catch(() => {});
     }
@@ -83,8 +81,9 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
     if (!amount) { setError('Nhập số tiền'); return; }
     setSubmitting(true); setError('');
     try {
-      const res = await fetch(`${API}/api/finance/advance/create`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      await apiFetch(`${API}/api/finance/advance/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           project_id: form.project_id || null,
           contract_id: form.contract_id || null,

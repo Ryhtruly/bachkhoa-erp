@@ -4,7 +4,7 @@ import {
   AlertTriangle, ArrowLeft, Camera, Lock, Mail, Pencil, Printer, Save, Search,
   Trash2, Unlock, UserCog, UserPlus, Users, X,
 } from 'lucide-react';
-import { Badge, Divider, FormGrid, FormRow, Modal } from '../../components/ui';
+import { Badge, DatePicker, Divider, FormGrid, FormRow, Modal } from '../../components/ui';
 import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../lib/api';
 import { initialsOf } from '../../lib/avatar';
@@ -33,6 +33,19 @@ const emptyEmployeeForm = () => ({
 const contractStatusLabels = { Probation: 'Thử việc', Official: 'Chính thức', Terminated: 'Đã nghỉ' };
 const contractStatusVariants = { Probation: 'warning', Official: 'success', Terminated: 'neutral' };
 const genderLabels = { male: 'Nam', female: 'Nữ', other: 'Khác' };
+const VIETNAM_PROVINCES = [
+  'An Giang', 'Bà Rịa - Vũng Tàu', 'Bắc Giang', 'Bắc Kạn', 'Bạc Liêu', 'Bắc Ninh',
+  'Bến Tre', 'Bình Định', 'Bình Dương', 'Bình Phước', 'Bình Thuận', 'Cà Mau',
+  'Cần Thơ', 'Cao Bằng', 'Đà Nẵng', 'Đắk Lắk', 'Đắk Nông', 'Điện Biên',
+  'Đồng Nai', 'Đồng Tháp', 'Gia Lai', 'Hà Giang', 'Hà Nam', 'Hà Nội',
+  'Hà Tĩnh', 'Hải Dương', 'Hải Phòng', 'Hậu Giang', 'Hòa Bình', 'Hưng Yên',
+  'Khánh Hòa', 'Kiên Giang', 'Kon Tum', 'Lai Châu', 'Lâm Đồng', 'Lạng Sơn',
+  'Lào Cai', 'Long An', 'Nam Định', 'Nghệ An', 'Ninh Bình', 'Ninh Thuận',
+  'Phú Thọ', 'Phú Yên', 'Quảng Bình', 'Quảng Nam', 'Quảng Ngãi', 'Quảng Ninh',
+  'Quảng Trị', 'Sóc Trăng', 'Sơn La', 'Tây Ninh', 'Thái Bình', 'Thái Nguyên',
+  'Thanh Hóa', 'Thừa Thiên Huế', 'Tiền Giang', 'TP Hồ Chí Minh', 'Trà Vinh', 'Tuyên Quang',
+  'Vĩnh Long', 'Vĩnh Phúc', 'Yên Bái',
+];
 const formatDate = (value) => value
   ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`))
   : null;
@@ -586,11 +599,11 @@ export default function EmployeeDirectory() {
                     </select>
                   </FormRow>
                   <FormRow label="Ngày vào làm">
-                    <input
-                      className="form-control"
-                      type="date"
+                    <DatePicker
+                      className="date-picker--fill"
                       value={form.join_date}
-                      onChange={(event) => setForm({ ...form, join_date: event.target.value })}
+                      onChange={(val) => setForm({ ...form, join_date: val })}
+                      placeholder="Chọn ngày vào làm"
                     />
                   </FormRow>
                   <FormRow label="Lương cơ bản (VNĐ)">
@@ -629,21 +642,28 @@ export default function EmployeeDirectory() {
                     </select>
                   </FormRow>
                   <FormRow label="Ngày sinh">
-                    <input
-                      className="form-control"
-                      type="date"
+                    <DatePicker
+                      className="date-picker--fill"
                       value={form.date_of_birth}
-                      onChange={(event) => setForm({ ...form, date_of_birth: event.target.value })}
+                      onChange={(val) => setForm({ ...form, date_of_birth: val })}
+                      placeholder="Chọn ngày sinh"
+                      placement="top"
                     />
                   </FormRow>
                   <FormRow label="Nơi sinh" align="left">
-                    <input
+                    <select
                       className="form-control"
-                      maxLength={200}
-                      value={form.place_of_birth}
+                      value={form.place_of_birth || ''}
                       onChange={(event) => setForm({ ...form, place_of_birth: event.target.value })}
-                      placeholder="Hà Nội"
-                    />
+                    >
+                      <option value="">— Chọn tỉnh / thành phố —</option>
+                      {form.place_of_birth && !VIETNAM_PROVINCES.includes(form.place_of_birth) && (
+                        <option value={form.place_of_birth}>{form.place_of_birth}</option>
+                      )}
+                      {VIETNAM_PROVINCES.map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
                   </FormRow>
                 </FormGrid>
               )}

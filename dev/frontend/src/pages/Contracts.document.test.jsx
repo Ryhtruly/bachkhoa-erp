@@ -39,12 +39,31 @@ vi.mock('../components/contracts/ContractDocumentViewer', () => ({
 
 import Contracts from './Contracts';
 
+// Ba lời gọi nạp dữ liệu lúc trang mở đều đi qua apiFetch. Mock chung một giá
+// trị cho mọi URL sẽ nhét payload của "tạo tài liệu" vào chỗ config và danh sách
+// hợp đồng — trang không render nổi. Định tuyến theo URL, giống backend thật.
+const NAP_DU_LIEU = (url) => {
+  const duongDan = String(url);
+  if (duongDan === '/api/config') return { personnel: [], services: [] };
+  if (duongDan === '/api/catalog/service-packages') return { data: [] };
+  if (duongDan === '/api/contracts/next-code') return { contract_id: '2004/BK-2026' };
+  if (duongDan.startsWith('/api/contracts/workspace-list')) {
+    return {
+      data: [{ id: '2004/BK-2026', file_link: '/api/contracts/2004/BK-2026/document', service_lines: [] }],
+      pagination: { page: 1, total_pages: 0, total_contracts: 1, total_groups: 1 },
+    };
+  }
+  return null; // không phải lời gọi nạp dữ liệu — để test tự quyết
+};
+
+const TAI_LIEU = { download_url: '/api/contracts/2004/BK-2026/document' };
+
 describe('Contracts document actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.open = vi.fn();
     requestDocxSaveHandle.mockResolvedValue({ handle: { id: 'save-handle' } });
-    apiFetch.mockResolvedValue({ download_url: '/api/contracts/2004/BK-2026/document' });
+    apiFetch.mockImplementation(async (url) => NAP_DU_LIEU(url) ?? TAI_LIEU);
     fetchProtectedDocumentBlob.mockResolvedValue(new Blob(['docx']));
     writeBlobToFileHandle.mockResolvedValue({ success: true, method: 'picker' });
     vi.stubGlobal('fetch', vi.fn((url) => {
@@ -69,9 +88,11 @@ describe('Contracts document actions', () => {
       order.push('picker');
       return { handle: { id: 'save-handle' } };
     });
-    apiFetch.mockImplementation(async () => {
+    apiFetch.mockImplementation(async (url) => {
+      const duLieuNap = NAP_DU_LIEU(url);
+      if (duLieuNap) return duLieuNap;
       order.push('create');
-      return { download_url: '/api/contracts/2004/BK-2026/document' };
+      return TAI_LIEU;
     });
     fetchProtectedDocumentBlob.mockImplementation(async () => {
       order.push('fetch-docx');

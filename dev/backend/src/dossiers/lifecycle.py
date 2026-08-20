@@ -58,12 +58,23 @@ _NODE_DONE_STATUSES = "('accepted', 'cancelled', 'skipped')"
 SURVEY_FLAGS_LATERAL = f"""
     cross join lateral (
       select
-        -- Hợp đồng này có Hạng mục nào thuộc gói Pháp Lý không.
+        -- Hồ sơ này còn đi tiếp sang pháp lý hay dừng ở đo vẽ?
+        --
+        -- Trước đây suy từ GÓI DỊCH VỤ của hợp đồng: hợp đồng có hạng mục thuộc
+        -- gói Pháp Lý là coi như có pháp lý. Nhưng gói dịch vụ chỉ là cách bán
+        -- hàng — quy trình chạy thật mới quyết định có nộp cơ quan hay không.
+        -- Hậu quả: quy trình không hề có bước nộp nào vẫn bị gắn nhãn "có pháp lý".
+        --
+        -- Nguồn sự thật đúng là CỜ trên bước trong quy trình đang chạy.
         exists (
-          select 1 from public.service_lines sl2
-          join public.task_types tt2 on tt2.id = sl2.task_type_id
+          select 1
+          from public.service_lines sl2
+          join public.workflow_instances wi2 on wi2.service_line_id = sl2.id
+          join public.workflow_instance_revisions r2 on r2.id = wi2.active_revision_id
+          cross join lateral jsonb_each(r2.graph->'nodes') n2
           where sl2.contract_id = s.contract_id
-            and tt2.service_package_id = '{LEGAL_PACKAGE_ID}'
+            and wi2.status is distinct from 'cancelled'
+            and coalesce((n2.value->>'requires_gov_submission')::boolean, false)
         ) as has_legal,
         -- Quy trình của Hạng mục này đã chạy hết chưa.
         (

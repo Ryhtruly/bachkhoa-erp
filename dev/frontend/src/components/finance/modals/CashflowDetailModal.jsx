@@ -57,8 +57,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
       setAutofillNotice('');
 
       // Load transaction details
-      fetch(`${API}/api/finance/cashflow/${transactionId}`)
-        .then(r => r.json())
+      apiFetch(`${API}/api/finance/cashflow/${transactionId}`)
         .then(d => {
           setDetail(d);
           let parsedDate = d.date || d.transaction_date;
@@ -83,8 +82,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
         });
 
       // Load contracts
-      fetch(`${API}/api/finance/contracts`)
-        .then(r => r.json())
+      apiFetch(`${API}/api/finance/contracts`)
         .then(d => setContracts(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
     }
@@ -93,23 +91,25 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
   const handleContractChange = (cid) => {
     setDirty(true);
 
-    let newPayer = form.payer_payee;
-    let notice = '';
-
-    if (cid) {
-      const c = contracts.find(x => x.id === cid);
-      if (c && c.customer_name) {
-        if (!form.payer_payee) {
-          newPayer = c.customer_name;
-        } else if (form.payer_payee !== c.customer_name) {
-          newPayer = c.customer_name;
-          notice = 'Đã tự điền theo hồ sơ — bạn có thể chỉnh lại';
-        }
-      }
+    if (!cid) {
+      setForm(prev => ({ ...prev, contract_id: '' }));
+      setAutofillNotice('');
+      return;
     }
 
-    setAutofillNotice(notice);
-    setForm(prev => ({ ...prev, contract_id: cid, payer_payee: newPayer }));
+    const matched = contracts.find(c => c.id === cid);
+    if (!matched) {
+      setForm(prev => ({ ...prev, contract_id: cid }));
+      return;
+    }
+
+    setForm(prev => ({
+      ...prev,
+      contract_id: cid,
+      payer_payee: matched.customer_name || prev.payer_payee,
+      description: prev.description || `Thu tiền đợt HĐ ${cid} - ${matched.customer_name || ''}`
+    }));
+    setAutofillNotice(`Đã tự điền khách hàng "${matched.customer_name}" từ HĐ ${cid}`);
   };
 
   const handleChange = (field, val) => {
@@ -132,13 +132,16 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
     onClose();
   };
 
-  const handleSubmit = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     const amountVal = parseAmt(form.amount);
-    if (!isReadOnly && !amountVal) { setError('Nhập số tiền hợp lệ'); return; }
-    if (!isReadOnly && !form.transaction_date) { setError('Vui lòng chọn ngày lập phiếu'); return; }
+    if (!amountVal) {
+      setError('Nhập số tiền hợp lệ');
+      return;
+    }
 
-    setSubmitting(true); setError('');
+    setSubmitting(true);
+    setError('');
     try {
       const payload = {
         category: form.category,
@@ -150,21 +153,20 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
         contract_id: form.contract_id || null
       };
 
-      const res = await fetch(`${API}/api/finance/cashflow/${transactionId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      await apiFetch(`${API}/api/finance/cashflow/${transactionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        addToast(`Đã lưu thay đổi phiếu ${transactionId}`, 'success');
-        setDirty(false);
-        onSuccess?.();
-        onClose();
-      } else {
-        const err = await res.json();
-        setError(err.detail || 'Lỗi server');
-      }
-    } catch { setError('Lỗi kết nối'); }
-    finally { setSubmitting(false); }
+      addToast(`Đã lưu thay đổi phiếu ${transactionId}`, 'success');
+      setDirty(false);
+      onSuccess?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Lỗi server');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleApprove = async () => {
@@ -251,7 +253,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải...</div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSave}>
             <table className="excel-grid-table">
               <tbody>
                 <tr>

@@ -45,6 +45,7 @@ export default function DatePicker({
   clearable = true,
   className = '',
   dialogLabel,
+  placement = 'auto',
 }) {
   const isMonthMode = selectionMode === 'month';
   const selectedDate = useMemo(
@@ -57,7 +58,29 @@ export default function DatePicker({
   const [mode, setMode] = useState(isMonthMode ? 'months' : 'days');
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
+  const [actualPlacement, setActualPlacement] = useState(placement === 'top' ? 'top' : 'bottom');
   const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (placement === 'top') {
+      setActualPlacement('top');
+      return;
+    }
+    if (placement === 'bottom') {
+      setActualPlacement('bottom');
+      return;
+    }
+    if (rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      if (spaceBelow < 330 && rect.top > 300) {
+        setActualPlacement('top');
+      } else {
+        setActualPlacement('bottom');
+      }
+    }
+  }, [open, placement]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -147,7 +170,7 @@ export default function DatePicker({
 
       {open && (
         <div
-          className="date-picker__popover"
+          className={`date-picker__popover${actualPlacement === 'top' ? ' date-picker__popover--top' : ''}`}
           role="dialog"
           aria-label={dialogLabel || (isMonthMode ? 'Chọn tháng' : placeholder)}
         >

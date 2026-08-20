@@ -29,6 +29,7 @@ export function SensitiveActionModal({
   requireReason = true,
   placeholderReason = 'Nhập lý do thực thi thao tác này (*)...',
   isLoading = false,
+  overlayClassName,
 }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -53,7 +54,7 @@ export function SensitiveActionModal({
   };
 
   return (
-    <Modal open={isVisible} onClose={handleClose} title="" size="sm">
+    <Modal open={isVisible} onClose={handleClose} title="" size="sm" overlayClassName={overlayClassName}>
       <div className="sensitive-modal-content" style={{ padding: '8px 4px' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px', marginBottom: '16px' }}>
           <div style={{

@@ -552,13 +552,11 @@ export default function ContractTimeline() {
 
   return (
     <section className="contract-timeline-page">
-      <header className="contract-timeline__page-header">
-        <div>
-          <span className="contract-timeline__eyebrow">TỔNG QUAN VẬN HÀNH</span>
-          <h1>Quản Lý Timeline</h1>
-          <p>Theo dõi tiến độ Hợp đồng → Hạng mục → Node trên cùng một trục thời gian.</p>
+      <header className="contract-timeline__title-bar">
+        <div className="contract-timeline__title-group">
+          <span>Quản lý Timeline</span>
+          <strong>{filteredContracts.length}</strong>
         </div>
-        <button type="button" className="contract-timeline__refresh" onClick={loadTimeline} disabled={loading}><RefreshCw size={17} className={loading ? 'is-spinning' : ''} /> Làm mới</button>
       </header>
 
       <div className="contract-timeline__toolbar">

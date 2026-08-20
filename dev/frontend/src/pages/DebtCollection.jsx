@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from 'react'
 import {
-  AlertTriangle, CheckCircle2, Lock, PackageCheck, Plus,
+  AlertTriangle, CheckCircle2, Clock3, Lock, PackageCheck, Plus,
   RefreshCw, Trash2, ArrowRightLeft, AlertCircle
 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
@@ -140,7 +140,9 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const ghiNhan = async () => {
     setSaving(true)
     try {
-      const res = await fetch(`/api/handover/${dangGhi.task_node_id}/payments`, {
+      // Thu theo HỢP ĐỒNG, không theo bước bàn giao: hợp đồng chưa chạy tới bước
+      // đó, hoặc đã chốt bước đó rồi mà khách còn khất, đều phải ghi được.
+      const res = await fetch(`/api/handover/contracts/${encodeURIComponent(dangGhi.contract_id)}/payments`, {
         method: 'POST',
         body: buildPaymentFormData(form, receiptFiles),
       })
@@ -210,7 +212,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         <div>
           <span className="debt__eyebrow">Kế toán & Giám đốc</span>
           <h2>Thu công nợ & Xử lý nợ tồn</h2>
-          <p>Hồ sơ đã giao cho khách nhưng chưa thu đủ tiền. Cho phép ghi nhận thu tiền hoặc Giám đốc duyệt xóa nợ / chuyển nợ.</p>
+          <p>Mọi hợp đồng chưa thu đủ tiền, kể cả khi hồ sơ chưa tới bước bàn giao. Ghi nhận thu tiền, hoặc Giám đốc duyệt xóa nợ / chuyển nợ.</p>
         </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => load()}>
           <RefreshCw size={14} /> Làm mới
@@ -219,7 +221,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
 
       <div className="debt__totals">
         <div className="debt__total">
-          <span>Hồ sơ đang nợ</span>
+          <span>Hợp đồng đang nợ</span>
           <strong>{meta.total}</strong>
         </div>
         <div className="debt__total debt__total--money">
@@ -263,15 +265,15 @@ export default function DebtCollection({ user = null, isDirector = false }) {
       ) : filteredRows.length === 0 ? (
         <div className="debt__empty">
           <CheckCircle2 size={30} />
-          <strong>{rows.length === 0 ? 'Không còn hồ sơ nào nợ tiền' : 'Không có hồ sơ nào khớp bộ lọc'}</strong>
-          <span>{rows.length === 0 ? 'Mọi hồ sơ đã bàn giao đều đã thu đủ hoặc được Giám đốc xử lý tất toán.' : 'Thử đổi từ khóa hoặc bộ lọc tình trạng giao.'}</span>
+          <strong>{rows.length === 0 ? 'Không còn hợp đồng nào nợ tiền' : 'Không có hợp đồng nào khớp bộ lọc'}</strong>
+          <span>{rows.length === 0 ? 'Mọi hợp đồng đều đã thu đủ hoặc được Giám đốc xử lý tất toán.' : 'Thử đổi từ khóa hoặc bộ lọc tình trạng giao.'}</span>
         </div>
       ) : (
         <ul className="debt__list">
           {filteredRows.map((r) => {
             const ngayTreo = soNgay(r.delivered_at)
             return (
-              <li key={r.task_node_id} className="debt__card">
+              <li key={r.contract_id} className="debt__card">
                 <div className="debt__card-head">
                   <div>
                     <span className="debt__contract">{r.contract_id}</span>
@@ -284,7 +286,9 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                     </span>
                   ) : (
                     <span className={`debt__age ${r.blocked_reason ? 'debt__age--blocked' : 'debt__age--waiting'}`}>
-                      {r.blocked_reason ? 'Chờ pháp lý' : 'Chưa bàn giao'}
+                      {r.blocked_reason ? 'Chờ pháp lý'
+                        : r.task_node_id ? 'Chưa bàn giao'
+                        : 'Chưa tới bước giao'}
                     </span>
                   )}
                 </div>
@@ -299,11 +303,21 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                   <span className="is-owed">Còn thiếu <strong>{tien(r.remaining)}</strong></span>
                 </div>
 
+                {/* Phiếu đã gửi nhưng chưa được duyệt thì công nợ chưa giảm. Không
+                    nói ra thì kế toán gửi xong nhìn thấy y hệt lúc chưa gửi. */}
+                {r.pending > 0 && (
+                  <p className="debt__pending">
+                    <Clock3 size={13} /> {tien(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
+                  </p>
+                )}
+
                 {r.blocked_reason && (
                   <p className="debt__blocked"><Lock size={13} /> {r.blocked_reason}</p>
                 )}
 
-                {!r.da_ban_giao && !r.blocked_reason && (
+                {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao.
+                    Hợp đồng chưa khai bước nào thì không có ai để chờ. */}
+                {r.task_node_id && !r.da_ban_giao && !r.blocked_reason && (
                   <p className="debt__waiting">
                     <PackageCheck size={13} /> Chờ {r.nguoi_giao || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
                   </p>

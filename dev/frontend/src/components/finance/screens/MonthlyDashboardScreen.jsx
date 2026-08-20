@@ -3,6 +3,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { DatePicker } from '../../ui';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 import { BarChart2, TrendingUp, TrendingDown, Scale, FolderKanban, BarChart3, Building2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -17,16 +18,11 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/finance/monthly-dashboard?month=${month}`);
-      if (res.ok) {
-        const d = await res.json();
-        setData(d);
-      } else {
-        addToast('Không thể tải dữ liệu báo cáo tháng', 'error');
-      }
+      const d = await apiFetch(`${API}/api/finance/monthly-dashboard?month=${month}`);
+      setData(d);
     } catch (e) {
       console.error(e);
-      addToast('Lỗi kết nối máy chủ', 'error');
+      addToast(e.message || 'Không thể tải dữ liệu báo cáo tháng', 'error');
     } finally {
       setLoading(false);
     }

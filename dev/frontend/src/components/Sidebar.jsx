@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab, mode = 'management', permissions = {}, isDirector = false }) {
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
@@ -9,6 +9,7 @@ export default function Sidebar({ activeTab, setActiveTab, mode = 'management', 
     // Kế toán mở lên chỉ thấy doanh thu, cơ cấu chi phí, KPI: không dùng được gì.
     { id: 'dashboard', label: 'Tổng Quan', icon: LayoutDashboard, permission: 'finance', directorOnly: true },
     { id: 'crm', label: 'CRM Bán Hàng', icon: Filter, permission: 'crm' },
+    { id: 'customers', label: 'Khách Hàng', icon: Users, permission: 'customer' },
     { id: 'tasks', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban, permission: 'survey_record' },
     { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck, permission: 'legal_submission' },
     { id: 'contracts', label: 'Hợp Đồng', icon: FileText, permission: 'contract' },

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import FullCalendar from '@fullcalendar/react'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import viLocale from '@fullcalendar/core/locales/vi'
-import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock, ExternalLink, MinusCircle, Paperclip, Play, Send, UploadCloud, UserRound, XCircle } from 'lucide-react'
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock, ExternalLink, MinusCircle, Paperclip, Play, UploadCloud, UserRound, XCircle } from 'lucide-react'
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch } from '../../lib/api'
 import AvatarImage from '../../components/AvatarImage'
@@ -11,6 +11,7 @@ import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './emplo
 import { WORKFLOW_NODE_STATUS_LABELS } from '../../components/contracts/workflowLabels'
 import Modal from '../../components/ui/Modal'
 import LegalDossierNodePanel from '../legal-dossier/LegalDossierNodePanel'
+import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import HandoverPanel from '../handover/HandoverPanel'
 
 export const CHECKLIST_STATUS = Object.freeze({
@@ -100,6 +101,15 @@ function TimetableNodeCard({ task, statusColor, expanded, onSelect }) {
       aria-expanded={expanded}
     >
       <strong>{task.name || task.node_code}</strong>
+      {/* Hồ sơ ưu tiên → nhân viên biết trước có thưởng khi hoàn thành (Q7).
+          Chỉ nói "dự kiến", số cuối do giám đốc chốt lúc hoàn thành. */}
+      {task.priority && task.priority !== 'NORMAL' && (
+        <span className={`employee-workspace-node-card__prio is-${task.priority.toLowerCase()}`}
+          title="Hồ sơ ưu tiên — có thưởng dự kiến khi hoàn thành">
+          {task.priority === 'URGENT' ? '⚡ Gấp' : '★ Ưu tiên'}
+          <span className="employee-workspace-node-card__prio-suffix"> · thưởng dự kiến</span>
+        </span>
+      )}
       <span className={`employee-workspace-node-card__remaining${
         task.is_overdue && !NODE_DA_XONG.has(task.status) ? ' is-overdue' : ''
       }${NODE_DA_XONG.has(task.status) ? ' is-done' : ''}`}>
@@ -162,7 +172,7 @@ const remainingTimeLabel = (deadlineAt) => {
   return `${overdue ? 'Trễ' : 'Còn'} ${parts.join(' ')}`
 }
 
-function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
+function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus, onSubmitted }) {
   const { addToast } = useToast()
   const fileInputRef = useRef(null)
   const [file, setFile] = useState(null)
@@ -170,7 +180,10 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
   const [lateReason, setLateReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const canSubmit = item.status === 'pending' || item.status === 'failed'
+  // Chỉ nộp được khi bước đang chạy. Nộp minh chứng cho bước chưa bấm Bắt đầu
+  // thì không có mốc khởi động, thời hạn tính từ đâu cũng không biết.
+  const buocDangChay = nodeStatus === 'in_progress'
+  const canSubmit = (item.status === 'pending' || item.status === 'failed') && buocDangChay
   const files = item.evidence_files || []
   const isPastDeadline = Boolean(deadlineAt && Date.now() > new Date(deadlineAt).getTime())
 
@@ -216,6 +229,11 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
       {item.is_required && <em>Bắt buộc</em>}
     </div>
     <small className="employee-workspace-checklist__status-label">{CHECKLIST_STATUS_LABEL[item.status] || item.status}</small>
+    {item.submitted_at && (
+      <small className="employee-workspace-checklist__status-label">
+        <Clock size={11} /> Nộp lúc {new Date(item.submitted_at).toLocaleString('vi-VN')}
+      </small>
+    )}
     {item.is_overdue && <small className="employee-workspace-checklist__status-label">Quá hạn: {item.late_reason}</small>}
 
     {files.length > 0 && (
@@ -226,6 +244,12 @@ function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, onSubmitted }) {
           </a>
         ))}
       </div>
+    )}
+
+    {!buocDangChay && (item.status === 'pending' || item.status === 'failed') && (
+      <small className="employee-workspace-checklist__locked">
+        Bấm “Bắt đầu làm” ở trên rồi mới nộp được minh chứng
+      </small>
     )}
 
     {canSubmit && (
@@ -289,42 +313,21 @@ function NodeActionBar({ task, onChanged }) {
     }
   }
 
-  const submitForAcceptance = async () => {
-    setBusy(true)
-    try {
-      await apiFetch(`/api/employee-portal/tasks/${task.id}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      addToast('Đã nộp nghiệm thu, chờ quản lý duyệt', 'success')
-      await onChanged()
-    } catch (error) {
-      addToast(error.message || 'Không thể nộp nghiệm thu', 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   if (task.status === 'ready' || task.status === 'rework_required') {
     return <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={start}>
       <Play size={14} /> {task.status === 'rework_required' ? 'Làm lại' : 'Bắt đầu làm'}
     </button>
   }
   if (task.status === 'in_progress') {
+    // Cơ chế mới: KHÔNG còn nút "Nộp nghiệm thu". Nhân viên chỉ cần làm xong
+    // checklist; quản lý duyệt hết là bước TỰ hoàn thành. Ở đây chỉ nhắc còn gì.
     const chuaDat = (task.checklist || []).filter(item => !CHECKLIST_DAT.has(item.status))
     const chuaTich = chuaDat.filter(item => item.status === 'pending' || item.status === 'failed')
-    const nut = <button type="button" className="btn btn-primary btn-sm"
-      disabled={busy || chuaDat.length > 0} onClick={submitForAcceptance}>
-      <Send size={14} /> Nộp nghiệm thu
-    </button>
-    if (chuaDat.length === 0) return nut
     return <div className="employee-workspace-task-modal__gate">
-      {nut}
       <small>
         {chuaTich.length > 0
-          ? `Tích xong checklist bên dưới rồi mới nộp nghiệm thu được — còn ${chuaTich.length} việc`
-          : 'Checklist đã nộp, đang chờ quản lý duyệt'}
+          ? `Còn ${chuaTich.length} việc bên dưới cần làm — quản lý duyệt hết checklist là bước tự hoàn thành.`
+          : 'Đã nộp hết checklist, đang chờ quản lý duyệt — duyệt xong bước tự hoàn thành, không cần nộp nghiệm thu.'}
       </small>
     </div>
   }
@@ -491,14 +494,27 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
           <AssigneeAvatars assignees={selectedTask.assignees || []} />
           <span>{(selectedTask.assignees || []).map(item => item.full_name).join(', ') || 'Chưa phân công'}</span>
         </div>
+        {/* Giám đốc viết đầu ra nghiệm thu ở khung thiết kế quy trình, nhưng người
+            phải làm ra nó lại không thấy — nộp xong mới biết mình hiểu sai việc. */}
+        {selectedTask.description && (
+          <p className="employee-workspace-task-modal__outcome">{selectedTask.description}</p>
+        )}
         <div className="employee-workspace-task-modal__action">
           <NodeActionBar task={selectedTask} onChanged={onRefresh} />
         </div>
 
-        {/* Hai node đặc biệt. Thao tác của chúng thuộc về CHÍNH NGƯỜI ĐƯỢC PHÂN
-            CÔNG, nên chỗ đúng là ngay đây — trong khung nghiệm thu ở Lịch trình,
-            không phải trong sơ đồ quy trình của giám đốc. */}
+        {/* Hai node đặc biệt — mỗi panel TỰ ẨN khi không đúng loại bước (LegalDossier
+            trả null khi không có hồ sơ; Handover được truyền hideIfNotHandover để im
+            lặng thay vì hiện box đỏ). Không chặn theo cờ graph vì cờ có thể lệch với
+            hồ sơ/loại bước thực tế. */}
         <LegalDossierNodePanel
+          taskNodeId={selectedTask.id}
+          addToast={addToast}
+          onChanged={onRefresh}
+        />
+        {/* Số biên nhận cơ quan — điền tại chỗ, lưu thẳng sang tab Pháp Lý.
+            Tự ẩn nếu Node không gắn hồ sơ nộp cơ quan. */}
+        <SubmissionReceiptPanel
           taskNodeId={selectedTask.id}
           addToast={addToast}
           onChanged={onRefresh}
@@ -507,6 +523,7 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
           taskNodeId={selectedTask.id}
           addToast={addToast}
           onChanged={onRefresh}
+          hideIfNotHandover
         />
         {(selectedTask.checklist?.length || 0) > 0 ? (
           <ul className="employee-workspace-checklist">
@@ -515,6 +532,7 @@ export default function EmployeeWorkspaceCalendar({ tasks = [], onRefresh }) {
               taskNodeId={selectedTask.id}
               item={item}
               deadlineAt={selectedTask.deadline_at}
+              nodeStatus={selectedTask.status}
               onSubmitted={onRefresh}
             />)}
           </ul>

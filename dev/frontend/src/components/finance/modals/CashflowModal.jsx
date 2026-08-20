@@ -4,6 +4,7 @@ import { Modal, FormRow, FormGrid, Dropdown } from '../../ui';
 import { fmt, parseAmt, CATEGORY_AUTO_MAPPING, fmtAmt, VOUCHER_SIGNERS } from '../utils';
 import { ExcelGridTable } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
+import { apiFetch } from '../../../lib/api';
 import { AlertCircle, PlusCircle, MinusCircle, Check } from 'lucide-react';
 
 const createEmptyCashflowForm = () => ({
@@ -39,12 +40,10 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
       setCustomHangMuc('');
       setDescription('');
       setError('');
-      fetch(`${API}/api/finance/projects`)
-        .then(r => r.json())
+      apiFetch(`${API}/api/finance/projects`)
         .then(d => setProjects(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
-      fetch(`${API}/api/finance/contracts`)
-        .then(r => r.json())
+      apiFetch(`${API}/api/finance/contracts`)
         .then(d => setContracts(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
     }
@@ -65,8 +64,9 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
 
     setSubmitting(true); setError('');
     try {
-      const res = await fetch(`${API}/api/finance/cashflow/create`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      await apiFetch(`${API}/api/finance/cashflow/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type,
           amount,
@@ -80,17 +80,14 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           approved_by: form.approved_by || null
         })
       });
-      if (res.ok) {
-        const d = await res.json();
-        addToast(`${d.id} ghi nhận thành công`, 'success');
-        onSuccess?.();
-        onClose();
-      } else {
-        const err = await res.json();
-        setError(err.detail || 'Lỗi server');
-      }
-    } catch { setError('Lỗi kết nối'); }
-    finally { setSubmitting(false); }
+      addToast(`Đã thêm phiếu ${type.toLowerCase()} thành công!`, 'success');
+      onSuccess?.();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Lỗi server');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const isThu = type === 'Thu';
@@ -198,12 +195,20 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
               placeholder="Nhập chi tiết diễn giải giao dịch..." />
           </FormRow>
           <FormRow label="Hợp đồng liên kết" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.project_id}>
-            <input type="text" className="form-control" placeholder="Nhập ID hợp đồng..." value={form.contract_id || ''} onChange={e => setForm({ ...form, contract_id: e.target.value })} />
+            <input type="text" className="form-control"
+              placeholder={isThu ? 'Để trống — thu tiền hợp đồng ghi ở màn Thu công nợ' : 'Nhập ID hợp đồng...'}
+              value={form.contract_id || ''} onChange={e => setForm({ ...form, contract_id: e.target.value })} />
           </FormRow>
           <FormRow label="Hồ sơ / Dự án" required={hangMuc === 'Chi thụ lý bản vẽ' && !form.contract_id}>
             <input type="text" className="form-control" placeholder="Nhập ID hồ sơ..." value={form.project_id || ''} onChange={e => setForm({ ...form, project_id: e.target.value })} />
           </FormRow>
         </FormGrid>
+        {/* Nói trước khi người dùng bấm Lưu rồi mới ăn lỗi 400 từ backend. */}
+        {isThu && (form.contract_id || '').trim() && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 8, fontSize: '0.82rem', color: '#3b82f6' }}>
+            Thu tiền của hợp đồng phải ghi ở màn <strong>Thu công nợ</strong> để đính bill/biên lai. Phiếu thu ở đây chỉ dùng cho khoản không gắn hợp đồng.
+          </div>
+        )}
         {!isThu && form.payment_method === 'Tiền mặt' && (
           <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, fontSize: '0.82rem', color: '#f59e0b' }}>
             Hệ thống tự kiểm tra số dư quỹ tiền mặt trước khi ghi nhận.
