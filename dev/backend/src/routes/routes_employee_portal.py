@@ -2,8 +2,9 @@ import io
 import logging
 import re
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import text
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -74,13 +75,14 @@ def get_my_employee_profile(
 
 @router.get("/my-payroll")
 def get_my_payroll(
+    month: Optional[str] = Query(None, description="Kỳ lương định dạng YYYY-MM"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
-    return EmployeePortalService.get_my_payroll(db, employee)
+    return EmployeePortalService.get_my_payroll(db, employee, selected_month=month)
 
 
 @router.get("/employees/{employee_id}")

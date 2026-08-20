@@ -75,18 +75,28 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
     }
   };
 
-  useEffect(() => {
-    load();
-    apiFetch(`${API}/api/finance/projects`).then(setProjects).catch(() => { });
-    apiFetch(`${API}/api/finance/contracts`)
-      .then(d => setContracts(Array.isArray(d) ? d : d.data || []))
-      .catch(() => { });
-    apiFetch(`${API}/api/finance/employees`)
-      .then(d => setEmployees(Array.isArray(d) ? d : d.data || []))
-      .catch(() => { });
-    if (propIsDirector === undefined && !propUser) {
-      apiFetch('/api/auth/me').then(u => setCurrentUser(u)).catch(() => { });
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const [rAdv, rC, rEmp, rUser] = await Promise.allSettled([
+        apiFetch(`${API}/api/finance/advance`),
+        apiFetch(`${API}/api/finance/contracts`),
+        apiFetch(`${API}/api/finance/employees`),
+        propIsDirector === undefined && !propUser ? apiFetch('/api/auth/me') : Promise.resolve(propUser || null)
+      ]);
+      if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) setData(rAdv.value);
+      if (rC.status === 'fulfilled') setContracts(Array.isArray(rC.value) ? rC.value : rC.value?.data || []);
+      if (rEmp.status === 'fulfilled') setEmployees(Array.isArray(rEmp.value) ? rEmp.value : rEmp.value?.data || []);
+      if (rUser.status === 'fulfilled' && rUser.value) setCurrentUser(rUser.value);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadAll();
   }, []);
 
   const isDirector = propIsDirector !== undefined

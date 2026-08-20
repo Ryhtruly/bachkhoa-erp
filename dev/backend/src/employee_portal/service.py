@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from enum import StrEnum
 
@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.core.redis_utils import get_cached_json, set_cached_json
 from src.db.models import (
     Attendance,
     Department,
@@ -280,18 +281,156 @@ class EmployeePortalService:
         }
 
     @staticmethod
-    def get_my_payroll(db: Session, employee: Employee) -> dict:
-        """Siêu tối ưu: Chỉ tính riêng phiếu lương cá nhân mà không load toàn bộ cây tasks, checklists, attendance."""
+    def _calculate_payroll_history(
+        db: Session, employee: Employee, target_month_date: date | None = None
+    ) -> tuple[list[dict], dict | None, dict | None]:
+        current_period_start = date.today().replace(day=1)
+        if not target_month_date:
+            target_month_date = current_period_start
+
+        # 1. Fetch piece work aggregated by month in 1 fast query
+        piece_rows = db.execute(text("""
+            select (date_trunc('month', earned_at))::date as m_start,
+                   count(*) as tasks_completed,
+                   coalesce(sum(amount), 0) as piece_amount
+            from public.work_pay_entitlements
+            where employee_id = :emp_id
+              and status in ('eligible', 'approved', 'paid')
+            group by date_trunc('month', earned_at)
+        """), {"emp_id": employee.id}).mappings().all()
+        piece_map = {r["m_start"]: r for r in piece_rows}
+
+        # 2. Fetch adjustments aggregated by month in 1 fast query
+        adj_rows = db.execute(text("""
+            select (date_trunc('month', effective_date))::date as m_start,
+                   coalesce(sum(amount), 0) as adjustment_amount
+            from public.employee_pay_adjustments
+            where employee_id = :emp_id
+              and status = 'approved'
+            group by date_trunc('month', effective_date)
+        """), {"emp_id": employee.id}).mappings().all()
+        adj_map = {r["m_start"]: r for r in adj_rows}
+
+        # 3. Fetch locked/paid payroll periods from payroll_periods table
+        pp_rows = db.execute(text("""
+            select period_month, status, locked_at, paid_at
+            from public.payroll_periods
+            where status in ('Locked', 'Paid')
+        """)).mappings().all()
+        period_status_map = {r["period_month"]: r for r in pp_rows}
+
+        # 4. Fetch compensation terms in 1 fast query
+        terms = db.execute(text("""
+            select effective_from, effective_to, base_salary
+            from public.employee_compensation_terms
+            where employee_id = :emp_id
+              and status = 'published'
+            order by effective_from desc
+        """), {"emp_id": employee.id}).mappings().all()
+
+        emp_default_base = float(employee.base_salary or 0)
+
+        def get_base_salary_for_month(m_date: date) -> float:
+            if m_date.month == 12:
+                next_m = m_date.replace(year=m_date.year + 1, month=1)
+            else:
+                next_m = m_date.replace(month=m_date.month + 1)
+            for t in terms:
+                eff_from = t["effective_from"]
+                eff_to = t["effective_to"]
+                if eff_from < next_m and (eff_to is None or eff_to >= m_date):
+                    return float(t["base_salary"] or 0)
+            return emp_default_base
+
+        # Xác định tập hợp các kỳ hợp lệ:
+        # - Kỳ hiện tại (Tháng này đang tạm tính)
+        # - Kỳ được chọn (nếu có)
+        # - Các kỳ đã được Giám đốc / Kế toán chốt duyệt hoặc thanh toán
+        # - Các kỳ thực tế có phát sinh tiền khoán hoặc phụ cấp
+        valid_period_dates = set()
+        valid_period_dates.add(current_period_start)
+        if target_month_date:
+            valid_period_dates.add(target_month_date)
+
+        join_first = employee.join_date.replace(day=1) if employee.join_date else None
+        for p_month in period_status_map.keys():
+            if join_first is None or p_month >= join_first:
+                valid_period_dates.add(p_month)
+
+        for p_month in piece_map.keys():
+            valid_period_dates.add(p_month)
+        for p_month in adj_map.keys():
+            valid_period_dates.add(p_month)
+
+        period_dates = sorted(list(valid_period_dates), reverse=True)
+
+        payroll_history = []
+        selected_payroll = None
+        latest_payroll = None
+
+        for p_date in period_dates:
+            p_data = piece_map.get(p_date)
+            a_data = adj_map.get(p_date)
+            b_salary = get_base_salary_for_month(p_date)
+            p_amount = float(p_data["piece_amount"]) if p_data else 0.0
+            t_count = int(p_data["tasks_completed"]) if p_data else 0
+            adj_amount = float(a_data["adjustment_amount"]) if a_data else 0.0
+
+            pp_info = period_status_map.get(p_date)
+            period_status = "Open" if p_date == current_period_start else (pp_info["status"] if pp_info else "Closed")
+
+            formatted = {
+                "month": p_date.isoformat(),
+                "status": period_status,
+                "tasks_completed": t_count,
+                "base_salary": b_salary,
+                "piece_amount": p_amount,
+                "adjustment_amount": adj_amount,
+                "bonus": p_amount + adj_amount,
+                "total_salary": b_salary + p_amount + adj_amount,
+                "is_current": (p_date == current_period_start),
+                "is_locked": (period_status == "Locked"),
+                "is_paid": (period_status == "Paid"),
+            }
+
+            payroll_history.append(formatted)
+            if p_date == current_period_start and latest_payroll is None:
+                latest_payroll = formatted
+            if p_date == target_month_date and selected_payroll is None:
+                selected_payroll = formatted
+
+        if selected_payroll is None:
+            selected_payroll = latest_payroll or (payroll_history[0] if payroll_history else None)
+
+        return payroll_history, selected_payroll, latest_payroll
+
+    @staticmethod
+    def get_my_payroll(db: Session, employee: Employee, selected_month: str | None = None) -> dict:
+        """Tính riêng phiếu lương cá nhân và toàn bộ lịch sử bảng lương theo các kỳ (tối ưu cao với Redis)."""
+        cache_key = f"bachkhoa:portal:payroll:{employee.id}"
+        if not selected_month:
+            cached = get_cached_json(cache_key)
+            if cached is not None:
+                return cached
+
         department = None
         if employee.department_id:
             department = db.query(Department).filter(Department.id == employee.department_id).first()
-        period_start = date.today().replace(day=1)
-        payroll_row = db.execute(
-            _CURRENT_PAYROLL_QUERY,
-            {"employee_id": employee.id, "period_start": period_start},
-        ).mappings().first()
 
-        return {
+        target_month_date = None
+        if selected_month:
+            try:
+                parts = selected_month.strip().split("-")
+                if len(parts) == 2:
+                    target_month_date = date(int(parts[0]), int(parts[1]), 1)
+            except Exception:
+                target_month_date = None
+
+        payroll_history, selected_payroll, latest_payroll = EmployeePortalService._calculate_payroll_history(
+            db, employee, target_month_date
+        )
+
+        result = {
             "employee": {
                 "id": employee.id,
                 "full_name": employee.full_name,
@@ -301,8 +440,13 @@ class EmployeePortalService:
                 "base_salary": _number_value(employee.base_salary or 0),
                 "is_active": bool(employee.is_active),
             },
-            "latest_payroll": EmployeePortalService._format_payroll_row(period_start, payroll_row),
+            "latest_payroll": latest_payroll,
+            "selected_payroll": selected_payroll,
+            "payroll_history": payroll_history,
         }
+        if not selected_month:
+            set_cached_json(cache_key, result, ttl_seconds=60)
+        return result
 
     @staticmethod
     def submit_checklist_evidence(

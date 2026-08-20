@@ -4,7 +4,7 @@ import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdow
 import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
-import { RefreshCw, DollarSign, Link, PlusCircle, MinusCircle, AlertCircle, Printer, Wallet, Building2, TrendingUp, TrendingDown } from 'lucide-react';
+import { RefreshCw, DollarSign, Link, PlusCircle, MinusCircle, AlertCircle, Printer, Wallet, Building2, TrendingUp, TrendingDown, Scale } from 'lucide-react';
 import CashflowModal from '../modals/CashflowModal';
 import CashflowDetailModal from '../modals/CashflowDetailModal';
 import FinancePrintReport from '../print/FinancePrintReport';
@@ -193,28 +193,50 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         }
       />
 
-      {/* Balance card for cash/bank modes */}
-      {mode !== 'all' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
-          <BalanceCard
-            title="Số Dư Hiện Tại"
-            amount={balance.balance}
-            icon={mode === 'cash' ? <Wallet size={20} color="#10b981" /> : <Building2 size={20} color="#3b82f6" />}
-          />
-          <BalanceCard
-            title="Tổng Thu"
-            amount={balance.total_income}
-            icon={<TrendingUp size={20} color="#10b981" />}
-            forcePositive
-          />
-          <BalanceCard
-            title="Tổng Chi"
-            amount={balance.total_expenditure}
-            icon={<TrendingDown size={20} color="#ef4444" />}
-            forceNegative
-          />
-        </div>
-      )}
+      {/* 3 Thẻ KPI tổng hợp cho từng chế độ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+        {mode === 'all' ? (
+          <>
+            <BalanceCard
+              title="Tổng Thu (Toàn Hệ Thống)"
+              amount={totalIncome}
+              icon={<TrendingUp size={20} color="#10b981" />}
+              forcePositive
+            />
+            <BalanceCard
+              title="Tổng Chi (Toàn Hệ Thống)"
+              amount={totalExpense}
+              icon={<TrendingDown size={20} color="#ef4444" />}
+              forceNegative
+            />
+            <BalanceCard
+              title="Dòng Tiền Ròng (Thu - Chi)"
+              amount={totalIncome - totalExpense}
+              icon={<Scale size={20} color={totalIncome >= totalExpense ? "#10b981" : "#ef4444"} />}
+            />
+          </>
+        ) : (
+          <>
+            <BalanceCard
+              title="Số Dư Hiện Tại"
+              amount={balance.balance}
+              icon={mode === 'cash' ? <Wallet size={20} color="#10b981" /> : <Building2 size={20} color="#3b82f6" />}
+            />
+            <BalanceCard
+              title="Tổng Thu"
+              amount={balance.total_income}
+              icon={<TrendingUp size={20} color="#10b981" />}
+              forcePositive
+            />
+            <BalanceCard
+              title="Tổng Chi"
+              amount={balance.total_expenditure}
+              icon={<TrendingDown size={20} color="#ef4444" />}
+              forceNegative
+            />
+          </>
+        )}
+      </div>
 
       {/* Filter row */}
       <FilterBar

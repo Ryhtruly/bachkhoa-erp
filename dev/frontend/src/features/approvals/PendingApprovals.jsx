@@ -3,6 +3,7 @@ import { AlertTriangle, Check, FileWarning, Paperclip, X } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
 import ReceiptLinks from '../../components/finance/ReceiptLinks'
 import { useToast } from '../../contexts/ToastContext'
+import { apiFetch } from '../../lib/api'
 import './approvals.css'
 
 /**
@@ -33,9 +34,7 @@ export default function PendingApprovals() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/finance/cashflow?limit=300')
-      if (!res.ok) { setRows([]); return }
-      const payload = await res.json()
+      const payload = await apiFetch('/api/finance/cashflow?limit=300')
       const all = Array.isArray(payload) ? payload : (payload.data || [])
       // Chỉ lấy phiếu THU đang chờ duyệt và CÓ gắn hợp đồng — phiếu không gắn
       // hợp đồng là dữ liệu cũ, không ảnh hưởng công nợ, để lẫn vào chỉ gây nhiễu.
@@ -63,24 +62,19 @@ export default function PendingApprovals() {
     }
     setSaving(true)
     try {
-      const res = await fetch(`/api/finance/cashflow/${viewingRow.id}/${decision}`, {
+      await apiFetch(`/api/finance/cashflow/${viewingRow.id}/${decision}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: decision === 'reject' ? JSON.stringify({ reason: rejectReason.trim() }) : '{}',
       })
-      const payload = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        addToast(payload.detail || 'Không thực hiện được', 'error')
-        return
-      }
       addToast(decision === 'approve'
         ? `Đã duyệt ${formatMoney(viewingRow.amount)} — công nợ đã trừ`
         : 'Đã từ chối phiếu', 'success')
       setViewingRow(null)
       setRejectReason('')
       load()
-    } catch {
-      addToast('Mất kết nối tới máy chủ', 'error')
+    } catch (err) {
+      addToast(err.message || 'Không thực hiện được', 'error')
     } finally {
       setSaving(false)
     }

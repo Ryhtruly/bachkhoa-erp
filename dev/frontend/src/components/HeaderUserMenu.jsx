@@ -78,9 +78,9 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
           open={payslipOpen}
           onClose={() => setPayslipOpen(false)}
           title="Phiếu Lương Cá Nhân"
-          size="md"
+          size="xl"
         >
-          <MyPayroll />
+          <MyPayroll isModal={true} />
         </Modal>
       )}
     </div>

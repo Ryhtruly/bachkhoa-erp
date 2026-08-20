@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Target, Trophy, Award, CheckCircle2, Clock, Users, RefreshCw, TrendingUp } from 'lucide-react';
 import { DatePicker, Badge, DataTable } from '../components/ui';
+import { apiFetch } from '../lib/api';
 
 const getCurrentMonth = () => {
   const d = new Date();
@@ -18,11 +19,8 @@ export default function KPI() {
     const targetMonth = selectedMonth || month;
     setLoading(true);
     try {
-      const res = await fetch(`/api/kpi/scores?month=${targetMonth}`);
-      if (res.ok) {
-        const data = await res.json();
-        setKpiList(data.data || []);
-      }
+      const data = await apiFetch(`/api/kpi/scores?month=${targetMonth}`);
+      setKpiList(data?.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -37,7 +35,6 @@ export default function KPI() {
   const handleMonthChange = (newMonth) => {
     if (newMonth) {
       setMonth(newMonth);
-      fetchKpi(newMonth);
     }
   };
 

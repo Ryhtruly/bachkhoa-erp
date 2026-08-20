@@ -3,6 +3,7 @@ import logging
 import re
 import uuid
 
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
@@ -49,11 +50,18 @@ def list_cashflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
+    cache_key = f"bachkhoa:finance:cashflow:{month or 'all'}:{type or 'all'}:{payment_method or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     rows = FinanceRepository.list_cashflow_transactions(
         db, month=month, type=type, payment_method=payment_method,
         project_id=project_id, contract_id=contract_id, scope=scope
     )
-    return serialize_cashflow_bulk(rows, db)
+    result = serialize_cashflow_bulk(rows, db)
+    set_cached_json(cache_key, result, ttl_seconds=60)
+    return result
 
 @router.get("/cashflow/by-contract/{contract_id}")
 def cashflow_by_contract(
@@ -102,6 +110,11 @@ def cashflow_cash(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
+    cache_key = f"bachkhoa:finance:cash:{month or 'all'}:{type or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     balance = FinanceRepository.get_running_balance(db, "Tiền mặt")
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
     initial_expense = FinanceRepository.get_setting_value(db, "initial_total_expenditure")
@@ -115,12 +128,14 @@ def cashflow_cash(
     filtered_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
     filtered_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
 
-    return {
+    result = {
         "balance": balance,
         "total_income": initial_income + filtered_income,
         "total_expenditure": initial_expense + filtered_expenditure,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
+    set_cached_json(cache_key, result, ttl_seconds=60)
+    return result
 
 @router.get("/cashflow/bank")
 def cashflow_bank(
@@ -133,6 +148,11 @@ def cashflow_bank(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
+    cache_key = f"bachkhoa:finance:bank:{month or 'all'}:{type or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     balance = FinanceRepository.get_running_balance(db, "Chuyển khoản")
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
     initial_expense = FinanceRepository.get_setting_value(db, "initial_total_expenditure")
@@ -146,12 +166,14 @@ def cashflow_bank(
     filtered_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
     filtered_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
 
-    return {
+    result = {
         "balance": balance,
         "total_income": initial_income + filtered_income,
         "total_expenditure": initial_expense + filtered_expenditure,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
+    set_cached_json(cache_key, result, ttl_seconds=60)
+    return result
 
 @router.post("/cashflow/create")
 def create_cashflow(
@@ -410,7 +432,15 @@ def list_payroll(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payroll", "read"))
 ):
-    return FinanceRepository.list_payroll_formatted(db, month)
+    target_month = month or date.today().strftime("%Y-%m")
+    cache_key = f"bachkhoa:finance:payroll:{target_month}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.list_payroll_formatted(db, target_month)
+    set_cached_json(cache_key, result, ttl_seconds=60)
+    return result
 
 @router.get("/payroll/workers")
 def list_worker_wages(
@@ -530,7 +560,7 @@ def save_finance_settings(
 
 @router.get("/fund-balances/calculate")
 def calculate_system_balance(
-    payment_method: str = Query(..., description="'Tiền mặt' hoặc 'Chuyển khoản'"),
+    payment_method: Optional[str] = Query(None, description="'Tiền mặt', 'Chuyển khoản' hoặc bỏ trống để lấy cả hai quỹ"),
     closing_date: str = Query(..., description="Mốc thời gian chốt (ISO string)"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
@@ -545,8 +575,18 @@ def calculate_system_balance(
         except ValueError:
             raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
 
-    bal = FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=closing_moment)
-    return {"status": "success", "system_balance": bal}
+    if not payment_method or payment_method in ["all", "Tất cả", ""]:
+        bal_cash = FinanceRepository.get_running_balance(db, "Tiền mặt", up_to_datetime=closing_moment)
+        bal_bank = FinanceRepository.get_running_balance(db, "Chuyển khoản", up_to_datetime=closing_moment)
+        return {
+            "status": "success",
+            "cash_balance": bal_cash,
+            "bank_balance": bal_bank,
+            "system_balance": bal_cash + bal_bank
+        }
+    else:
+        bal = FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=closing_moment)
+        return {"status": "success", "system_balance": bal, "cash_balance": bal if payment_method == "Tiền mặt" else None, "bank_balance": bal if payment_method == "Chuyển khoản" else None}
 
 @router.get("/fund-balances/history")
 def get_fund_balances_history(

@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DatePicker, DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING, getLocalISOTime, VOUCHER_SIGNERS } from '../utils';
-import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
-import { API, CF_COLS } from '../financeConstants';
+import { DatePicker } from '../../ui';
+import { fmt, parseAmt, getLocalISOTime, VOUCHER_SIGNERS } from '../utils';
+import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
-import { Check, AlertCircle, Settings, Link, RefreshCw, PlusCircle, Wallet, Building2, History, ShieldCheck } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import CashflowModal from '../modals/CashflowModal';
-import CashflowDetailModal from '../modals/CashflowDetailModal';
+import {
+  CheckCircle2, AlertTriangle, PlusCircle, SlidersHorizontal,
+  Wallet, Building2, History, ShieldCheck, RefreshCw,
+  ReceiptText, HandCoins, Save, Clock, UserCheck, Lock, ShieldAlert
+} from 'lucide-react';
+import './SettingsScreen.css';
 
+const EXPENSE_PRESETS = [1_000_000, 2_000_000, 5_000_000, 10_000_000];
+const ADVANCE_PRESETS = [2_000_000, 5_000_000, 10_000_000, 20_000_000];
 
-export default function SettingsScreen() {
+export default function SettingsScreen({ user = null, isDirector = false }) {
   const [reconcileMoment, setReconcileMoment] = useState(getLocalISOTime());
   const [systemCashBalance, setSystemCashBalance] = useState(0);
   const [actualCashBalance, setActualCashBalance] = useState('');
@@ -21,7 +24,9 @@ export default function SettingsScreen() {
   const [actualBankBalance, setActualBankBalance] = useState('');
   const [bankNote, setBankNote] = useState('');
 
-  const [reconciledBy, setReconciledBy] = useState(VOUCHER_SIGNERS.director);
+  const [reconciledBy, setReconciledBy] = useState(
+    user?.full_name || user?.name || VOUCHER_SIGNERS.director
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState([]);
@@ -37,7 +42,7 @@ export default function SettingsScreen() {
   const filteredHistory = useMemo(() => {
     if (!filterMonth) return history;
     const [filterYear, filterMonthNum] = filterMonth.split('-');
-    return history.filter(row => {
+    return history.filter((row) => {
       const dateVal = row.effective_date;
       if (!dateVal) return false;
       const parts = dateVal.split(' ')[0].split('/');
@@ -55,7 +60,7 @@ export default function SettingsScreen() {
         advance_admin_threshold: d.advance_admin_threshold ?? 5000000
       });
     } catch (e) {
-      console.error("Lỗi lấy cấu hình tài chính", e);
+      console.error('Lỗi lấy cấu hình tài chính', e);
     }
   }, []);
 
@@ -70,9 +75,9 @@ export default function SettingsScreen() {
           advance_admin_threshold: thresholds.advance_admin_threshold
         })
       });
-      addToast('Giám đốc đã lưu cấu hình ngưỡng tài chính!', 'success');
+      addToast('✅ Giám đốc đã lưu cấu hình ngưỡng tài chính thành công!', 'success');
     } catch {
-      addToast('Lỗi kết nối máy chủ', 'error');
+      addToast('Lỗi kết nối máy chủ khi lưu ngưỡng tài chính', 'error');
     } finally {
       setSavingThresholds(false);
     }
@@ -82,14 +87,11 @@ export default function SettingsScreen() {
     setLoading(true);
     try {
       const isoString = new Date(closingMoment).toISOString();
-      const [dTM, dCK] = await Promise.all([
-        apiFetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Tiền mặt')}&closing_date=${encodeURIComponent(isoString)}`),
-        apiFetch(`${API}/api/finance/fund-balances/calculate?payment_method=${encodeURIComponent('Chuyển khoản')}&closing_date=${encodeURIComponent(isoString)}`)
-      ]);
-      setSystemCashBalance(dTM?.system_balance || 0);
-      setSystemBankBalance(dCK?.system_balance || 0);
+      const res = await apiFetch(`${API}/api/finance/fund-balances/calculate?closing_date=${encodeURIComponent(isoString)}`);
+      setSystemCashBalance(res?.cash_balance ?? res?.system_balance ?? 0);
+      setSystemBankBalance(res?.bank_balance ?? 0);
     } catch {
-      console.log("Lỗi kết nối API");
+      console.error('Lỗi kết nối API tính số dư');
     } finally {
       setLoading(false);
     }
@@ -101,17 +103,48 @@ export default function SettingsScreen() {
       const d = await apiFetch(`${API}/api/finance/fund-balances/history`);
       setHistory(Array.isArray(d) ? d : []);
     } catch (e) {
-      console.error("Lỗi lấy lịch sử chốt quỹ", e);
+      console.error('Lỗi lấy lịch sử chốt quỹ', e);
     } finally {
       setLoadingHistory(false);
     }
   }, []);
 
+  // Tải song song toàn bộ dữ liệu khi khởi tạo để tối ưu tốc độ
+  const loadInitialData = useCallback(async () => {
+    setLoading(true);
+    setLoadingHistory(true);
+    try {
+      const isoString = new Date(reconcileMoment).toISOString();
+      const [balRes, histRes, settingsRes] = await Promise.allSettled([
+        apiFetch(`${API}/api/finance/fund-balances/calculate?closing_date=${encodeURIComponent(isoString)}`),
+        apiFetch(`${API}/api/finance/fund-balances/history`),
+        apiFetch(`${API}/api/finance/settings`)
+      ]);
+
+      if (balRes.status === 'fulfilled' && balRes.value) {
+        setSystemCashBalance(balRes.value.cash_balance ?? balRes.value.system_balance ?? 0);
+        setSystemBankBalance(balRes.value.bank_balance ?? 0);
+      }
+      if (histRes.status === 'fulfilled' && Array.isArray(histRes.value)) {
+        setHistory(histRes.value);
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value) {
+        setThresholds({
+          expense_approval_threshold: settingsRes.value.expense_approval_threshold ?? 2000000,
+          advance_admin_threshold: settingsRes.value.advance_admin_threshold ?? 5000000
+        });
+      }
+    } catch (err) {
+      console.error('Lỗi tải dữ liệu tài chính', err);
+    } finally {
+      setLoading(false);
+      setLoadingHistory(false);
+    }
+  }, [reconcileMoment]);
+
   useEffect(() => {
-    fetchSystemBalance();
-    fetchHistory();
-    fetchSettings();
-  }, [fetchSystemBalance, fetchHistory, fetchSettings]);
+    loadInitialData();
+  }, []); // Run once on mount
 
   const numActualCash = actualCashBalance === '' ? 0 : parseAmt(actualCashBalance);
   const diffCash = actualCashBalance === '' ? 0 : numActualCash - systemCashBalance;
@@ -125,10 +158,40 @@ export default function SettingsScreen() {
   };
 
   const getDiscrepancyMeta = (diff, hasInput) => {
-    if (!hasInput) return { color: '#64748b', bg: '#f8fafc', border: '#e2e8f0', msg: 'Chưa nhập số thực tế' };
-    if (diff === 0) return { color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0', msg: 'Khớp quỹ hoàn toàn' };
-    if (diff < 0) return { color: '#ef4444', bg: '#fef2f2', border: '#fecaca', msg: 'Thiếu (Tự sinh PC)' };
-    return { color: '#ef4444', bg: '#eff6ff', border: '#bfdbfe', msg: 'Thừa (Tự sinh PT)' };
+    if (!hasInput) {
+      return {
+        color: '#64748b',
+        bg: '#f8fafc',
+        border: '#e2e8f0',
+        msg: 'Chưa nhập số thực tế',
+        icon: null
+      };
+    }
+    if (diff === 0) {
+      return {
+        color: '#15803d',
+        bg: '#f0fdf4',
+        border: '#bbf7d0',
+        msg: 'Khớp quỹ hoàn toàn (Không lệch)',
+        icon: 'check'
+      };
+    }
+    if (diff < 0) {
+      return {
+        color: '#b91c1c',
+        bg: '#fef2f2',
+        border: '#fecaca',
+        msg: 'Thiếu hụt (Tự động sinh Phiếu Chi bù quỹ)',
+        icon: 'alert'
+      };
+    }
+    return {
+      color: '#1d4ed8',
+      bg: '#eff6ff',
+      border: '#bfdbfe',
+      msg: 'Dư thừa (Tự động sinh Phiếu Thu nạp quỹ)',
+      icon: 'plus'
+    };
   };
 
   const discrepancyMetaCash = getDiscrepancyMeta(diffCash, actualCashBalance !== '');
@@ -187,7 +250,7 @@ export default function SettingsScreen() {
       }
 
       await Promise.all(promises);
-      addToast('Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
+      addToast('✅ Xác nhận chốt quỹ và thiết lập đầu kỳ mới thành công!', 'success');
       setActualCashBalance('');
       setCashNote('');
       setActualBankBalance('');
@@ -195,39 +258,37 @@ export default function SettingsScreen() {
       fetchSystemBalance();
       fetchHistory();
     } catch {
-      addToast('Lỗi kết nối máy chủ', 'error');
+      addToast('Lỗi kết nối máy chủ khi chốt quỹ', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: 1080, margin: '0 auto', padding: '20px 16px', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{
-        background: '#ffffff',
-        borderRadius: 24,
-        padding: '32px',
-        boxShadow: '0 4px 40px rgba(0, 0, 0, 0.03)',
-        border: '1px solid #f1f5f9'
-      }}>
-
+    <div className="fin-settings">
+      <div className="fin-settings__card">
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, letterSpacing: '-0.02em' }}>
-            <Settings size={26} color="#ef4444" /> BIÊN BẢN CHỐT QUỸ & ĐỐI CHIẾU TÀI CHÍNH
+        <div className="fin-settings__header">
+          <div className="fin-settings__header-badge">
+            <SlidersHorizontal size={14} /> Quản Trị Tài Chính Doanh Nghiệp
+          </div>
+          <h3 className="fin-settings__title">
+            BIÊN BẢN CHỐT QUỸ & ĐỐI CHIẾU TÀI CHÍNH
           </h3>
-          <p style={{ fontSize: '0.9rem', color: '#64748b', maxWidth: 620, margin: '0 auto', lineHeight: 1.6 }}>
+          <p className="fin-settings__subtitle">
             Kiểm kê và đối chiếu số dư thực tế đếm tay hoặc ứng dụng ngân hàng với sổ sách hệ thống để thiết lập mốc số dư đầu kỳ mới cho từng quỹ riêng biệt.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-
+        <form onSubmit={handleSubmit}>
           {/* Khối 1: Cấu hình Thiết Lập */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#f8fafc', padding: 20, borderRadius: 16, border: '1px solid #e2e8f0' }}>
+          <div className="fin-settings__top-bar">
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mốc thời gian chốt</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 112px', gap: 8 }}>
+              <label className="fin-settings__field-label">
+                <span>Mốc thời gian chốt</span>
+                {loading && <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'none' }}>Đang tính lại số dư...</span>}
+              </label>
+              <div className="fin-settings__time-row">
                 <DatePicker
                   value={reconcileMoment.slice(0, 10)}
                   onChange={(value) => {
@@ -246,7 +307,7 @@ export default function SettingsScreen() {
                 <input
                   type="time"
                   aria-label="Giờ chốt quỹ"
-                  style={{ width: '100%', height: 42, padding: '0 10px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
+                  className="fin-settings__time-input"
                   value={reconcileMoment.slice(11, 16)}
                   onChange={(e) => {
                     const nextClosingMoment = `${reconcileMoment.slice(0, 10)}T${e.target.value}`;
@@ -260,164 +321,238 @@ export default function SettingsScreen() {
               </div>
             </div>
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người thực hiện chốt</label>
+              <label className="fin-settings__field-label">
+                <span>Người thực hiện chốt</span>
+              </label>
               <input
                 type="text"
-                style={{ width: '100%', height: 42, padding: '0 14px', borderRadius: 12, border: '1px solid #cbd5e1', fontSize: '0.95rem', outline: 'none', background: '#ffffff', boxSizing: 'border-box' }}
+                className="fin-settings__text-input"
                 value={reconciledBy}
                 onChange={(e) => setReconciledBy(e.target.value)}
+                placeholder="Nhập họ tên người chốt..."
                 required
               />
             </div>
           </div>
 
           {/* Khối 2: Hai Cột Quỹ song song */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-
+          <div className="fin-settings__funds-grid">
             {/* Quỹ Tiền Mặt */}
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 24, background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Wallet size={20} color="#10b981" /> QUỸ TIỀN MẶT (KÉT SẮT)
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
-                    {loading ? 'Đang tải...' : `${systemCashBalance.toLocaleString('vi-VN')}₫`}
-                  </div>
-                </div>
+            <div className="fin-fund-card fin-fund-card--cash">
+              <div className="fin-fund-card__head">
+                <h4 className="fin-fund-card__title">
+                  <Wallet size={20} color="#10b981" /> Quỹ Tiền Mặt (Két Sắt)
+                </h4>
+                <span className="fin-fund-card__tag fin-fund-card__tag--cash">
+                  <Wallet size={12} /> Tiền mặt
+                </span>
+              </div>
 
-                <div style={{ border: '2px solid #ef4444', borderRadius: 12, padding: 16 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', letterSpacing: '0.05em' }}>SỐ DƯ THỰC TẾ *</span>
-                  <div style={{ position: 'relative', width: '100%', marginTop: 8, display: 'flex', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      style={{ width: '100%', fontWeight: 800, fontSize: '1.3rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
-                      value={formatInputDisplay(actualCashBalance)}
-                      onChange={(e) => setActualCashBalance(e.target.value.replace(/[^\d]/g, ''))}
-                      placeholder="0"
-                    />
-                    <span style={{ position: 'absolute', right: 2, fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>₫</span>
-                  </div>
+              {/* Số dư hệ thống */}
+              <div className="fin-fund-card__sys-box">
+                <span className="fin-fund-card__sys-label">Số dư hệ thống ghi nhận</span>
+                <div className="fin-fund-card__sys-val">
+                  {loading ? 'Đang tải...' : `${systemCashBalance.toLocaleString('vi-VN')}₫`}
                 </div>
+              </div>
 
-                <div style={{ background: discrepancyMetaCash.bg, border: `1px solid ${discrepancyMetaCash.border}`, borderRadius: 12, padding: 16 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: discrepancyMetaCash.color, margin: '6px 0' }}>
-                    {actualCashBalance === '' ? '—' : (diffCash === 0 ? '±0₫' : (diffCash > 0 ? `+${diffCash.toLocaleString('vi-VN')}₫` : `-${Math.abs(diffCash).toLocaleString('vi-VN')}₫`))}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: discrepancyMetaCash.color, fontSize: '0.75rem', fontWeight: 700 }}>
-                    {actualCashBalance !== '' && (diffCash === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
-                    <span>{discrepancyMetaCash.msg}</span>
-                  </div>
+              {/* Số dư thực tế kiểm kê */}
+              <div className="fin-fund-card__input-box">
+                <div className="fin-fund-card__input-label">
+                  <span>Số dư thực tế kiểm đếm</span>
+                  <span className="req">*</span>
                 </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
-                    Giải trình chênh lệch {actualCashBalance !== '' && diffCash !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
-                  </label>
-                  <textarea
-                    style={{ width: '100%', height: 60, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.88rem', outline: 'none', resize: 'none', lineHeight: 1.4, boxSizing: 'border-box' }}
-                    value={cashNote}
-                    onChange={(e) => setCashNote(e.target.value)}
-                    placeholder={actualCashBalance !== '' && diffCash !== 0 ? "Bắt buộc nhập lý do chênh lệch tiền mặt..." : "Ghi chú kiểm kê két sắt..."}
-                    required={actualCashBalance !== '' && diffCash !== 0}
+                <div className="fin-fund-card__input-wrap">
+                  <input
+                    type="text"
+                    className="fin-fund-card__amount-input"
+                    value={formatInputDisplay(actualCashBalance)}
+                    onChange={(e) => setActualCashBalance(e.target.value.replace(/[^\d]/g, ''))}
+                    placeholder="0"
                   />
+                  <span className="fin-fund-card__currency">₫</span>
                 </div>
+              </div>
+
+              {/* Chênh lệch */}
+              <div
+                className="fin-fund-card__diff-box"
+                style={{
+                  background: discrepancyMetaCash.bg,
+                  borderColor: discrepancyMetaCash.border
+                }}
+              >
+                <span className="fin-fund-card__diff-label">Chênh lệch đối chiếu</span>
+                <div
+                  className="fin-fund-card__diff-val"
+                  style={{ color: discrepancyMetaCash.color }}
+                >
+                  {actualCashBalance === ''
+                    ? '—'
+                    : (diffCash === 0
+                      ? '±0₫'
+                      : (diffCash > 0
+                        ? `+${diffCash.toLocaleString('vi-VN')}₫`
+                        : `-${Math.abs(diffCash).toLocaleString('vi-VN')}₫`))}
+                </div>
+                <div
+                  className="fin-fund-card__diff-status"
+                  style={{ color: discrepancyMetaCash.color }}
+                >
+                  {discrepancyMetaCash.icon === 'check' && <CheckCircle2 size={15} />}
+                  {discrepancyMetaCash.icon === 'alert' && <AlertTriangle size={15} />}
+                  {discrepancyMetaCash.icon === 'plus' && <PlusCircle size={15} />}
+                  <span>{discrepancyMetaCash.msg}</span>
+                </div>
+              </div>
+
+              {/* Giải trình */}
+              <div className="fin-fund-card__note-wrap">
+                <label className="fin-fund-card__note-label">
+                  <span>Giải trình chênh lệch</span>
+                  {actualCashBalance !== '' && diffCash !== 0 && (
+                    <span className="req-tag">Bắt buộc khi có lệch</span>
+                  )}
+                </label>
+                <textarea
+                  className="fin-fund-card__textarea"
+                  value={cashNote}
+                  onChange={(e) => setCashNote(e.target.value)}
+                  placeholder={
+                    actualCashBalance !== '' && diffCash !== 0
+                      ? 'Bắt buộc nhập nguyên nhân chênh lệch két sắt...'
+                      : 'Ghi chú kiểm kê két sắt (nếu có)...'
+                  }
+                  required={actualCashBalance !== '' && diffCash !== 0}
+                />
               </div>
             </div>
 
             {/* Quỹ Chuyển Khoản */}
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 24, background: '#ffffff', boxShadow: '0 4px 20px rgba(0,0,0,0.01)' }}>
-              <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Building2 size={20} color="#3b82f6" /> QUỸ CHUYỂN KHOẢN (NGÂN HÀNG)
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>SỐ DƯ HỆ THỐNG</span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 4 }}>
-                    {loading ? 'Đang tải...' : `${systemBankBalance.toLocaleString('vi-VN')}₫`}
-                  </div>
-                </div>
+            <div className="fin-fund-card fin-fund-card--bank">
+              <div className="fin-fund-card__head">
+                <h4 className="fin-fund-card__title">
+                  <Building2 size={20} color="#3b82f6" /> Quỹ Chuyển Khoản (Ngân Hàng)
+                </h4>
+                <span className="fin-fund-card__tag fin-fund-card__tag--bank">
+                  <Building2 size={12} /> Ngân hàng
+                </span>
+              </div>
 
-                <div style={{ border: '2px solid #ef4444', borderRadius: 12, padding: 16 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#ef4444', letterSpacing: '0.05em' }}>SỐ DƯ THỰC TẾ *</span>
-                  <div style={{ position: 'relative', width: '100%', marginTop: 8, display: 'flex', alignItems: 'center' }}>
-                    <input
-                      type="text"
-                      style={{ width: '100%', fontWeight: 800, fontSize: '1.3rem', border: 'none', borderBottom: '2px solid #e2e8f0', textAlign: 'right', paddingRight: 24, outline: 'none', paddingBottom: 4 }}
-                      value={formatInputDisplay(actualBankBalance)}
-                      onChange={(e) => setActualBankBalance(e.target.value.replace(/[^\d]/g, ''))}
-                      placeholder="0"
-                    />
-                    <span style={{ position: 'absolute', right: 2, fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>₫</span>
-                  </div>
-                </div>
-
-                <div style={{ background: discrepancyMetaBank.bg, border: `1px solid ${discrepancyMetaBank.border}`, borderRadius: 12, padding: 16 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>CHÊNH LỆCH</span>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, fontFamily: 'monospace', color: discrepancyMetaBank.color, margin: '6px 0' }}>
-                    {actualBankBalance === '' ? '—' : (diffBank === 0 ? '±0₫' : (diffBank > 0 ? `+${diffBank.toLocaleString('vi-VN')}₫` : `-${Math.abs(diffBank).toLocaleString('vi-VN')}₫`))}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: discrepancyMetaBank.color, fontSize: '0.75rem', fontWeight: 700 }}>
-                    {actualBankBalance !== '' && (diffBank === 0 ? <Check size={14} /> : <AlertCircle size={14} />)}
-                    <span>{discrepancyMetaBank.msg}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 6 }}>
-                    Giải trình chênh lệch {actualBankBalance !== '' && diffBank !== 0 && <span style={{ color: '#ef4444' }}>*</span>}
-                  </label>
-                  <textarea
-                    style={{ width: '100%', height: 60, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.88rem', outline: 'none', resize: 'none', lineHeight: 1.4, boxSizing: 'border-box' }}
-                    value={bankNote}
-                    onChange={(e) => setBankNote(e.target.value)}
-                    placeholder={actualBankBalance !== '' && diffBank !== 0 ? "Bắt buộc nhập lý do chênh lệch chuyển khoản..." : "Ghi chú kiểm kê app bank..."}
-                    required={actualBankBalance !== '' && diffBank !== 0}
-                  />
+              {/* Số dư hệ thống */}
+              <div className="fin-fund-card__sys-box">
+                <span className="fin-fund-card__sys-label">Số dư hệ thống ghi nhận</span>
+                <div className="fin-fund-card__sys-val">
+                  {loading ? 'Đang tải...' : `${systemBankBalance.toLocaleString('vi-VN')}₫`}
                 </div>
               </div>
-            </div>
 
+              {/* Số dư thực tế kiểm tra App */}
+              <div className="fin-fund-card__input-box">
+                <div className="fin-fund-card__input-label">
+                  <span>Số dư thực tế trên App Bank</span>
+                  <span className="req">*</span>
+                </div>
+                <div className="fin-fund-card__input-wrap">
+                  <input
+                    type="text"
+                    className="fin-fund-card__amount-input"
+                    value={formatInputDisplay(actualBankBalance)}
+                    onChange={(e) => setActualBankBalance(e.target.value.replace(/[^\d]/g, ''))}
+                    placeholder="0"
+                  />
+                  <span className="fin-fund-card__currency">₫</span>
+                </div>
+              </div>
+
+              {/* Chênh lệch */}
+              <div
+                className="fin-fund-card__diff-box"
+                style={{
+                  background: discrepancyMetaBank.bg,
+                  borderColor: discrepancyMetaBank.border
+                }}
+              >
+                <span className="fin-fund-card__diff-label">Chênh lệch đối chiếu</span>
+                <div
+                  className="fin-fund-card__diff-val"
+                  style={{ color: discrepancyMetaBank.color }}
+                >
+                  {actualBankBalance === ''
+                    ? '—'
+                    : (diffBank === 0
+                      ? '±0₫'
+                      : (diffBank > 0
+                        ? `+${diffBank.toLocaleString('vi-VN')}₫`
+                        : `-${Math.abs(diffBank).toLocaleString('vi-VN')}₫`))}
+                </div>
+                <div
+                  className="fin-fund-card__diff-status"
+                  style={{ color: discrepancyMetaBank.color }}
+                >
+                  {discrepancyMetaBank.icon === 'check' && <CheckCircle2 size={15} />}
+                  {discrepancyMetaBank.icon === 'alert' && <AlertTriangle size={15} />}
+                  {discrepancyMetaBank.icon === 'plus' && <PlusCircle size={15} />}
+                  <span>{discrepancyMetaBank.msg}</span>
+                </div>
+              </div>
+
+              {/* Giải trình */}
+              <div className="fin-fund-card__note-wrap">
+                <label className="fin-fund-card__note-label">
+                  <span>Giải trình chênh lệch</span>
+                  {actualBankBalance !== '' && diffBank !== 0 && (
+                    <span className="req-tag">Bắt buộc khi có lệch</span>
+                  )}
+                </label>
+                <textarea
+                  className="fin-fund-card__textarea"
+                  value={bankNote}
+                  onChange={(e) => setBankNote(e.target.value)}
+                  placeholder={
+                    actualBankBalance !== '' && diffBank !== 0
+                      ? 'Bắt buộc nhập nguyên nhân chênh lệch sao kê bank...'
+                      : 'Ghi chú kiểm kê app bank (nếu có)...'
+                  }
+                  required={actualBankBalance !== '' && diffBank !== 0}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Submit Button */}
           <button
             type="submit"
             disabled={saving || loading}
-            style={{
-              width: '100%',
-              height: 48,
-              fontWeight: 700,
-              background: (saving || loading) ? '#94a3b8' : '#ef4444',
-              color: '#ffffff',
-              fontSize: '1rem',
-              borderRadius: 14,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: 'none',
-              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.2)',
-              cursor: (saving || loading) ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s',
-              marginTop: 8
-            }}
+            className="fin-settings__submit-btn"
           >
-            {saving ? ' Đang lưu mốc chốt...' : 'Xác Nhận Chốt Quỹ & Thiết Lập Đầu Kỳ Mới'}
+            {saving ? (
+              <>
+                <RefreshCw size={18} className="animate-spin" /> Đang lưu mốc chốt...
+              </>
+            ) : (
+              <>
+                <ShieldCheck size={18} /> Xác Nhận Chốt Quỹ & Thiết Lập Đầu Kỳ Mới
+              </>
+            )}
           </button>
-
         </form>
 
-        {/* Khối 2: Lịch sử chốt quỹ */}
-        <div style={{ marginTop: 32, borderTop: '1px solid #e2e8f0', paddingTop: 28 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-            <h4 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 10, letterSpacing: '-0.01em' }}>
-              <History size={20} color="var(--orange-500)" /> LỊCH SỬ CHỐT QUỸ TRƯỚC ĐÓ
-            </h4>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Khối 3: Lịch sử chốt quỹ */}
+        <div className="fin-settings__history-section">
+          <div className="fin-settings__history-head">
+            <div className="fin-settings__history-title-wrap">
+              <h4 className="fin-settings__history-title">
+                <History size={20} color="var(--orange-500, #eb4a23)" /> Lịch Sử Chốt Quỹ Trước Đó
+              </h4>
+              <span className="fin-history-count-badge">
+                {filteredHistory.length} đợt ghi nhận
+              </span>
+            </div>
+
+            <div className="fin-settings__history-controls">
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748b' }}>Chọn tháng:</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-tertiary, #64748b)' }}>Chọn tháng:</span>
                 <DatePicker
                   selectionMode="month"
                   value={filterMonth}
@@ -428,136 +563,235 @@ export default function SettingsScreen() {
               </div>
               {filterMonth && (
                 <button
+                  type="button"
                   onClick={() => setFilterMonth('')}
-                  style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    color: '#ef4444',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0
-                  }}
+                  className="fin-settings__clear-filter-btn"
                 >
                   Xóa lọc
                 </button>
               )}
             </div>
           </div>
-          
-          <div style={{ overflowX: 'auto', background: '#f8fafc', borderRadius: 16, border: '1px solid #e2e8f0', padding: '8px 16px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mốc Thời Gian Chốt</th>
-                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hình Thức</th>
-                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'right' }}>Số Dư Đầu Kỳ Mới</th>
-                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Người Thực Hiện</th>
-                  <th style={{ padding: '12px 8px', fontWeight: 700, color: '#475569', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ghi Chú</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loadingHistory ? (
+
+          <div className="fin-settings__table-wrap">
+            {loadingHistory ? (
+              <div style={{ padding: '36px 16px', textAlign: 'center', color: '#64748b' }}>
+                <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
+                <span>Đang tải lịch sử chốt quỹ...</span>
+              </div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="fin-history-empty">
+                <div className="fin-history-empty__icon">
+                  <History size={26} />
+                </div>
+                <p className="fin-history-empty__title">Chưa có lịch sử chốt quỹ phù hợp</p>
+                <p className="fin-history-empty__desc">
+                  {filterMonth
+                    ? `Không tìm thấy mốc chốt quỹ nào trong tháng ${filterMonth.split('-')[1]}/${filterMonth.split('-')[0]}. Thử chọn tháng khác hoặc bấm "Xóa lọc".`
+                    : 'Dữ liệu chốt quỹ và số dư đầu kỳ mới sau khi xác nhận sẽ được lưu vết tự động và thống kê tại đây.'}
+                </p>
+              </div>
+            ) : (
+              <table className="fin-settings__table">
+                <thead>
                   <tr>
-                    <td colSpan="5" style={{ padding: '24px 8px', textAlign: 'center', color: '#64748b' }}>Đang tải lịch sử...</td>
+                    <th>Mốc Thời Gian Chốt</th>
+                    <th>Hình Thức Quỹ</th>
+                    <th style={{ textAlign: 'right' }}>Số Dư Đầu Kỳ Mới</th>
+                    <th>Người Thực Hiện</th>
+                    <th>Ghi Chú / Giải Trình</th>
                   </tr>
-                ) : filteredHistory.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" style={{ padding: '24px 8px', textAlign: 'center', color: '#64748b' }}>Chưa có lịch sử chốt quỹ nào phù hợp.</td>
-                  </tr>
-                ) : (
-                  filteredHistory.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '12px 8px', fontWeight: 500, color: '#334155' }}>{row.effective_date}</td>
-                      <td style={{ padding: '12px 8px' }}>
-                        <span style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          padding: '2px 8px',
-                          borderRadius: '9999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: row.payment_method === 'Tiền mặt' ? '#eff6ff' : '#f0fdf4',
-                          color: row.payment_method === 'Tiền mặt' ? '#1d4ed8' : '#15803d',
-                          border: `1px solid ${row.payment_method === 'Tiền mặt' ? '#bfdbfe' : '#bbf7d0'}`
-                        }}>
-                          {row.payment_method === 'Tiền mặt' ? 'Tiền mặt' : 'Ckhoản'}
+                </thead>
+                <tbody>
+                  {filteredHistory.map((row) => (
+                    <tr key={row.id}>
+                      <td style={{ fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <Clock size={13} color="#64748b" /> {row.effective_date}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: '#0f172a' }}>
+                      <td>
+                        <span
+                          className={`fin-fund-card__tag ${
+                            row.payment_method === 'Tiền mặt'
+                              ? 'fin-fund-card__tag--cash'
+                              : 'fin-fund-card__tag--bank'
+                          }`}
+                        >
+                          {row.payment_method === 'Tiền mặt' ? (
+                            <>
+                              <Wallet size={12} /> Tiền mặt
+                            </>
+                          ) : (
+                            <>
+                              <Building2 size={12} /> Chuyển khoản
+                            </>
+                          )}
+                        </span>
+                      </td>
+                      <td className="mono-amount">
                         {fmt(row.opening_balance)}
                       </td>
-                      <td style={{ padding: '12px 8px', color: '#475569' }}>{row.closing_user || '—'}</td>
-                      <td style={{ padding: '12px 8px', color: '#64748b', fontSize: '0.85rem' }}>{row.notes || '—'}</td>
+                      <td>
+                        <span className="fin-user-tag">
+                          <UserCheck size={13} color="#4f46e5" /> {row.closing_user || '—'}
+                        </span>
+                      </td>
+                      <td style={{ color: '#64748b', fontSize: '0.84rem' }}>{row.notes || '—'}</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
-        {/* Khối Cấu Hình Ngưỡng Tài Chính (Dành cho Giám Đốc) */}
-        <div style={{ marginTop: 40, borderTop: '2px dashed #e2e8f0', paddingTop: 32 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        {/* Khối 4: Cấu hình Ngưỡng Tài Chính (Dành cho Giám Đốc) */}
+        <div className="fin-settings__thresholds-section">
+          <div className="fin-settings__thresholds-head">
             <div>
-              <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ShieldCheck size={20} color="var(--orange-500)" /> CẤU HÌNH NGƯỠNG PHÊ DUYỆT TÀI CHÍNH (GIÁM ĐỐC)
-              </h4>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
-                Thiết lập hạn mức chi tiêu và tạm ứng vượt ngưỡng bắt buộc phải có Giám đốc phê duyệt.
+              <div className="fin-settings__thresholds-title-wrap">
+                <h4 className="fin-settings__thresholds-title">
+                  <ShieldCheck size={20} color="var(--orange-500, #eb4a23)" /> CẤU HÌNH NGƯỠNG PHÊ DUYỆT TÀI CHÍNH
+                </h4>
+                <span className="fin-director-pill">
+                  <Lock size={11} /> Quyền Giám Đốc
+                </span>
+              </div>
+              <p className="fin-settings__thresholds-desc">
+                Thiết lập hạn mức chi tiêu và tạm ứng vượt ngưỡng bắt buộc phải có Giám đốc phê duyệt trực tiếp.
               </p>
             </div>
             <button
               type="button"
-              className="btn btn-primary"
+              className="fin-settings__save-threshold-btn"
               onClick={handleSaveThresholds}
               disabled={savingThresholds}
-              style={{ background: '#10b981', borderColor: '#10b981' }}
             >
-              {savingThresholds ? 'Đang lưu...' : 'Lưu Cấu Hình Ngưỡng'}
+              {savingThresholds ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" /> Đang lưu...
+                </>
+              ) : (
+                <>
+                  <Save size={15} /> Lưu Cấu Hình Ngưỡng
+                </>
+              )}
             </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, background: '#f8fafc', padding: 24, borderRadius: 16, border: '1px solid #e2e8f0' }}>
-            <div style={{ background: '#fff', padding: 18, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                Ngưỡng duyệt chi tự động / vượt cấp (VNĐ)
-              </label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <div className="fin-settings__thresholds-grid">
+            {/* Card 1: Duyệt chi */}
+            <div className="fin-settings__threshold-box">
+              <div className="fin-settings__threshold-head">
+                <span className="fin-settings__threshold-title">
+                  <ReceiptText size={17} color="#e11d48" /> Hạn mức chi tiêu tự động
+                </span>
+              </div>
+
+              <div className="fin-settings__threshold-input-wrap">
                 <input
                   type="text"
-                  style={{ width: '100%', fontWeight: 700, fontSize: '1.2rem', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}
+                  className="fin-settings__threshold-input"
                   value={Number(thresholds.expense_approval_threshold || 0).toLocaleString('vi-VN')}
-                  onChange={(e) => setThresholds(prev => ({ ...prev, expense_approval_threshold: Number(e.target.value.replace(/[^\d]/g, '')) }))}
+                  onChange={(e) =>
+                    setThresholds((prev) => ({
+                      ...prev,
+                      expense_approval_threshold: Number(e.target.value.replace(/[^\d]/g, ''))
+                    }))
+                  }
                 />
-                <span style={{ position: 'absolute', right: 14, fontWeight: 700, color: '#64748b' }}>₫</span>
+                <span className="fin-settings__threshold-currency">₫</span>
               </div>
-              <small style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6, display: 'block' }}>
-                Mặc định: 2.000.000₫. Các khoản chi lớn hơn ngưỡng này cần Giám đốc duyệt.
-              </small>
+
+              {/* Quick presets */}
+              <div className="fin-settings__preset-chips">
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Chọn nhanh:</span>
+                {EXPENSE_PRESETS.map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`fin-settings__preset-chip ${thresholds.expense_approval_threshold === val ? 'is-active' : ''}`}
+                    onClick={() => setThresholds((prev) => ({ ...prev, expense_approval_threshold: val }))}
+                  >
+                    {val >= 1_000_000 ? `${val / 1_000_000}tr` : val.toLocaleString('vi-VN')}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rule box */}
+              <div className="fin-settings__rule-box">
+                <div className="fin-settings__rule-item">
+                  <CheckCircle2 size={13} color="#10b981" />
+                  <span>
+                    Chi tiêu <strong>≤ {fmt(thresholds.expense_approval_threshold || 0)}</strong>: Kế toán duyệt tự động
+                  </span>
+                </div>
+                <div className="fin-settings__rule-item">
+                  <ShieldAlert size={13} color="#ef4444" />
+                  <span>
+                    Chi tiêu <strong>&gt; {fmt(thresholds.expense_approval_threshold || 0)}</strong>: Bắt buộc Giám đốc duyệt
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div style={{ background: '#fff', padding: 18, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-                Ngưỡng tạm ứng cấp Giám đốc (VNĐ)
-              </label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            {/* Card 2: Tạm ứng */}
+            <div className="fin-settings__threshold-box">
+              <div className="fin-settings__threshold-head">
+                <span className="fin-settings__threshold-title">
+                  <HandCoins size={17} color="#0284c7" /> Hạn mức tạm ứng nội bộ
+                </span>
+              </div>
+
+              <div className="fin-settings__threshold-input-wrap">
                 <input
                   type="text"
-                  style={{ width: '100%', fontWeight: 700, fontSize: '1.2rem', padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', outline: 'none' }}
+                  className="fin-settings__threshold-input"
                   value={Number(thresholds.advance_admin_threshold || 0).toLocaleString('vi-VN')}
-                  onChange={(e) => setThresholds(prev => ({ ...prev, advance_admin_threshold: Number(e.target.value.replace(/[^\d]/g, '')) }))}
+                  onChange={(e) =>
+                    setThresholds((prev) => ({
+                      ...prev,
+                      advance_admin_threshold: Number(e.target.value.replace(/[^\d]/g, ''))
+                    }))
+                  }
                 />
-                <span style={{ position: 'absolute', right: 14, fontWeight: 700, color: '#64748b' }}>₫</span>
+                <span className="fin-settings__threshold-currency">₫</span>
               </div>
-              <small style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 6, display: 'block' }}>
-                Mặc định: 5.000.000₫. Các đề xuất tạm ứng vượt ngưỡng này cần thẩm định đặc biệt.
-              </small>
+
+              {/* Quick presets */}
+              <div className="fin-settings__preset-chips">
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Chọn nhanh:</span>
+                {ADVANCE_PRESETS.map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`fin-settings__preset-chip ${thresholds.advance_admin_threshold === val ? 'is-active' : ''}`}
+                    onClick={() => setThresholds((prev) => ({ ...prev, advance_admin_threshold: val }))}
+                  >
+                    {val >= 1_000_000 ? `${val / 1_000_000}tr` : val.toLocaleString('vi-VN')}
+                  </button>
+                ))}
+              </div>
+
+              {/* Rule box */}
+              <div className="fin-settings__rule-box">
+                <div className="fin-settings__rule-item">
+                  <CheckCircle2 size={13} color="#10b981" />
+                  <span>
+                    Tạm ứng <strong>≤ {fmt(thresholds.advance_admin_threshold || 0)}</strong>: Duyệt cấp phòng ban &amp; Kế toán
+                  </span>
+                </div>
+                <div className="fin-settings__rule-item">
+                  <ShieldAlert size={13} color="#ef4444" />
+                  <span>
+                    Tạm ứng <strong>&gt; {fmt(thresholds.advance_admin_threshold || 0)}</strong>: Yêu cầu Giám đốc thẩm định
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

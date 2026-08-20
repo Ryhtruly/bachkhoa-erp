@@ -26,15 +26,15 @@ const formatDate = (v) => {
   try { return new Intl.DateTimeFormat('vi-VN').format(new Date(v)) } catch { return v }
 }
 
-// Cột ngày trong lịch sử thu tiền rất hẹp. Năm chỉ đáng chiếm chỗ khi nó khác
-// năm nay — mọi phiếu trong cùng năm thì "13/8" là đủ để phân biệt.
 const formatShortDate = (v) => {
   if (!v) return ''
   try {
     const d = new Date(v)
-    return d.getFullYear() === new Date().getFullYear()
-      ? `${d.getDate()}/${d.getMonth() + 1}`
-      : new Intl.DateTimeFormat('vi-VN').format(d)
+    if (isNaN(d.getTime())) return v
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}/${month}/${year}`
   } catch { return v }
 }
 

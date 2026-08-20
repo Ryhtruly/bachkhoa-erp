@@ -4,7 +4,7 @@ import { DataTable, Badge, StatusBadge, SensitiveActionModal, FilterBar } from '
 import { fmt } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
-import { DollarSign, ArrowRightLeft, Printer, AlertTriangle, AlertCircle } from 'lucide-react';
+import { DollarSign, ArrowRightLeft, Printer, AlertTriangle, AlertCircle, FileText, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
@@ -206,7 +206,39 @@ export default function ReceivablesScreen() {
         {row.is_overpaid ? `Nộp thừa` : (v > 0 ? fmt(v) : '✓ Xong')}
       </span>
     )},
-    { key: 'due_date', label: 'Hạn thu', width: 110, render: v => <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.83rem' }}>{v || '—'}</span> },
+    { key: 'due_date', label: 'Hạn thu & Tuổi nợ', width: 145, render: (v, row) => {
+      const aging = calculateAging(v, row.remaining_amount || 0);
+      const agingLabels = {
+        settled: { label: 'Đã tất toán', bg: '#f1f5f9', color: '#64748b' },
+        in_term: { label: 'Trong hạn', bg: '#ecfdf5', color: '#059669', border: '#a7f3d0' },
+        overdue_30: { label: 'Quá hạn ≤ 30 ngày', bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+        overdue_60: { label: 'Quá hạn 31-60 ngày', bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+        overdue_90: { label: 'Quá hạn 61-90 ngày', bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
+        overdue_plus: { label: 'Nợ xấu > 90 ngày', bg: '#fdf2f8', color: '#be123c', border: '#fbcfe8' }
+      };
+      const badgeInfo = agingLabels[aging] || agingLabels.in_term;
+      const formattedDate = v ? (v.includes('-') ? v.split('-').reverse().join('/') : v) : '—';
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.84rem', fontWeight: 600 }}>{formattedDate}</span>
+          {row.remaining_amount > 0 && !row.is_overpaid && (
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              padding: '1px 6px',
+              borderRadius: 4,
+              width: 'fit-content',
+              background: badgeInfo.bg,
+              color: badgeInfo.color,
+              border: `1px solid ${badgeInfo.border || 'transparent'}`
+            }}>
+              {badgeInfo.label}
+            </span>
+          )}
+        </div>
+      );
+    }},
     { key: 'status', label: 'Trạng thái', width: 140, align: 'center', render: (v, row) => (
       <StatusBadge
         status={
@@ -262,14 +294,55 @@ export default function ReceivablesScreen() {
             <Printer size={15} /> In Sổ Công Nợ
           </button>
         }
-        subtitle={
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            {overdueCount > 0 && <span style={{ color: '#ef4444', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> {overdueCount} khoản nợ quá hạn</span>}
-            {overpaidCount > 0 && <span style={{ color: '#9333ea', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} /> {overpaidCount} HĐ nộp thừa ({fmt(totalExcess)})</span>}
-            <span>Tổng còn phải thu: <strong style={{ color: '#ef4444' }}>{fmt(totalRemaining)}</strong></span>
-          </div>
-        } 
+        subtitle="Quản lý chi tiết dư nợ theo từng hợp đồng, theo dõi tuổi nợ và xử lý khoản nộp thừa"
       />
+
+      {/* 4 Thẻ KPI Công nợ nhanh */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+        <div style={{ background: '#ffffff', borderRadius: 14, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(79, 70, 229, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FileText size={20} color="#4f46e5" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tổng Giá Trị HĐ</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalValueSum)}</div>
+          </div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: 14, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(16, 185, 129, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <CheckCircle2 size={20} color="#10b981" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Đã Thu Hồi</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalPaidSum)}</div>
+          </div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: 14, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(239, 68, 68, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <AlertTriangle size={20} color="#ef4444" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Còn Phải Thu {overdueCount > 0 && <span style={{ color: '#ef4444', fontWeight: 800 }}>({overdueCount} quá hạn)</span>}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalRemaining)}</div>
+          </div>
+        </div>
+
+        <div style={{ background: '#ffffff', borderRadius: 14, padding: '16px 18px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(147, 51, 234, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <RotateCcw size={20} color="#9333ea" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Nộp Thừa / Hoàn {overpaidCount > 0 && <span style={{ color: '#9333ea', fontWeight: 800 }}>({overpaidCount} HĐ)</span>}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#9333ea', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalExcess)}</div>
+          </div>
+        </div>
+      </div>
       <FilterBar
         search={search}
         onSearchChange={setSearch}

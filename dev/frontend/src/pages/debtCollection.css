@@ -51,16 +51,45 @@
 .debt__total--money strong { color: #b45309; }
 
 /* ── Danh sách hồ sơ đang nợ ───────────────────────────────────── */
-.debt__list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.debt__list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
 .debt__card {
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-  padding: 15px 17px;
+  padding: 16px 18px;
   background: #fff;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm, 8px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
+.debt__card:hover {
+  border-color: var(--border-default, #cbd5e1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.debt__card-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .debt__card-layout {
+    grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.85fr);
+    align-items: stretch;
+    gap: 20px;
+  }
+}
+
+.debt__card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.debt__card-right {
+  display: flex;
+  flex-direction: column;
+}
+
 .debt__card-head {
   display: flex;
   align-items: flex-start;
@@ -74,7 +103,7 @@
   font-size: 0.74rem;
   font-weight: 600;
 }
-.debt__customer { display: block; margin: 2px 0; font-size: 1rem; font-weight: 700; }
+.debt__customer { display: block; margin: 2px 0; font-size: 1.05rem; font-weight: 700; }
 .debt__service { color: var(--text-tertiary); font-size: 0.8rem; }
 
 /* Hồ sơ treo càng lâu càng phải đập vào mắt — đó là việc cần đòi trước. */
@@ -108,6 +137,140 @@
 .debt__figures .is-owed strong { color: #b91c1c; }
 
 .debt__card .btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Khung Lịch Sử Thu Tiền (Bên Phải) ────────────────────────── */
+.debt__history-box {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px 14px;
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.debt__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.debt__history-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.debt__history-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  background: #e2e8f0;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.debt__history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 185px;
+  overflow-y: auto;
+}
+
+.debt__history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.debt__history-item.is-pending {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.debt__history-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.debt__history-date {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.debt__history-amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.debt__history-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.73rem;
+}
+
+.debt__history-method {
+  color: var(--text-secondary);
+}
+
+.debt__history-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debt__history-nobill {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+}
+
+.debt__history-status {
+  font-size: 0.71rem;
+  font-weight: 600;
+}
+
+.debt__history-status.is-approved {
+  color: #16a34a;
+}
+
+.debt__history-status.is-waiting {
+  color: #d97706;
+}
+
+.debt__history-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 70px;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  font-style: italic;
+}
 
 /* ── Rỗng và lỗi ──────────────────────────────────────────────── */
 .debt__msg { margin: 0; color: var(--text-tertiary); font-size: 0.88rem; }

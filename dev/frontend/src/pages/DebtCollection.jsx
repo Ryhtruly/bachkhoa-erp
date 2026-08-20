@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, useMemo } from 'react'
 import {
   AlertTriangle, CheckCircle2, Clock3, Lock, PackageCheck, Plus,
-  RefreshCw, Trash2, ArrowRightLeft, AlertCircle
+  RefreshCw, Trash2, ArrowRightLeft, AlertCircle, ReceiptText
 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
 import { SensitiveActionModal, FilterBar } from '../components/ui'
 import ReceiptFileInput from '../components/finance/ReceiptFileInput'
+import ReceiptLinks from '../components/finance/ReceiptLinks'
 import { buildPaymentFormData } from '../components/finance/paymentReceipts'
 import { useToast } from '../contexts/ToastContext'
 import { apiFetch } from '../lib/api'
@@ -19,6 +20,18 @@ import './debtCollection.css'
  */
 
 const formatMoney = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
+
+const formatDate = (v) => {
+  if (!v) return ''
+  try {
+    const d = new Date(v)
+    if (isNaN(d.getTime())) return v
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}/${month}/${year}`
+  } catch { return v }
+}
 
 const getDaysDiff = (v) => {
   if (!v) return null
@@ -117,16 +130,11 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     setEligibleTargets([])
     setLoadingTargets(true)
     try {
-      const res = await fetch(`/api/contracts/${encodeURIComponent(r.contract_id)}/eligible-carry-forward-targets`)
-      if (res.ok) {
-        const payload = await res.json()
-        const targets = payload.targets || []
-        setEligibleTargets(targets)
-        if (targets.length === 1) {
-          setTargetContractId(targets[0].id)
-        }
-      } else {
-        setEligibleTargets([])
+      const payload = await apiFetch(`/api/contracts/${encodeURIComponent(r.contract_id)}/eligible-carry-forward-targets`)
+      const targets = payload?.targets || []
+      setEligibleTargets(targets)
+      if (targets.length === 1) {
+        setTargetContractId(targets[0].id)
       }
     } catch {
       setEligibleTargets([])
@@ -144,22 +152,17 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     try {
       // Thu theo HỢP ĐỒNG, không theo bước bàn giao: hợp đồng chưa chạy tới bước
       // đó, hoặc đã chốt bước đó rồi mà khách còn khất, đều phải ghi được.
-      const res = await fetch(`/api/handover/contracts/${encodeURIComponent(recordingRow.contract_id)}/payments`, {
+      await apiFetch(`/api/handover/contracts/${encodeURIComponent(recordingRow.contract_id)}/payments`, {
         method: 'POST',
         body: buildPaymentFormData(form, receiptFiles),
       })
-      const payload = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        addToast(payload.detail || 'Không ghi nhận được', 'error')
-        return
-      }
       addToast(`Đã ghi nhận ${formatMoney(form.amount)} — chờ giám đốc duyệt`, 'success')
       setRecordingRow(null)
       setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
       setReceiptFiles([])
       load(false)
-    } catch {
-      addToast('Mất kết nối tới máy chủ', 'error')
+    } catch (err) {
+      addToast(err.message || 'Không ghi nhận được khoản thu', 'error')
     } finally {
       setSaving(false)
     }
@@ -276,90 +279,148 @@ export default function DebtCollection({ user = null, isDirector = false }) {
             const daysOverdue = getDaysDiff(r.delivered_at)
             return (
               <li key={r.contract_id} className="debt__card">
-                <div className="debt__card-head">
-                  <div>
-                    <span className="debt__contract">{r.contract_id}</span>
-                    <strong className="debt__customer">{r.customer_name || 'Chưa có tên khách'}</strong>
-                    <span className="debt__service">{r.service_type}</span>
-                  </div>
-                  {r.is_delivered ? (
-                    <span className={`debt__age${daysOverdue >= 7 ? ' is-late' : ''}`}>
-                      {daysOverdue === 0 ? 'Giao hôm nay' : `Đã giao ${daysOverdue} ngày`}
-                    </span>
-                  ) : (
-                    <span className={`debt__age ${r.blocked_reason ? 'debt__age--blocked' : 'debt__age--waiting'}`}>
-                      {r.blocked_reason ? 'Chờ pháp lý'
-                        : r.task_node_id ? 'Chưa bàn giao'
-                        : 'Chưa tới bước giao'}
-                    </span>
-                  )}
-                </div>
-
-                <div className="debt__bar" aria-hidden="true">
-                  <span style={{ width: `${Math.min(100, Math.round((r.paid / (r.total_value || 1)) * 100))}%` }} />
-                </div>
-
-                <div className="debt__figures">
-                  <span>Giá trị <strong>{formatMoney(r.total_value)}</strong></span>
-                  <span>Đã thu <strong>{formatMoney(r.paid)}</strong></span>
-                  <span className="is-owed">Còn thiếu <strong>{formatMoney(r.remaining)}</strong></span>
-                </div>
-
-                {/* Phiếu đã gửi nhưng chưa được duyệt thì công nợ chưa giảm. Không
-                    nói ra thì kế toán gửi xong nhìn thấy y hệt lúc chưa gửi. */}
-                {r.pending > 0 && (
-                  <p className="debt__pending">
-                    <Clock3 size={13} /> {formatMoney(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
-                  </p>
-                )}
-
-                {r.blocked_reason && (
-                  <p className="debt__blocked"><Lock size={13} /> {r.blocked_reason}</p>
-                )}
-
-                {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao.
-                    Hợp đồng chưa khai bước nào thì không có ai để chờ. */}
-                {r.task_node_id && !r.is_delivered && !r.blocked_reason && (
-                  <p className="debt__waiting">
-                    <PackageCheck size={13} /> Chờ {r.deliverer_name || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
-                  </p>
-                )}
-
-                <div className="debt__actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {r.remaining > 0 && (
-                    <>
-                      {!effectiveIsDirector && (
-                        <button type="button" className="btn btn-primary btn-sm"
-                          onClick={() => {
-                            setRecordingRow(r)
-                            setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
-                            setReceiptFiles([])
-                          }}>
-                          <Plus size={14} /> Ghi nhận thanh toán
-                        </button>
+                <div className="debt__card-layout">
+                  {/* Cột trái: Thông tin hợp đồng, công nợ, cảnh báo & thao tác */}
+                  <div className="debt__card-left">
+                    <div className="debt__card-head">
+                      <div>
+                        <span className="debt__contract">{r.contract_id}</span>
+                        <strong className="debt__customer">{r.customer_name || 'Chưa có tên khách'}</strong>
+                        <span className="debt__service">{r.service_type}</span>
+                      </div>
+                      {r.is_delivered ? (
+                        <span className={`debt__age${daysOverdue >= 7 ? ' is-late' : ''}`}>
+                          {daysOverdue === 0 ? 'Giao hôm nay' : `Đã giao ${daysOverdue} ngày`}
+                        </span>
+                      ) : (
+                        <span className={`debt__age ${r.blocked_reason ? 'debt__age--blocked' : 'debt__age--waiting'}`}>
+                          {r.blocked_reason ? 'Chờ pháp lý'
+                            : r.task_node_id ? 'Chưa bàn giao'
+                            : 'Chưa tới bước giao'}
+                        </span>
                       )}
+                    </div>
 
-                      {effectiveIsDirector && (
+                    <div className="debt__bar" aria-hidden="true">
+                      <span style={{ width: `${Math.min(100, Math.round((r.paid / (r.total_value || 1)) * 100))}%` }} />
+                    </div>
+
+                    <div className="debt__figures">
+                      <span>Giá trị <strong>{formatMoney(r.total_value)}</strong></span>
+                      <span>Đã thu <strong>{formatMoney(r.paid)}</strong></span>
+                      <span className="is-owed">Còn thiếu <strong>{formatMoney(r.remaining)}</strong></span>
+                    </div>
+
+                    {/* Phiếu đã gửi nhưng chưa được duyệt thì công nợ chưa giảm */}
+                    {r.pending > 0 && (
+                      <p className="debt__pending">
+                        <Clock3 size={13} /> {formatMoney(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
+                      </p>
+                    )}
+
+                    {r.blocked_reason && (
+                      <p className="debt__blocked"><Lock size={13} /> {r.blocked_reason}</p>
+                    )}
+
+                    {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao */}
+                    {r.task_node_id && !r.is_delivered && !r.blocked_reason && (
+                      <p className="debt__waiting">
+                        <PackageCheck size={13} /> Chờ {r.deliverer_name || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
+                      </p>
+                    )}
+
+                    <div className="debt__actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {r.remaining > 0 && (
                         <>
-                          <button type="button" className="btn btn-secondary btn-sm"
-                            style={{ color: '#9333ea', borderColor: '#9333ea44' }}
-                            onClick={() => setWritingOffRow(r)}
-                            title="Giám đốc duyệt xóa nợ hoặc miễn giảm"
-                          >
-                            <Trash2 size={14} /> Xóa nợ / Miễn giảm
-                          </button>
+                          {!effectiveIsDirector && (
+                            <button type="button" className="btn btn-primary btn-sm"
+                              onClick={() => {
+                                setRecordingRow(r)
+                                setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                                setReceiptFiles([])
+                              }}>
+                              <Plus size={14} /> Ghi nhận thanh toán
+                            </button>
+                          )}
 
-                          <button type="button" className="btn btn-secondary btn-sm"
-                            style={{ color: '#2563eb', borderColor: '#2563eb44' }}
-                            onClick={() => handleOpenTransferDebt(r)}
-                            title="Giám đốc duyệt chuyển nợ sang hợp đồng mới"
-                          >
-                            <ArrowRightLeft size={14} /> Chuyển nợ sang HĐ mới
-                          </button>
+                          {effectiveIsDirector && (
+                            <>
+                              <button type="button" className="btn btn-secondary btn-sm"
+                                style={{ color: '#9333ea', borderColor: '#9333ea44' }}
+                                onClick={() => setWritingOffRow(r)}
+                                title="Giám đốc duyệt xóa nợ hoặc miễn giảm"
+                              >
+                                <Trash2 size={14} /> Xóa nợ / Miễn giảm
+                              </button>
+
+                              <button type="button" className="btn btn-secondary btn-sm"
+                                style={{ color: '#2563eb', borderColor: '#2563eb44' }}
+                                onClick={() => handleOpenTransferDebt(r)}
+                                title="Giám đốc duyệt chuyển nợ sang hợp đồng mới"
+                              >
+                                <ArrowRightLeft size={14} /> Chuyển nợ sang HĐ mới
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
-                    </>
-                  )}
+                    </div>
+                  </div>
+
+                  {/* Cột phải: Lịch sử các đợt ghi nhận thanh toán */}
+                  <div className="debt__card-right">
+                    <div className="debt__history-box">
+                      <div className="debt__history-head">
+                        <span className="debt__history-title">
+                          <ReceiptText size={14} /> Lịch sử thu tiền
+                        </span>
+                        <span className="debt__history-count">
+                          {(r.installments || []).length} đợt
+                        </span>
+                      </div>
+
+                      {r.installments && r.installments.length > 0 ? (
+                        <ul className="debt__history-list">
+                          {r.installments.map((inst) => (
+                            <li key={inst.id} className={`debt__history-item${inst.is_approved ? '' : ' is-pending'}`}>
+                              <div className="debt__history-item-top">
+                                <span className="debt__history-date">
+                                  {formatDate(inst.transaction_date)}
+                                </span>
+                                <strong className="debt__history-amount">
+                                  {formatMoney(inst.amount)}
+                                </strong>
+                              </div>
+                              <div className="debt__history-item-bottom">
+                                <span className="debt__history-method">
+                                  {inst.payment_method || 'Tiền mặt'}
+                                </span>
+                                <div className="debt__history-extra">
+                                  {inst.receipt_attachments?.length || inst.receipt_attachment_url ? (
+                                    <ReceiptLinks
+                                      attachments={inst.receipt_attachments}
+                                      legacyUrl={inst.receipt_attachment_url}
+                                      addToast={addToast}
+                                      compact
+                                    />
+                                  ) : (
+                                    <span className="debt__history-nobill" title="Chưa có ảnh bill">—</span>
+                                  )}
+                                  <span className={`debt__history-status${inst.is_approved ? ' is-approved' : ' is-waiting'}`}>
+                                    {inst.is_approved ? 'Đã duyệt' : 'Chờ duyệt'}
+                                  </span>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="debt__history-empty">
+                          <span>Chưa có đợt thu nào</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </li>
             )

@@ -819,6 +819,40 @@ def outstanding_handovers(db: Session) -> list[dict]:
                 if nid not in node_assignee_map:
                     node_assignee_map[nid] = a["full_name"]
 
+    # 3. Batch fetch lịch sử các đợt thanh toán của từng hợp đồng
+    contract_ids = [r["contract_id"] for r in rows if r["contract_id"]]
+    contract_installments_map: dict[str, list[dict]] = {}
+    if contract_ids:
+        tx_rows = db.execute(
+            text(f"""
+                select id, contract_id, amount, transaction_date, status,
+                       receipt_attachment_url, receipt_attachments,
+                       payer_payee_name, payment_method, description, approved_at
+                from public.cashflow_transactions
+                where contract_id = any(:c_ids) and transaction_type in ({_INCOME_SQL})
+                  and coalesce(status, '') not in ('Đã hủy', 'Từ chối')
+                order by transaction_date desc, created_at desc
+            """),
+            {"c_ids": contract_ids}
+        ).mappings().all()
+
+        for tx in tx_rows:
+            cid = tx["contract_id"]
+            if cid not in contract_installments_map:
+                contract_installments_map[cid] = []
+            attachments = public_receipt_attachments(
+                tx.get("receipt_attachments"),
+                tx.get("receipt_attachment_url"),
+            )
+            item = dict(tx)
+            item.update({
+                "amount": float(tx["amount"] or 0),
+                "is_approved": tx["status"] in APPROVED_TX_STATUSES,
+                "receipt_attachments": attachments,
+                "receipt_attachment_url": attachments[0]["url"] if attachments else None,
+            })
+            contract_installments_map[cid].append(item)
+
     handover_results = []
     for r in rows:
         remaining_amount = max(0.0, float(r["total_value"] or 0) - float(r["paid"] or 0))
@@ -836,5 +870,6 @@ def outstanding_handovers(db: Session) -> list[dict]:
             "blocked_reason": None if is_gate_open else (
                 f"Chờ {r['dossier_assignee'] or 'nhân viên pháp lý'} đóng hồ sơ nộp cơ quan"
             ),
+            "installments": contract_installments_map.get(r["contract_id"], []),
         })
     return handover_results

@@ -287,58 +287,37 @@ export default function PrintVoucherScreen({ month }) {
   const [refreshing, setRefreshing] = useState(false);
   const { addToast } = useToast();
 
-  const fetchTransactions = async () => {
+  const loadAll = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
-      const data = await apiFetch(`${API}/api/finance/cashflow`);
-      setTransactions(Array.isArray(data) ? data : []);
-    } catch (e) {
-      addToast('Lỗi kết nối khi tải danh sách phiếu', 'error');
+      const [rTx, rAdv, rC, rP, rDept] = await Promise.allSettled([
+        apiFetch(`${API}/api/finance/cashflow`),
+        apiFetch(`${API}/api/finance/advance`),
+        apiFetch(`${API}/api/finance/contracts`),
+        apiFetch(`${API}/api/finance/projects`),
+        apiFetch(`${API}/api/finance/departments`)
+      ]);
+      if (rTx.status === 'fulfilled' && Array.isArray(rTx.value)) setTransactions(rTx.value);
+      if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) setActiveAdvances(rAdv.value);
+      if (rC.status === 'fulfilled') setContracts(Array.isArray(rC.value) ? rC.value : rC.value?.data || []);
+      if (rP.status === 'fulfilled') setProjects(Array.isArray(rP.value) ? rP.value : rP.value?.data || []);
+      if (rDept.status === 'fulfilled' && Array.isArray(rDept.value)) setDepartments(rDept.value);
+      if (isRefresh) addToast('Đã làm mới danh sách chứng từ', 'info');
+    } catch {
+      addToast('Lỗi kết nối khi tải dữ liệu chứng từ', 'error');
+    } finally {
+      if (isRefresh) setRefreshing(false);
+      else setLoading(false);
     }
   };
 
-  const fetchActiveAdvances = async () => {
-    try {
-      const data = await apiFetch(`${API}/api/finance/advance`);
-      setActiveAdvances(Array.isArray(data) ? data : []);
-    } catch (e) { }
-  };
-
-  const fetchContractsAndProjects = async () => {
-    try {
-      const [rC, rP] = await Promise.all([
-        apiFetch(`${API}/api/finance/contracts`).catch(() => []),
-        apiFetch(`${API}/api/finance/projects`).catch(() => [])
-      ]);
-      setContracts(Array.isArray(rC) ? rC : []);
-      setProjects(Array.isArray(rP) ? rP : []);
-    } catch (e) { }
-  };
-
-  const fetchDepartments = async () => {
-    try {
-      // apiFetch mới đính token; fetch trần trả 401 nên danh sách phòng ban rỗng.
-      const data = await apiFetch(`${API}/api/finance/departments`);
-      setDepartments(Array.isArray(data) ? data : []);
-    } catch (e) { }
-  };
-
   useEffect(() => {
-    fetchTransactions();
-    fetchActiveAdvances();
-    fetchContractsAndProjects();
-    fetchDepartments();
+    loadAll();
   }, []);
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([
-      fetchTransactions(),
-      fetchActiveAdvances(),
-      fetchContractsAndProjects(),
-      fetchDepartments(),
-    ]);
-    setRefreshing(false);
-    addToast('Đã làm mới danh sách chứng từ', 'info');
+  const handleRefresh = () => {
+    loadAll(true);
   };
 
   useEffect(() => {

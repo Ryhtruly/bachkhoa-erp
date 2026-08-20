@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Phone, Clock, Target, CheckCircle, Percent } from 'lucide-react';
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
+import { apiFetch } from '../lib/api';
 
 export default function CRM() {
   const [leads, setLeads] = useState([]);
@@ -19,19 +20,13 @@ export default function CRM() {
 
   const fetchData = async () => {
     try {
-      const [leadsRes, statsRes] = await Promise.all([
-        fetch('/api/crm/leads'),
-        fetch('/api/crm/stats')
+      const [leadsData, statsData] = await Promise.all([
+        apiFetch('/api/crm/leads'),
+        apiFetch('/api/crm/stats')
       ]);
 
-      if (leadsRes.ok) {
-        const data = await leadsRes.json();
-        setLeads(data.data || []);
-      }
-      if (statsRes.ok) {
-        const sData = await statsRes.json();
-        setStats(sData.data || {});
-      }
+      setLeads(leadsData?.data || []);
+      setStats(statsData?.data || {});
     } catch (err) {
       console.error(err);
     } finally {
@@ -54,7 +49,7 @@ export default function CRM() {
 
   const submitStatusChange = async (leadId, newStatus, extraData = {}) => {
     try {
-      await fetch(`/api/crm/leads/${leadId}/status`, {
+      await apiFetch(`/api/crm/leads/${leadId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_status: newStatus, ...extraData })

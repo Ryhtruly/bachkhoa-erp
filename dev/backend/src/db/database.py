@@ -20,7 +20,14 @@ if "supabase" in DATABASE_URL and "sslmode" not in DATABASE_URL:
 
 SQLALCHEMY_DATABASE_URL = DATABASE_URL
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=20,
+    max_overflow=20,
+    pool_recycle=300,
+    pool_timeout=10,
+    pool_pre_ping=False,
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
