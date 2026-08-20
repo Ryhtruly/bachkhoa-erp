@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Response
