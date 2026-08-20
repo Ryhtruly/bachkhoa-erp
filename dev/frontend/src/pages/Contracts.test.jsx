@@ -41,11 +41,13 @@ describe('Contracts', () => {
     const wardSelect = screen.getByLabelText(/Phường \/ Xã/)
     expect(wardSelect).toBeDisabled()
 
-    await waitFor(() => expect(screen.getByRole('option', { name: 'TP. Hồ Chí Minh' })).toBeInTheDocument())
-    fireEvent.change(provinceSelect, { target: { value: '79' } })
+    fireEvent.click(provinceSelect)
+    await waitFor(() => expect(screen.getByRole('button', { name: /TP\. Hồ Chí Minh/ })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /TP\. Hồ Chí Minh/ }))
 
     expect(wardSelect).not.toBeDisabled()
-    await waitFor(() => expect(screen.getByRole('option', { name: 'Phường Bến Nghé' })).toBeInTheDocument())
+    fireEvent.click(wardSelect)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Phường Bến Nghé/ })).toBeInTheDocument())
   })
 
   it('đọc số tiền thành chữ để bắt lỗi gõ thừa hoặc thiếu số 0', async () => {

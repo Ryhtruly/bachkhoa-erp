@@ -55,18 +55,25 @@ describe('ContractComposer', () => {
       />,
     )
 
-    fireEvent.change(screen.getByLabelText(/Mẫu hợp đồng/), { target: { value: 'do-dac-v1' } })
     fireEvent.change(screen.getByLabelText(/Tên khách hàng/), { target: { value: 'Nguyễn Văn An' } })
     fireEvent.change(screen.getByLabelText(/Số điện thoại/), { target: { value: '0901234567' } })
     fireEvent.change(screen.getByLabelText(/Số CCCD/), { target: { value: '079300012345' } })
-    await screen.findByRole('option', { name: 'TP. Hồ Chí Minh' })
-    fireEvent.change(screen.getByLabelText(/Tỉnh \/ Thành phố/), { target: { value: '79' } })
-    await screen.findByRole('option', { name: 'Phường Bến Nghé' })
-    fireEvent.change(screen.getByLabelText(/Phường \/ Xã/), { target: { value: '26734' } })
-    await screen.findByRole('option', { name: 'Đo Vẽ' })
-    fireEvent.change(screen.getByLabelText(/Gói dịch vụ/), { target: { value: 'g-1' } })
-    await screen.findByRole('option', { name: 'Tách thửa' })
-    fireEvent.change(screen.getByLabelText(/Hạng mục/), { target: { value: 'tt-1' } })
+
+    // Chọn Tỉnh
+    fireEvent.click(screen.getByLabelText(/Tỉnh \/ Thành phố/))
+    await screen.findByRole('button', { name: /TP\. Hồ Chí Minh/ })
+    fireEvent.click(screen.getByRole('button', { name: /TP\. Hồ Chí Minh/ }))
+
+    // Chọn Phường
+    fireEvent.click(screen.getByLabelText(/Phường \/ Xã/))
+    await screen.findByRole('button', { name: /Phường Bến Nghé/ })
+    fireEvent.click(screen.getByRole('button', { name: /Phường Bến Nghé/ }))
+
+    // Chọn Gói dịch vụ
+    fireEvent.click(screen.getByLabelText(/Gói dịch vụ/))
+    await screen.findByRole('button', { name: /Đo Vẽ/ })
+    fireEvent.click(screen.getByRole('button', { name: /Đo Vẽ/ }))
+
     fireEvent.change(screen.getByLabelText(/Sale \/ nguồn/), { target: { value: 'Trần Minh' } })
     fireEvent.change(screen.getByLabelText(/Giá trị hợp đồng/), { target: { value: '18tr' } })
 

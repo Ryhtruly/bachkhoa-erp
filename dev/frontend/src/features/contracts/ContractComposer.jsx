@@ -5,7 +5,7 @@ import { apiFetch } from '../../lib/api'
 import DatePicker from '../../components/ui/DatePicker'
 import './contractComposer.css'
 
-function CustomSelect({ id, value, onChange, options, placeholder, disabled, className }) {
+function CustomSelect({ id, value, onChange, options = [], placeholder, disabled, className, 'aria-label': ariaLabel }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -19,23 +19,51 @@ function CustomSelect({ id, value, onChange, options, placeholder, disabled, cla
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const selectedOption = options.find(o => String(o.value) === String(value))
+  const normalizedOptions = useMemo(() => {
+    return (options || []).map(opt => {
+      if (typeof opt === 'object' && opt !== null) {
+        const val = opt.value !== undefined ? opt.value : (opt.id !== undefined ? opt.id : opt.code)
+        const lbl = opt.label !== undefined ? opt.label : (opt.name !== undefined ? opt.name : val)
+        return { value: String(val), label: String(lbl) }
+      }
+      return { value: String(opt), label: String(opt) }
+    })
+  }, [options])
+
+  const selectedOption = normalizedOptions.find(o => String(o.value) === String(value))
 
   return (
-    <div className={`custom-select-container ${className || ''}`} ref={ref} id={id}>
+    <div className={`custom-select-container ${className || ''}`} ref={ref}>
       <button
+        id={id}
         type="button"
-        className={`custom-select-trigger in ${open ? 'is-open' : ''}`}
+        aria-label={ariaLabel}
+        className={`custom-select-trigger in ${className || ''} ${open ? 'is-open' : ''}`}
         disabled={disabled}
         onClick={() => !disabled && setOpen(!open)}
       >
-        <span>{selectedOption ? selectedOption.label : (placeholder || 'Chọn...')}</span>
+        <span style={{ color: selectedOption ? 'var(--ink)' : 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedOption ? selectedOption.label : (placeholder || 'Chọn...')}
+        </span>
         <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div className="custom-select-menu">
-          {options.map((opt) => (
+          {placeholder && (
+            <button
+              type="button"
+              className={`custom-select-option ${!value ? 'is-selected' : ''}`}
+              onClick={() => {
+                onChange('')
+                setOpen(false)
+              }}
+            >
+              {!value ? <Check size={14} className="check-icon" /> : <span className="check-placeholder" />}
+              <span style={{ color: 'var(--ink-3)' }}>{placeholder}</span>
+            </button>
+          )}
+          {normalizedOptions.map((opt) => (
             <button
               type="button"
               key={opt.value}
@@ -633,28 +661,34 @@ export default function ContractComposer({
             <div className="row c3">
               <div>
                 <label htmlFor="dc-tinh">Tỉnh / Thành phố<u>*</u></label>
-                <select className={getValidationClass('provinceCode').trim()} id="dc-tinh" value={geoBoundary.provinceCode}
-                  onChange={(e) => {
-                    const t = provinces.find(x => String(x.code) === e.target.value)
+                <CustomSelect
+                  id="dc-tinh"
+                  className={getValidationClass('provinceCode').trim()}
+                  placeholder="Chọn tỉnh/thành"
+                  value={geoBoundary.provinceCode}
+                  options={provinces.map(t => ({ value: t.code, label: t.name }))}
+                  onChange={(val) => {
+                    const t = provinces.find(x => String(x.code) === String(val))
                     setGeoBoundary({ provinceCode: t?.code || '', provinceName: t?.name || '', wardCode: '', wardName: '' })
                     setMissingFields(cur => cur.filter(x => x !== 'provinceCode'))
-                  }}>
-                  <option value="">Chọn tỉnh/thành</option>
-                  {provinces.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
-                </select>
+                  }}
+                />
               </div>
               <div>
                 <label htmlFor="dc-phuong">Phường / Xã<u>*</u></label>
-                <select className={getValidationClass('wardCode').trim()} id="dc-phuong" disabled={!geoBoundary.provinceCode}
+                <CustomSelect
+                  id="dc-phuong"
+                  className={getValidationClass('wardCode').trim()}
+                  disabled={!geoBoundary.provinceCode}
+                  placeholder={geoBoundary.provinceCode ? 'Chọn phường/xã' : 'Chọn tỉnh trước'}
                   value={geoBoundary.wardCode}
-                  onChange={(e) => {
-                    const p = wards.find(x => String(x.code) === e.target.value)
+                  options={wards.map(p => ({ value: p.code, label: p.name }))}
+                  onChange={(val) => {
+                    const p = wards.find(x => String(x.code) === String(val))
                     setGeoBoundary(cur => ({ ...cur, wardCode: p?.code || '', wardName: p?.name || '' }))
                     setMissingFields(cur => cur.filter(x => x !== 'wardCode'))
-                  }}>
-                  <option value="">{geoBoundary.provinceCode ? 'Chọn phường/xã' : 'Chọn tỉnh trước'}</option>
-                  {wards.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
-                </select>
+                  }}
+                />
               </div>
               <div>
                 <label htmlFor="dc-duong">Số nhà, đường<small>không bắt buộc</small></label>
@@ -669,10 +703,12 @@ export default function ContractComposer({
             <div className="row c2">
               <div>
                 <label htmlFor="dv-goi">Gói dịch vụ<u>*</u></label>
-                <select className={getValidationClass('hangMucChon').trim()} id="dv-goi"
+                <CustomSelect
+                  id="dv-goi"
+                  className={getValidationClass('hangMucChon').trim()}
                   value={goiChon}
-                  onChange={(e) => {
-                    const selectedGoiKey = e.target.value
+                  options={danhMuc.map(g => ({ value: g.id || g.code, label: g.name }))}
+                  onChange={(selectedGoiKey) => {
                     setGoiChon(selectedGoiKey)
                     const goi = danhMuc.find(g => (g.id || g.code) === selectedGoiKey)
                     if (goi?.task_types?.length > 0) {
@@ -683,25 +719,27 @@ export default function ContractComposer({
                       setHangMucChon('')
                       setForm(f => ({ ...f, service_type: '' }))
                     }
-                  }}>
-                  {danhMuc.map(g => <option key={g.id || g.code} value={g.id || g.code}>{g.name}</option>)}
-                </select>
+                  }}
+                />
               </div>
               <div>
                 <label htmlFor="dv-loai">Hạng mục<u>*</u></label>
-                <select className={getValidationClass('hangMucChon').trim()} id="dv-loai"
-                  value={hangMucChon} disabled={!goiChon}
-                  onChange={(e) => {
-                    const id = e.target.value
+                <CustomSelect
+                  id="dv-loai"
+                  className={getValidationClass('hangMucChon').trim()}
+                  disabled={!goiChon}
+                  value={hangMucChon}
+                  options={(danhMuc.find(g => (g.id || g.code) === goiChon)?.task_types || []).map(hm => ({
+                    value: hm.id,
+                    label: hm.name,
+                  }))}
+                  onChange={(id) => {
                     setHangMucChon(id)
                     const goi = danhMuc.find(g => (g.id || g.code) === goiChon)
                     const hm = goi?.task_types?.find(t => t.id === id)
                     setForm(f => ({ ...f, service_type: hm?.name || '' }))
-                  }}>
-                  {(danhMuc.find(g => (g.id || g.code) === goiChon)?.task_types || []).map(hm => (
-                    <option key={hm.id} value={hm.id}>{hm.name}</option>
-                  ))}
-                </select>
+                  }}
+                />
               </div>
             </div>
             <div className="row c2">
@@ -715,16 +753,21 @@ export default function ContractComposer({
             <div className="row">
               <div>
                 <label htmlFor="hd-mau">Mẫu hợp đồng<u>*</u></label>
-                <select className={getValidationClass('contract_template_id').trim()} id="hd-mau"
-                  value={form.contract_template_id} disabled={templatesLoading}
-                  onChange={handleFieldChange('contract_template_id')}>
-                  <option value="">{templatesLoading ? 'Đang tải mẫu hợp đồng…' : 'Chọn mẫu hợp đồng'}</option>
-                  {templates.map(template => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} — v{template.version}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect
+                  id="hd-mau"
+                  className={getValidationClass('contract_template_id').trim()}
+                  disabled={templatesLoading}
+                  placeholder={templatesLoading ? 'Đang tải mẫu hợp đồng…' : 'Chọn mẫu hợp đồng'}
+                  value={form.contract_template_id}
+                  options={templates.map(template => ({
+                    value: template.id,
+                    label: `${template.name} — v${template.version}`,
+                  }))}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, contract_template_id: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'contract_template_id'))
+                  }}
+                />
               </div>
             </div>
             <div className="row">
