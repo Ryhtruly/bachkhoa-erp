@@ -285,6 +285,30 @@ export default function ContractComposer({
     setMissingFields(cur => cur.filter(x => x !== k))
   }
 
+  const handleSwitchLoaiKhach = (v) => {
+    if (v === loaiKhach) return
+    setLoaiKhach(v)
+    setKhachId('')
+    setForm(cur => ({
+      ...cur,
+      customer_name: '',
+      phone: '',
+    }))
+    setDinhDanh({
+      tax_id: '',
+      id_card_number: '',
+      id_card_date: '',
+      id_card_place: '',
+      email: '',
+      zalo_phone: '',
+      representative_name: '',
+      representative_role: '',
+    })
+    setKetQuaTimTen([])
+    setKetQuaTimMST([])
+    setMissingFields(cur => cur.filter(x => !['customer_name', 'phone', 'tax_id', 'id_card_number', 'representative_name'].includes(x)))
+  }
+
   // Tìm khách cũ theo TÊN khi gõ ≥ 2 ký tự (lọc theo đúng loại khách Cá nhân/Doanh nghiệp).
   useEffect(() => {
     const q = (form.customer_name || '').trim()
@@ -443,7 +467,7 @@ export default function ContractComposer({
               {[['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, nhan]) => (
                 <button key={v} type="button" role="tab" aria-selected={loaiKhach === v}
                   className={`kh-loai__nut${loaiKhach === v ? ' is-on' : ''}`}
-                  onClick={() => { setLoaiKhach(v); setKhachId('') }}>{nhan}</button>
+                  onClick={() => handleSwitchLoaiKhach(v)}>{nhan}</button>
               ))}
               {khachId && <span className="kh-loai__cu">✓ Khách cũ — đã tự điền</span>}
             </div>
