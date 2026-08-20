@@ -18,9 +18,14 @@ export default function MyPayroll() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch('/api/employee-portal/me')
+    apiFetch('/api/employee-portal/my-payroll')
       .then((data) => { if (!cancelled) setProfile(data); })
-      .catch(() => { if (!cancelled) setError('Không tải được dữ liệu lương'); })
+      .catch(() => {
+        // Fallback sang endpoint tổng nếu cần
+        apiFetch('/api/employee-portal/me')
+          .then((data) => { if (!cancelled) setProfile(data); })
+          .catch(() => { if (!cancelled) setError('Không tải được dữ liệu lương'); });
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);

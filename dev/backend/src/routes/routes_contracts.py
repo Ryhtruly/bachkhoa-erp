@@ -368,22 +368,22 @@ def list_contract_workspace(
     for line, task_type, package in line_rows:
         lines_by_contract.setdefault(line.contract_id, []).append((line, task_type, package))
 
-    tien_va_tien_do = {}
+    financial_progress_by_contract = {}
     if contract_ids:
         for r in db.execute(
             text(f"""
                 select c.id,
-                       count(distinct sl.id)                                        as so_hang_muc,
-                       count(distinct wi.id)                                        as so_quy_trinh,
-                       count(distinct wi.id) filter (where wi.status = 'completed') as so_xong,
-                       count(distinct wi.id) filter (where wi.status = 'cancelled') as so_huy,
+                       count(distinct sl.id)                                        as service_line_count,
+                       count(distinct wi.id)                                        as workflow_count,
+                       count(distinct wi.id) filter (where wi.status = 'completed') as completed_count,
+                       count(distinct wi.id) filter (where wi.status = 'cancelled') as cancelled_count,
                        coalesce((
                          select sum(t.amount)
                          from public.cashflow_transactions t
                          where t.contract_id = c.id
                            and t.status in ({_APPROVED_SQL})
                            and t.transaction_type in ({_INCOME_SQL})
-                       ), 0)                                                        as da_thu,
+                       ), 0)                                                        as paid_amount,
                        coalesce(sum((
                          select count(*)
                          from jsonb_object_keys(coalesce(r.graph->'nodes', '{{}}'::jsonb)) k
@@ -394,7 +394,7 @@ def list_contract_workspace(
                                   jsonb_each_text(coalesce(n.value->'transitions', '{{}}'::jsonb)) tr
                              where tr.value = k
                            )
-                       )), 0)                                              as so_buoc_roi
+                       )), 0)                                              as dangling_node_count
                 from public.contracts c
                 left join public.service_lines sl on sl.contract_id = c.id
                 left join public.workflow_instances wi on wi.service_line_id = sl.id
@@ -404,37 +404,37 @@ def list_contract_workspace(
             """),
             {"ids": list(contract_ids)},
         ).mappings():
-            tien_va_tien_do[r["id"]] = dict(r)
+            financial_progress_by_contract[r["id"]] = dict(r)
 
-    def _tien_do(info: dict, tong: float) -> str:
-        if not info or not info["so_quy_trinh"]:
+    def _resolve_contract_progress_status(info: dict, total_val: float) -> str:
+        if not info or not info.get("workflow_count"):
             return "Chưa có quy trình"
-        if info["so_huy"] == info["so_quy_trinh"]:
+        if info.get("cancelled_count") == info.get("workflow_count"):
             return "Đã huỷ"
-        if info.get("so_buoc_roi"):
+        if info.get("dangling_node_count"):
             return "Thiếu đường nối"
-        if info["so_xong"] == info["so_quy_trinh"]:
-            return "Hoàn thành" if float(info["da_thu"] or 0) >= tong - 0.01 else "Xong, còn nợ"
+        if info.get("completed_count") == info.get("workflow_count"):
+            return "Hoàn thành" if float(info.get("paid_amount") or 0) >= total_val - 0.01 else "Xong, còn nợ"
         return "Đang thực hiện"
 
     rows = []
     for contract_id in contract_ids:
         contract, customer = contract_by_id[contract_id]
         service_lines = lines_by_contract.get(contract_id, [])
-        tong = _money_value(contract.total_value)
-        info = tien_va_tien_do.get(contract_id)
-        da_thu = float(info["da_thu"] or 0) if info else 0.0
-        rem = max(0.0, tong - da_thu)
-        status_val = _tien_do(info, tong)
+        total_contract_value = _money_value(contract.total_value)
+        info = financial_progress_by_contract.get(contract_id)
+        paid_amount = float(info.get("paid_amount") or 0) if info else 0.0
+        remaining_amount = max(0.0, total_contract_value - paid_amount)
+        status_val = _resolve_contract_progress_status(info, total_contract_value)
         rows.append({
             "id": contract.id,
             "customer_name": customer.full_name if customer else "Chưa cập nhật",
             "customer_phone": customer.phone if customer else "",
             "date_signed": _date_value(contract.date_signed),
-            "total_value": tong,
-            "paid_amount": da_thu,
-            "remaining": rem,
-            "remaining_amount": rem,
+            "total_value": total_contract_value,
+            "paid_amount": paid_amount,
+            "remaining": remaining_amount,
+            "remaining_amount": remaining_amount,
             "progress": status_val,
             "status": status_val,
             "service_location": contract.service_location or "",

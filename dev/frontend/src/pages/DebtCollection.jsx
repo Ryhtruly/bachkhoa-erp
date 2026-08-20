@@ -18,9 +18,9 @@ import './debtCollection.css'
  * Thu đủ thì dòng đó tự biến mất. Không ai phải đánh dấu gì.
  */
 
-const tien = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
+const formatMoney = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
 
-const soNgay = (v) => {
+const getDaysDiff = (v) => {
   if (!v) return null
   const d = Math.floor((Date.now() - new Date(v).getTime()) / 86_400_000)
   return d > 0 ? d : 0
@@ -33,8 +33,8 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [meta, setMeta] = useState({ total: 0, total_remaining: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [dangGhi, setDangGhi] = useState(null)
-  const [dangXoaNo, setDangXoaNo] = useState(null)
+  const [recordingRow, setRecordingRow] = useState(null)
+  const [writingOffRow, setWritingOffRow] = useState(null)
 
   useEffect(() => {
     if (!user) {
@@ -52,9 +52,9 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   )
 
   // State cho Modal Chuyển Nợ Sang HĐ Mới
-  const [dangChuyenNo, setDangChuyenNo] = useState(null)
+  const [transferringRow, setTransferringRow] = useState(null)
   const [targetContractId, setTargetContractId] = useState('')
-  const [chuyenNoReason, setChuyenNoReason] = useState('')
+  const [transferReason, setTransferReason] = useState('')
   const [eligibleTargets, setEligibleTargets] = useState([])
   const [loadingTargets, setLoadingTargets] = useState(false)
 
@@ -65,8 +65,8 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [search, setSearch] = useState('')
   const [filterDelivery, setFilterDelivery] = useState('All')
 
-  const load = useCallback(async (hienVongXoay = true) => {
-    if (hienVongXoay) setLoading(true)
+  const load = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true)
     setError('')
     try {
       const payload = await apiFetch('/api/handover/outstanding')
@@ -92,26 +92,28 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         (r.contract_id || '').toLowerCase().includes(q) ||
         (r.customer_name || '').toLowerCase().includes(q) ||
         (r.service_type || '').toLowerCase().includes(q) ||
-        (r.nguoi_giao || '').toLowerCase().includes(q)
+        (r.deliverer_name || '').toLowerCase().includes(q)
 
       if (!matchSearch) return false
 
+      const isDelivered = Boolean(r.is_delivered)
+
       if (filterDelivery !== 'All') {
-        if (filterDelivery === 'delivered' && !r.da_ban_giao) return false
-        if (filterDelivery === 'undelivered' && r.da_ban_giao) return false
+        if (filterDelivery === 'delivered' && !isDelivered) return false
+        if (filterDelivery === 'undelivered' && isDelivered) return false
         if (filterDelivery === 'late') {
-          const ngayTreo = soNgay(r.delivered_at)
-          if (!r.da_ban_giao || (ngayTreo || 0) < 7) return false
+          const daysOverdue = getDaysDiff(r.delivered_at)
+          if (!isDelivered || (daysOverdue || 0) < 7) return false
         }
       }
       return true
     })
   }, [rows, search, filterDelivery])
 
-  const handleOpenChuyenNo = async (r) => {
-    setDangChuyenNo(r)
+  const handleOpenTransferDebt = async (r) => {
+    setTransferringRow(r)
     setTargetContractId('')
-    setChuyenNoReason('')
+    setTransferReason('')
     setEligibleTargets([])
     setLoadingTargets(true)
     try {
@@ -137,12 +139,12 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     return eligibleTargets.find(t => t.id === targetContractId) || null
   }, [eligibleTargets, targetContractId])
 
-  const ghiNhan = async () => {
+  const handleRecordPayment = async () => {
     setSaving(true)
     try {
       // Thu theo HỢP ĐỒNG, không theo bước bàn giao: hợp đồng chưa chạy tới bước
       // đó, hoặc đã chốt bước đó rồi mà khách còn khất, đều phải ghi được.
-      const res = await fetch(`/api/handover/contracts/${encodeURIComponent(dangGhi.contract_id)}/payments`, {
+      const res = await fetch(`/api/handover/contracts/${encodeURIComponent(recordingRow.contract_id)}/payments`, {
         method: 'POST',
         body: buildPaymentFormData(form, receiptFiles),
       })
@@ -151,8 +153,8 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         addToast(payload.detail || 'Không ghi nhận được', 'error')
         return
       }
-      addToast(`Đã ghi nhận ${tien(form.amount)} — chờ giám đốc duyệt`, 'success')
-      setDangGhi(null)
+      addToast(`Đã ghi nhận ${formatMoney(form.amount)} — chờ giám đốc duyệt`, 'success')
+      setRecordingRow(null)
       setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
       setReceiptFiles([])
       load(false)
@@ -164,16 +166,16 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   }
 
   const handleWriteOffDebt = async (reason) => {
-    if (!dangXoaNo?.contract_id) return
+    if (!writingOffRow?.contract_id) return
     setSaving(true)
     try {
-      await apiFetch(`/api/contracts/${encodeURIComponent(dangXoaNo.contract_id)}/write-off-debt`, {
+      await apiFetch(`/api/contracts/${encodeURIComponent(writingOffRow.contract_id)}/write-off-debt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
       })
-      addToast(`✅ Giám đốc đã duyệt xóa nợ / miễn giảm cho hợp đồng ${dangXoaNo.contract_id}!`, 'success')
-      setDangXoaNo(null)
+      addToast(`✅ Giám đốc đã duyệt xóa nợ / miễn giảm cho hợp đồng ${writingOffRow.contract_id}!`, 'success')
+      setWritingOffRow(null)
       await load()
     } catch (err) {
       addToast(err.message || 'Lỗi duyệt xóa nợ', 'error')
@@ -183,21 +185,21 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   }
 
   const handleCarryForwardDebt = async () => {
-    if (!dangChuyenNo?.contract_id || !targetContractId.trim() || !chuyenNoReason.trim()) return
+    if (!transferringRow?.contract_id || !targetContractId.trim() || !transferReason.trim()) return
     setSaving(true)
     try {
-      await apiFetch(`/api/contracts/${encodeURIComponent(dangChuyenNo.contract_id)}/carry-forward-debt`, {
+      await apiFetch(`/api/contracts/${encodeURIComponent(transferringRow.contract_id)}/carry-forward-debt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           target_contract_id: targetContractId.trim(),
-          reason: chuyenNoReason.trim()
+          reason: transferReason.trim()
         })
       })
-      addToast(`✅ Giám đốc đã duyệt chuyển nợ ${tien(dangChuyenNo.remaining)} sang hợp đồng ${targetContractId}!`, 'success')
-      setDangChuyenNo(null)
+      addToast(`✅ Giám đốc đã duyệt chuyển nợ ${formatMoney(transferringRow.remaining)} sang hợp đồng ${targetContractId}!`, 'success')
+      setTransferringRow(null)
       setTargetContractId('')
-      setChuyenNoReason('')
+      setTransferReason('')
       await load()
     } catch (err) {
       addToast(err.message || 'Lỗi chuyển nợ', 'error')
@@ -226,7 +228,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         </div>
         <div className="debt__total debt__total--money">
           <span>Tổng còn phải thu</span>
-          <strong>{tien(meta.total_remaining)}</strong>
+          <strong>{formatMoney(meta.total_remaining)}</strong>
         </div>
       </div>
 
@@ -271,7 +273,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
       ) : (
         <ul className="debt__list">
           {filteredRows.map((r) => {
-            const ngayTreo = soNgay(r.delivered_at)
+            const daysOverdue = getDaysDiff(r.delivered_at)
             return (
               <li key={r.contract_id} className="debt__card">
                 <div className="debt__card-head">
@@ -280,9 +282,9 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                     <strong className="debt__customer">{r.customer_name || 'Chưa có tên khách'}</strong>
                     <span className="debt__service">{r.service_type}</span>
                   </div>
-                  {r.da_ban_giao ? (
-                    <span className={`debt__age${ngayTreo >= 7 ? ' is-late' : ''}`}>
-                      {ngayTreo === 0 ? 'Giao hôm nay' : `Đã giao ${ngayTreo} ngày`}
+                  {r.is_delivered ? (
+                    <span className={`debt__age${daysOverdue >= 7 ? ' is-late' : ''}`}>
+                      {daysOverdue === 0 ? 'Giao hôm nay' : `Đã giao ${daysOverdue} ngày`}
                     </span>
                   ) : (
                     <span className={`debt__age ${r.blocked_reason ? 'debt__age--blocked' : 'debt__age--waiting'}`}>
@@ -298,16 +300,16 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                 </div>
 
                 <div className="debt__figures">
-                  <span>Giá trị <strong>{tien(r.total_value)}</strong></span>
-                  <span>Đã thu <strong>{tien(r.paid)}</strong></span>
-                  <span className="is-owed">Còn thiếu <strong>{tien(r.remaining)}</strong></span>
+                  <span>Giá trị <strong>{formatMoney(r.total_value)}</strong></span>
+                  <span>Đã thu <strong>{formatMoney(r.paid)}</strong></span>
+                  <span className="is-owed">Còn thiếu <strong>{formatMoney(r.remaining)}</strong></span>
                 </div>
 
                 {/* Phiếu đã gửi nhưng chưa được duyệt thì công nợ chưa giảm. Không
                     nói ra thì kế toán gửi xong nhìn thấy y hệt lúc chưa gửi. */}
                 {r.pending > 0 && (
                   <p className="debt__pending">
-                    <Clock3 size={13} /> {tien(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
+                    <Clock3 size={13} /> {formatMoney(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
                   </p>
                 )}
 
@@ -317,9 +319,9 @@ export default function DebtCollection({ user = null, isDirector = false }) {
 
                 {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao.
                     Hợp đồng chưa khai bước nào thì không có ai để chờ. */}
-                {r.task_node_id && !r.da_ban_giao && !r.blocked_reason && (
+                {r.task_node_id && !r.is_delivered && !r.blocked_reason && (
                   <p className="debt__waiting">
-                    <PackageCheck size={13} /> Chờ {r.nguoi_giao || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
+                    <PackageCheck size={13} /> Chờ {r.deliverer_name || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
                   </p>
                 )}
 
@@ -329,7 +331,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                       {!effectiveIsDirector && (
                         <button type="button" className="btn btn-primary btn-sm"
                           onClick={() => {
-                            setDangGhi(r)
+                            setRecordingRow(r)
                             setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
                             setReceiptFiles([])
                           }}>
@@ -341,7 +343,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                         <>
                           <button type="button" className="btn btn-secondary btn-sm"
                             style={{ color: '#9333ea', borderColor: '#9333ea44' }}
-                            onClick={() => setDangXoaNo(r)}
+                            onClick={() => setWritingOffRow(r)}
                             title="Giám đốc duyệt xóa nợ hoặc miễn giảm"
                           >
                             <Trash2 size={14} /> Xóa nợ / Miễn giảm
@@ -349,7 +351,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
 
                           <button type="button" className="btn btn-secondary btn-sm"
                             style={{ color: '#2563eb', borderColor: '#2563eb44' }}
-                            onClick={() => handleOpenChuyenNo(r)}
+                            onClick={() => handleOpenTransferDebt(r)}
                             title="Giám đốc duyệt chuyển nợ sang hợp đồng mới"
                           >
                             <ArrowRightLeft size={14} /> Chuyển nợ sang HĐ mới
@@ -366,16 +368,16 @@ export default function DebtCollection({ user = null, isDirector = false }) {
       )}
 
       {/* Modal Ghi Nhận Thanh Toán */}
-      <Modal open={Boolean(dangGhi)} onClose={() => { setDangGhi(null); setReceiptFiles([]) }} title="Ghi nhận thanh toán">
-        {dangGhi && (
+      <Modal open={Boolean(recordingRow)} onClose={() => { setRecordingRow(null); setReceiptFiles([]) }} title="Ghi nhận thanh toán">
+        {recordingRow && (
           <div className="debt__form">
             <p className="debt__form-hint">
-              <strong>{dangGhi.customer_name}</strong> · {dangGhi.contract_id}<br />
-              Còn thiếu <strong>{tien(dangGhi.remaining)}</strong>. Phiếu tạo ra ở trạng thái
+              <strong>{recordingRow.customer_name}</strong> · {recordingRow.contract_id}<br />
+              Còn thiếu <strong>{formatMoney(recordingRow.remaining)}</strong>. Phiếu tạo ra ở trạng thái
               <strong> Chờ duyệt</strong> — công nợ chỉ giảm sau khi giám đốc duyệt.
             </p>
             <label>Số tiền khách đưa
-              <input className="form-control" type="number" min="0" max={dangGhi.remaining}
+              <input className="form-control" type="number" min="0" max={recordingRow.remaining}
                 value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
             </label>
             <div className="receipt-field">
@@ -393,15 +395,15 @@ export default function DebtCollection({ user = null, isDirector = false }) {
               <input className="form-control" value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </label>
-            {Number(form.amount) > dangGhi.remaining && (
+            {Number(form.amount) > recordingRow.remaining && (
               <p className="debt__warn"><AlertTriangle size={14} /> Vượt quá số còn thiếu.</p>
             )}
             <div className="debt__form-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => { setDangGhi(null); setReceiptFiles([]) }}>Huỷ</button>
+              <button type="button" className="btn btn-secondary" onClick={() => { setRecordingRow(null); setReceiptFiles([]) }}>Huỷ</button>
               <button type="button" className="btn btn-primary"
                 disabled={saving || !form.amount || Number(form.amount) <= 0
-                  || Number(form.amount) > dangGhi.remaining || receiptFiles.length === 0}
-                onClick={ghiNhan}>
+                  || Number(form.amount) > recordingRow.remaining || receiptFiles.length === 0}
+                onClick={handleRecordPayment}>
                 {saving ? 'Đang lưu…' : 'Ghi nhận'}
               </button>
             </div>
@@ -411,11 +413,11 @@ export default function DebtCollection({ user = null, isDirector = false }) {
 
       {/* Sensitive Action Modal for Debt Write-Off */}
       <SensitiveActionModal
-        isOpen={Boolean(dangXoaNo)}
-        onClose={() => setDangXoaNo(null)}
+        isOpen={Boolean(writingOffRow)}
+        onClose={() => setWritingOffRow(null)}
         onConfirm={handleWriteOffDebt}
-        title={`Xóa nợ / Miễn giảm công nợ HĐ ${dangXoaNo?.contract_id} (Giám Đốc)`}
-        description={`Xác nhận miễn giảm ${tien(dangXoaNo?.remaining)} còn lại cho khách hàng ${dangXoaNo?.customer_name}. Hợp đồng sẽ chuyển sang trạng thái Đã xóa nợ (written_off).`}
+        title={`Xóa nợ / Miễn giảm công nợ HĐ ${writingOffRow?.contract_id} (Giám Đốc)`}
+        description={`Xác nhận miễn giảm ${formatMoney(writingOffRow?.remaining)} còn lại cho khách hàng ${writingOffRow?.customer_name}. Hợp đồng sẽ chuyển sang trạng thái Đã xóa nợ (written_off).`}
         actionLabel="Xác nhận xóa nợ"
         actionVariant="purple"
         requireReason={true}
@@ -424,8 +426,8 @@ export default function DebtCollection({ user = null, isDirector = false }) {
       />
 
       {/* Modal Chuyển Nợ Sang Hợp Đồng Mới (Giám Đốc) */}
-      <Modal open={Boolean(dangChuyenNo)} onClose={() => setDangChuyenNo(null)} title="Chuyển nợ sang Hợp đồng mới (Giám Đốc)">
-        {dangChuyenNo && (
+      <Modal open={Boolean(transferringRow)} onClose={() => setTransferringRow(null)} title="Chuyển nợ sang Hợp đồng mới (Giám Đốc)">
+        {transferringRow && (
           <div className="debt__form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {/* Thẻ tóm tắt HĐ Nguồn */}
             <div style={{
@@ -447,21 +449,21 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                   padding: '2px 8px',
                   borderRadius: 6
                 }}>
-                  Nợ {tien(dangChuyenNo.remaining)}
+                  Nợ {formatMoney(transferringRow.remaining)}
                 </span>
               </div>
               <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '1rem' }}>
-                {dangChuyenNo.contract_id} · <span style={{ color: '#2563eb' }}>{dangChuyenNo.customer_name}</span>
+                {transferringRow.contract_id} · <span style={{ color: '#2563eb' }}>{transferringRow.customer_name}</span>
               </div>
               <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
-                Dịch vụ: {dangChuyenNo.service_type || 'Đo đạc / Pháp lý'} · Tổng giá trị: {tien(dangChuyenNo.total_value)}
+                Dịch vụ: {transferringRow.service_type || 'Đo đạc / Pháp lý'} · Tổng giá trị: {formatMoney(transferringRow.total_value)}
               </div>
             </div>
 
             {/* Chọn Hợp đồng nhận nợ */}
             <div>
               <label style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', marginBottom: 6 }}>
-                HỢP ĐỒNG NHẬN NỢ (CÙNG KHÁCH HÀNG <span style={{ color: '#2563eb' }}>{dangChuyenNo.customer_name}</span>) <span className="debt__req">*</span>
+                HỢP ĐỒNG NHẬN NỢ (CÙNG KHÁCH HÀNG <span style={{ color: '#2563eb' }}>{transferringRow.customer_name}</span>) <span className="debt__req">*</span>
               </label>
 
               {loadingTargets ? (
@@ -496,7 +498,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                       Khách hàng chưa có hợp đồng nào khác để nhận nợ
                     </strong>
                     <p style={{ margin: 0, fontSize: '0.82rem', color: '#b45309', lineHeight: 1.5 }}>
-                      Khách hàng <strong>{dangChuyenNo.customer_name}</strong> hiện chưa có hợp đồng nào khác đang hoạt động trong hệ thống.
+                      Khách hàng <strong>{transferringRow.customer_name}</strong> hiện chưa có hợp đồng nào khác đang hoạt động trong hệ thống.
                       Vui lòng tạo Hợp đồng mới cho khách hàng này tại phân hệ <strong>Hợp Đồng</strong> trước khi thực hiện chuyển gộp nợ.
                     </p>
                   </div>
@@ -516,7 +518,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                     <option value="">-- Chọn hợp đồng nhận nợ ({eligibleTargets.length} hợp đồng khả dụng) --</option>
                     {eligibleTargets.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.id} — {t.service_type} (Tổng: {tien(t.total_value)} | Nợ hiện tại: {tien(t.remaining_amount)})
+                        {t.id} — {t.service_type} (Tổng: {formatMoney(t.total_value)} | Nợ hiện tại: {formatMoney(t.remaining_amount)})
                       </option>
                     ))}
                   </select>
@@ -538,13 +540,13 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                       <div>
                         <div style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 600 }}>DỰ KIẾN SAU KHI GỘP NỢ:</div>
                         <div style={{ fontSize: '0.85rem', color: '#14532d', marginTop: 2 }}>
-                          HĐ <strong>{selectedTarget.id}</strong> (Nợ cũ: {tien(selectedTarget.remaining_amount)}) + Nợ chuyển sang ({tien(dangChuyenNo.remaining)})
+                          HĐ <strong>{selectedTarget.id}</strong> (Nợ cũ: {formatMoney(selectedTarget.remaining_amount)}) + Nợ chuyển sang ({formatMoney(transferringRow.remaining)})
                         </div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.75rem', color: '#166534' }}>TỔNG NỢ MỚI</div>
                         <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#15803d' }}>
-                          {tien(Number(selectedTarget.remaining_amount || 0) + Number(dangChuyenNo.remaining || 0))}
+                          {formatMoney(Number(selectedTarget.remaining_amount || 0) + Number(transferringRow.remaining || 0))}
                         </div>
                       </div>
                     </div>
@@ -562,21 +564,21 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                 className="form-control"
                 rows={3}
                 placeholder="Nhập lý do chuyển nợ gộp sang hợp đồng mới (VD: Khách hàng yêu cầu thanh toán gộp vào đợt 2 của HĐ mới)..."
-                value={chuyenNoReason}
-                onChange={(e) => setChuyenNoReason(e.target.value)}
+                value={transferReason}
+                onChange={(e) => setTransferReason(e.target.value)}
                 style={{ resize: 'vertical' }}
               />
             </div>
 
             {/* Footer */}
             <div className="debt__form-footer" style={{ marginTop: 8 }}>
-              <button type="button" className="btn btn-secondary" onClick={() => setDangChuyenNo(null)}>
+              <button type="button" className="btn btn-secondary" onClick={() => setTransferringRow(null)}>
                 Huỷ
               </button>
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={saving || !targetContractId || !chuyenNoReason.trim() || loadingTargets || eligibleTargets.length === 0}
+                disabled={saving || !targetContractId || !transferReason.trim() || loadingTargets || eligibleTargets.length === 0}
                 onClick={handleCarryForwardDebt}
                 style={{
                   display: 'flex',

@@ -5,6 +5,7 @@ from docx import Document
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTPUT_DIR = os.path.join(BACKEND_DIR, "static", "generated_docs")
 CONTRACT_TEMPLATE_VERSIONS = {
+    "contract_template_v1": "mau_hop_dong.docx",
     "mau_hop_dong_v1": "mau_hop_dong.docx",
 }
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
+import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
@@ -24,9 +24,9 @@ export default function AnalyticsScreen({ mode = 'dashboard' }) {
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải dữ liệu...</div>;
 
-  const cashBal = summary.cash_balance ?? summary.tien_mat ?? 0;
-  const bankBal = summary.bank_balance ?? summary.ngan_hang ?? 0;
-  const netAdv = summary.net_advance ?? summary.tam_ung_net ?? 0;
+  const cashBal = summary.cash_balance ?? 0;
+  const bankBal = summary.bank_balance ?? 0;
+  const netAdv = summary.net_advance ?? 0;
 
   if (mode === 'dashboard') return (
     <div>

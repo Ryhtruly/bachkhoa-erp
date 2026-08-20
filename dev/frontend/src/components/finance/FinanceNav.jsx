@@ -43,7 +43,7 @@ export const FINANCE_GROUPS = [
       { id: 'payroll-worker', label: 'Lương Khoán Nhiệm Vụ', icon: Hammer, desc: 'Lương 3P kỹ thuật & đo đạc' },
       { id: 'bang-gia', label: 'Bảng Giá Khoán', icon: Banknote, desc: 'Đơn giá khoán công việc' },
       { id: 'payroll-office', label: 'Lương VP & Hoa Hồng', icon: UsersRound, desc: 'Bảng lương văn phòng' },
-      { id: 'cashflow-settings', label: 'Thiết Lập Tài Chính', icon: Settings, desc: 'Danh mục thu/chi & cấu hình' },
+      { id: 'cashflow-settings', label: 'Thiết Lập Tài Chính', icon: Settings, desc: 'Danh mục thu/chi & cấu hình', directorOnly: true },
     ]
   }
 ];
@@ -54,6 +54,8 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
       let filteredTabs = group.tabs;
       if (isDirector) {
         filteredTabs = filteredTabs.filter(tab => tab.id !== 'cashflow-print');
+      } else {
+        filteredTabs = filteredTabs.filter(tab => !tab.directorOnly);
       }
       return { ...group, tabs: filteredTabs };
     });

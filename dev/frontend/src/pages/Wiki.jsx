@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Book, UploadCloud, Link as LinkIcon, Search, Filter, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { Book, UploadCloud, Link as LinkIcon, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
+import { Modal, FormRow } from '../components/ui';
 
 export default function Wiki() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   
   // Search & Filter & Pagination states
   const [searchQuery, setSearchQuery] = useState('');
@@ -13,10 +15,8 @@ export default function Wiki() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  const { showToast } = useToast(); // Fix: standardizing hook name if changed, or use addToast if Context provides addToast. 
-  // Let's check Context provided name. Previous Wiki.jsx used `addToast`. I will use addToast to be safe. Wait, context uses `showToast` in other files (like Settings.jsx). Let's extract both and use whichever exists.
   const toastCtx = useToast();
-  const showMessage = toastCtx.showToast || toastCtx.addToast || console.log;
+  const showMessage = toastCtx.addToast || toastCtx.showToast || console.log;
 
   const [formData, setFormData] = useState({
     id: '', title: '', category: 'Quy trình ISO'
@@ -65,6 +65,7 @@ export default function Wiki() {
       return;
     }
     
+    setSubmitting(true);
     try {
       const data = new FormData();
       data.append('id', formData.id);
@@ -88,6 +89,8 @@ export default function Wiki() {
       }
     } catch {
       showMessage('Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -194,49 +197,135 @@ export default function Wiki() {
         )}
       </div>
 
-      {isModalOpen && (
-        <div className="modal-overlay open" onClick={(e) => { if (e.target.className.includes('modal-overlay')) setIsModalOpen(false) }}>
-          <div className="modal card" style={{ maxWidth: '500px', width: '100%', border: '1px solid var(--border-subtle)' }}>
-            <div className="modal-header">
-              <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem' }}>
-                <UploadCloud size={20} color="var(--blue-500)" /> Thêm Tài Liệu Mới
-              </h2>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>✕</button>
-            </div>
-            <form onSubmit={handleUploadWiki} style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px' }}>
-              <div style={{ background: 'rgba(59, 130, 246, 0.05)', padding: '12px', borderRadius: '8px', fontSize: '0.85rem', color: 'var(--blue-400)' }}>
-                ℹ️ Tải lên tệp tài liệu (PDF, Word, Excel...) từ máy tính của bạn.
-              </div>
-              <div>
-                <label>Mã tài liệu (VD: ISO-001)</label>
-                <input required value={formData.id} onChange={e => setFormData({...formData, id: e.target.value})} type="text" placeholder="Nhập mã duy nhất..." />
-              </div>
-              <div>
-                <label>Tên quy trình / Tài liệu</label>
-                <input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} type="text" placeholder="Quy trình đo đạc..." />
-              </div>
-              <div>
-                <label>Phân loại</label>
-                <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                  {categories.filter(c => c !== 'Tất cả').map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                </select>
-              </div>
-              <div>
-                <label>File đính kèm</label>
-                <div style={{ position: 'relative' }}>
-                  <input required onChange={e => setSelectedFile(e.target.files[0])} type="file" style={{ width: '100%' }} />
-                </div>
-              </div>
-              <div className="modal-footer" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Hủy</button>
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <UploadCloud size={16} /> Lưu vào hệ thống
-                </button>
-              </div>
-            </form>
+      <Modal
+        open={isModalOpen}
+        onClose={() => { if (!submitting) setIsModalOpen(false); }}
+        title="Thêm Tài Liệu Mới"
+        size="md"
+      >
+        <form onSubmit={handleUploadWiki} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{
+            background: 'rgba(59, 130, 246, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            fontSize: '0.86rem',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <Info size={18} style={{ flexShrink: 0 }} />
+            <span>Tải lên tệp tài liệu (PDF, Word, Excel...) từ máy tính của bạn lên hệ thống lưu trữ.</span>
           </div>
-        </div>
-      )}
+
+          <FormRow label="MÃ TÀI LIỆU (VD: ISO-001)" required>
+            <input
+              type="text"
+              className="form-control"
+              required
+              placeholder="Nhập mã tài liệu duy nhất (VD: ISO-001, ST-2026)..."
+              value={formData.id}
+              onChange={e => setFormData({ ...formData, id: e.target.value })}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </FormRow>
+
+          <FormRow label="TÊN QUY TRÌNH / TÀI LIỆU" required>
+            <input
+              type="text"
+              className="form-control"
+              required
+              placeholder="Ví dụ: Quy trình đo đạc bản đồ địa chính..."
+              value={formData.title}
+              onChange={e => setFormData({ ...formData, title: e.target.value })}
+            />
+          </FormRow>
+
+          <FormRow label="PHÂN LOẠI TÀI LIỆU" required>
+            <select
+              className="form-control form-select"
+              required
+              value={formData.category}
+              onChange={e => setFormData({ ...formData, category: e.target.value })}
+            >
+              {categories.filter(c => c !== 'Tất cả').map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </FormRow>
+
+          <FormRow label="FILE ĐÍNH KÈM" required>
+            <div style={{
+              border: '2px dashed #cbd5e1',
+              borderRadius: '10px',
+              padding: '16px',
+              textAlign: 'center',
+              background: '#f8fafc',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s',
+            }}>
+              <input
+                type="file"
+                required
+                onChange={e => setSelectedFile(e.target.files[0] || null)}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: 'pointer'
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <FileUp size={24} color="#64748b" />
+                {selectedFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 600, fontSize: '0.88rem' }}>
+                    <CheckCircle size={16} /> {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                  </div>
+                ) : (
+                  <>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
+                      Nhấp vào đây hoặc kéo thả file để tải lên
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                      Hỗ trợ PDF, DOCX, XLSX, PNG, JPG...
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </FormRow>
+
+          <div style={{
+            marginTop: '8px',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '12px',
+            borderTop: '1px solid #e2e8f0',
+            paddingTop: '16px'
+          }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsModalOpen(false)}
+              disabled={submitting}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <UploadCloud size={16} /> {submitting ? 'Đang tải lên...' : 'Lưu vào hệ thống'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </section>
   );
 }

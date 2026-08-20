@@ -231,17 +231,17 @@ def get_notifications_summary(
             _EMPLOYEE_LEGAL_DOSSIER_QUERY, {"employee_id": employee.id}
         ).mappings().all():
             if row["status"] == "ASSIGNED":
-                nhan = f"Hồ sơ '{row['dossier_name']}' — có hồ sơ mới từ bộ phận đo vẽ, chờ tiếp nhận"
+                notification_label = f"Hồ sơ '{row['dossier_name']}' — có hồ sơ mới từ bộ phận đo vẽ, chờ tiếp nhận"
             else:
-                ly_do = {
+                pause_reason = {
                     "AGENCY": "đang chờ cơ quan",
                     "SURVEYOR": "đang chờ đo vẽ sửa bản vẽ",
                     "INTERNAL": "đang chờ nội bộ",
                 }.get(row["sub_status"], "đang tạm dừng")
-                nhan = f"Hồ sơ '{row['dossier_name']}' {ly_do}"
+                notification_label = f"Hồ sơ '{row['dossier_name']}' {pause_reason}"
             items.append({
                 "type": "legal_dossier",
-                "label": nhan,
+                "label": notification_label,
                 "contract_id": row["contract_id"],
                 "service_line_id": row["service_line_id"],
                 "node_key": row["node_key"],

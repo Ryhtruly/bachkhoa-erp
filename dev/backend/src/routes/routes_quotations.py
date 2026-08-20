@@ -36,14 +36,14 @@ def generate_quote(
             "date_generated": datetime.now().strftime("%d/%m/%Y")
         }
         
-        from core import doc_generator
-        success_gen, download_url, full_path = doc_generator.generate_document(
+        from src.core import doc_generator
+        is_generated, download_url, full_path = doc_generator.generate_document(
             data=quote_data,
             template_name="mau_bao_gia.docx", # Giả định đã có file này trong thư mục templates
             output_prefix="Quotation"
         )
         
-        if not success_gen:
+        if not is_generated:
              download_url = f"/static/generated_quotes/Quotation_{payload.customer_name}.docx" # Fallback if no template exists
         
         # 3. Giả lập gửi tự động qua Zalo (nếu có Webhook thì có thể gọi zalo_service)

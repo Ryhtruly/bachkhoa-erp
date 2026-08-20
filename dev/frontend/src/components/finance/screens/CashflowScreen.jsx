@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, docSoTiengViet, CATEGORY_AUTO_MAPPING } from '../utils';
+import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
 import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { RefreshCw, DollarSign, Link, PlusCircle, MinusCircle, AlertCircle, Printer, Wallet, Building2, TrendingUp, TrendingDown } from 'lucide-react';
@@ -129,8 +129,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
       });
   }, [data, search, sort]);
 
-  const totalThu = sortedFiltered.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
-  const totalChi = sortedFiltered.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
+  const totalIncome = sortedFiltered.filter(t => t.type === 'Thu').reduce((s, t) => s + t.amount, 0);
+  const totalExpense = sortedFiltered.filter(t => t.type === 'Chi').reduce((s, t) => s + t.amount, 0);
 
   const reportTitle = mode === 'all' ? 'Sổ Nhật Ký Thu Chi' : mode === 'cash' ? 'Sổ Quỹ Tiền Mặt' : 'Sổ Quỹ Ngân Hàng';
   const reportColumns = [
@@ -155,8 +155,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     'Diễn giải': 'TỔNG CỘNG',
     'Đối tác': '',
     'Hình thức': '',
-    income: fmt(totalThu),
-    expense: fmt(totalChi)
+    income: fmt(totalIncome),
+    expense: fmt(totalExpense)
   };
 
   const handlePrintReport = () => {
@@ -172,7 +172,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     <div>
       <FinanceScreenHeader
         title={mode === 'all' ? 'Nhật Ký Thu Chi' : mode === 'cash' ? 'Quỹ Tiền Mặt' : 'Tài Khoản Ngân Hàng'}
-        subtitle="Quản lý dòng tiền, ghi nhận các khoản thu chi thực tế"
+        subtitle={mode === 'all' ? 'Quản lý dòng tiền, theo dõi các khoản thu chi thực tế' : mode === 'cash' ? 'Theo dõi số dư và biến động thu chi quỹ tiền mặt thực tế' : 'Theo dõi số dư và biến động thu chi tài khoản ngân hàng'}
         onRefresh={load}
         actions={
           <>
@@ -244,9 +244,9 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           subtitle={`Kỳ báo cáo: ${month ? `Tháng ${month.split('-')[1]}/${month.split('-')[0]}` : 'Toàn bộ'} · Phân loại: ${filters.type === 'All' ? 'Tất cả' : filters.type} · Hình thức: ${filters.payment_method === 'All' ? 'Tất cả' : filters.payment_method}`}
           summary={[
             { label: 'Số giao dịch', value: sortedFiltered.length.toLocaleString('vi-VN') },
-            { label: 'Tổng thu', value: fmt(totalThu) },
-            { label: 'Tổng chi', value: fmt(totalChi) },
-            { label: 'Chênh lệch', value: fmt(totalThu - totalChi) },
+            { label: 'Tổng thu', value: fmt(totalIncome) },
+            { label: 'Tổng chi', value: fmt(totalExpense) },
+            { label: 'Chênh lệch', value: fmt(totalIncome - totalExpense) },
           ]}
           columns={reportColumns}
           rows={sortedFiltered}

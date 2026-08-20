@@ -162,9 +162,9 @@ def update_legal_submission(
 
     # Ô ngày để trống gửi lên là chuỗi rỗng, Postgres không ép được sang kiểu date
     # và trả 500. Người dùng xoá ngày đi là chuyện bình thường, phải hiểu là NULL.
-    for cot_ngay in ("received_date", "expected_return_date"):
-        if cot_ngay in updates and not (updates[cot_ngay] or "").strip():
-            updates[cot_ngay] = None
+    for date_column in ("received_date", "expected_return_date"):
+        if date_column in updates and not (updates[date_column] or "").strip():
+            updates[date_column] = None
 
     # Cột gov_status đã đổi tên thành legacy_gov_status; giữ nguyên tên trường trong
     # API để frontend không phải sửa. Đợt 3 sẽ thay hẳn bằng legal_dossiers.status.

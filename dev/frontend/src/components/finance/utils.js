@@ -11,52 +11,52 @@ export const getLocalISOTime = () => {
     return (new Date(Date.now() - tzOffset)).toISOString().slice(0, 16);
 };
 
-export const docSoTiengViet = (number) => {
+export const spellVietnameseCurrency = (number) => {
   const num = Number(number) || 0;
   if (num === 0) return 'Không đồng';
-  const dv = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
-  const chuc = ['', 'mười', 'hai mươi', 'ba mươi', 'bốn mươi', 'năm mươi', 'sáu mươi', 'bảy mươi', 'tám mươi', 'chín mươi'];
-  const tram = ['không trăm', 'một trăm', 'hai trăm', 'ba trăm', 'bốn trăm', 'năm trăm', 'sáu trăm', 'bảy trăm', 'tám trăm', 'chín trăm'];
+  const digits = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+  const tens = ['', 'mười', 'hai mươi', 'ba mươi', 'bốn mươi', 'năm mươi', 'sáu mươi', 'bảy mươi', 'tám mươi', 'chín mươi'];
+  const hundreds = ['không trăm', 'một trăm', 'hai trăm', 'ba trăm', 'bốn trăm', 'năm trăm', 'sáu trăm', 'bảy trăm', 'tám trăm', 'chín trăm'];
 
-  function doc3So(n, showZeroTram) {
-    let tr = Math.floor(n / 100);
-    let ch = Math.floor((n % 100) / 10);
-    let dv_val = n % 10;
+  function readGroupOfThree(n, showZeroHundreds) {
+    const hundredDigit = Math.floor(n / 100);
+    const tenDigit = Math.floor((n % 100) / 10);
+    const unitDigit = n % 10;
     let res = '';
-    if (tr > 0 || showZeroTram) {
-      res += tram[tr] + ' ';
+    if (hundredDigit > 0 || showZeroHundreds) {
+      res += hundreds[hundredDigit] + ' ';
     }
-    if (ch > 0) {
-      if (ch === 1) res += 'mười ';
-      else res += chuc[ch] + ' ';
-    } else if (tr > 0 && dv_val > 0) {
+    if (tenDigit > 0) {
+      if (tenDigit === 1) res += 'mười ';
+      else res += tens[tenDigit] + ' ';
+    } else if (hundredDigit > 0 && unitDigit > 0) {
       res += 'lẻ ';
     }
-    if (dv_val > 0) {
-      if (dv_val === 1 && ch > 1) res += 'mốt ';
-      else if (dv_val === 5 && ch > 0) res += 'lăm ';
-      else res += dv[dv_val] + ' ';
+    if (unitDigit > 0) {
+      if (unitDigit === 1 && tenDigit > 1) res += 'mốt ';
+      else if (unitDigit === 5 && tenDigit > 0) res += 'lăm ';
+      else res += digits[unitDigit] + ' ';
     }
     return res;
   }
 
   let str = '';
-  let ty = Math.floor(num / 1e9);
-  let tr_t = Math.floor((num % 1e9) / 1e6);
-  let ng = Math.floor((num % 1e6) / 1e3);
-  let d = Math.floor(num % 1e3);
+  const billions = Math.floor(num / 1e9);
+  const millions = Math.floor((num % 1e9) / 1e6);
+  const thousands = Math.floor((num % 1e6) / 1e3);
+  const units = Math.floor(num % 1e3);
 
-  if (ty > 0) {
-    str += doc3So(ty, false) + 'tỷ ';
+  if (billions > 0) {
+    str += readGroupOfThree(billions, false) + 'tỷ ';
   }
-  if (tr_t > 0) {
-    str += doc3So(tr_t, ty > 0) + 'triệu ';
+  if (millions > 0) {
+    str += readGroupOfThree(millions, billions > 0) + 'triệu ';
   }
-  if (ng > 0) {
-    str += doc3So(ng, ty > 0 || tr_t > 0) + 'nghìn ';
+  if (thousands > 0) {
+    str += readGroupOfThree(thousands, billions > 0 || millions > 0) + 'nghìn ';
   }
-  if (d > 0) {
-    str += doc3So(d, ty > 0 || tr_t > 0 || ng > 0) + '';
+  if (units > 0) {
+    str += readGroupOfThree(units, billions > 0 || millions > 0 || thousands > 0) + '';
   }
 
   let res = str.trim();

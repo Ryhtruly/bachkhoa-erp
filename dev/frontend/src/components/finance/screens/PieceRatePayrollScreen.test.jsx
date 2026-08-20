@@ -1,12 +1,12 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import LuongKhoan3PScreen from './LuongKhoan3PScreen';
+import PieceRatePayrollScreen from './PieceRatePayrollScreen';
 import { ToastProvider } from '../../../contexts/ToastContext';
 
 const response = data => Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }));
 
-describe('LuongKhoan3PScreen payroll closing', () => {
+describe('PieceRatePayrollScreen payroll closing', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
@@ -43,7 +43,7 @@ describe('LuongKhoan3PScreen payroll closing', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    render(<ToastProvider><LuongKhoan3PScreen isDirector={true} /></ToastProvider>);
+    render(<ToastProvider><PieceRatePayrollScreen isDirector={true} /></ToastProvider>);
 
     fireEvent.click(await screen.findByRole('button', { name: /chốt lương \(29\)/i }, { timeout: 5000 }));
 

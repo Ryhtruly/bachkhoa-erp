@@ -19,11 +19,16 @@ import './handover.css'
  * Giám đốc duyệt cho nợ ngoại lệ. Khung này chỉ lo phần tiền + tải bộ hồ sơ.
  */
 
-const tien = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
+const formatMoney = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
+
+const formatDate = (v) => {
+  if (!v) return ''
+  try { return new Intl.DateTimeFormat('vi-VN').format(new Date(v)) } catch { return v }
+}
 
 // Cột ngày trong lịch sử thu tiền rất hẹp. Năm chỉ đáng chiếm chỗ khi nó khác
 // năm nay — mọi phiếu trong cùng năm thì "13/8" là đủ để phân biệt.
-const ngayGon = (v) => {
+const formatShortDate = (v) => {
   if (!v) return ''
   try {
     const d = new Date(v)
@@ -38,6 +43,8 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showPayment, setShowPayment] = useState(false)
+  const [showDeliver, setShowDeliver] = useState(false)
+  const [deliverNote, setDeliverNote] = useState('')
   const [showOverrideModal, setShowOverrideModal] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ amount: '', payment_method: 'Tiền mặt', note: '' })
@@ -107,6 +114,31 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
     return () => { huy = true }
   }, [taskNodeId])
 
+  const post = useCallback(async (endpoint, body, successMessage) => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/handover/${taskNodeId}/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        addToast?.(payload.detail || 'Không thực hiện được', 'error')
+        return false
+      }
+      addToast?.(successMessage, 'success')
+      await load()
+      onChanged?.()
+      return true
+    } catch {
+      addToast?.('Mất kết nối tới máy chủ', 'error')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }, [taskNodeId, addToast, load, onChanged])
+
   const submitPayment = async () => {
     setSaving(true)
     try {
@@ -131,9 +163,6 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
     }
   }
 
-  // Tài liệu bàn giao nằm rải ở bốn chỗ: file hợp đồng, bộ hồ sơ pháp lý, thư
-  // mục bản vẽ, minh chứng từng bước. Người giao đang phải tự nhớ và mở từng
-  // chỗ — sót một cái là khách phải quay lại.
   const taiTronBo = async () => {
     setDangTaiGoi(true)
     try {
@@ -160,15 +189,38 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
     }
   }
 
+  const handleVoucherDecision = async (voucherId, decision) => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/finance/cashflow/${voucherId}/${decision}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: decision === 'reject' ? JSON.stringify({ reason: 'Từ chối tại bước bàn giao' }) : '{}',
+      })
+      const payload = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        addToast?.(payload.detail || 'Thao tác thất bại', 'error')
+        return
+      }
+      addToast?.(decision === 'approve' ? 'Đã duyệt — công nợ đã trừ' : 'Đã từ chối phiếu', 'success')
+      await load()
+      onChanged?.()
+    } catch {
+      addToast?.('Mất kết nối tới máy chủ', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return <div className="handover handover--loading">Đang tải khối công nợ…</div>
   if (error) return <p className="handover handover--pending"><Lock size={14} /> {error}</p>
   if (!state) return null
 
-  const { debt, gate, lane_b: lanB, installments: dot } = state
-  const conNo = !debt.is_settled
+  const { debt, gate, lane_a: laneA, lane_b: laneB, installments = [] } = state
+  const hasOutstandingDebt = !debt.is_settled
 
   return (
-    <section className={`handover${conNo ? ' handover--debt' : ''}`}>
+    <section className={`handover${hasOutstandingDebt ? ' handover--debt' : ''}`}>
       {!gate.is_open && (
         <p className="handover__gate"><Lock size={14} /> {gate.reason} — chưa bàn giao được</p>
       )}
@@ -178,25 +230,25 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
           cùng cỡ nên mắt không biết bám vào đâu. Người nhìn khối này chỉ hỏi
           đúng một câu: còn phải đòi bao nhiêu nữa. Cho con số đó cỡ lớn nhất,
           phần còn lại lùi xuống thành dòng phụ. */}
-      <div className={`handover__money${conNo ? ' is-debt' : ' is-settled'}`}>
+      <div className={`handover__money${hasOutstandingDebt ? ' is-debt' : ' is-settled'}`}>
         <div className="handover__money-head">
           <span className="handover__money-state">
-            {conNo ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
-            {conNo ? 'Còn thiếu' : 'Đã thu đủ'}
+            {hasOutstandingDebt ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
+            {hasOutstandingDebt ? 'Còn thiếu' : 'Đã thu đủ'}
           </span>
           <strong className="handover__money-figure">
-            {tien(conNo ? debt.remaining : debt.total_value)}
+            {formatMoney(hasOutstandingDebt ? debt.remaining : debt.total_value)}
           </strong>
         </div>
         <div className="handover__money-bar" role="presentation">
           <span style={{ width: `${Math.min(100, Math.max(0, Number(debt.percent) || 0))}%` }} />
         </div>
         <p className="handover__money-detail">
-          {tien(debt.paid)} / {tien(debt.total_value)} · {debt.percent}%
+          {formatMoney(debt.paid)} / {formatMoney(debt.total_value)} · {debt.percent}%
         </p>
         {debt.pending_amount > 0 && (
           <p className="handover__pending">
-            <AlertTriangle size={13} /> {tien(debt.pending_amount)} đã ghi nhận nhưng
+            <AlertTriangle size={13} /> {formatMoney(debt.pending_amount)} đã ghi nhận nhưng
             <strong> giám đốc chưa duyệt</strong> — chưa trừ vào công nợ.
           </p>
         )}
@@ -208,7 +260,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
           </div>
         )}
 
-        {conNo && !debt.has_override && (
+        {hasOutstandingDebt && !debt.has_override && (
           <div style={{ marginTop: 10 }}>
             <button
               type="button"
@@ -222,22 +274,20 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
         )}
       </div>
 
-      {dot.length > 0 && (
+      {installments.length > 0 && (
         <div className="handover__history">
           <div className="handover__history-head">
             <span>Lịch sử thu tiền</span>
-            <em>{dot.length} đợt</em>
+            <em>{installments.length} đợt</em>
           </div>
           <ul className="handover__installments">
-            {dot.map((d) => (
+            {installments.map((d) => (
               <li key={d.id} className={d.is_approved ? '' : 'is-pending'}>
-                <span className="handover__inst-date">{ngayGon(d.transaction_date)}</span>
-                <span className="handover__inst-amount">{tien(d.amount)}</span>
+                <span className="handover__inst-date">{formatShortDate(d.transaction_date)}</span>
+                <span className="handover__inst-amount">{formatMoney(d.amount)}</span>
                 {d.receipt_attachments?.length || d.receipt_attachment_url
                   ? <ReceiptLinks attachments={d.receipt_attachments} legacyUrl={d.receipt_attachment_url} addToast={addToast} compact />
                   : <span className="handover__inst-nobill" title="Thiếu ảnh bill">—</span>}
-                {/* Chỉ HIỂN THỊ trạng thái — duyệt/từ chối làm một chỗ ở hộp
-                    "Phiếu thu chờ tôi duyệt" (Tổng Quan) / chuông, tránh trùng. */}
                 <span className={`handover__inst-status${d.is_approved ? '' : ' is-waiting'}`}>
                   {d.is_approved ? 'Đã duyệt' : 'Chờ duyệt'}
                 </span>
@@ -263,36 +313,51 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
         </div>
       )}
 
-      {/* ── Thu tiền: việc của kế toán ──────────────────────────────
-          Giao hồ sơ cho khách nằm trong CHECKLIST của bước và chốt bằng nghiệm
-          thu — không còn nút "xác nhận bàn giao" riêng ở đây nữa. Khối này chỉ
-          còn lo phần tiền. */}
+      {/* ── Thu tiền & Bàn giao ─────────────────────────────────── */}
       <div className="handover__lanes">
-        <div className={`handover__lane${lanB.done ? ' is-done' : ''}`}>
-          <span className="handover__lane-mark">
-            {lanB.done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
-          </span>
-          <div>
-            <strong>{lanB.label}</strong>
-            <p>{lanB.done ? lanB.actor : lanB.desc}</p>
-            {!lanB.done && lanB.actor && <small className="handover__lane-who">Người phụ trách: {lanB.actor}</small>}
-          </div>
-          {!readOnly && lanB.can_record_payment && !lanB.done && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
-              setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
-              setReceiptFiles([])
-              setShowPayment(true)
-            }}>
-              <Plus size={14} /> Ghi nhận thanh toán
-            </button>
-          )}
-        </div>
+        {[laneA, laneB].filter(Boolean).map((lane, i) => {
+          const isDossierLane = i === 0 && Boolean(laneA)
+          const subInfo = lane.done
+            ? [lane.actor, isDossierLane ? formatDate(lane.delivered_at) : null].filter(Boolean).join(' · ')
+            : lane.desc
+          return (
+            <div key={lane.label} className={`handover__lane${lane.done ? ' is-done' : ''}`}>
+              <span className="handover__lane-mark">
+                {lane.done ? <CheckCircle2 size={17} /> : <Circle size={17} />}
+              </span>
+              <div>
+                <strong>{lane.label}</strong>
+                <p>{subInfo}</p>
+                {isDossierLane && lane.done && lane.acknowledged_debt && (
+                  <small className="handover__lane-warn">
+                    Giao khi còn thiếu {formatMoney(lane.remaining_at_delivery)}
+                  </small>
+                )}
+                {!lane.done && lane.actor && <small className="handover__lane-who">Người phụ trách: {lane.actor}</small>}
+              </div>
+              {!readOnly && isDossierLane && lane.can_do && (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowDeliver(true)}>
+                  Xác nhận bàn giao
+                </button>
+              )}
+              {!readOnly && !isDossierLane && lane.can_record_payment && !lane.done && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
+                  setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                  setReceiptFiles([])
+                  setShowPayment(true)
+                }}>
+                  <Plus size={14} /> Ghi nhận thanh toán
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Chỉ nhắc khi còn vướng tiền — giao hồ sơ đã là việc của nghiệm thu. */}
       {!state.is_finished && gate.is_open && (
-        conNo
-          ? <p className="handover__verdict">Còn thiếu {tien(debt.remaining)} — thu đủ hoặc Giám đốc duyệt cho nợ ngoại lệ thì mới nghiệm thu hoàn thành bước bàn giao.</p>
+        hasOutstandingDebt
+          ? <p className="handover__verdict">Còn thiếu {formatMoney(debt.remaining)} — thu đủ hoặc Giám đốc duyệt cho nợ ngoại lệ thì mới nghiệm thu hoàn thành bước bàn giao.</p>
           : <p className="handover__verdict is-ok">Đã thu đủ tiền — nghiệm thu bước này để hoàn thành bàn giao.</p>
       )}
 
@@ -305,7 +370,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
       <Modal open={showPayment} onClose={() => { setShowPayment(false); setReceiptFiles([]) }} title="Ghi nhận đợt thanh toán" overlayClassName="modal-overlay--top">
         <div className="handover__form">
           <p className="handover__form-hint">
-            Còn thiếu <strong>{tien(debt.remaining)}</strong>. Phiếu tạo ra ở trạng thái
+            Còn thiếu <strong>{formatMoney(debt.remaining)}</strong>. Phiếu tạo ra ở trạng thái
             <strong> Chờ duyệt</strong> — công nợ chỉ giảm sau khi giám đốc duyệt.
           </p>
           <label>Số tiền khách đưa
@@ -346,13 +411,54 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
         </div>
       </Modal>
 
+      {/* ── Xác nhận bàn giao khi còn nợ ───────────────────────── */}
+      <Modal open={showDeliver} onClose={() => setShowDeliver(false)} title="Xác nhận bàn giao">
+        <div className="handover__form">
+          {hasOutstandingDebt ? (
+            <div className="handover__confirm">
+              <p className="handover__confirm-line">Giá trị <strong>{formatMoney(debt.total_value)}</strong></p>
+              <p className="handover__confirm-line">Đã thu <strong>{formatMoney(debt.paid)}</strong> ({debt.percent}%)</p>
+              <p className="handover__confirm-line handover__confirm-line--danger">
+                Còn thiếu <strong>{formatMoney(debt.remaining)}</strong>
+              </p>
+              <p className="handover__confirm-ask">
+                Bạn có chắc giao tài liệu cho khách khi <strong>chưa thu đủ tiền</strong> không?
+              </p>
+              <p className="handover__confirm-note">
+                Hồ sơ sẽ ở trạng thái <strong>“Chưa hoàn thành”</strong> cho tới khi thu đủ công nợ,
+                và việc bạn bấm nút này được ghi lại.
+              </p>
+            </div>
+          ) : (
+            <p className="handover__form-hint">Đã thu đủ công nợ. Xác nhận đã giao tài liệu cho khách.</p>
+          )}
+          <label>Ghi chú
+            <input className="form-control" value={deliverNote}
+              onChange={(e) => setDeliverNote(e.target.value)}
+              placeholder="VD: khách cần gấp để làm thủ tục vay" />
+          </label>
+          <div className="handover__form-footer">
+            <button type="button" className="btn btn-secondary" onClick={() => setShowDeliver(false)}>Huỷ</button>
+            <button type="button" className={`btn ${hasOutstandingDebt ? 'btn-danger' : 'btn-primary'}`}
+              disabled={saving}
+              onClick={async () => {
+                const ok = await post('deliver',
+                  { acknowledged_debt: hasOutstandingDebt, note: deliverNote || null },
+                  hasOutstandingDebt ? 'Đã giao tài liệu — hồ sơ treo chờ thu đủ công nợ' : 'Đã ghi nhận bàn giao')
+                if (ok) { setShowDeliver(false); setDeliverNote('') }
+              }}>
+              {saving ? 'Đang lưu…' : hasOutstandingDebt ? 'Vẫn giao tài liệu' : 'Xác nhận đã giao'}
+            </button>
+          </div>
+        </div>
+      </Modal>
       {/* Sensitive Action Modal for Handover Override */}
       <SensitiveActionModal
         isOpen={showOverrideModal}
         onClose={() => setShowOverrideModal(false)}
         onConfirm={handleOverrideHandover}
         title="Duyệt ngoại lệ bàn giao khi còn công nợ (Giám đốc)"
-        description={`Hợp đồng ${state?.contract_id} hiện còn nợ ${tien(debt.remaining)}. Sau khi duyệt ngoại lệ, quy trình sẽ được mở khóa hoàn thành Node K08.`}
+        description={`Hợp đồng ${state?.contract_id} hiện còn nợ ${formatMoney(debt.remaining)}. Sau khi duyệt ngoại lệ, quy trình sẽ được mở khóa hoàn thành Node K08.`}
         actionLabel="Duyệt cho nợ"
         actionVariant="warning"
         requireReason={true}

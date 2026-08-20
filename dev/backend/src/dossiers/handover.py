@@ -98,15 +98,15 @@ def debt_summary(db: Session, contract_id: str | None, total_value: float | None
     row = db.execute(
         text(f"""
             select
-              coalesce(sum(amount) filter (where status in ({_APPROVED_SQL})), 0) as da_duyet,
-              coalesce(sum(amount) filter (where status in ('Chờ duyệt','PENDING')), 0) as cho_duyet
+              coalesce(sum(amount) filter (where status in ({_APPROVED_SQL})), 0) as approved_amount,
+              coalesce(sum(amount) filter (where status in ('Chờ duyệt','PENDING')), 0) as pending_amount
             from public.cashflow_transactions
             where contract_id = :c and transaction_type in ({_INCOME_SQL})
         """),
         {"c": contract_id},
     ).mappings().first()
 
-    paid = float(row["da_duyet"] or 0)
+    paid = float(row["approved_amount"] or 0)
     remaining = max(0.0, total - paid)
 
     c_ovr = db.execute(
@@ -124,7 +124,7 @@ def debt_summary(db: Session, contract_id: str | None, total_value: float | None
         "has_override": bool(c_ovr["completion_override"]) if c_ovr else False,
         "override_reason": c_ovr["completion_override_reason"] if c_ovr else None,
         # Tiền nhân viên đã gõ nhưng sếp CHƯA duyệt — hiện riêng để khỏi tưởng đã thu.
-        "pending_amount": float(row["cho_duyet"] or 0),
+        "pending_amount": float(row["pending_amount"] or 0),
     }
 
 
@@ -184,13 +184,13 @@ def submission_gate(db: Session, node: dict) -> dict:
         return {"required": False, "is_open": True, "dossier_id": None,
                 "dossier_status": None, "reason": None}
 
-    da_dong = dossier["status"] == "CLOSED"
+    is_closed = dossier["status"] == "CLOSED"
     return {
         "required": True,
-        "is_open": da_dong,
+        "is_open": is_closed,
         "dossier_id": dossier["id"],
         "dossier_status": dossier["status"],
-        "reason": None if da_dong else "Chờ đóng hồ sơ nộp cơ quan",
+        "reason": None if is_closed else "Chờ đóng hồ sơ nộp cơ quan",
     }
 
 
@@ -214,40 +214,40 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
         raise HTTPException(status_code=400, detail="Node này không phải bước bàn giao")
 
     exec_data = node["execution_data"] or {}
-    lan_a = exec_data.get("handover") or {}
+    lane_a_data = exec_data.get("handover") or {}
     debt = debt_summary(db, node["contract_id"], node["total_value"])
     gate = submission_gate(db, node)
 
-    lan_a_xong = bool(lan_a.get("delivered_at"))
-    node_da_dong = node["status"] in _NODE_FINISHED
+    is_lane_a_done = bool(lane_a_data.get("delivered_at"))
+    is_node_closed = node["status"] in _NODE_FINISHED
 
     # Ai đang xem quyết định họ thấy nút nào.
     from src.core.auth import check_user_permission
     from src.db.models import User
     from src.dossiers.actor_guard import employee_of, is_assigned_to_node
 
-    duoc_phan_cong = False
-    duoc_thu_tien = False
+    is_assigned = False
+    can_collect_payment = False
     if user_id:
         nv = employee_of(db, user_id)
-        duoc_phan_cong = bool(nv) and is_assigned_to_node(
+        is_assigned = bool(nv) and is_assigned_to_node(
             db, task_node_id=task_node_id, employee_id=nv["id"]
         )
         u = db.query(User).filter(User.id == user_id).first()
-        duoc_thu_tien = bool(u) and check_user_permission(db, u, "finance", "create")
+        can_collect_payment = bool(u) and check_user_permission(db, u, "finance", "create")
 
-    ben_ho_so, ben_tien = _chia_vai_ban_giao(db, task_node_id)
-    nguoi_thu_tien = ben_tien[0]["full_name"] if ben_tien else None
+    dossier_actors, finance_actors = _split_handover_roles(db, task_node_id)
+    payment_collector_name = finance_actors[0]["full_name"] if finance_actors else None
     # Chỉ còn mỗi kế toán trong node thì đừng bịa ra người giao — để trống, người
     # dùng thấy ngay là node thiếu người phụ trách hồ sơ.
-    nguoi_giao_hien_vat = ben_ho_so[0]["full_name"] if ben_ho_so else None
-    nguoi_giao_user_ids = {r["user_id"] for r in ben_ho_so if r["user_id"]}
+    dossier_deliverer_name = dossier_actors[0]["full_name"] if dossier_actors else None
+    dossier_deliverer_user_ids = {r["user_id"] for r in dossier_actors if r["user_id"]}
 
     return {
         "task_node_id": task_node_id,
         "node_code": node["node_code"],
         "node_status": node["status"],
-        "is_finished": node_da_dong,
+        "is_finished": is_node_closed,
         "contract_id": node["contract_id"],
         "customer_name": node["customer_name"],
         "service_line_name": node["service_type"],
@@ -257,40 +257,36 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
         "lane_a": {
             "label": "Giao hồ sơ cho khách",
             "desc": "Nhận kết quả, giao tài liệu, lấy chữ ký xác nhận",
-            "actor": nguoi_giao_hien_vat,
-            "done": lan_a_xong,
-            "delivered_at": lan_a.get("delivered_at"),
-            "delivered_by": lan_a.get("delivered_by"),
-            "acknowledged_debt": lan_a.get("acknowledged_debt", False),
-            "remaining_at_delivery": lan_a.get("remaining_at_delivery"),
+            "actor": dossier_deliverer_name,
+            "done": is_lane_a_done,
+            "delivered_at": lane_a_data.get("delivered_at"),
+            "delivered_by": lane_a_data.get("delivered_by"),
+            "acknowledged_debt": lane_a_data.get("acknowledged_debt", False),
+            "remaining_at_delivery": lane_a_data.get("remaining_at_delivery"),
             # Phải là người được phân công LO PHẦN HỒ SƠ. Kế toán cũng có tên
             # trong node này nhưng việc của họ là thu tiền — người mang hồ sơ
             # đến cho khách và lấy chữ ký là người khác.
-            "can_do": (not lan_a_xong) and gate["is_open"] and (not node_da_dong)
-                      and duoc_phan_cong and (user_id in nguoi_giao_user_ids),
+            "can_do": (not is_lane_a_done) and gate["is_open"] and (not is_node_closed)
+                      and is_assigned and (user_id in dossier_deliverer_user_ids),
         },
         "lane_b": {
             "label": "Thu đủ tiền hợp đồng",
             "desc": "Tự đánh dấu khi khách trả đủ — không ai tick tay được",
-            # TÍNH SỐNG, không ai tick tay được.
-            "done": debt["is_settled"],
-            # Tiền là việc của KẾ TOÁN. Pháp lý, đo vẽ không có quyền finance nên
-            # không thấy nút này — thay vì thấy rồi bấm vào mới bị chặn.
             # Không ràng vào trạng thái node: nợ thuộc về hợp đồng, nên bước bàn
             # giao đã đóng mà khách còn khất thì kế toán vẫn ghi nhận được.
-            "can_record_payment": duoc_thu_tien and not debt["is_settled"],
-            "actor": nguoi_thu_tien,
+            "can_record_payment": can_collect_payment and not debt["is_settled"],
+            "actor": payment_collector_name,
         },
         # Node chỉ đóng được khi CẢ HAI làn xong.
-        "can_close": lan_a_xong and debt["is_settled"] and not node_da_dong,
-        "blocked_reason": _blocked_reason(gate, lan_a_xong, debt),
+        "can_close": is_lane_a_done and debt["is_settled"] and not is_node_closed,
+        "blocked_reason": _blocked_reason(gate, is_lane_a_done, debt),
     }
 
 
-def _blocked_reason(gate: dict, lan_a_xong: bool, debt: dict) -> str | None:
+def _blocked_reason(gate: dict, is_lane_a_done: bool, debt: dict) -> str | None:
     if not gate["is_open"]:
         return gate["reason"]
-    if not lan_a_xong:
+    if not is_lane_a_done:
         return "Chưa giao hồ sơ cho khách"
     if not debt["is_settled"]:
         return f"Còn thiếu {debt['remaining']:,.0f}₫ chưa thu"
@@ -301,13 +297,13 @@ def _blocked_reason(gate: dict, lan_a_xong: bool, debt: dict) -> str | None:
 # Làn A — bàn giao hiện vật
 # ══════════════════════════════════════════════════════════════════
 
-def _chia_vai_ban_giao(db: Session, task_node_id: str) -> tuple[list, list]:
+def _split_handover_roles(db: Session, task_node_id: str) -> tuple[list, list]:
     """Chia người được phân công vào node bàn giao thành hai bên: lo hồ sơ / lo tiền.
 
     Tối ưu hóa: 1 câu query SQL duy nhất kết hợp quyền finance.create,
     loại bỏ hoàn toàn vòng lặp N+1 queries.
     """
-    phan_cong = db.execute(
+    assigned_rows = db.execute(
         text("""
             select e.full_name, e.user_id, a.is_primary,
                    exists (
@@ -330,10 +326,10 @@ def _chia_vai_ban_giao(db: Session, task_node_id: str) -> tuple[list, list]:
         {"n": task_node_id},
     ).mappings().all()
 
-    ben_tien, ben_ho_so = [], []
-    for row in phan_cong:
-        (ben_tien if row["lo_tien"] else ben_ho_so).append(row)
-    return ben_ho_so, ben_tien
+    finance_actors, dossier_actors = [], []
+    for row in assigned_rows:
+        (finance_actors if row["lo_tien"] else dossier_actors).append(row)
+    return dossier_actors, finance_actors
 
 
 def mark_delivered(
@@ -356,9 +352,9 @@ def mark_delivered(
 
     # Ẩn nút ở giao diện là chưa đủ — chặn luôn ở đây, nếu không kế toán vẫn gọi
     # thẳng API ghi nhận bàn giao được.
-    ben_ho_so, _ = _chia_vai_ban_giao(db, task_node_id)
-    duoc_giao = {r["user_id"] for r in ben_ho_so if r["user_id"]}
-    if actor_id not in duoc_giao:
+    dossier_actors, _ = _split_handover_roles(db, task_node_id)
+    allowed_deliverer_user_ids = {r["user_id"] for r in dossier_actors if r["user_id"]}
+    if actor_id not in allowed_deliverer_user_ids:
         raise HTTPException(
             status_code=403,
             detail=(
@@ -402,9 +398,9 @@ def mark_delivered(
         """),
         {"i": task_node_id, "s": node["status"], "a": actor_id,
          "p": json.dumps({
-             "con_thieu": debt["remaining"],
-             "da_xac_nhan_van_giao": bool(acknowledged_debt and not debt["is_settled"]),
-             "ghi_chu": note,
+             "remaining_amount": debt["remaining"],
+             "is_delivery_acknowledged": bool(acknowledged_debt and not debt["is_settled"]),
+             "note": note,
          }, ensure_ascii=False)},
     )
 
@@ -454,7 +450,7 @@ def _unlock_next_node(db: Session, node: dict, actor_id: str) -> str | None:
         """),
         {"i": nxt["id"], "a": actor_id,
          "p": json.dumps({"unlocked_by_task_node_id": node["id"],
-                          "ly_do": "Đã bàn giao tài liệu cho khách"}, ensure_ascii=False)},
+                          "reason": "Đã bàn giao tài liệu cho khách"}, ensure_ascii=False)},
     )
     return nxt["id"]
 
@@ -569,8 +565,8 @@ def _ghi_nhan_thu_tien(
         raise HTTPException(status_code=400, detail="Bắt buộc đính ảnh bill/biên lai")
 
     debt = debt_summary(db, contract_id, total_value)
-    con_lai_sau_duyet = debt["remaining"] - debt["pending_amount"]
-    if float(amount) > con_lai_sau_duyet + 0.009:
+    remaining_after_approval = debt["remaining"] - debt["pending_amount"]
+    if float(amount) > remaining_after_approval + 0.009:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -584,8 +580,8 @@ def _ghi_nhan_thu_tien(
 
     from datetime import date
 
-    hom_nay = date.today()
-    new_id = FinanceRepository.generate_voucher_id("Thu", db, hom_nay)
+    today_date = date.today()
+    new_id = FinanceRepository.generate_voucher_id("Thu", db, today_date)
     first_receipt_url = f"/api/handover/payment-receipts/{receipt_attachments[0]['id']}"
     db.execute(
         text("""
@@ -596,15 +592,15 @@ def _ghi_nhan_thu_tien(
                  created_by_user_id, status, scope, created_at)
             values
                 (:id, :contract_id, 'Thu', :amount, 'Thu tiền hợp đồng',
-                 :payer, :method, :ngay, :id,
-                 :mo_ta, :bill, cast(:attachments as jsonb),
+                 :payer, :method, :transaction_date, :id,
+                 :description, :bill, cast(:attachments as jsonb),
                  :actor, 'Chờ duyệt', 'Công ty', now())
         """),
         {
             "id": new_id, "contract_id": contract_id, "amount": float(amount),
             "payer": payer_name, "method": payment_method or "Tiền mặt",
-            "ngay": hom_nay,
-            "mo_ta": note or mo_ta_mac_dinh,
+            "transaction_date": today_date,
+            "description": note or mo_ta_mac_dinh,
             "bill": first_receipt_url,
             "attachments": json.dumps(receipt_attachments, ensure_ascii=False),
             "actor": actor_id,
@@ -623,7 +619,7 @@ def _ghi_nhan_thu_tien(
             {"i": task_node_id, "s": node_status, "a": actor_id,
              "p": json.dumps({
                  "voucher_id": new_id,
-                 "so_tien": float(amount),
+                 "amount": float(amount),
                  "receipt_count": len(receipt_attachments),
              }, ensure_ascii=False)},
         )
@@ -823,21 +819,22 @@ def outstanding_handovers(db: Session) -> list[dict]:
                 if nid not in node_assignee_map:
                     node_assignee_map[nid] = a["full_name"]
 
-    ket_qua = []
+    handover_results = []
     for r in rows:
-        con_lai = max(0.0, float(r["total_value"] or 0) - float(r["paid"] or 0))
-        cua_mo = r["dossier_status"] is None or r["dossier_status"] == "CLOSED"
-        nguoi_giao = node_assignee_map.get(r["task_node_id"])
-        ket_qua.append({
+        remaining_amount = max(0.0, float(r["total_value"] or 0) - float(r["paid"] or 0))
+        is_gate_open = r["dossier_status"] is None or r["dossier_status"] == "CLOSED"
+        deliverer_name = node_assignee_map.get(r["task_node_id"])
+        handover_results.append({
             **dict(r),
             "total_value": float(r["total_value"] or 0),
             "paid": float(r["paid"] or 0),
             "pending": float(r["pending"] or 0),
-            "remaining": con_lai,
-            "nguoi_giao": nguoi_giao,
+            "remaining": remaining_amount,
+            "deliverer_name": deliverer_name,
+            "is_delivered": bool(r.get("da_ban_giao") or r.get("delivered_at")),
             "can_deliver": False,
-            "blocked_reason": None if cua_mo else (
+            "blocked_reason": None if is_gate_open else (
                 f"Chờ {r['dossier_assignee'] or 'nhân viên pháp lý'} đóng hồ sơ nộp cơ quan"
             ),
         })
-    return ket_qua
+    return handover_results

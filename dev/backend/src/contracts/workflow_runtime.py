@@ -1211,10 +1211,10 @@ def _apply_workflow_amendment(
             ))
 
     # Sửa thời lượng một node là dời hạn của cả dây phía sau — tính lại toàn bộ.
-    ke_hoach = recompute_planned_deadlines(db, workflow_instance_id=instance["id"])
+    planned_schedule = recompute_planned_deadlines(db, workflow_instance_id=instance["id"])
 
     return {
-        "planned_end": ke_hoach.get("planned_end"),
+        "planned_end": planned_schedule.get("planned_end"),
         "instance_id": instance["id"],
         "revision_id": revision["id"],
         "revision_no": revision["revision_no"],
@@ -1446,10 +1446,10 @@ def activate_workflow(
 
     # Dựng ngay lịch dự kiến cho TOÀN BỘ quy trình, không đợi từng node bắt đầu.
     # Giám đốc phải thấy ngày giao khách ngay lúc áp dụng quy trình.
-    ke_hoach = recompute_planned_deadlines(db, workflow_instance_id=instance["id"])
+    planned_schedule = recompute_planned_deadlines(db, workflow_instance_id=instance["id"])
 
     return {
-        "planned_end": ke_hoach.get("planned_end"),
+        "planned_end": planned_schedule.get("planned_end"),
         "instance_id": instance["id"],
         "revision_id": revision["id"],
         "revision_no": revision["revision_no"],
@@ -1796,55 +1796,55 @@ def recompute_planned_deadlines(db: Session, *, workflow_instance_id: str) -> di
 
     # Mốc khởi động: lúc node đầu tiên thật sự bắt đầu. Chưa ai bắt đầu thì lấy
     # lúc giám đốc áp dụng quy trình, để sếp thấy ngay lịch dự kiến.
-    da_bat_dau = [r["started_at"] for r in runtime if r["started_at"]]
-    anchor = min(da_bat_dau) if da_bat_dau else (rev["activated_at"] or datetime.now(timezone.utc))
+    started_timestamps = [r["started_at"] for r in runtime if r["started_at"]]
+    anchor = min(started_timestamps) if started_timestamps else (rev["activated_at"] or datetime.now(timezone.utc))
 
-    def thoi_luong(key: str) -> timedelta:
+    def get_node_duration(key: str) -> timedelta:
         d = graph_nodes.get(key) or {}
         return timedelta(days=int(d.get("duration_days") or 0),
                          hours=int(d.get("duration_hours") or 0))
 
     # Bậc vào để duyệt tô-pô. Bỏ cạnh tự trỏ và cạnh quay lui (quy trình cũ có
     # nhánh "cần bổ sung" quay ngược) — nếu không sẽ kẹt vòng lặp vô hạn.
-    ke = {k: [] for k in graph_nodes}
-    bac_vao = {k: 0 for k in graph_nodes}
+    adj_list = {k: [] for k in graph_nodes}
+    in_degrees = {k: 0 for k in graph_nodes}
     for key, d in graph_nodes.items():
-        for dich in (d.get("transitions") or {}).values():
-            if dich in graph_nodes and dich != key:
-                ke[key].append(dich)
-                bac_vao[dich] += 1
+        for dest in (d.get("transitions") or {}).values():
+            if dest in graph_nodes and dest != key:
+                adj_list[key].append(dest)
+                in_degrees[dest] += 1
 
-    han: dict[str, datetime] = {}
-    hang_doi = [k for k, n in bac_vao.items() if n == 0] or [graph.get("start_node")]
-    hang_doi = [k for k in hang_doi if k in graph_nodes]
-    da_duyet: set[str] = set()
+    deadlines: dict[str, datetime] = {}
+    node_queue = [k for k, n in in_degrees.items() if n == 0] or [graph.get("start_node")]
+    node_queue = [k for k in node_queue if k in graph_nodes]
+    visited_nodes: set[str] = set()
 
-    while hang_doi:
-        key = hang_doi.pop(0)
-        if key in da_duyet:
+    while node_queue:
+        key = node_queue.pop(0)
+        if key in visited_nodes:
             continue
-        da_duyet.add(key)
-        moc_vao = han.get(key, anchor)
-        han[key] = moc_vao + thoi_luong(key)
-        for dich in ke[key]:
+        visited_nodes.add(key)
+        incoming_anchor = deadlines.get(key, anchor)
+        deadlines[key] = incoming_anchor + get_node_duration(key)
+        for dest in adj_list[key]:
             # Node có nhiều nhánh vào phải chờ nhánh muộn nhất
-            han[dich] = max(han.get(dich, han[key]), han[key])
-            bac_vao[dich] -= 1
-            if bac_vao[dich] <= 0 and dich not in da_duyet:
-                hang_doi.append(dich)
+            deadlines[dest] = max(deadlines.get(dest, deadlines[key]), deadlines[key])
+            in_degrees[dest] -= 1
+            if in_degrees[dest] <= 0 and dest not in visited_nodes:
+                node_queue.append(dest)
 
     # Node còn kẹt do nhánh quay lui: vẫn phải có hạn, nối tiếp mốc muộn nhất
     for key in graph_nodes:
-        if key not in han:
-            han[key] = (max(han.values()) if han else anchor) + thoi_luong(key)
+        if key not in deadlines:
+            deadlines[key] = (max(deadlines.values()) if deadlines else anchor) + get_node_duration(key)
 
     # Quy trình chưa khai thời lượng ở bất kỳ bước nào là quy trình chưa có kế
     # hoạch — dựng hạn cho nó chỉ tạo ra một loạt việc "trễ" ngay từ lúc sinh ra.
-    if sum((thoi_luong(k) for k in graph_nodes), timedelta(0)) == timedelta(0):
+    if sum((get_node_duration(k) for k in graph_nodes), timedelta(0)) == timedelta(0):
         return {"updated": 0, "anchor": anchor.isoformat() if anchor else None, "planned_end": None}
 
-    so_dong = 0
-    for key, moc in han.items():
+    updated_nodes_count = 0
+    for key, deadline_dt in deadlines.items():
         node = by_key.get(key)
         # Bước khai 0 ngày vẫn phải có hạn: nó bằng hạn của bước liền trước, tức
         # phải xong trong cùng mốc đó. Bỏ qua thì nhân viên thấy "Không đặt hạn"
@@ -1852,15 +1852,15 @@ def recompute_planned_deadlines(db: Session, *, workflow_instance_id: str) -> di
         if not node:
             continue
         db.execute(
-            text("update public.task_nodes set deadline_at = :h, updated_at = now() where id = :i"),
-            {"h": moc, "i": node["id"]},
+            text("update public.task_nodes set deadline_at = :deadline_at, updated_at = now() where id = :i"),
+            {"deadline_at": deadline_dt, "i": node["id"]},
         )
-        so_dong += 1
+        updated_nodes_count += 1
 
     return {
-        "updated": so_dong,
+        "updated": updated_nodes_count,
         "anchor": anchor.isoformat() if anchor else None,
-        "planned_end": max(han.values()).isoformat() if han else None,
+        "planned_end": max(deadlines.values()).isoformat() if deadlines else None,
     }
 
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DatePicker } from '../../ui';
-import { fmtShort, docSoTiengViet, CATEGORY_AUTO_MAPPING, VOUCHER_SIGNERS } from '../utils';
+import { fmtShort, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING, VOUCHER_SIGNERS } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
 import { COMPANY_IDENTITY } from '../../../lib/companyIdentity';
@@ -45,13 +45,13 @@ export function VoucherTemplate({
   title, voucherId, date, personName, labelPerson, description, amount, amountWords,
   category, paymentMethod, department, contractId, projectId, accounting, documentRef
 }) {
-  const isThu = title.includes('THU');
-  const isTamUng = title.includes('TẠM ỨNG');
-  const isHoanUng = title.includes('HOÀN ỨNG');
+  const isReceiptVoucher = title.includes('THU');
+  const isAdvancePayment = title.includes('TẠM ỨNG');
+  const isAdvanceReimbursement = title.includes('HOÀN ỨNG');
 
-  const formCode = isThu ? '01 - TT' : (isTamUng ? '02 - TT/TỨ' : (isHoanUng ? '03 - TT/HỨ' : '02 - TT'));
-  const tkNo = isThu ? (paymentMethod === 'Chuyển khoản' ? '1121' : '1111') : (isTamUng ? '141' : (isHoanUng ? '642 / 154' : (category && category.includes('Lương') ? '334' : '642')));
-  const tkCo = isThu ? (category && category.includes('Thu') ? '131 / 511' : '131') : (paymentMethod === 'Chuyển khoản' ? '1121' : '1111');
+  const formCode = isReceiptVoucher ? '01 - TT' : (isAdvancePayment ? '02 - TT/TỨ' : (isAdvanceReimbursement ? '03 - TT/HỨ' : '02 - TT'));
+  const debitAccount = isReceiptVoucher ? (paymentMethod === 'Chuyển khoản' ? '1121' : '1111') : (isAdvancePayment ? '141' : (isAdvanceReimbursement ? '642 / 154' : (category && category.includes('Lương') ? '334' : '642')));
+  const creditAccount = isReceiptVoucher ? (category && category.includes('Thu') ? '131 / 511' : '131') : (paymentMethod === 'Chuyển khoản' ? '1121' : '1111');
 
   return (
     <div ref={documentRef} className="voucher-print-document" style={{
@@ -97,15 +97,15 @@ export function VoucherTemplate({
         <div className="voucher-print-ledger" style={{ display: 'flex', justifyContent: 'center', gap: 32, fontSize: '0.9rem', fontWeight: 600 }}>
           <span>Số: <strong style={{ fontFamily: 'monospace' }}>{voucherId || '........'}</strong></span>
           <span>Quyển số: <strong>01</strong></span>
-          <span>Nợ: <strong>{tkNo}</strong></span>
-          <span>Có: <strong>{tkCo}</strong></span>
+          <span>Nợ: <strong>{debitAccount}</strong></span>
+          <span>Có: <strong>{creditAccount}</strong></span>
         </div>
       </div>
 
       {/* Nội Dung Chi Tiết Chứng Từ */}
       <div className="voucher-print-details" style={{ fontSize: '1rem', lineHeight: 1.9, marginBottom: 24 }}>
         <div className="voucher-print-row" style={{ display: 'flex' }}>
-          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Họ và tên {isThu ? 'người nộp tiền' : 'người nhận tiền'}:</span>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Họ và tên {isReceiptVoucher ? 'người nộp tiền' : 'người nhận tiền'}:</span>
           <strong className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>{personName || ''}</strong>
         </div>
         <div className="voucher-print-row" style={{ display: 'flex' }}>
@@ -113,7 +113,7 @@ export function VoucherTemplate({
           <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>{department || COMPANY_IDENTITY.legalName}</span>
         </div>
         <div className="voucher-print-row" style={{ display: 'flex' }}>
-          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Lý do {isThu ? 'nộp' : 'chi'}:</span>
+          <span className="voucher-print-label" style={{ minWidth: 250 }}>- Lý do {isReceiptVoucher ? 'nộp' : 'chi'}:</span>
           <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>
             {description || category || ''}
           </span>
@@ -194,7 +194,7 @@ export function VoucherTemplate({
         </div>
 
         <div className="voucher-print-signature">
-          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>{isThu ? 'Người nộp tiền' : 'Người nhận tiền'}</div>
+          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>{labelPerson || (isReceiptVoucher ? 'Người nộp tiền' : 'Người nhận tiền')}</div>
           <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
           <div className="voucher-print-signature-space" style={{ height: 50 }} />
           <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{personName || ''}</div>
@@ -440,7 +440,7 @@ export default function PrintVoucherScreen({ month }) {
     const n = Number(form.amount);
     if (!n || n <= 0) return '';
     try {
-      const words = docSoTiengViet(n);
+      const words = spellVietnameseCurrency(n);
       return typeof words === 'string' ? words : '';
     } catch (e) {
       return '';
@@ -603,11 +603,11 @@ export default function PrintVoucherScreen({ month }) {
         labelPerson: meta.labelPerson
       };
     }
-    const isThu = form.category.includes('Thu') || form.category.includes('nộp');
+    const isReceipt = form.category.includes('Thu') || form.category.includes('nộp');
     return {
-      title: isThu ? 'PHIẾU THU' : 'PHIẾU CHI',
+      title: isReceipt ? 'PHIẾU THU' : 'PHIẾU CHI',
       id: form.id,
-      labelPerson: isThu ? 'Người nộp tiền' : 'Người nhận tiền'
+      labelPerson: isReceipt ? 'Người nộp tiền' : 'Người nhận tiền'
     };
   };
 

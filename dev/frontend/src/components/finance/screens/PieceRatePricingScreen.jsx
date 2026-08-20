@@ -9,7 +9,7 @@ import { apiFetch } from '../../../lib/api';
 // Vai trò hiển thị: chính / phụ / người nộp. Đọc thẳng từ work_item_rates.
 const NHAN_VAI_TRO = { MAIN: 'Đơn giá chính', ASSISTANT: 'Phụ đo / hỗ trợ', SUBMITTER: 'Người đi nộp' };
 
-export default function BangGiaKhoanScreen({ isDirector = false }) {
+export default function PieceRatePricingScreen({ isDirector = false }) {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);

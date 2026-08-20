@@ -72,6 +72,17 @@ def get_my_employee_profile(
     return EmployeePortalService.build_profile(db, employee)
 
 
+@router.get("/my-payroll")
+def get_my_payroll(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+    return EmployeePortalService.get_my_payroll(db, employee)
+
+
 @router.get("/employees/{employee_id}")
 def get_employee_profile(
     employee_id: str,

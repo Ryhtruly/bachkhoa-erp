@@ -72,7 +72,7 @@ def assert_can_act_on_node(
     task_node_id: str | None,
     user_id: str,
     on_behalf_reason: str | None = None,
-    viec_gi: str = "thao tác trên công việc này",
+    action_description: str = "thao tác trên công việc này",
 ) -> dict:
     """Chặn thao tác nếu không phải người được phân công.
 
@@ -89,12 +89,12 @@ def assert_can_act_on_node(
     if not is_director(db, user_id):
         raise HTTPException(
             status_code=403,
-            detail=f"Chỉ người được phân công mới {viec_gi}.",
+            detail=f"Chỉ người được phân công mới {action_description}.",
         )
 
     # Tới đây: là giám đốc nhưng không được phân công -> phải đi lối "xử lý thay"
-    ly_do = (on_behalf_reason or "").strip()
-    if len(ly_do) < _MIN_REASON_LEN:
+    cleaned_reason = (on_behalf_reason or "").strip()
+    if len(cleaned_reason) < _MIN_REASON_LEN:
         raise HTTPException(
             status_code=403,
             detail=(
@@ -106,13 +106,13 @@ def assert_can_act_on_node(
     return {
         "on_behalf": True,
         "actor_employee_id": nv["id"] if nv else None,
-        "reason": ly_do,
+        "reason": cleaned_reason,
     }
 
 
-def ghi_chu_xu_ly_thay(actor: dict, note: str | None) -> str | None:
+def format_on_behalf_note(actor: dict, note: str | None) -> str | None:
     """Ghép ghi chú của người dùng với dấu vết xử lý thay, để nhật ký tự nói ra."""
     if not actor.get("on_behalf"):
         return note
-    dau_vet = f"[Giám đốc xử lý thay] {actor['reason']}"
-    return f"{note} · {dau_vet}" if note else dau_vet
+    audit_trace = f"[Giám đốc xử lý thay] {actor['reason']}"
+    return f"{note} · {audit_trace}" if note else audit_trace

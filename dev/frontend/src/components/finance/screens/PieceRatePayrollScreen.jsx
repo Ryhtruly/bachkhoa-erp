@@ -19,7 +19,7 @@ const adjustmentLabels = {
   holiday_bonus: 'Thưởng lễ/Tết',
 };
 
-export default function LuongKhoan3PScreen({ user, isDirector = false }) {
+export default function PieceRatePayrollScreen({ user, isDirector = false }) {
   const { addToast } = useToast();
   const [options, setOptions] = useState({
     departments: [],
