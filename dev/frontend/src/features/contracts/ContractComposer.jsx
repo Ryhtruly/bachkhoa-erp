@@ -178,6 +178,13 @@ export default function ContractComposer({
     return () => { huy = true }
   }, [open])
 
+  // Tự động chọn mẫu hợp đồng đầu tiên nếu có danh sách mẫu
+  useEffect(() => {
+    if (open && templates.length > 0 && !form.contract_template_id) {
+      setForm(f => ({ ...f, contract_template_id: templates[0].id }))
+    }
+  }, [open, templates, form.contract_template_id])
+
   useEffect(() => {
     if (!open) return undefined
     let cancelled = false
