@@ -47,6 +47,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
+import { apiFetch } from '../../lib/api';
+import AvatarImage from '../AvatarImage';
 import { giuKhiChuaLuu } from '../../lib/canhBaoChuaLuu';
 import { dauVanTayGraph } from './workflowDirty';
 import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage';
