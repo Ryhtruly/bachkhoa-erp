@@ -269,7 +269,7 @@ def update_customer(
         if dup:
             raise HTTPException(status_code=409, detail="Số CCCD đã thuộc về khách khác")
 
-    def _ngay(v):
+    def _parse_date(v):
         try:
             return date.fromisoformat(v) if v else None
         except Exception:
@@ -286,7 +286,7 @@ def update_customer(
         """),
         {"ct": payload.customer_type, "fn": payload.full_name.strip(),
          "ph": (payload.phone or "").strip() or None, "addr": (payload.address or "").strip() or None,
-         "tax": tax_id, "cccd": cccd, "icd": _ngay(payload.id_card_date),
+         "tax": tax_id, "cccd": cccd, "icd": _parse_date(payload.id_card_date),
          "icp": (payload.id_card_place or "").strip() or None,
          "em": (payload.email or "").strip() or None, "zl": (payload.zalo_phone or "").strip() or None,
          "rn": (payload.representative_name or "").strip() or None,

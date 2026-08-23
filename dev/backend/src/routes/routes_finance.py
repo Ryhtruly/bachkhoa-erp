@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import re
 import uuid
@@ -9,7 +10,8 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
-from src.core.auth import require_permission, User
+from src.db.models import AuditLog, SystemSetting
+from src.core.auth import require_permission, require_any_permission, User
 from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.services.timeline_realtime import publish_timeline_change
 from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json
@@ -17,9 +19,13 @@ from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
     AdvanceCreateIn, AdvanceClearIn, FundCloseIn,
-    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, RefundExcessIn,
-    serialize_cashflow, serialize_cashflow_bulk, serialize_employee
+    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
+    serialize_cashflow, serialize_cashflow_bulk, serialize_employee,
+    TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
+    normalize_transaction_type, normalize_status, normalize_payment_method, normalize_scope,
+    get_transaction_type_label, get_status_label, get_payment_method_label, get_scope_label
 )
+from src.finance.document_signers import decode_document_signers, normalize_document_signers
 
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
@@ -47,17 +53,20 @@ def list_cashflow(
     project_id: str = Query(None),
     contract_id: str = Query(None),
     scope: str = Query(None),
+    status: str = Query(None),
+    category: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    cache_key = f"bachkhoa:finance:cashflow:{month or 'all'}:{type or 'all'}:{payment_method or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}"
+    cache_key = f"bachkhoa:finance:cashflow:{month or 'all'}:{type or 'all'}:{payment_method or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}:{status or 'all'}:{category or 'all'}"
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
 
     rows = FinanceRepository.list_cashflow_transactions(
         db, month=month, type=type, payment_method=payment_method,
-        project_id=project_id, contract_id=contract_id, scope=scope
+        project_id=project_id, contract_id=contract_id, scope=scope,
+        status=status, category=category
     )
     result = serialize_cashflow_bulk(rows, db)
     set_cached_json(cache_key, result, ttl_seconds=60)
@@ -107,26 +116,29 @@ def cashflow_cash(
     project_id: str = Query(None),
     contract_id: str = Query(None),
     scope: str = Query(None),
+    status: str = Query(None),
+    category: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    cache_key = f"bachkhoa:finance:cash:{month or 'all'}:{type or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}"
+    cache_key = f"bachkhoa:finance:cash:{month or 'all'}:{type or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}:{status or 'all'}:{category or 'all'}"
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
 
-    balance = FinanceRepository.get_running_balance(db, "Tiền mặt")
+    balance = FinanceRepository.get_running_balance(db, "CASH")
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
     initial_expense = FinanceRepository.get_setting_value(db, "initial_total_expenditure")
     
     rows = FinanceRepository.list_cashflow_transactions(
-        db, month=month, type=type, payment_method="Tiền mặt",
-        project_id=project_id, contract_id=contract_id, scope=scope
+        db, month=month, type=type, payment_method="CASH",
+        project_id=project_id, contract_id=contract_id, scope=scope,
+        status=status, category=category
     )
     
-    approved_set = {"Hoàn thành", "Đã duyệt", "COMPLETED", "approved", None, ""}
-    filtered_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
-    filtered_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
+    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán", None, ""}
+    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and (r.status in approved_set or not r.status))
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) and (r.status in approved_set or not r.status))
 
     result = {
         "balance": balance,
@@ -145,26 +157,29 @@ def cashflow_bank(
     project_id: str = Query(None),
     contract_id: str = Query(None),
     scope: str = Query(None),
+    status: str = Query(None),
+    category: str = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    cache_key = f"bachkhoa:finance:bank:{month or 'all'}:{type or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}"
+    cache_key = f"bachkhoa:finance:bank:{month or 'all'}:{type or 'all'}:{project_id or 'all'}:{contract_id or 'all'}:{scope or 'all'}:{status or 'all'}:{category or 'all'}"
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
 
-    balance = FinanceRepository.get_running_balance(db, "Chuyển khoản")
+    balance = FinanceRepository.get_running_balance(db, "BANK_TRANSFER")
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
     initial_expense = FinanceRepository.get_setting_value(db, "initial_total_expenditure")
     
     rows = FinanceRepository.list_cashflow_transactions(
-        db, month=month, type=type, payment_method="Chuyển khoản",
-        project_id=project_id, contract_id=contract_id, scope=scope
+        db, month=month, type=type, payment_method="BANK_TRANSFER",
+        project_id=project_id, contract_id=contract_id, scope=scope,
+        status=status, category=category
     )
     
-    approved_set = {"Hoàn thành", "Đã duyệt", "COMPLETED", "approved", None, ""}
-    filtered_income = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Thu" and (r.status in approved_set or not r.status))
-    filtered_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type == "Chi" and (r.status in approved_set or not r.status))
+    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán", None, ""}
+    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and (r.status in approved_set or not r.status))
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) and (r.status in approved_set or not r.status))
 
     result = {
         "balance": balance,
@@ -181,9 +196,9 @@ def create_cashflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "create"))
 ):
-    ket_qua = FinanceService.create_cashflow(db, payload, actor_id=user.id)
+    result = FinanceService.create_cashflow(db, payload, actor_id=user.id)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 @router.get("/cashflow/{transaction_id:path}")
 def get_cashflow_detail(
@@ -200,9 +215,9 @@ def update_cashflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "update"))
 ):
-    ket_qua = FinanceService.update_cashflow(db, transaction_id, payload, actor_id=user.id)
+    result = FinanceService.update_cashflow(db, transaction_id, payload, actor_id=user.id)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 @router.post("/cashflow/{transaction_id:path}/void")
 def void_cashflow(
@@ -212,9 +227,9 @@ def void_cashflow(
     user: User = Depends(require_permission("finance", "delete"))
 ):
     actor = payload.actor_id or user.id
-    ket_qua = FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
+    result = FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 
 @router.post("/cashflow/{transaction_id:path}/approve")
@@ -224,11 +239,11 @@ def approve_cashflow(
     user: User = Depends(require_permission("finance", "approve"))
 ):
     """Duyệt phiếu chờ duyệt. Đây mới là lúc công nợ được ghi nhận."""
-    ket_qua = FinanceService.approve_cashflow(db, transaction_id, actor_id=user.id)
+    result = FinanceService.approve_cashflow(db, transaction_id, actor_id=user.id)
     # Duyệt xong thì phiếu rời hàng chờ — chuông phải bỏ dòng đó ngay.
     publish_timeline_change("cashflow_approved", entity_id=transaction_id)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 
 @router.post("/cashflow/{transaction_id:path}/reject")
@@ -239,10 +254,10 @@ def reject_cashflow(
     user: User = Depends(require_permission("finance", "approve"))
 ):
     """Từ chối phiếu chờ duyệt, bắt buộc ghi lý do."""
-    ket_qua = FinanceService.reject_cashflow(db, transaction_id, payload.reason, actor_id=user.id)
+    result = FinanceService.reject_cashflow(db, transaction_id, payload.reason, actor_id=user.id)
     publish_timeline_change("cashflow_rejected", entity_id=transaction_id)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 
 # ══════════════════════════════════════════════════════════════
@@ -319,7 +334,7 @@ def create_advance(
     user: User = Depends(require_permission("finance", "create"))
 ):
     result = FinanceService.create_advance(db, payload, actor_id=user.id)
-    invalidate_cache("bachkhoa:finance:*")
+    invalidate_money_caches()
     return result
 
 @router.post("/advance/clear")
@@ -329,7 +344,7 @@ def clear_advance(
     user: User = Depends(require_permission("finance", "update"))
 ):
     result = FinanceService.clear_advance(db, payload, actor_id=user.id)
-    invalidate_cache("bachkhoa:finance:*")
+    invalidate_money_caches()
     return result
 
 
@@ -356,7 +371,7 @@ def list_departments(
 @router.get("/employees")
 def list_employees(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("hr", "read"))
+    user: User = Depends(require_any_permission(("hr", "read"), ("finance", "read")))
 ):
     rows = FinanceRepository.list_employees(db)
     return [serialize_employee(employee, department_name, account) for employee, department_name, account in rows]
@@ -464,7 +479,7 @@ def create_worker_wage(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payroll", "create"))
 ):
-    return FinanceService.create_worker_wage(db, payload)
+    return FinanceService.create_worker_wage(db, payload, actor_id=user.id)
 
 
 @router.get("/payroll/periods")
@@ -518,7 +533,14 @@ def get_summary(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    return FinanceRepository.get_summary_report(db)
+    cache_key = "bachkhoa:finance:summary"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    result = FinanceRepository.get_summary_report(db)
+    set_cached_json(cache_key, result, ttl_seconds=120)
+    return result
 
 @router.get("/projects")
 def list_projects(
@@ -552,11 +574,51 @@ def get_finance_settings(
 def save_finance_settings(
     payload: FinanceSettingsIn,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("finance", "update"))
+    user: User = Depends(require_permission("finance", "approve"))
 ):
     result = FinanceService.save_settings(db, payload)
     invalidate_cache("bachkhoa:finance:*")
+    invalidate_cache("bachkhoa:payroll:*")
     return result
+
+
+@router.get("/document-signers")
+def get_document_signers(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "finance.document_signers").first()
+    return decode_document_signers(setting.value if setting else None)
+
+
+@router.post("/document-signers")
+def save_document_signers(
+    payload: DocumentSignersIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "approve"))
+):
+    values = normalize_document_signers(payload.model_dump())
+    setting = db.query(SystemSetting).filter(SystemSetting.key == "finance.document_signers").first()
+    encoded = json.dumps(values, ensure_ascii=False, sort_keys=True)
+
+    if setting:
+        setting.value = encoded
+        setting.description = "Tên và chức danh người ký chứng từ tài chính"
+    else:
+        db.add(SystemSetting(
+            key="finance.document_signers",
+            value=encoded,
+            description="Tên và chức danh người ký chứng từ tài chính"
+        ))
+
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="UPDATE_DOCUMENT_SIGNERS",
+        object_type="SystemSetting",
+        payload_json={"setting": values}
+    ))
+    db.commit()
+    return values
 
 @router.get("/fund-balances/calculate")
 def calculate_system_balance(
@@ -575,9 +637,10 @@ def calculate_system_balance(
         except ValueError:
             raise HTTPException(status_code=400, detail="Định dạng thời gian chốt không hợp lệ. Hãy dùng ISO format.")
 
-    if not payment_method or payment_method in ["all", "Tất cả", ""]:
-        bal_cash = FinanceRepository.get_running_balance(db, "Tiền mặt", up_to_datetime=closing_moment)
-        bal_bank = FinanceRepository.get_running_balance(db, "Chuyển khoản", up_to_datetime=closing_moment)
+    canon_pm = normalize_payment_method(payment_method) if (payment_method and payment_method not in ["all", "Tất cả", ""]) else None
+    if not canon_pm:
+        bal_cash = FinanceRepository.get_running_balance(db, PaymentMethod.CASH.value, up_to_datetime=closing_moment)
+        bal_bank = FinanceRepository.get_running_balance(db, PaymentMethod.BANK_TRANSFER.value, up_to_datetime=closing_moment)
         return {
             "status": "success",
             "cash_balance": bal_cash,
@@ -585,8 +648,13 @@ def calculate_system_balance(
             "system_balance": bal_cash + bal_bank
         }
     else:
-        bal = FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=closing_moment)
-        return {"status": "success", "system_balance": bal, "cash_balance": bal if payment_method == "Tiền mặt" else None, "bank_balance": bal if payment_method == "Chuyển khoản" else None}
+        bal = FinanceRepository.get_running_balance(db, canon_pm, up_to_datetime=closing_moment)
+        return {
+            "status": "success",
+            "system_balance": bal,
+            "cash_balance": bal if canon_pm == PaymentMethod.CASH.value else None,
+            "bank_balance": bal if canon_pm == PaymentMethod.BANK_TRANSFER.value else None
+        }
 
 @router.get("/fund-balances/history")
 def get_fund_balances_history(

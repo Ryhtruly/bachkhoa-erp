@@ -6,6 +6,8 @@ class ContractCreateSchema(BaseModel):
     contract_template_id: str = Field(min_length=1, max_length=50)
     task_id: str
     customer_name: str
+    customer_id: Optional[str] = None
+    code: Optional[str] = None
     service_type: str
     contract_value: float
     paid_amount: Optional[float] = 0.0

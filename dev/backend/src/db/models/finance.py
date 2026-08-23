@@ -33,10 +33,17 @@ class CashflowTransaction(Base):
     created_by_user_id = Column(String, nullable=True)
     approved_by_user_id = Column(String, nullable=True)
     status = Column(String, nullable=True)
-    scope = Column(String, default="Công ty")
+    scope = Column(String, default="COMPANY")
     cancellation_reason = Column(String, nullable=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    # Snapshot of the configured signers captured when the document is completed.
+    # Nullable for legacy transactions created before signer snapshots existed.
+    signer_snapshot = Column(JSONB, nullable=True)
+    __table_args__ = (
+        Index("idx_cashflow_composite_balance", "payment_method", "transaction_type", "scope", "status"),
+        Index("idx_cashflow_composite_monthly", "scope", "transaction_date", "transaction_type"),
+    )
 
 
 class Receivable(Base):
@@ -62,7 +69,7 @@ class Receivable(Base):
 
 class FundOpeningBalance(Base):
     __tablename__ = "fund_opening_balances"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
     payment_method = Column(String(50), nullable=True)
     opening_balance = Column(Numeric, default=0)
     effective_date = Column(Date, nullable=True)

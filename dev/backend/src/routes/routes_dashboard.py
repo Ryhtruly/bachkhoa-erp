@@ -5,6 +5,7 @@ from src.db.database import get_db
 from src.db.models import Contract, Receivable, Customer, CashflowTransaction
 from src.core.auth import require_authenticated_user, User
 from src.core.redis_utils import get_cached_json, set_cached_json
+from src.finance.enums import TransactionType
 
 router = APIRouter(prefix="/api", tags=["02. Dashboard & Analytics"])
 
@@ -142,7 +143,9 @@ def get_dashboard_charts(
             for row in status_rows
         ]
         
-        cashflow = db.query(CashflowTransaction.category_code, CashflowTransaction.amount).filter(CashflowTransaction.transaction_type == "Chi").all()
+        cashflow = db.query(CashflowTransaction.category_code, CashflowTransaction.amount).filter(
+            CashflowTransaction.transaction_type.in_([TransactionType.EXPENSE.value, "Chi", "EXPENSE", TransactionType.ADVANCE.value, "Tạm ứng"])
+        ).all()
         expense_cats = {}
         for tc in cashflow:
             cat = tc.category_code or "Khác"

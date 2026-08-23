@@ -29,8 +29,8 @@ from src.dossiers.lifecycle import (
 # Phần 1 — Công thức tính trạng thái, chạy thẳng trên Postgres
 # ══════════════════════════════════════════════════════════════════
 
-def trang_thai(db, *, manual=None, node_status="ready", has_legal=False,
-               workflow_done=False, workflow_cancelled=False):
+def compute_test_survey_status(db, *, manual=None, node_status="ready", has_legal=False,
+                               workflow_done=False, workflow_cancelled=False):
     """Chạy đúng biểu thức CASE của hệ thống với dữ liệu giả lập."""
     row = db.execute(
         text("""
@@ -51,39 +51,39 @@ def trang_thai(db, *, manual=None, node_status="ready", has_legal=False,
     return row
 
 
-def test_tc01_node_chua_nghiem_thu_thi_dang_thuc_hien(db_session):
-    assert trang_thai(db_session, node_status="in_progress") == "Đang thực hiện"
-    assert trang_thai(db_session, node_status="ready") == "Đang thực hiện"
+def test_tc01_unaccepted_node_returns_in_progress(db_session):
+    assert compute_test_survey_status(db_session, node_status="in_progress") == "Đang thực hiện"
+    assert compute_test_survey_status(db_session, node_status="ready") == "Đang thực hiện"
 
 
-def test_tc02_node_xong_va_co_phap_ly_thi_da_ban_giao(db_session):
+def test_tc02_accepted_node_with_legal_returns_handed_over(db_session):
     """Đo vẽ xong, hợp đồng còn Hạng mục pháp lý → đã chuyển việc sang bên kia."""
-    assert trang_thai(db_session, node_status="accepted", has_legal=True) == "Đã bàn giao"
+    assert compute_test_survey_status(db_session, node_status="accepted", has_legal=True) == "Đã bàn giao"
 
 
-def test_tc02b_node_xong_nhung_khong_co_phap_ly_thi_van_dang_chay(db_session):
+def test_tc02b_accepted_node_without_legal_returns_in_progress(db_session):
     """Không kèm pháp lý thì vẫn còn node Bàn giao K08 phải làm — chưa xong."""
-    assert trang_thai(db_session, node_status="accepted", has_legal=False) == "Đang thực hiện"
+    assert compute_test_survey_status(db_session, node_status="accepted", has_legal=False) == "Đang thực hiện"
 
 
-def test_tc03_quy_trinh_chay_het_thi_hoan_thanh(db_session):
+def test_tc03_completed_workflow_returns_completed_status(db_session):
     """⭐ Chính là lỗi khách báo: quy trình xong mà trạng thái vẫn Đang thực hiện."""
-    assert trang_thai(db_session, node_status="accepted", workflow_done=True) == "Hoàn thành"
+    assert compute_test_survey_status(db_session, node_status="accepted", workflow_done=True) == "Hoàn thành"
     # Kể cả node đo vẽ đã xong từ lâu và có pháp lý, quy trình xong vẫn thắng
-    assert trang_thai(
+    assert compute_test_survey_status(
         db_session, node_status="accepted", has_legal=True, workflow_done=True
     ) == "Hoàn thành"
 
 
-def test_tc04_trang_thai_thu_cong_duoc_uu_tien(db_session):
+def test_tc04_manual_status_takes_precedence(db_session):
     """Nhân viên tự chọn thì hệ thống không được ghi đè."""
-    assert trang_thai(db_session, manual="Nộp thành công", workflow_done=True) == "Nộp thành công"
-    assert trang_thai(db_session, manual="Huỷ", node_status="accepted") == "Huỷ"
+    assert compute_test_survey_status(db_session, manual="Nộp thành công", workflow_done=True) == "Nộp thành công"
+    assert compute_test_survey_status(db_session, manual="Huỷ", node_status="accepted") == "Huỷ"
 
 
-def test_tc05_quy_trinh_bi_huy_khong_duoc_coi_la_hoan_thanh(db_session):
+def test_tc05_cancelled_workflow_not_considered_completed(db_session):
     """Quy trình huỷ thì mọi node cũng huỷ theo — không được nhầm thành Hoàn thành."""
-    assert trang_thai(
+    assert compute_test_survey_status(
         db_session, workflow_done=True, workflow_cancelled=True
     ) == "Đang thực hiện"
 
@@ -93,27 +93,27 @@ def test_tc05_quy_trinh_bi_huy_khong_duoc_coi_la_hoan_thanh(db_session):
 # ══════════════════════════════════════════════════════════════════
 
 @pytest.mark.parametrize("status", ["Hoàn thành", "Nộp thành công", "Huỷ", "CLOSED"])
-def test_tc06_trang_thai_ket_thuc_thi_khoa_sua(status):
+def test_tc06_terminal_status_locks_editing(status):
     assert is_dossier_locked(status) is True
 
 
 @pytest.mark.parametrize("status", ["Đang thực hiện", "Đã bàn giao", "Đang chi nhánh", None, ""])
-def test_tc06b_trang_thai_dang_chay_thi_khong_khoa(status):
+def test_tc06b_active_status_allows_editing(status):
     assert is_dossier_locked(status) is False
 
 
-def test_huy_phai_nam_trong_danh_sach_khoa():
+def test_cancelled_status_included_in_terminal_statuses():
     """Trước đây bên Đo vẽ bỏ sót 'Huỷ' nên hồ sơ đã huỷ vẫn sửa được."""
     assert "Huỷ" in TERMINAL_DOSSIER_STATUSES
 
 
-def test_hai_phan_he_dung_chung_mot_danh_sach():
+def test_both_modules_share_single_terminal_status_list():
     """Không còn TERMINAL_SURVEY_STATUSES và TERMINAL_LEGAL_STATUSES riêng."""
     import src.dossiers.lifecycle as lifecycle
 
-    ten_bien = [n for n in dir(lifecycle) if "TERMINAL" in n and n.isupper()]
-    assert ten_bien == ["TERMINAL_DOSSIER_STATUSES", "TERMINAL_SQL_ARRAY"], (
-        f"Có nhiều hơn một danh sách trạng thái kết thúc: {ten_bien}"
+    terminal_names = [n for n in dir(lifecycle) if "TERMINAL" in n and n.isupper()]
+    assert terminal_names == ["TERMINAL_DOSSIER_STATUSES", "TERMINAL_SQL_ARRAY"], (
+        f"Có nhiều hơn một danh sách trạng thái kết thúc: {terminal_names}"
     )
 
 
@@ -121,8 +121,11 @@ def test_hai_phan_he_dung_chung_mot_danh_sach():
 # Phần 3 — Câu SQL thật phải chạy được
 # ══════════════════════════════════════════════════════════════════
 
-def test_truy_van_that_tra_ve_du_3_truong_moi(db_session):
+def test_live_query_returns_all_three_new_fields(db_session):
     """Danh sách phải trả `status` tính sống, `has_legal` và `is_locked`."""
+    if db_session.bind.dialect.name != "postgresql":
+        pytest.skip("Live survey query requires PostgreSQL")
+
     from src.routes.routes_survey_records import _BASE_SQL
 
     rows = db_session.execute(text(_BASE_SQL + " limit 5")).mappings().all()
@@ -134,7 +137,7 @@ def test_truy_van_that_tra_ve_du_3_truong_moi(db_session):
         assert r["is_locked"] == is_dossier_locked(r["status"])
 
 
-def test_cac_manh_sql_ghep_lai_khong_loi_cu_phap(db_session):
+def test_lateral_sql_fragments_integrate_without_syntax_error(db_session):
     """Hai mảnh lateral phải ghép được vào câu truy vấn thật."""
     assert "has_legal" in SURVEY_FLAGS_LATERAL
     assert "workflow_done" in SURVEY_FLAGS_LATERAL

@@ -31,7 +31,7 @@ _MIN_REASON_LEN = 10
 def employee_of(db: Session, user_id: str) -> dict | None:
     row = db.execute(
         text("""
-            select id, full_name from public.employees
+            select id, full_name from employees
             where user_id = :u and is_active is not false
             limit 1
         """),
@@ -41,13 +41,13 @@ def employee_of(db: Session, user_id: str) -> dict | None:
 
 
 def is_director(db: Session, user_id: str) -> bool:
-    """Giám đốc = tài khoản admin hoặc có vai trò admin."""
+    """Giám đốc = tài khoản admin hoặc có vai trò admin/director."""
     return db.execute(
         text("""
-            select 1 from public.users u
-            left join public.user_roles ur on ur.user_id = u.id
-            left join public.roles r on r.id = ur.role_id
-            where u.id = :u and (lower(u.username) = 'admin' or r.role_name = 'admin')
+            select 1 from users u
+            left join user_roles ur on ur.user_id = u.id
+            left join roles r on r.id = ur.role_id
+            where u.id = :u and (lower(u.username) = 'admin' or lower(r.role_name) in ('admin', 'director', 'giam_doc', 'giám đốc'))
             limit 1
         """),
         {"u": user_id},
@@ -57,7 +57,7 @@ def is_director(db: Session, user_id: str) -> bool:
 def is_assigned_to_node(db: Session, *, task_node_id: str, employee_id: str) -> bool:
     return db.execute(
         text("""
-            select 1 from public.task_node_assignments
+            select 1 from task_node_assignments
             where task_node_id = :n and employee_id = :e
               and assignment_status not in ('replaced', 'declined', 'cancelled')
             limit 1

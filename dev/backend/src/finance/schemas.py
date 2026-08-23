@@ -1,13 +1,16 @@
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 from datetime import date
+from src.finance.enums import (
+    normalize_transaction_type, normalize_payment_method, normalize_scope, normalize_status
+)
 
 class CashflowIn(BaseModel):
-    type: str                           # "INCOME" | "EXPENSE" or "Thu" | "Chi"
+    type: str = "INCOME"                # "INCOME" | "EXPENSE" | "ADVANCE" | "REIMBURSEMENT"
     amount: float
     category: str                       # Category code / label
     payer_payee: str
-    payment_method: str                 # "CASH" | "BANK" or "Tiền mặt" | "Chuyển khoản"
+    payment_method: str = "CASH"        # "CASH" | "BANK_TRANSFER"
     contract_id: Optional[str] = None
     project_id: Optional[str] = None
     department_code: Optional[str] = None
@@ -16,22 +19,55 @@ class CashflowIn(BaseModel):
     approved_by: Optional[str] = None
     status: Optional[str] = None
     transaction_date: Optional[str] = None
-    scope: Optional[str] = "Công ty"
+    scope: Optional[str] = "COMPANY"
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def normalize_type(cls, v):
+        return normalize_transaction_type(v)
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def normalize_pm(cls, v):
+        return normalize_payment_method(v)
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def normalize_sc(cls, v):
+        return normalize_scope(v)
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_st(cls, v):
+        return normalize_status(v) if v else None
+
 
 class CashflowUpdateIn(BaseModel):
     category: str
     payer_payee: str
-    payment_method: str
+    payment_method: str = "CASH"
     amount: float
     transaction_date: Optional[str] = None
     description: Optional[str] = ""
     notes: Optional[str] = ""
     contract_id: Optional[str] = None
-    scope: Optional[str] = "Công ty"
+    scope: Optional[str] = "COMPANY"
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def normalize_pm(cls, v):
+        return normalize_payment_method(v)
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def normalize_sc(cls, v):
+        return normalize_scope(v)
+
 
 class CashflowVoidIn(BaseModel):
     reason: str
     actor_id: str = "Admin"
+
 
 class AdvanceCreateIn(BaseModel):
     project_id: Optional[str] = None
@@ -39,26 +75,44 @@ class AdvanceCreateIn(BaseModel):
     amount: float
     payer_payee: str
     note: Optional[str] = ""
-    payment_method: str = "Tiền mặt"
+    payment_method: str = "CASH"
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def normalize_pm(cls, v):
+        return normalize_payment_method(v)
+
 
 class AdvanceClearIn(BaseModel):
     advance_id: str          # ID of original advance voucher
     actual_amount: float     # Actual amount spent
     note: Optional[str] = ""
 
+
 class FundCloseIn(BaseModel):
-    payment_method: str       # "Tiền mặt" | "Chuyển khoản"
+    payment_method: str = "CASH"      # "CASH" | "BANK_TRANSFER"
     actual_amount: float
-    closing_date: str         # ISO string or YYYY-MM-DD HH:MM:SS
+    closing_date: str                 # ISO string or YYYY-MM-DD HH:MM:SS
     notes: Optional[str] = ""
     closing_user: Optional[str] = ""
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def normalize_pm(cls, v):
+        return normalize_payment_method(v)
+
 
 class WageCreateIn(BaseModel):
     project_id: str
     amount: float
     payer_payee: str
     note: Optional[str] = ""
-    payment_method: str = "Tiền mặt"
+    payment_method: str = "CASH"
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def normalize_pm(cls, v):
+        return normalize_payment_method(v)
 
 class EmployeeUpsertIn(BaseModel):
     full_name: str
@@ -99,6 +153,22 @@ class FinanceSettingsIn(BaseModel):
     initial_total_expenditure: Optional[float] = 0.0
     expense_approval_threshold: Optional[float] = None
     advance_admin_threshold: Optional[float] = None
+    payroll_cycle_type: Optional[str] = "CALENDAR_MONTH"
+    payroll_cutoff_day: Optional[int] = 1
+    payroll_payment_day: Optional[int] = 5
+
+
+class DocumentSignersIn(BaseModel):
+    director_name: str = Field(default="Lê Văn Sáu", max_length=120)
+    accountant_name: str = Field(default="", max_length=120)
+    accountant_role: Literal["Kế toán trưởng", "Kế toán phụ trách"] = "Kế toán trưởng"
+    cashier_name: str = Field(default="", max_length=120)
+    payroll_accountant_name: str = Field(default="", max_length=120)
+
+    @field_validator("director_name", "accountant_name", "cashier_name", "payroll_accountant_name", mode="before")
+    @classmethod
+    def normalize_name(cls, value):
+        return str(value or "").strip()
 
 class RefundExcessIn(BaseModel):
     amount: Optional[float] = None

@@ -1,6 +1,6 @@
 import pytest
 import uuid
-from src.db.models import Customer, Contract, Receivable
+from src.db.models import Customer, Contract, Receivable, ContractTemplate
 
 
 def test_contract_cache_status(client, admin_headers):
@@ -20,13 +20,30 @@ def test_create_contract(client, admin_headers, db):
     contract_code = f"HD-TEST-{uuid.uuid4().hex[:4]}"
     task_code = f"HS-TEST-{uuid.uuid4().hex[:4]}"
 
+    template = db.query(ContractTemplate).filter(
+        ContractTemplate.status == "published",
+        ContractTemplate.template_storage_key.isnot(None)
+    ).first()
+
+    if not template:
+        template = ContractTemplate(
+            id=str(uuid.uuid4()),
+            code="MAU_TEST",
+            name="Mẫu Test Pytest",
+            status="published",
+            template_storage_key="contract-templates/MAU_TEST/v1.docx"
+        )
+        db.add(template)
+        db.commit()
+
     payload = {
         "contract_id": contract_code,
         "task_id": task_code,
         "customer_name": "Test Customer Pytest",
         "service_type": "Design Consulting",
         "contract_value": 15000000.0,
-        "sales_source": "Staff A"
+        "sales_source": "Staff A",
+        "contract_template_id": template.id
     }
 
     res = client.post("/api/contracts/", json=payload, headers=admin_headers)

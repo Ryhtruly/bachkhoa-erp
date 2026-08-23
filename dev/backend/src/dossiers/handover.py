@@ -139,7 +139,7 @@ def installments(db: Session, contract_id: str | None) -> list[dict]:
                    payer_payee_name, payment_method, description, approved_at
             from public.cashflow_transactions
             where contract_id = :c and transaction_type in ({_INCOME_SQL})
-              and coalesce(status, '') not in ('Đã hủy', 'Từ chối')
+              and coalesce(status, '') not in ('Đã hủy', 'Từ chối', 'CANCELLED', 'REJECTED')
             order by transaction_date asc, created_at asc
         """),
         {"c": contract_id},
@@ -418,7 +418,6 @@ def mark_delivered(
 
 
 def _unlock_next_node(db: Session, node: dict, actor_id: str) -> str | None:
-    """Mở node kế tiếp theo đường chuyển bước, không cần chờ node này nghiệm thu."""
     node_def = node.get("node_def") or {}
     transitions = node_def.get("transitions") or {}
     next_key = transitions.get("COMPLETED") or (
@@ -450,14 +449,10 @@ def _unlock_next_node(db: Session, node: dict, actor_id: str) -> str | None:
         """),
         {"i": nxt["id"], "a": actor_id,
          "p": json.dumps({"unlocked_by_task_node_id": node["id"],
-                          "reason": "Đã bàn giao tài liệu cho khách"}, ensure_ascii=False)},
+                          "reason": "Handover complete"}, ensure_ascii=False)},
     )
     return nxt["id"]
 
-
-# ══════════════════════════════════════════════════════════════════
-# Làn B — ghi nhận đợt thu tiền
-# ══════════════════════════════════════════════════════════════════
 
 def record_payment(
     db: Session,
@@ -470,17 +465,11 @@ def record_payment(
     note: str | None,
     actor_id: str,
 ) -> dict:
-    """Ghi nhận một đợt khách đưa tiền, mở từ node bàn giao.
-
-    Node ở đây chỉ là CHỖ MỞ MÀN HÌNH, không phải điều kiện thu tiền: khoản nợ
-    thuộc về hợp đồng, nên chốt xong bước bàn giao rồi khách mới trả nốt vẫn ghi
-    nhận được. Trạng thái node chỉ dùng để ghi vào nhật ký.
-    """
     node = _node_or_404(db, task_node_id)
     if not node["contract_id"]:
-        raise HTTPException(status_code=400, detail="Công việc này không gắn hợp đồng nào")
+        raise HTTPException(status_code=400, detail="Node not linked to a contract")
 
-    return _ghi_nhan_thu_tien(
+    return _record_payment_transaction(
         db,
         contract_id=node["contract_id"],
         amount=amount,
@@ -489,7 +478,7 @@ def record_payment(
         payer_name=payer_name or node["customer_name"],
         note=note,
         actor_id=actor_id,
-        mo_ta_mac_dinh=f"Thu tiền tại bước bàn giao — {node['service_type'] or ''}".strip(),
+        default_desc=f"Payment at handover — {node['service_type'] or ''}".strip(),
         task_node_id=task_node_id,
         node_status=node["status"],
         total_value=node["total_value"],
@@ -507,12 +496,6 @@ def record_contract_payment(
     note: str | None,
     actor_id: str,
 ) -> dict:
-    """Ghi nhận đợt thu tiền thẳng theo hợp đồng, không cần đứng ở bước nào.
-
-    Tiền là quan hệ giữa công ty và khách, không phải thuộc tính của một bước
-    trong quy trình. Khách trả trước lúc quy trình chưa chạy tới bàn giao, hoặc
-    trả nốt sau khi hồ sơ đã giao xong — kế toán đều phải ghi được ngay.
-    """
     row = db.execute(
         text("""
             select c.id, c.total_value, cu.full_name as customer_name
@@ -523,9 +506,9 @@ def record_contract_payment(
         {"c": contract_id},
     ).mappings().first()
     if not row:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
+        raise HTTPException(status_code=404, detail="Contract not found")
 
-    return _ghi_nhan_thu_tien(
+    return _record_payment_transaction(
         db,
         contract_id=contract_id,
         amount=amount,
@@ -534,12 +517,12 @@ def record_contract_payment(
         payer_name=payer_name or row["customer_name"],
         note=note,
         actor_id=actor_id,
-        mo_ta_mac_dinh=f"Thu tiền hợp đồng {contract_id}",
+        default_desc=f"Contract payment {contract_id}",
         total_value=row["total_value"],
     )
 
 
-def _ghi_nhan_thu_tien(
+def _record_payment_transaction(
     db: Session,
     *,
     contract_id: str,
@@ -549,20 +532,15 @@ def _ghi_nhan_thu_tien(
     payer_name: str | None,
     note: str | None,
     actor_id: str,
-    mo_ta_mac_dinh: str,
+    default_desc: str,
     total_value,
     task_node_id: str | None = None,
     node_status: str | None = None,
 ) -> dict:
-    """Lõi ghi nhận một đợt khách đưa tiền.
-
-    Phiếu tạo ra ở trạng thái **Chờ duyệt** — công nợ chỉ giảm khi giám đốc duyệt.
-    Ảnh bill là bắt buộc: không có minh chứng thì con số chỉ là lời khai.
-    """
     if amount is None or float(amount) <= 0:
-        raise HTTPException(status_code=400, detail="Số tiền phải lớn hơn 0")
+        raise HTTPException(status_code=400, detail="Amount must be > 0")
     if not receipt_attachments:
-        raise HTTPException(status_code=400, detail="Bắt buộc đính ảnh bill/biên lai")
+        raise HTTPException(status_code=400, detail="Receipt attachments required")
 
     debt = debt_summary(db, contract_id, total_value)
     remaining_after_approval = debt["remaining"] - debt["pending_amount"]
@@ -570,19 +548,24 @@ def _ghi_nhan_thu_tien(
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Số tiền vượt quá công nợ còn lại. Còn thiếu {debt['remaining']:,.0f}₫"
-                + (f", trong đó {debt['pending_amount']:,.0f}₫ đang chờ duyệt."
+                f"Amount exceeds remaining balance. Remaining: {debt['remaining']:,.0f}₫"
+                + (f", of which {debt['pending_amount']:,.0f}₫ pending approval."
                    if debt["pending_amount"] else ".")
             ),
         )
 
     from src.finance.repository import FinanceRepository
-
+    from src.finance.enums import TransactionType, TransactionStatus, TransactionScope, normalize_payment_method
     from datetime import date
 
     today_date = date.today()
-    new_id = FinanceRepository.generate_voucher_id("Thu", db, today_date)
-    first_receipt_url = f"/api/handover/payment-receipts/{receipt_attachments[0]['id']}"
+    canon_type = TransactionType.INCOME.value
+    canon_pm = normalize_payment_method(payment_method)
+    canon_status = TransactionStatus.PENDING.value
+    canon_scope = TransactionScope.COMPANY.value
+    new_id = FinanceRepository.generate_voucher_id(canon_type, db, today_date)
+    first_att = receipt_attachments[0]
+    first_receipt_url = first_att.get("url") or f"/api/handover/payment-receipts/{first_att.get('id', 'receipt_1')}"
     db.execute(
         text("""
             insert into public.cashflow_transactions
@@ -591,24 +574,24 @@ def _ghi_nhan_thu_tien(
                  description, receipt_attachment_url, receipt_attachments,
                  created_by_user_id, status, scope, created_at)
             values
-                (:id, :contract_id, 'Thu', :amount, 'Thu tiền hợp đồng',
+                (:id, :contract_id, :tx_type, :amount, 'Thu tiền hợp đồng',
                  :payer, :method, :transaction_date, :id,
                  :description, :bill, cast(:attachments as jsonb),
-                 :actor, 'Chờ duyệt', 'Công ty', now())
+                 :actor, :status, :scope, now())
         """),
         {
-            "id": new_id, "contract_id": contract_id, "amount": float(amount),
-            "payer": payer_name, "method": payment_method or "Tiền mặt",
+            "id": new_id, "contract_id": contract_id, "tx_type": canon_type, "amount": float(amount),
+            "payer": payer_name, "method": canon_pm,
             "transaction_date": today_date,
-            "description": note or mo_ta_mac_dinh,
+            "description": note or default_desc,
             "bill": first_receipt_url,
             "attachments": json.dumps(receipt_attachments, ensure_ascii=False),
             "actor": actor_id,
+            "status": canon_status,
+            "scope": canon_scope,
         },
     )
 
-    # Nhật ký gắn vào bước bàn giao khi có. Thu thẳng theo hợp đồng thì không có
-    # node nào để gắn — phiếu thu tự nó đã là dấu vết.
     if task_node_id:
         db.execute(
             text("""
@@ -627,31 +610,24 @@ def _ghi_nhan_thu_tien(
     return {
         "voucher_id": new_id,
         "amount": float(amount),
-        "status": "Chờ duyệt",
+        "status": canon_status,
         "receipt_count": len(receipt_attachments),
     }
 
 
-def tai_lieu_ban_giao(db: Session, task_node_id: str) -> dict:
-    """Gom mọi tài liệu của hạng mục để giao cho khách.
-
-    Tài liệu nằm rải ở bốn chỗ khác nhau — file hợp đồng, bộ hồ sơ pháp lý, thư
-    mục bản vẽ, và minh chứng nhân viên nộp ở từng bước. Nhân viên đang phải tự
-    nhớ và mở từng chỗ, sót một cái là khách phải quay lại.
-
-    Chỉ liệt kê; việc đóng gói và kiểm tra quyền do tầng route lo.
-    """
+def get_handover_deliverables(db: Session, task_node_id: str) -> dict:
+    """Gom mọi tài liệu của hạng mục để giao cho khách."""
     node = _node_or_404(db, task_node_id)
     sl_id = node.get("service_line_id")
 
-    muc: list[dict] = []
+    items: list[dict] = []
 
-    hop_dong = db.execute(
+    contract_file_link = db.execute(
         text("select file_link from public.contracts where id = :c"),
         {"c": node["contract_id"]},
     ).scalar()
-    if hop_dong:
-        muc.append({"nhom": "Hop dong", "ten": "Hop dong da ky", "url": hop_dong})
+    if contract_file_link:
+        items.append({"nhom": "Hop dong", "ten": "Hop dong da ky", "url": contract_file_link})
 
     for r in db.execute(
         text("""
@@ -663,9 +639,9 @@ def tai_lieu_ban_giao(db: Session, task_node_id: str) -> dict:
         {"s": sl_id},
     ).mappings():
         if r["dossier_file_url"]:
-            muc.append({"nhom": "Ho so phap ly", "ten": "Bo ho so nop co quan", "url": r["dossier_file_url"]})
+            items.append({"nhom": "Ho so phap ly", "ten": "Bo ho so nop co quan", "url": r["dossier_file_url"]})
         if r["linked_survey_folder_url"]:
-            muc.append({"nhom": "Ban ve", "ten": "Thu muc ban ve do dac", "url": r["linked_survey_folder_url"]})
+            items.append({"nhom": "Ban ve", "ten": "Thu muc ban ve do dac", "url": r["linked_survey_folder_url"]})
 
     for r in db.execute(
         text("""
@@ -681,26 +657,27 @@ def tai_lieu_ban_giao(db: Session, task_node_id: str) -> dict:
     ).mappings():
         for f in (r["evidence_data"] or {}).get("files", []) or []:
             if f.get("url"):
-                muc.append({
+                items.append({
                     "nhom": f"Minh chung {r['node_code']}",
                     "ten": f.get("name") or r["checklist_name"],
                     "url": f["url"],
                 })
 
     debt = debt_summary(db, node["contract_id"], node["total_value"])
-    # Giao hồ sơ cho khách = việc trong checklist của bước, chốt bằng NGHIỆM THU.
-    # Nên mở nút tải khi đã thu đủ tiền, HOẶC khi bước bàn giao đã nghiệm thu xong.
-    da_nghiem_thu = node["status"] == "accepted"
-    mo_tai = bool(debt["is_settled"] or da_nghiem_thu)
+    is_accepted = node["status"] == "accepted"
+    can_download = bool(debt["is_settled"] or is_accepted)
     return {
         "contract_id": node["contract_id"],
         "customer_name": node["customer_name"],
-        "items": muc,
+        "items": items,
         "debt": debt,
-        "can_download": mo_tai,
-        "blocked_reason": None if mo_tai
+        "can_download": can_download,
+        "blocked_reason": None if can_download
             else f"Còn thiếu {debt['remaining']:,.0f}₫ — thu đủ tiền hoặc nghiệm thu xong bước bàn giao thì mới tải được bộ hồ sơ gốc",
     }
+
+# Backward compatibility alias
+tai_lieu_ban_giao = get_handover_deliverables
 
 
 # ══════════════════════════════════════════════════════════════════

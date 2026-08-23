@@ -143,88 +143,75 @@ def view_payment_receipt(
 
 
 @router.get("/{task_node_id}/deliverables")
-def liet_ke_tai_lieu(
+def list_handover_deliverables(
     task_node_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Danh sách tài liệu sẽ giao cho khách, kèm điều kiện mở khoá."""
-    return {"data": HO.tai_lieu_ban_giao(db, task_node_id)}
+    return {"data": HO.get_handover_deliverables(db, task_node_id)}
 
 
 @router.get("/{task_node_id}/deliverables.zip")
-def tai_tron_bo(
+def download_handover_package(
     task_node_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Đóng gói toàn bộ tài liệu bàn giao thành một file zip.
-
-    File nào nằm trong kho của hệ thống thì gom vào zip. File chỉ có đường dẫn
-    ngoài (thư mục Drive, link dán tay) không tải hộ được — ghi vào DANH_MUC.txt
-    kèm đường dẫn, để người giao biết còn phải lấy tay những gì. Im lặng bỏ qua
-    thì khách nhận thiếu mà không ai biết.
-    """
-    goi = HO.tai_lieu_ban_giao(db, task_node_id)
-    if not goi["can_download"]:
-        raise HTTPException(status_code=409, detail=goi["blocked_reason"])
-    if not goi["items"]:
+    """Đóng gói toàn bộ tài liệu bàn giao thành một file zip."""
+    deliverables_package = HO.get_handover_deliverables(db, task_node_id)
+    if not deliverables_package["can_download"]:
+        raise HTTPException(status_code=409, detail=deliverables_package["blocked_reason"])
+    if not deliverables_package["items"]:
         raise HTTPException(status_code=404, detail="Hạng mục này chưa có tài liệu nào để bàn giao")
 
-    dem = io.BytesIO()
-    ngoai: list[str] = []
-    thu_muc_static = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "static"))
+    buffer = io.BytesIO()
+    external_links: list[str] = []
+    static_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "static"))
 
-    def _lay_noi_dung(url: str):
-        # Chỉ đọc tệp nằm trong phạm vi hệ thống tự quản.
+    def _fetch_file_content(url: str):
         if "/payment-receipts/" in url:
             return get_finance_file(url.split("/api/handover/payment-receipts/")[-1])["Body"].read()
 
         if url.startswith("/static/"):
-            # Chặn ../ trỏ ra ngoài thư mục static.
-            duong = os.path.normpath(os.path.join(thu_muc_static, url[len("/static/"):]))
-            if not duong.startswith(thu_muc_static + os.sep) or not os.path.isfile(duong):
+            safe_path = os.path.normpath(os.path.join(static_dir, url[len("/static/"):]))
+            if not safe_path.startswith(static_dir + os.sep) or not os.path.isfile(safe_path):
                 return None
-            with open(duong, "rb") as f:
+            with open(safe_path, "rb") as f:
                 return f.read()
 
-        # Tệp trong kho tài liệu của chính hệ thống. Chỉ nhận đúng địa chỉ kho đã
-        # cấu hình — tải hộ một URL bất kỳ người dùng dán vào là mở đường cho máy
-        # chủ đi gọi tới nơi không nên gọi. Lấy bằng khoá đối tượng chứ không qua
-        # HTTP: địa chỉ lưu trong CSDL là địa chỉ cho trình duyệt (localhost:9000),
-        # máy chủ chạy trong container gọi vào đó không tới được.
-        for goc in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
-            tien_to = f"{goc.rstrip(chr(47))}/{MINIO_BUCKET}/" if goc else None
-            if tien_to and url.startswith(tien_to):
-                return get_file(unquote(url[len(tien_to):].split("?")[0]))
+        for base_url in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
+            prefix = f"{base_url.rstrip(chr(47))}/{MINIO_BUCKET}/" if base_url else None
+            if prefix and url.startswith(prefix):
+                return get_file(unquote(url[len(prefix):].split("?")[0]))
         return None
 
-    with zipfile.ZipFile(dem, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, muc in enumerate(goi["items"], start=1):
-            url = muc["url"]
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, item in enumerate(deliverables_package["items"], start=1):
+            url = item["url"]
             try:
-                noi_dung = _lay_noi_dung(url)
+                content = _fetch_file_content(url)
             except Exception:
                 logger.warning("Không lấy được tệp cho gói bàn giao: %s", url)
-                noi_dung = None
-            if noi_dung:
-                ten_tep = os.path.basename(muc["ten"]) or f"tai_lieu_{i}"
-                zf.writestr(f"{muc['nhom']}/{i:02d}_{ten_tep}", noi_dung)
+                content = None
+            if content:
+                filename = os.path.basename(item["ten"]) or f"tai_lieu_{i}"
+                zf.writestr(f"{item['nhom']}/{i:02d}_{filename}", content)
             else:
-                ngoai.append(f"[{muc['nhom']}] {muc['ten']}\n    {url}")
+                external_links.append(f"[{item['nhom']}] {item['ten']}\n    {url}")
 
-        if ngoai:
+        if external_links:
             zf.writestr(
                 "DANH_MUC.txt",
-                "TAI LIEU CHI CO DUONG DAN — PHAI LAY TAY:\n\n" + "\n\n".join(ngoai) + "\n",
+                "TAI LIEU CHI CO DUONG DAN — PHAI LAY TAY:\n\n" + "\n\n".join(external_links) + "\n",
             )
 
-    dem.seek(0)
-    ten = f"HoSoBanGiao_{goi['contract_id'].replace('/', '-')}.zip"
+    buffer.seek(0)
+    zip_filename = f"HoSoBanGiao_{deliverables_package['contract_id'].replace('/', '-')}.zip"
     return StreamingResponse(
-        dem,
+        buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(ten)}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_filename)}"},
     )
 
 

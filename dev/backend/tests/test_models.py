@@ -4,10 +4,9 @@ from src.db.database import Base
 from src.db.models import (
     User, Role, UserRole, RolePermission, AuthToken, AuditLog, Notification,
     Customer, LeadPipeline, Contract, ZaloInteraction, ServiceLine,
-    TaskType, TaskTypeRate, ProjectTask, TaskSubmission, TaskPayRecord,
-    ServicePackage,
+    TaskType, ServicePackage,
     CashflowTransaction, Receivable, FundOpeningBalance, FinanceSetting, ContractExpense,
-    Department, Employee, KpiPayroll, PayrollPeriod, PayrollAdjustment, Attendance, LeaveRecord,
+    Department, Employee, PayrollPeriod, Attendance, LeaveRecord,
     ChatRoom, Message, ChatParticipant,
     WikiDocument, WikiChunk,
     SystemSetting,
@@ -17,6 +16,9 @@ from src.db.models import (
 
 def test_table_model_alignment(db):
     """Mapped legacy models must exist; the new workflow schema is mapped separately."""
+    if db.bind.dialect.name != "postgresql":
+        pytest.skip("Schema alignment requires PostgreSQL information_schema")
+
     db_tables = [
         r[0] for r in db.execute(
             text("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
@@ -41,15 +43,18 @@ def test_table_model_alignment(db):
 
 def test_foreign_key_relationships():
     """Verify model foreign key definitions exist on key relations."""
-    task_fk_targets = [fk.target_fullname for fk in ProjectTask.__table__.foreign_keys]
-    assert "contracts.id" in task_fk_targets, "ProjectTask missing FK to contracts.id"
-    assert "users.id" in task_fk_targets, "ProjectTask missing FK to users.id"
+    service_line_fk_targets = [fk.target_fullname for fk in ServiceLine.__table__.foreign_keys]
+    assert "contracts.id" in service_line_fk_targets, "ServiceLine missing FK to contracts.id"
 
     lead_fk_targets = [fk.target_fullname for fk in LeadPipeline.__table__.foreign_keys]
     assert "customers.id" in lead_fk_targets, "LeadPipeline missing FK to customers.id"
 
     contract_fk_targets = [fk.target_fullname for fk in Contract.__table__.foreign_keys]
     assert "customers.id" in contract_fk_targets, "Contract missing FK to customers.id"
+
+    cashflow_fk_targets = [fk.target_fullname for fk in CashflowTransaction.__table__.foreign_keys]
+    assert "contracts.id" in cashflow_fk_targets, "CashflowTransaction missing FK to contracts.id"
+
 
 def test_column_constraints_and_attributes():
     """Verify critical column attributes and constraints."""
@@ -67,14 +72,19 @@ def test_column_constraints_and_attributes():
     assert hasattr(audit, "actor_id")
     assert hasattr(audit, "payload_json")
 
-    task = ProjectTask()
-    assert hasattr(task, "service_line_id")
-    assert hasattr(task, "current_package")
-    assert hasattr(task, "is_overdue_flag")
+    service_line = ServiceLine()
+    assert hasattr(service_line, "contract_id")
+    assert hasattr(service_line, "service_type")
+    assert hasattr(service_line, "priority")
 
     sp = ServicePackage()
     assert hasattr(sp, "name")
     assert hasattr(sp, "is_active")
+
+    tx = CashflowTransaction()
+    assert hasattr(tx, "transaction_type")
+    assert hasattr(tx, "amount")
+    assert hasattr(tx, "payment_method")
 
 
 def test_no_circular_imports():
@@ -82,5 +92,6 @@ def test_no_circular_imports():
     import src.db.models as models_pkg
     assert hasattr(models_pkg, "User")
     assert hasattr(models_pkg, "ServicePackage")
+    assert hasattr(models_pkg, "CashflowTransaction")
     assert not hasattr(models_pkg, "LegalSubmission")
     assert not hasattr(models_pkg, "TaskTransition")

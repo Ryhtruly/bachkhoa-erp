@@ -571,15 +571,11 @@ def save_workflow_draft(
     return {**dict(revision), "graph": normalized_graph}
 
 
-def _chan_sua_buoc_dang_chay(db: Session, *, runtime_node: dict, desired_node: dict) -> None:
-    """Chặn đổi checklist / thời lượng của bước đã bắt đầu.
+def _prevent_modifying_active_node(db: Session, *, runtime_node: dict, desired_node: dict) -> None:
+    """Chặn đổi checklist / thời lượng của bước đã bắt đầu."""
+    step_name = desired_node.get("name") or runtime_node["node_code"]
 
-    So định nghĩa mới với thứ đang chạy thật; chỉ báo lỗi khi có khác biệt, để
-    người dùng sửa bước khác trong cùng quy trình vẫn lưu được bình thường.
-    """
-    ten_buoc = desired_node.get("name") or runtime_node["node_code"]
-
-    cu = db.execute(
+    checklist_rows = db.execute(
         text("""
             select checklist_key, checklist_name, is_required, require_evidence
             from public.task_node_checklist_results
@@ -588,11 +584,11 @@ def _chan_sua_buoc_dang_chay(db: Session, *, runtime_node: dict, desired_node: d
         """),
         {"i": runtime_node["id"]},
     ).mappings().all()
-    dau_cu = sorted(
+    old_checklist_fingerprint = sorted(
         (r["checklist_key"], r["checklist_name"], bool(r["is_required"]), bool(r["require_evidence"]))
-        for r in cu
+        for r in checklist_rows
     )
-    dau_moi = sorted(
+    new_checklist_fingerprint = sorted(
         (
             str(item.get("key") or ""),
             str(item.get("name") or ""),
@@ -601,15 +597,14 @@ def _chan_sua_buoc_dang_chay(db: Session, *, runtime_node: dict, desired_node: d
         )
         for item in (desired_node.get("checklist") or [])
     )
-    if dau_cu != dau_moi:
+    if old_checklist_fingerprint != new_checklist_fingerprint:
         raise WorkflowValidationError(
-            f"Bước “{ten_buoc}” đã bắt đầu nên không đổi được checklist. "
+            f"Bước “{step_name}” đã bắt đầu nên không đổi được checklist. "
             "Nhân viên có thể đã nộp minh chứng theo danh sách cũ. "
             "Cần đổi thì huỷ quy trình làm lại, hoặc thêm một bước mới."
         )
 
-    # Thời lượng không nằm trên task_nodes mà trong graph của bản đã sinh ra bước.
-    dinh_nghia_cu = db.execute(
+    old_node_def = db.execute(
         text("""
             select r.graph->'nodes'->n.node_key as node_def
             from public.task_nodes n
@@ -618,17 +613,17 @@ def _chan_sua_buoc_dang_chay(db: Session, *, runtime_node: dict, desired_node: d
         """),
         {"i": runtime_node["id"]},
     ).scalar()
-    if isinstance(dinh_nghia_cu, dict):
-        def _so(v):
+    if isinstance(old_node_def, dict):
+        def _to_int(val):
             try:
-                return int(v or 0)
+                return int(val or 0)
             except (TypeError, ValueError):
                 return 0
-        if (_so(dinh_nghia_cu.get("duration_days")), _so(dinh_nghia_cu.get("duration_hours"))) != (
-            _so(desired_node.get("duration_days")), _so(desired_node.get("duration_hours"))
+        if (_to_int(old_node_def.get("duration_days")), _to_int(old_node_def.get("duration_hours"))) != (
+            _to_int(desired_node.get("duration_days")), _to_int(desired_node.get("duration_hours"))
         ):
             raise WorkflowValidationError(
-                f"Bước “{ten_buoc}” đã bắt đầu nên không đổi được thời hạn. "
+                f"Bước “{step_name}” đã bắt đầu nên không đổi được thời hạn. "
                 "Hạn của các bước sau đã tính theo mốc cũ."
             )
 

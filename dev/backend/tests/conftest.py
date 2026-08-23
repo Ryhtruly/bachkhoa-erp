@@ -78,6 +78,13 @@ if not test_target_is_disposable(TEST_DATABASE_URL):
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
+
 from src.index import app
 from src.db.database import engine, Base, get_db
 from src.db.models import User, Role, UserRole, RolePermission, AuditLog
@@ -103,6 +110,8 @@ def db():
     import src.db.models
     connection = engine.connect()
     Base.metadata.create_all(bind=connection)
+    if connection.in_transaction():
+        connection.commit()
     transaction = connection.begin()
     session = Session(bind=connection)
     app.dependency_overrides[get_db] = lambda: session

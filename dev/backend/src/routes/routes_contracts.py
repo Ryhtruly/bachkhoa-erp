@@ -81,15 +81,34 @@ def render_current_contract_document(db: Session, contract_id: str) -> Response:
                 status_code=409,
                 detail="Chưa cấu hình mẫu hợp đồng riêng tư cho môi trường này.",
             )
-    template_bytes = get_contract_template(template_key) if template_key else None
+    template_bytes = None
+    if template_key:
+        try:
+            template_bytes = get_contract_template(template_key)
+        except Exception as exc:
+            logger.warning("Không thể tải mẫu hợp đồng '%s' từ kho lưu trữ: %s. Thử chuyển sang mẫu mặc định dự phòng.", template_key, exc)
+            template_bytes = None
+
     try:
         document_bytes = doc_generator.render_contract_document(
             document_data,
             "mau_hop_dong_v1",
             template_bytes=template_bytes,
         )
-    except (OSError, ValueError) as exc:
-        raise HTTPException(status_code=500, detail="Không thể tạo lại tài liệu hợp đồng.") from exc
+    except Exception as exc:
+        logger.error("Lỗi khi render tài liệu hợp đồng %s: %s", contract_id, exc, exc_info=True)
+        # Fallback to local template if custom template rendering failed
+        if template_bytes is not None:
+            try:
+                document_bytes = doc_generator.render_contract_document(
+                    document_data,
+                    "mau_hop_dong_v1",
+                    template_bytes=None,
+                )
+            except Exception as fallback_exc:
+                raise HTTPException(status_code=500, detail=f"Không thể tạo tài liệu hợp đồng: {exc}") from fallback_exc
+        else:
+            raise HTTPException(status_code=500, detail=f"Không thể tạo tài liệu hợp đồng: {exc}") from exc
 
     return Response(
         content=document_bytes,
@@ -1219,43 +1238,35 @@ def create_workflow_template(
     để phân biệt, và đi qua đúng bộ kiểm tra như lúc kích hoạt quy trình — mẫu
     hỏng mà lưu được thì mọi hợp đồng dùng nó sau này đều hỏng theo.
     """
-    ten = payload.name.strip()
-    if not ten:
+    template_name = payload.name.strip()
+    if not template_name:
         raise HTTPException(status_code=422, detail="Đặt tên cho mẫu quy trình")
 
     try:
-        # Mẫu phải liền mạch — mẫu hỏng thì mọi hợp đồng dùng nó đều hỏng theo.
-        # Nhưng KHÔNG đòi phân công: mẫu là khung dùng chung, người phụ trách
-        # mỗi hợp đồng một khác, gán lúc áp mẫu vào hạng mục.
         graph = validate_workflow_graph(db, payload.graph, require_connected=True)
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    trung = db.execute(
+    existing_template = db.execute(
         text("select 1 from public.workflow_templates where lower(name) = lower(:n) limit 1"),
-        {"n": ten},
+        {"n": template_name},
     ).scalar()
-    if trung:
-        raise HTTPException(status_code=409, detail=f"Đã có mẫu tên “{ten}”. Đặt tên khác.")
+    if existing_template:
+        raise HTTPException(status_code=409, detail=f"Đã có mẫu tên “{template_name}”. Đặt tên khác.")
 
-    # Mã sinh từ thời điểm tạo: người dùng không phải nghĩ ra mã, và không đụng
-    # dải mã của bốn mẫu gốc (WF_DOVE, WF_PHAPLY...).
-    ma = f"WF_TUTAO_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    code = f"WF_TUTAO_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     row = db.execute(
         text("""
             insert into public.workflow_templates
                 (code, version, name, description, status, graph, created_by)
             values
-                (:ma, 1, :ten, :mota, 'published', cast(:graph as jsonb), :nguoi)
+                (:code, 1, :name, :description, 'published', cast(:graph as jsonb), :user_id)
             returning id, code, name
         """),
-        {"ma": ma, "ten": ten, "mota": (payload.description or "").strip() or None,
-         "graph": json.dumps(graph, ensure_ascii=False), "nguoi": user.id},
+        {"code": code, "name": template_name, "description": (payload.description or "").strip() or None,
+         "graph": json.dumps(graph, ensure_ascii=False), "user_id": user.id},
     ).mappings().first()
     db.commit()
-    # Danh mục mẫu được cache 1 tiếng và nhúng luôn vào payload workspace. Không
-    # xoá thì mẫu vừa lưu phải chờ cache hết hạn mới hiện ra trong ô chọn — người
-    # dùng tưởng lưu hỏng, lưu lại lần nữa thì ăn lỗi trùng tên.
     invalidate_cache("bachkhoa:catalog:*")
     invalidate_cache("bachkhoa:contract_workspace:*")
     return {"data": dict(row)}
@@ -1564,7 +1575,7 @@ def create_contract(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("contract", "create")),
 ):
-    lock_target = payload.customer_id or payload.code or "global"
+    lock_target = getattr(payload, "customer_id", None) or getattr(payload, "contract_id", None) or getattr(payload, "code", None) or "global"
     with redis_distributed_lock(
         f"contract:create:{lock_target}",
         timeout_seconds=5,
@@ -1686,9 +1697,9 @@ def override_handover(
     user: User = Depends(require_permission("contract", "approve")),
 ):
     """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K08."""
-    ket_qua = ContractService.override_handover(db, contract_id, payload.reason, actor_id=user.id)
+    result = ContractService.override_handover(db, contract_id, payload.reason, actor_id=user.id)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 
 @router.post("/{contract_id:path}/write-off-debt")
@@ -1699,9 +1710,9 @@ def write_off_debt(
     user: User = Depends(require_permission("finance", "approve")),
 ):
     """Giám đốc duyệt xóa nợ / miễn giảm công nợ cho hợp đồng."""
-    ket_qua = ContractService.write_off_debt(db, contract_id, payload.reason, actor_id=user.id)
+    result = ContractService.write_off_debt(db, contract_id, payload.reason, actor_id=user.id)
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 
 @router.get("/{contract_id:path}/eligible-carry-forward-targets")
@@ -1722,11 +1733,11 @@ def carry_forward_debt(
     user: User = Depends(require_permission("finance", "approve")),
 ):
     """Giám đốc duyệt chuyển nợ hợp đồng cũ sang hợp đồng mới."""
-    ket_qua = ContractService.carry_forward_debt(
+    result = ContractService.carry_forward_debt(
         db, contract_id, payload.target_contract_id, payload.reason, actor_id=user.id
     )
     invalidate_money_caches()
-    return ket_qua
+    return result
 
 
 class ServiceLinePriorityIn(BaseModel):
@@ -1820,25 +1831,24 @@ def priority_bonus_preview(
         """),
         {"c": contract_id},
     ).scalar() or "NORMAL"
-    he_so = _priority_multiplier(db, prio)
+    multiplier = _priority_multiplier(db, prio)
 
-    nguoi = db.execute(
+    staff_piece_rates = db.execute(
         text("""
             select e.id as employee_id, e.full_name,
-                   coalesce(sum(wpe.amount), 0) as khoan
+                   coalesce(sum(wpe.amount), 0) as piece_rate_total
             from public.work_pay_entitlements wpe
             join public.workflow_instances wi on wi.id = wpe.workflow_instance_id
             join public.service_lines sl on sl.id = wi.service_line_id
             join public.employees e on e.id = wpe.employee_id
             where sl.contract_id = :c and wpe.status <> 'void'
             group by e.id, e.full_name
-            order by khoan desc
+            order by piece_rate_total desc
         """),
         {"c": contract_id},
     ).mappings().all()
 
-    # Đã thưởng ưu tiên cho hợp đồng này chưa (tránh phát 2 lần).
-    da_thuong = {
+    rewarded_employee_ids = {
         r[0] for r in db.execute(
             text("""
                 select employee_id from public.employee_pay_adjustments
@@ -1851,20 +1861,20 @@ def priority_bonus_preview(
     }
 
     participants = []
-    for r in nguoi:
-        khoan = float(r["khoan"] or 0)
+    for row in staff_piece_rates:
+        piece_rate = float(row["piece_rate_total"] or 0)
         participants.append({
-            "employee_id": r["employee_id"],
-            "full_name": r["full_name"],
-            "khoan": khoan,
-            "suggested_bonus": round(khoan * (he_so - 1.0)),
-            "already_paid": r["employee_id"] in da_thuong,
+            "employee_id": row["employee_id"],
+            "full_name": row["full_name"],
+            "khoan": piece_rate,
+            "suggested_bonus": round(piece_rate * (multiplier - 1.0)),
+            "already_paid": row["employee_id"] in rewarded_employee_ids,
         })
 
     return {"status": "success", "data": {
         "contract_id": contract_id,
         "priority": prio,
-        "multiplier": he_so,
+        "multiplier": multiplier,
         "participants": participants,
     }}
 
@@ -1900,9 +1910,9 @@ def apply_priority_bonus(
     ).scalar() or "NORMAL"
     if prio == "NORMAL":
         raise HTTPException(status_code=409, detail="Hợp đồng không có ưu tiên — không có thưởng")
-    he_so = _priority_multiplier(db, prio)
+    multiplier = _priority_multiplier(db, prio)
 
-    da_thuong = {
+    rewarded_employee_ids = {
         r[0] for r in db.execute(
             text("""
                 select employee_id from public.employee_pay_adjustments
@@ -1915,13 +1925,13 @@ def apply_priority_bonus(
 
     created = 0
     for a in payload.allocations:
-        if a.employee_id in da_thuong:
+        if a.employee_id in rewarded_employee_ids:
             continue  # đã thưởng rồi, bỏ qua (idempotent)
         source = json.dumps({
             "kind": "PRIORITY_BONUS",
             "contract_id": contract_id,
             "priority": prio,
-            "multiplier": he_so,
+            "multiplier": multiplier,
             "note": (a.note or "").strip() or None,
         }, ensure_ascii=False)
         db.execute(

@@ -181,14 +181,14 @@ def get_notifications_summary(
     # ở chuông của người duyệt, không để nằm chờ vô hạn trong sổ quỹ.
     if check_user_permission(db, user, "finance", "approve"):
         for row in db.execute(_MANAGER_CASHFLOW_APPROVAL_QUERY).mappings().all():
-            la_thu = row["transaction_type"] in ("Thu", "INCOME")
-            ten_phieu = "Phiếu thu" if la_thu else "Phiếu chi"
-            nguoi = row["payer_payee_name"] or "khách"
+            is_receipt = row["transaction_type"] in ("Thu", "INCOME")
+            voucher_label = "Phiếu thu" if is_receipt else "Phiếu chi"
+            partner_name = row["payer_payee_name"] or "khách"
             items.append({
                 "type": "cashflow_approval",
                 "label": (
-                    f"{ten_phieu} {row['voucher_id']} — {float(row['amount'] or 0):,.0f}₫ "
-                    f"từ {nguoi} chờ duyệt"
+                    f"{voucher_label} {row['voucher_id']} — {float(row['amount'] or 0):,.0f}₫ "
+                    f"từ {partner_name} chờ duyệt"
                 ),
                 "contract_id": row["contract_id"],
                 "service_line_id": row["service_line_id"],
