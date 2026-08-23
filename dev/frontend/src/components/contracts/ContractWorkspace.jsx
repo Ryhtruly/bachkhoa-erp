@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
-  FileText,
   UserRound,
   Phone,
   MapPin,
@@ -10,8 +9,6 @@ import {
   TriangleAlert,
   LoaderCircle,
   Workflow,
-  ShieldCheck,
-  DollarSign,
   Ruler
 } from 'lucide-react';
 import ContractWorkflowDesigner from './ContractWorkflowDesigner';
@@ -21,7 +18,7 @@ import {
   workflowLabel,
 } from './workflowLabels';
 import { apiFetch } from '../../lib/api';
-import { xinPhepRoiDi } from '../../lib/canhBaoChuaLuu';
+import { requestNavigationPermission } from '../../lib/unsavedChangesGuard';
 import PriorityBonusModal from './PriorityBonusModal';
 import { Sparkles } from 'lucide-react';
 
@@ -107,7 +104,7 @@ function DocumentsTab({ workspace }) {
 
 const workspaceMemoryCache = new Map();
 
-export default function ContractWorkspace({ tab, contract, contracts, onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce }) {
+export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce }) {
   const contractId = getContractId(contract);
   const contextKey = `${contractId}:${tab}`;
   const [workspace, setWorkspace] = useState(() => workspaceMemoryCache.get(contextKey) || null);
@@ -192,7 +189,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
       cancelled = true;
       clearInterval(pollId);
     };
-  }, [contractId, contextKey, tab, refreshKey]);
+  }, [contractId, contextKey, tab, refreshKey, targetServiceLineId]);
 
   const selectedServiceLine = useMemo(
     () => workspace?.service_lines.find(item => item.id === selectedServiceLineId) || workspace?.service_lines[0],
@@ -212,7 +209,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
               <button
                 type="button"
                 className="contract-page-heading__back"
-                onClick={async () => { if (await xinPhepRoiDi()) onBack(); }}
+                onClick={async () => { if (await requestNavigationPermission()) onBack(); }}
                 title="Quay lại danh sách"
                 aria-label="Quay lại danh sách"
               >

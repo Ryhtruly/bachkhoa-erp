@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Target, Trophy, Award, CheckCircle2, Clock, Users, RefreshCw, TrendingUp } from 'lucide-react';
+import { Target, RefreshCw } from 'lucide-react';
 import { DatePicker, Badge, DataTable } from '../components/ui';
 import { apiFetch } from '../lib/api';
 
@@ -38,74 +38,104 @@ export default function KPI() {
     }
   };
 
+  const rankedKpiList = useMemo(() => {
+    if (!kpiList.length) return [];
+
+    // Clone and sort with tie-breaking criteria
+    const sorted = [...kpiList].sort((a, b) => {
+      const scoreA = Number(a.final_score || 0);
+      const scoreB = Number(b.final_score || 0);
+      if (scoreB !== scoreA) return scoreB - scoreA;
+
+      const tasksA = Number(a.total_completed || 0);
+      const tasksB = Number(b.total_completed || 0);
+      if (tasksB !== tasksA) return tasksB - tasksA;
+
+      const onTimeA = Number(a.on_time_rate || 0);
+      const onTimeB = Number(b.on_time_rate || 0);
+      if (onTimeB !== onTimeA) return onTimeB - onTimeA;
+
+      const rejA = Number(a.rejections || 0);
+      const rejB = Number(b.rejections || 0);
+      if (rejA !== rejB) return rejA - rejB;
+
+      const timeA = Number(a.avg_time || 0);
+      const timeB = Number(b.avg_time || 0);
+      if (timeA !== timeB) return timeA - timeB;
+
+      return (a.employee || '').localeCompare(b.employee || '', 'vi');
+    });
+
+    // Assign standard competition rank with 0-score exclusion
+    let currentRank = 1;
+    return sorted.map((item, i) => {
+      const score = Number(item.final_score || 0);
+      const tasks = Number(item.total_completed || 0);
+
+      // Nếu chưa có hoạt động / điểm = 0 và nhiệm vụ = 0 -> Chưa xếp hạng
+      if (score === 0 && tasks === 0) {
+        return {
+          ...item,
+          rank: null,
+          isTop1: false,
+        };
+      }
+
+      if (i > 0) {
+        const prev = sorted[i - 1];
+        const isTied = Number(prev.final_score || 0) === score
+          && Number(prev.total_completed || 0) === tasks
+          && Number(prev.on_time_rate || 0) === Number(item.on_time_rate || 0)
+          && Number(prev.rejections || 0) === Number(item.rejections || 0)
+          && Number(prev.avg_time || 0) === Number(item.avg_time || 0);
+
+        if (!isTied) {
+          currentRank = i + 1;
+        }
+      } else {
+        currentRank = 1;
+      }
+
+      return {
+        ...item,
+        rank: currentRank,
+        isTop1: currentRank === 1 && score > 0,
+      };
+    });
+  }, [kpiList]);
+
   const columns = useMemo(() => [
     {
       key: 'rank',
       label: 'HẠNG',
       width: 80,
       align: 'center',
-      render: (_, __, index) => {
-        if (index === 0) {
-          return (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 26,
-              height: 26,
-              borderRadius: '50%',
-              background: '#fef3c7',
-              color: '#b45309',
-              fontWeight: 800,
-              fontSize: '0.85rem',
-            }}>
-              <Trophy size={14} />
-            </span>
-          );
+      render: (_, row) => {
+        if (row.rank === null || row.rank === undefined) {
+          return <span className="kpi-rank kpi-rank--muted">—</span>;
         }
-        return (
-          <span style={{ fontWeight: 700, color: 'var(--text-tertiary)', fontSize: '0.88rem' }}>
-            #{index + 1}
-          </span>
-        );
+        return <span className={`kpi-rank ${row.rank === 1 && row.isTop1 ? 'kpi-rank--leader' : ''}`}>#{row.rank}</span>;
       }
     },
     {
       key: 'employee',
       label: 'NHÂN SỰ',
       width: 220,
-      render: (v, _, index) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <strong style={{ color: 'var(--text-primary)', fontSize: '0.92rem' }}>{v}</strong>
-          {index === 0 && (
-            <span style={{
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: 6,
-              background: 'rgba(245, 158, 11, 0.15)',
-              color: '#b45309'
-            }}>
-              Top 1
-            </span>
+      render: (v, row) => (
+        <div className="kpi-employee">
+          <strong className="kpi-employee__name">{v}</strong>
+          {row.isTop1 && (
+            <span className="kpi-leader-badge">Dẫn đầu</span>
           )}
         </div>
       )
     },
     {
       key: 'total_completed',
-      label: 'SỐ HỒ SƠ HT (TARGET > 10)',
+      label: <span title="Số hồ sơ hoàn thành; mốc tham chiếu là trên 10 hồ sơ">SỐ HỒ SƠ HT</span>,
       width: 190,
       align: 'center',
-      render: (v) => (
-        <span style={{
-          fontWeight: 700,
-          fontSize: '0.95rem',
-          color: Number(v) >= 10 ? '#10b981' : Number(v) > 0 ? '#3b82f6' : '#64748b'
-        }}>
-          {v}
-        </span>
-      )
+      render: (v) => <span className={`kpi-completion ${Number(v) >= 10 ? 'kpi-completion--strong' : Number(v) > 0 ? 'kpi-completion--active' : 'kpi-completion--muted'}`}>{v}</span>
     },
     {
       key: 'on_time_rate',
@@ -126,7 +156,7 @@ export default function KPI() {
       render: (v) => (
         <span style={{
           fontWeight: 600,
-          color: Number(v) > 0 ? '#ef4444' : '#64748b'
+          color: Number(v) > 0 ? '#ef4444' : 'var(--text-tertiary)'
         }}>
           {v}
         </span>
@@ -134,33 +164,20 @@ export default function KPI() {
     },
     {
       key: 'avg_time',
-      label: 'TG XỬ LÝ TB (NGÀY)',
+      label: <span title="Thời gian xử lý trung bình, tính theo ngày">TG XỬ LÝ TB</span>,
       width: 160,
       align: 'center',
-      render: (v) => (
-        <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-          {v} ngày
-        </span>
-      )
+      render: (v) => <span className="kpi-average-time">{v} ngày</span>
     },
     {
       key: 'final_score',
       label: 'ĐIỂM KPI',
       width: 130,
       align: 'center',
-      render: (v) => (
-        <span style={{
-          display: 'inline-block',
-          padding: '4px 12px',
-          borderRadius: 8,
-          fontWeight: 800,
-          fontSize: '0.95rem',
-          color: Number(v) >= 95 ? '#065f46' : Number(v) >= 80 ? '#1e40af' : '#854d0e',
-          background: Number(v) >= 95 ? 'rgba(16, 185, 129, 0.15)' : Number(v) >= 80 ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-        }}>
-          {v}
-        </span>
-      )
+      render: (v) => {
+        const level = Number(v) >= 95 ? 'excellent' : Number(v) >= 80 ? 'good' : 'attention';
+        return <span className={`kpi-score kpi-score--${level}`}>{v}</span>;
+      }
     },
     {
       key: 'performance',
@@ -180,47 +197,37 @@ export default function KPI() {
   ], []);
 
   const stats = useMemo(() => {
-    if (!kpiList.length) return null;
-    const totalEmps = kpiList.length;
-    const avgOnTime = (kpiList.reduce((s, k) => s + Number(k.on_time_rate || 0), 0) / (totalEmps || 1)).toFixed(1);
-    const topPerformer = [...kpiList].sort((a, b) => Number(b.final_score || 0) - Number(a.final_score || 0))[0];
-    const totalTasksDone = kpiList.reduce((s, k) => s + Number(k.total_completed || 0), 0);
-    return { totalEmps, avgOnTime, topPerformer, totalTasksDone };
-  }, [kpiList]);
+    if (!rankedKpiList.length) return null;
+    const totalEmps = rankedKpiList.length;
+    const totalTasksDone = rankedKpiList.reduce((s, k) => s + Number(k.total_completed || 0), 0);
+    const activeEmps = rankedKpiList.filter(k => Number(k.total_completed || 0) > 0);
+    const avgOnTime = activeEmps.length > 0
+      ? (activeEmps.reduce((s, k) => s + Number(k.on_time_rate || 0), 0) / activeEmps.length).toFixed(1)
+      : '100.0';
+
+    const topPerformers = rankedKpiList.filter(k => k.isTop1);
+    return { totalEmps, avgOnTime, topPerformers, totalTasksDone };
+  }, [rankedKpiList]);
 
   return (
-    <section className="tab-pane active" id="tab-kpi">
-      <div className="card" style={{ padding: '24px', borderRadius: '14px' }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '24px',
-          flexWrap: 'wrap',
-          gap: 16
-        }}>
-          <div>
-            <h3 style={{
-              fontSize: '1.25rem',
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              margin: 0,
-              color: 'var(--text-primary)'
-            }}>
-              <Target color="var(--orange-500)" size={24} /> Bảng Điểm KPI Nhân Sự
+    <section className="tab-pane active kpi-page" id="tab-kpi">
+      <div className="card kpi-card">
+        <div className="kpi-header">
+          <div className="kpi-heading">
+            <span className="kpi-header__eyebrow">Hiệu suất nhân sự</span>
+            <h3>
+              <Target aria-hidden="true" size={20} /> Bảng Điểm KPI Nhân Sự
             </h3>
-            <p className="sub" style={{ margin: '4px 0 0 0', color: 'var(--text-tertiary)', fontSize: '0.88rem' }}>
-              Thuật toán tự động chấm điểm hiệu suất thực hiện nhiệm vụ (Đúng hạn / Trễ hạn / Nghiệm thu).
+            <p className="kpi-header__description">
+              Đánh giá theo hồ sơ hoàn thành, đúng hạn, nộp lại và thời gian xử lý.
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <label style={{ margin: 0, whiteSpace: 'nowrap', fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-              Kỳ Đánh Giá:
+          <div className="kpi-toolbar__controls">
+            <label>
+              Kỳ đánh giá:
             </label>
-            <div style={{ width: '180px' }}>
+            <div className="kpi-toolbar__date">
               <DatePicker
                 selectionMode="month"
                 value={month}
@@ -236,159 +243,56 @@ export default function KPI() {
               className="btn btn-secondary btn-sm"
               onClick={() => fetchKpi(month)}
               title="Làm mới bảng điểm KPI"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, padding: '0 12px' }}
+              aria-label="Làm mới bảng điểm KPI"
             >
-              <RefreshCw size={15} />
+              <RefreshCw aria-hidden="true" size={15} />
             </button>
           </div>
         </div>
 
-        {/* Thẻ thống kê KPI tổng quan */}
         {stats && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 16,
-            marginBottom: 24
-          }}>
-            <div style={{
-              background: 'var(--bg-secondary, #f8fafc)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14
-            }}>
-              <div style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(99, 102, 241, 0.1)',
-                color: '#6366f1',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Tổng nhân sự đánh giá
-                </div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 2 }}>
-                  {stats.totalEmps} người
-                </div>
-              </div>
+          <div className="kpi-summary" aria-label="Tổng quan KPI">
+            <div className="kpi-summary__item">
+              <span className="kpi-summary__label">Nhân sự đánh giá</span>
+              <strong className="kpi-summary__value">{stats.totalEmps}</strong>
+              <span className="kpi-summary__unit">người</span>
             </div>
-
-            <div style={{
-              background: 'var(--bg-secondary, #f8fafc)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14
-            }}>
-              <div style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(16, 185, 129, 0.1)',
-                color: '#10b981',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <CheckCircle2 size={22} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Hồ sơ hoàn thành
-                </div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981', marginTop: 2 }}>
-                  {stats.totalTasksDone} nhiệm vụ
-                </div>
-              </div>
+            <div className="kpi-summary__item">
+              <span className="kpi-summary__label">Hồ sơ hoàn thành</span>
+              <strong className="kpi-summary__value">{stats.totalTasksDone}</strong>
+              <span className="kpi-summary__unit">nhiệm vụ</span>
             </div>
-
-            <div style={{
-              background: 'var(--bg-secondary, #f8fafc)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14
-            }}>
-              <div style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(59, 130, 246, 0.1)',
-                color: '#3b82f6',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <Clock size={22} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Tỷ lệ đúng hạn TB
-                </div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#3b82f6', marginTop: 2 }}>
-                  {stats.avgOnTime}%
-                </div>
-              </div>
+            <div className="kpi-summary__item">
+              <span className="kpi-summary__label">Đúng hạn trung bình</span>
+              <strong className="kpi-summary__value">{stats.avgOnTime}%</strong>
+              <span className="kpi-summary__unit">trên nhân sự có phát sinh</span>
             </div>
-
-            <div style={{
-              background: 'var(--bg-secondary, #f8fafc)',
-              border: '1px solid var(--border-color, #e2e8f0)',
-              borderRadius: 12,
-              padding: '16px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14
-            }}>
-              <div style={{
-                width: 42,
-                height: 42,
-                borderRadius: 10,
-                background: 'rgba(245, 158, 11, 0.12)',
-                color: '#d97706',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}>
-                <Trophy size={22} />
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Dẫn đầu tháng này
-                </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#047857', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {stats.topPerformer?.employee || '—'} ({stats.topPerformer?.final_score || 0}đ)
-                </div>
-              </div>
+            <div className="kpi-summary__item kpi-summary__item--leader">
+              <span className="kpi-summary__label">Dẫn đầu kỳ</span>
+              <strong className="kpi-summary__leader">
+                {stats.topPerformers.length > 0 ? (
+                  stats.topPerformers.length === 1
+                    ? `${stats.topPerformers[0].employee} (${stats.topPerformers[0].final_score}đ)`
+                    : `Đồng hạng 1: ${stats.topPerformers.map(p => p.employee).join(', ')} (${stats.topPerformers[0].final_score}đ)`
+                ) : 'Chưa có dữ liệu'}
+              </strong>
             </div>
           </div>
         )}
 
-        <DataTable
-          columns={columns}
-          data={kpiList}
-          loading={loading}
-          rowKey="employee"
-          emptyText={`Chưa có dữ liệu KPI cho kỳ ${month}`}
-          pageSize={15}
-        />
+        <div className="responsive-table-shell kpi-table-shell">
+          <p className="responsive-table-hint" role="note">
+            Vuốt ngang để xem đầy đủ các chỉ số trên màn hình hẹp.
+          </p>
+          <DataTable
+            columns={columns}
+            data={rankedKpiList}
+            loading={loading}
+            rowKey="employee"
+            emptyText={`Chưa có dữ liệu KPI cho kỳ ${month}`}
+            pageSize={15}
+          />
+        </div>
       </div>
     </section>
   );

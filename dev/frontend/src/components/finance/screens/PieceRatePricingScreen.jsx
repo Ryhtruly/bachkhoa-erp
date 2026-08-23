@@ -6,8 +6,8 @@ import { fmt } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
 
-// Vai trò hiển thị: chính / phụ / người nộp. Đọc thẳng từ work_item_rates.
-const NHAN_VAI_TRO = { MAIN: 'Đơn giá chính', ASSISTANT: 'Phụ đo / hỗ trợ', SUBMITTER: 'Người đi nộp' };
+// Role labels for display: main / assistant / submitter
+const ROLE_LABELS = { MAIN: 'Đơn giá chính', ASSISTANT: 'Phụ đo / hỗ trợ', SUBMITTER: 'Người đi nộp' };
 
 export default function PieceRatePricingScreen({ isDirector = false }) {
   const { addToast } = useToast();
@@ -15,9 +15,9 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState(null);   // work item đang sửa
-  const [form, setForm] = useState({});            // role -> số tiền nhập
-  const [history, setHistory] = useState(null);    // { item, data }
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({});
+  const [history, setHistory] = useState(null);
   const [publishTarget, setPublishTarget] = useState(null);
 
   const load = useCallback(async () => {
@@ -44,21 +44,18 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
     );
   }, [rows, search]);
 
-  // Các vai trò một hạng mục đang có giá (published hoặc chờ duyệt).
-  const vaiTroCua = (item) => {
+  const getItemRoles = (item) => {
     const roles = new Set([...Object.keys(item.rates || {}), ...Object.keys(item.pending || {})]);
-    // Giữ thứ tự chính → phụ → nộp
     return ['MAIN', 'ASSISTANT', 'SUBMITTER'].filter(r => roles.has(r));
   };
 
   const openEdit = (item) => {
     setEditing(item);
-    const f = {};
-    vaiTroCua(item).forEach(role => {
-      // Ưu tiên hiện số chờ duyệt nếu có, để sửa tiếp; không thì số đang hiệu lực.
-      f[role] = String(item.pending?.[role]?.amount ?? item.rates?.[role]?.amount ?? '');
+    const initialForm = {};
+    getItemRoles(item).forEach(role => {
+      initialForm[role] = String(item.pending?.[role]?.amount ?? item.rates?.[role]?.amount ?? '');
     });
-    setForm(f);
+    setForm(initialForm);
   };
 
   const submitDraft = async (event) => {
@@ -66,21 +63,20 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
     if (!editing) return;
     setSaving(true);
     try {
-      let n = 0;
-      for (const role of vaiTroCua(editing)) {
-        const moi = form[role];
-        if (moi === '' || moi == null) continue;
-        const cu = editing.rates?.[role]?.amount ?? null;
-        // Chỉ gửi khi số thực sự đổi so với giá đang hiệu lực.
-        if (cu != null && Number(moi) === Number(cu)) continue;
+      let changeCount = 0;
+      for (const role of getItemRoles(editing)) {
+        const newAmount = form[role];
+        if (newAmount === '' || newAmount == null) continue;
+        const currentAmount = editing.rates?.[role]?.amount ?? null;
+        if (currentAmount != null && Number(newAmount) === Number(currentAmount)) continue;
         await apiFetch(`${API}/api/piece-rates/rates`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ work_item_id: editing.work_item_id, role_code: role, amount: Number(moi) }),
+          body: JSON.stringify({ work_item_id: editing.work_item_id, role_code: role, amount: Number(newAmount) }),
         });
-        n += 1;
+        changeCount += 1;
       }
-      addToast(n ? `Đã tạo ${n} đề xuất giá — chờ giám đốc duyệt` : 'Không có thay đổi nào', n ? 'success' : 'info');
+      addToast(changeCount ? `Đã tạo ${changeCount} đề xuất giá — chờ giám đốc duyệt` : 'Không có thay đổi nào', changeCount ? 'success' : 'info');
       setEditing(null);
       await load();
     } catch (error) {
@@ -180,20 +176,20 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   ];
 
   return (
-    <div className="card" style={{ padding: 24, borderRadius: 14 }}>
+    <div className="card piece-rate-pricing" data-testid="piece-rate-pricing" style={{ padding: 24, borderRadius: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
         <div>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
             <Banknote size={22} color="#10b981" /> Bảng Đơn Giá Khoán Công Việc
           </h3>
-          <div className="sub" style={{ color: '#64748b', fontSize: '0.85rem', marginTop: 4 }}>
+          <div className="sub" style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: 4 }}>
             Đơn giá thật hệ thống dùng để trả khoán. Sửa giá tạo đề xuất; giám đốc duyệt mới áp dụng, bản cũ giữ lại để đối chiếu.
           </div>
         </div>
         <div style={{ position: 'relative', width: 260 }}>
-          <Search size={15} style={{ position: 'absolute', left: 10, top: 12, color: '#94a3b8' }} />
+          <Search size={15} style={{ position: 'absolute', left: 10, top: 12, color: 'var(--text-tertiary)' }} />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm hạng mục, mã, phòng ban..."
-            style={{ width: '100%', height: 38, padding: '0 12px 0 32px', borderRadius: 8, border: '1.5px solid #cbd5e1', background: '#fff', fontSize: '0.86rem', outline: 'none', boxSizing: 'border-box' }} />
+            style={{ width: '100%', height: 38, padding: '0 12px 0 32px', borderRadius: 8, border: '1px solid var(--border-default)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.86rem', outline: 'none', boxSizing: 'border-box' }} />
         </div>
       </div>
 
@@ -206,8 +202,8 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
         {editing && (
           <form onSubmit={submitDraft}>
             <FormGrid cols={1}>
-              {vaiTroCua(editing).map(role => (
-                <FormRow key={role} label={`${NHAN_VAI_TRO[role]} (VNĐ)`}>
+              {getItemRoles(editing).map(role => (
+                <FormRow key={role} label={`${ROLE_LABELS[role]} (VNĐ)`}>
                   <input className="form-control" type="number" min="0" step="1000"
                     value={form[role] ?? ''} onChange={(e) => setForm({ ...form, [role]: e.target.value })}
                     style={{ height: 42, fontWeight: 700, fontSize: '1.05rem' }} />
@@ -234,8 +230,8 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
       <Modal open={Boolean(history)} onClose={() => setHistory(null)} size="lg"
         title={<span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><History size={18} color="#64748b" />Lịch sử giá: {history?.item?.name}</span>}>
         {history && (
-          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+          <div className="piece-rate-pricing__history-scroll" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <table className="piece-rate-pricing__history-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
               <thead>
                 <tr style={{ textAlign: 'left', color: '#64748b', borderBottom: '1.5px solid #e2e8f0' }}>
                   <th style={{ padding: '8px 6px' }}>Vai trò</th>
@@ -248,7 +244,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
               <tbody>
                 {history.data.map(r => (
                   <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px 6px' }}>{NHAN_VAI_TRO[r.role_code] || r.role_code}</td>
+                    <td style={{ padding: '8px 6px' }}>{ROLE_LABELS[r.role_code] || r.role_code}</td>
                     <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700 }}>{fmt(r.amount)}</td>
                     <td style={{ padding: '8px 6px' }}>{r.effective_from} → {r.effective_to || 'nay'}</td>
                     <td style={{ padding: '8px 6px' }}>

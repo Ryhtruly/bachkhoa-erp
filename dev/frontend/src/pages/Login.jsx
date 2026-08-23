@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './login.css';
-import loginLogo from '../assets/TieuDe.png';
+import loginLogo from '../assets/title-banner.png';
 import { applyTheme, getInitialTheme } from '../lib/theme';
 
 /**

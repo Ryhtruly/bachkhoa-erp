@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Files, Loader, AlertTriangle, DollarSign, Clock } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { StatsGrid, StatCard } from '../components/ui';
+import { StatsGrid, StatCard, StatusBadge } from '../components/ui';
 import PendingApprovals from '../features/approvals/PendingApprovals';
 
 
@@ -333,7 +333,7 @@ export default function Dashboard({ user }) {
                     <td>{hs.area}</td>
                     <td>{hs.pic_main}</td>
                     <td>{hs.deadline}</td>
-                    <td><span className="badge badge-primary">{hs.status}</span></td>
+                    <td><StatusBadge status={hs.status} domain="tasks" /></td>
                   </tr>
                 ))
               )}

@@ -1,7 +1,17 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
-export default function Sidebar({ activeTab, setActiveTab, mode = 'management', permissions = {}, isDirector = false }) {
+export default function Sidebar({
+  activeTab,
+  setActiveTab,
+  mode = 'management',
+  permissions = {},
+  isDirector = false,
+  collapsed = false,
+  overlayOpen = false,
+  onToggleCollapsed = () => {},
+  onRequestClose = () => {},
+}) {
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
   // Đây chỉ là dọn giao diện cho gọn; chặn thật nằm ở từng endpoint phía server.
   const menuItems = [
@@ -34,25 +44,76 @@ export default function Sidebar({ activeTab, setActiveTab, mode = 'management', 
       && (!item.directorOnly || isDirector)
     ));
 
+  const handleSelect = (tabId) => {
+    setActiveTab(tabId);
+    onRequestClose();
+  };
+
   return (
-    <aside className="sidebar">
-      <nav className="nav">
-        <div className="nav-label">Điều hướng</div>
-        {visibleMenuItems.map(item => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-        {mode === 'management' && <><div className="nav-label" style={{ marginTop: '16px' }}>Hệ thống</div><button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}><Settings2 size={18} /><span>Cấu Hình</span></button></>}
-      </nav>
-    </aside>
+    <>
+      {overlayOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Đóng thanh điều hướng"
+          onClick={onRequestClose}
+        />
+      )}
+      <aside
+        id="primary-sidebar"
+        className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${overlayOpen ? ' sidebar--overlay-open' : ''}`}
+        aria-label="Điều hướng chính"
+      >
+        <div className="sidebar__header">
+          <span className="sidebar__header-label">Điều hướng</span>
+          <button
+            type="button"
+            className="sidebar__collapse-toggle"
+            aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+            aria-expanded={!collapsed}
+            aria-controls="primary-sidebar"
+            onClick={onToggleCollapsed}
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+        </div>
+        <nav className="nav" aria-label="Các phân hệ">
+          {visibleMenuItems.map(item => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                type="button"
+                key={item.id}
+                className={`nav-item ${active ? 'active' : ''}`}
+                aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
+                title={item.label}
+                onClick={() => handleSelect(item.id)}
+              >
+                <Icon size={18} />
+                <span className="nav-item__label">{item.label}</span>
+              </button>
+            );
+          })}
+          {mode === 'management' && (
+            <>
+              <div className="nav-label nav-label--system">Hệ thống</div>
+              <button
+                type="button"
+                className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+                aria-label="Cấu Hình"
+                aria-current={activeTab === 'settings' ? 'page' : undefined}
+                title="Cấu Hình"
+                onClick={() => handleSelect('settings')}
+              >
+                <Settings2 size={18} />
+                <span className="nav-item__label">Cấu Hình</span>
+              </button>
+            </>
+          )}
+        </nav>
+      </aside>
+    </>
   );
 }

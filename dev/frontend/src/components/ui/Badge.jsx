@@ -137,10 +137,34 @@ const STATUS_MAPS = {
   },
 };
 
+const STATUS_LABELS = {
+  not_started: 'Chưa bắt đầu',
+  in_progress: 'Đang thực hiện',
+  completed: 'Hoàn thành',
+  cancelled: 'Đã hủy',
+  ready: 'Sẵn sàng',
+  draft: 'Bản nháp',
+  pending: 'Chờ xử lý',
+  approved: 'Đã duyệt',
+  rejected: 'Từ chối',
+  closed: 'Đã đóng',
+  settled: 'Đã tất toán',
+  partial: 'Thu một phần',
+  overdue: 'Quá hạn',
+  refunded: 'Đã hoàn tiền',
+  written_off: 'Đã xóa nợ',
+  overpaid: 'Nộp thừa tiền',
+  CASH: 'Tiền mặt',
+  BANK_TRANSFER: 'Chuyển khoản',
+  COMPANY: 'Công ty',
+  INTERNAL: 'Nội bộ'
+};
+
 export function StatusBadge({ status, domain = 'default' }) {
   const map = STATUS_MAPS[domain] ?? {};
   const variant = map[status] ?? 'neutral';
-  return <Badge variant={variant} dot>{status || '—'}</Badge>;
+  const label = STATUS_LABELS[status] || status || '—';
+  return <Badge variant={variant} dot>{label}</Badge>;
 }
 
 

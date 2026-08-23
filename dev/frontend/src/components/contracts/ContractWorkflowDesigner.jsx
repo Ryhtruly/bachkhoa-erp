@@ -49,8 +49,8 @@ import {
 import Modal from '../ui/Modal';
 import { apiFetch } from '../../lib/api';
 import AvatarImage from '../AvatarImage';
-import { giuKhiChuaLuu } from '../../lib/canhBaoChuaLuu';
-import { dauVanTayGraph } from './workflowDirty';
+import { registerUnsavedChangesGuard } from '../../lib/unsavedChangesGuard';
+import { getGraphFingerprint } from './workflowDirty';
 import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage';
 import {
   DEFAULT_WORKFLOW_LABELS,
@@ -598,16 +598,14 @@ export default function ContractWorkflowDesigner({
   const [startingEdit, setStartingEdit] = useState(false);
   const [activating, setActivating] = useState(false);
   const [layouting, setLayouting] = useState(false);
-  const [dangChonNode, setDangChonNode] = useState(false);
-  const [menuChuot, setMenuChuot] = useState(null);
-  // Lịch sử để hoàn tác. Giữ trong ref chứ không phải state: mỗi lần kéo node là
-  // một thay đổi, đưa vào state thì vẽ lại cả sơ đồ theo từng khung hình.
-  const lichSuRef = useRef({ moc: [], viTri: -1, dangKhoiPhuc: false });
-  const [coTheHoanTac, setCoTheHoanTac] = useState(false);
-  const [coTheLamLai, setCoTheLamLai] = useState(false);
-  const [dangLuuMau, setDangLuuMau] = useState(false);
-  const [tenMau, setTenMau] = useState('');
-  const [luuMau, setLuuMau] = useState(false);
+  const [isSelectingNode, setIsSelectingNode] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
+  const historyRef = useRef({ snapshots: [], index: -1, isRestoring: false });
+  const [_canUndo, setCanUndo] = useState(false);
+  const [_canRedo, setCanRedo] = useState(false);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [isSavingTemplateInProgress, setIsSavingTemplateInProgress] = useState(false);
   const [savingLayout, setSavingLayout] = useState(false);
   const [editMode, setEditMode] = useState(!isWorkflowTerminal && (!hasActiveRuntime || hasDraftAmendment));
   const [changeReason, setChangeReason] = useState(workflow?.change_reason || '');
@@ -619,20 +617,16 @@ export default function ContractWorkflowDesigner({
   const [cancellationReason, setCancellationReason] = useState('');
   const [agencyHandlingConfirmed, setAgencyHandlingConfirmed] = useState(false);
   const [agencyHandlingNote, setAgencyHandlingNote] = useState('');
-  // Dấu vân tay của sơ đồ tại lần nạp/lưu gần nhất — mốc để biết đang sửa dở.
-  const [mocDaLuu, setMocDaLuu] = useState(null);
-  // Có người đang xin rời khỏi màn này; giữ hàm resolve để trả lời họ.
-  const [dangHoiThoat, setDangHoiThoat] = useState(null);
+  const [savedFingerprint, setSavedFingerprint] = useState(null);
+  const [pendingNavigationPrompt, setPendingNavigationPrompt] = useState(null);
 
-  // Làm mới dữ liệu node/edge mỗi khi có bản mới (kể cả từ polling ngầm) —
-  // KHÔNG đụng tới lựa chọn/chế độ sửa hiện tại, tránh giật màn hình khi tự cập nhật.
+  // Sync node/edge state on updates
   useEffect(() => {
     if (!editMode) {
       setNodes(parsed.nodes);
       setEdges(parsed.edges);
       setWorkflowLabels(parsed.labels);
-      // Vừa lấy nguyên bản từ máy chủ về thì đây chính là mốc "chưa sửa gì".
-      setMocDaLuu(dauVanTayGraph(
+      setSavedFingerprint(getGraphFingerprint(
         flowToGraph(parsed.nodes, parsed.edges, parsed.startNode, parsed.labels)
       ));
       return;
@@ -685,7 +679,7 @@ export default function ContractWorkflowDesigner({
   // vào thẳng chế độ sửa nên nhánh `!editMode` ở trên không chạy — thiếu chỗ này
   // là mốc mãi rỗng và không bao giờ phát hiện được thay đổi.
   useEffect(() => {
-    setMocDaLuu(dauVanTayGraph(
+    setSavedFingerprint(getGraphFingerprint(
       flowToGraph(parsed.nodes, parsed.edges, parsed.startNode, parsed.labels)
     ));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -829,11 +823,9 @@ export default function ContractWorkflowDesigner({
     )));
   }, [selectedNodeId, setNodes]);
 
-  // Bước còn thêm được: bỏ những bước đã có trong sơ đồ, vì mỗi bước chỉ đặt
-  // một lần trong cùng một quy trình.
-  const nodesConTheThem = useMemo(() => {
-    const daDung = new Set(nodes.map(node => node.data.code));
-    return catalog.filter(item => !daDung.has(item.code));
+  const availableCatalogNodes = useMemo(() => {
+    const usedCodes = new Set(nodes.map(node => node.data.code));
+    return catalog.filter(item => !usedCodes.has(item.code));
   }, [catalog, nodes]);
 
   const addCatalogNode = useCallback((item) => {
@@ -863,7 +855,7 @@ export default function ContractWorkflowDesigner({
     setNodes(current => [...current, next]);
     setSelectedNodeId(id);
     if (!startNode) setStartNode(id);
-    setDangChonNode(false);
+    setIsSelectingNode(false);
   }, [nodes, setNodes, startNode]);
 
   const removeSelectedNode = useCallback(() => {
@@ -874,114 +866,99 @@ export default function ContractWorkflowDesigner({
     setSelectedNodeId('');
   }, [selectedNodeId, setEdges, setNodes, startNode]);
 
-  // Menu chuột phải, kiểu công cụ vẽ sơ đồ: bấm phải lên bước hoặc lên nhánh là
-  // ra ngay việc làm được với nó. Trước đây gỡ một nhánh nối sai không có đường
-  // nào — chỉ xoá được cả bước, mất luôn checklist và phân công đã đặt.
-  const moMenuChuot = useCallback((event, doiTuong, loai) => {
+  const openContextMenu = useCallback((event, targetItem, type) => {
     event.preventDefault();
     if (!structureEditable) return;
-    const khung = event.currentTarget.closest('.workflow-designer__canvas')?.getBoundingClientRect();
-    setMenuChuot({
-      loai,
-      id: doiTuong.id,
-      ten: loai === 'node' ? doiTuong.data?.label : (doiTuong.label || 'nhánh này'),
-      x: event.clientX - (khung?.left || 0),
-      y: event.clientY - (khung?.top || 0),
+    const containerRect = event.currentTarget.closest('.workflow-designer__canvas')?.getBoundingClientRect();
+    setContextMenu({
+      type,
+      id: targetItem.id,
+      label: type === 'node' ? targetItem.data?.label : (targetItem.label || 'nhánh này'),
+      x: event.clientX - (containerRect?.left || 0),
+      y: event.clientY - (containerRect?.top || 0),
     });
   }, [structureEditable]);
 
-  const xoaNhanh = useCallback((edgeId) => {
-    const canh = edges.find(edge => edge.id === edgeId);
-    if (!canh) return;
+  const deleteEdge = useCallback((edgeId) => {
+    const targetEdge = edges.find(edge => edge.id === edgeId);
+    if (!targetEdge) return;
     setEdges(current => current.filter(edge => edge.id !== edgeId));
-    // Gỡ luôn hai đầu nối của nhánh vừa xoá, nếu không node sẽ còn lại những
-    // chấm cụt không dẫn đi đâu.
     setNodes(current => current.map(node => {
-      if (node.id === canh.source) {
+      if (node.id === targetEdge.source) {
         return { ...node, data: { ...node.data,
-          outgoingHandles: (node.data.outgoingHandles || []).filter(h => h.id !== canh.sourceHandle) } };
+          outgoingHandles: (node.data.outgoingHandles || []).filter(h => h.id !== targetEdge.sourceHandle) } };
       }
-      if (node.id === canh.target) {
+      if (node.id === targetEdge.target) {
         return { ...node, data: { ...node.data,
-          incomingHandles: (node.data.incomingHandles || []).filter(h => h.id !== canh.targetHandle) } };
+          incomingHandles: (node.data.incomingHandles || []).filter(h => h.id !== targetEdge.targetHandle) } };
       }
       return node;
     }));
-    setMenuChuot(null);
+    setContextMenu(null);
   }, [edges, setEdges, setNodes]);
 
-  const xoaBuoc = useCallback((nodeId) => {
+  const deleteNode = useCallback((nodeId) => {
     setNodes(current => current.filter(node => node.id !== nodeId));
     setEdges(current => current.filter(edge => edge.source !== nodeId && edge.target !== nodeId));
     if (startNode === nodeId) setStartNode('');
     if (selectedNodeId === nodeId) setSelectedNodeId('');
-    setMenuChuot(null);
+    setContextMenu(null);
   }, [selectedNodeId, setEdges, setNodes, startNode]);
 
-  // Ghi lại mốc sau mỗi nhịp thay đổi. Chờ 450ms để cả một thao tác kéo dài
-  // (kéo node qua màn hình) chỉ tính là MỘT bước hoàn tác, không phải trăm bước.
+  // Record history snapshot with debounce
   useEffect(() => {
     if (!structureEditable) return undefined;
-    const ls = lichSuRef.current;
-    // Khôi phục một mốc gọi ba lần cập nhật (node, nhánh, bước bắt đầu) nên hiệu
-    // ứng này chạy nhiều lượt. Tắt cờ ngay lượt đầu thì lượt sau ghi đè mốc và
-    // xoá mất nhánh làm-lại — giữ cờ trọn một nhịp rồi mới tắt.
-    if (ls.dangKhoiPhuc) {
-      const nghi = setTimeout(() => { ls.dangKhoiPhuc = false; }, 600);
-      return () => clearTimeout(nghi);
+    const history = historyRef.current;
+    if (history.isRestoring) {
+      const timer = setTimeout(() => { history.isRestoring = false; }, 600);
+      return () => clearTimeout(timer);
     }
-    const hen = setTimeout(() => {
-      // Sơ đồ còn được cập nhật ngầm theo tiến độ chạy thật (node vừa nghiệm thu,
-      // checklist vừa duyệt). Những lần đó không phải thao tác sửa quy trình, ghi
-      // vào lịch sử thì mỗi nhịp làm mới lại xoá mất nhánh làm-lại. Chỉ ghi khi
-      // CẤU TRÚC đổi: bớt/thêm bước, đổi chỗ, đổi nhánh, đổi bước bắt đầu.
-      const chuKy = JSON.stringify({
+    const timer = setTimeout(() => {
+      const signature = JSON.stringify({
         n: nodes.map(x => [x.id, Math.round(x.position?.x || 0), Math.round(x.position?.y || 0)]),
         e: edges.map(x => [x.id, x.source, x.target, x.sourceHandle, x.targetHandle]),
         s: startNode,
       });
-      if (ls.moc[ls.viTri]?.chuKy === chuKy) return;
-      ls.moc = [...ls.moc.slice(0, ls.viTri + 1), { nodes, edges, startNode, chuKy }].slice(-60);
-      ls.viTri = ls.moc.length - 1;
-      setCoTheHoanTac(ls.viTri > 0);
-      setCoTheLamLai(false);
+      if (history.snapshots[history.index]?.signature === signature) return;
+      history.snapshots = [...history.snapshots.slice(0, history.index + 1), { nodes, edges, startNode, signature }].slice(-60);
+      history.index = history.snapshots.length - 1;
+      setCanUndo(history.index > 0);
+      setCanRedo(false);
     }, 450);
-    return () => clearTimeout(hen);
+    return () => clearTimeout(timer);
   }, [nodes, edges, startNode, structureEditable]);
 
-  const apMoc = useCallback((buoc) => {
-    const ls = lichSuRef.current;
-    const dich = ls.viTri + buoc;
-    if (dich < 0 || dich >= ls.moc.length) return;
-    const moc = ls.moc[dich];
-    ls.dangKhoiPhuc = true;
-    ls.viTri = dich;
-    setNodes(moc.nodes);
-    setEdges(moc.edges);
-    setStartNode(moc.startNode);
-    setCoTheHoanTac(dich > 0);
-    setCoTheLamLai(dich < ls.moc.length - 1);
-    setMenuChuot(null);
+  const applyHistorySnapshot = useCallback((step) => {
+    const history = historyRef.current;
+    const targetIndex = history.index + step;
+    if (targetIndex < 0 || targetIndex >= history.snapshots.length) return;
+    const snapshot = history.snapshots[targetIndex];
+    history.isRestoring = true;
+    history.index = targetIndex;
+    setNodes(snapshot.nodes);
+    setEdges(snapshot.edges);
+    setStartNode(snapshot.startNode);
+    setCanUndo(targetIndex > 0);
+    setCanRedo(targetIndex < history.snapshots.length - 1);
+    setContextMenu(null);
   }, [setEdges, setNodes]);
 
-  // Xoá bằng phím Delete đi qua đây. Phải gỡ luôn các đầu nối của nhánh bị xoá,
-  // nếu không node còn lại những chấm cụt không dẫn đi đâu.
-  const goDauNoi = useCallback((canhBiXoa) => {
-    if (!canhBiXoa.length) return;
+  const cleanupDeletedHandles = useCallback((deletedEdges) => {
+    if (!deletedEdges.length) return;
     setNodes(current => current.map(node => {
-      const boOut = canhBiXoa.filter(e => e.source === node.id).map(e => e.sourceHandle);
-      const boIn = canhBiXoa.filter(e => e.target === node.id).map(e => e.targetHandle);
-      if (!boOut.length && !boIn.length) return node;
+      const removedOutgoing = deletedEdges.filter(e => e.source === node.id).map(e => e.sourceHandle);
+      const removedIncoming = deletedEdges.filter(e => e.target === node.id).map(e => e.targetHandle);
+      if (!removedOutgoing.length && !removedIncoming.length) return node;
       return { ...node, data: { ...node.data,
-        outgoingHandles: (node.data.outgoingHandles || []).filter(h => !boOut.includes(h.id)),
-        incomingHandles: (node.data.incomingHandles || []).filter(h => !boIn.includes(h.id)) } };
+        outgoingHandles: (node.data.outgoingHandles || []).filter(h => !removedOutgoing.includes(h.id)),
+        incomingHandles: (node.data.incomingHandles || []).filter(h => !removedIncoming.includes(h.id)) } };
     }));
   }, [setNodes]);
 
-  const khiXoaNhanh = useCallback((danhSach) => { goDauNoi(danhSach); }, [goDauNoi]);
+  const handleEdgesDelete = useCallback((deletedEdges) => { cleanupDeletedHandles(deletedEdges); }, [cleanupDeletedHandles]);
 
-  const khiXoaBuoc = useCallback((danhSach) => {
-    const ids = danhSach.map(node => node.id);
+  const handleNodesDelete = useCallback((deletedNodes) => {
+    const ids = deletedNodes.map(node => node.id);
     setEdges(current => current.filter(edge => !ids.includes(edge.source) && !ids.includes(edge.target)));
     if (ids.includes(startNode)) setStartNode('');
     if (ids.includes(selectedNodeId)) setSelectedNodeId('');
@@ -1198,48 +1175,38 @@ export default function ContractWorkflowDesigner({
       change_reason: reason?.trim() || null,
   });
 
-  // Còn thay đổi chưa lưu hay không. So dấu vân tay phần nghiệp vụ với mốc lần
-  // nạp/lưu gần nhất — kéo node đổi chỗ không tính (xem dauVanTayGraph).
-  const dangSuaDoDang = useMemo(() => {
-    if (!structureEditable || mocDaLuu == null) return false;
-    return dauVanTayGraph(flowToGraph(nodes, edges, startNode, workflowLabels)) !== mocDaLuu;
-  }, [structureEditable, mocDaLuu, nodes, edges, startNode, workflowLabels]);
+  const hasUnsavedChanges = useMemo(() => {
+    if (!structureEditable || savedFingerprint == null) return false;
+    return getGraphFingerprint(flowToGraph(nodes, edges, startNode, workflowLabels)) !== savedFingerprint;
+  }, [structureEditable, savedFingerprint, nodes, edges, startNode, workflowLabels]);
 
-  // Chốt chặn đọc qua ref: đăng ký một lần lúc mở màn, nhưng phải luôn thấy
-  // trạng thái mới nhất chứ không phải bản chụp lúc đăng ký.
-  const dangSuaRef = useRef(false);
-  useEffect(() => { dangSuaRef.current = dangSuaDoDang; }, [dangSuaDoDang]);
+  const unsavedChangesRef = useRef(false);
+  useEffect(() => { unsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
 
-  useEffect(() => giuKhiChuaLuu({
-    coThayDoi: () => dangSuaRef.current,
-    hoi: () => new Promise(traLoi => setDangHoiThoat({ traLoi })),
+  useEffect(() => registerUnsavedChangesGuard({
+    hasChanges: () => unsavedChangesRef.current,
+    promptConfirm: () => new Promise(resolve => setPendingNavigationPrompt({ resolve })),
   }), []);
 
-  /** Trả lời hộp thoại thoát: 'luu' | 'bo' | 'olai'. */
-  const traLoiThoat = async (quyetDinh) => {
-    const cho = dangHoiThoat;
-    if (!cho) return;
-    if (quyetDinh === 'luu') {
-      // Lưu hỏng (mạng đứt, graph không hợp lệ) thì giữ người dùng ở lại —
-      // đóng màn lúc này là mất đúng thứ họ vừa bảo hãy giữ lại.
-      const luuDuoc = await saveDraft();
-      if (!luuDuoc) return;
+  /** Handles navigation prompt choice: 'save' | 'discard' | 'stay' */
+  const handleNavigationPromptChoice = async (choice) => {
+    const prompt = pendingNavigationPrompt;
+    if (!prompt) return;
+    if (choice === 'save') {
+      const saved = await saveDraft();
+      if (!saved) return;
     }
-    if (quyetDinh === 'bo') {
-      // Bỏ là bỏ thật: nạp lại nguyên bản từ máy chủ. Các tab của app không bị
-      // gỡ khỏi DOM khi chuyển qua lại, nên nếu chỉ đóng hộp thoại thì sơ đồ vẫn
-      // ôm bản sửa dở trong bộ nhớ — bấm tab lần nữa lại bị hỏi đúng câu vừa
-      // trả lời, mà lỡ bấm "Lưu" thì lưu nhầm thứ đã bảo là bỏ.
+    if (choice === 'discard') {
       setNodes(parsed.nodes);
       setEdges(parsed.edges);
       setStartNode(parsed.startNode);
       setWorkflowLabels(parsed.labels);
-      setMocDaLuu(dauVanTayGraph(
+      setSavedFingerprint(getGraphFingerprint(
         flowToGraph(parsed.nodes, parsed.edges, parsed.startNode, parsed.labels)
       ));
     }
-    setDangHoiThoat(null);
-    cho.traLoi(quyetDinh !== 'olai');
+    setPendingNavigationPrompt(null);
+    prompt.resolve(choice !== 'stay');
   };
 
   const beginWorkflowEdit = async () => {
@@ -1256,8 +1223,7 @@ export default function ContractWorkflowDesigner({
       });
       setChangeReason('');
       setEditMode(true);
-      // Vừa bấm Sửa: bản nháp bằng đúng bản đang chạy, chưa có gì để mất.
-      setMocDaLuu(dauVanTayGraph(
+      setSavedFingerprint(getGraphFingerprint(
         flowToGraph(parsed.nodes, parsed.edges, parsed.startNode, parsed.labels)
       ));
       addToast?.(`Đã tạo bản tạm số ${result.revision_no} từ quy trình đang chạy`, 'success');
@@ -1273,16 +1239,14 @@ export default function ContractWorkflowDesigner({
   const saveDraft = async () => {
     if (!serviceLine?.id || !structureEditable) return false;
     setSaving(true);
-    const daGui = currentPayload();
+    const payloadToSend = currentPayload();
     try {
       const result = await requestJson(`/api/contracts/workflow/${encodeURIComponent(serviceLine.id)}/draft`, {
         method: 'PUT',
-        body: JSON.stringify(daGui),
+        body: JSON.stringify(payloadToSend),
       });
       addToast?.(`Đã lưu tạm Revision ${result.revision_no}; bản đang chạy chưa thay đổi`, 'success');
-      // Mốc mới là đúng thứ vừa gửi đi, không phải thứ đang hiện trên màn hình:
-      // người dùng có thể đã kịp sửa tiếp trong lúc chờ mạng.
-      setMocDaLuu(dauVanTayGraph(daGui.graph));
+      setSavedFingerprint(getGraphFingerprint(payloadToSend.graph));
       await onPersisted?.();
       return true;
     } catch (error) {
@@ -1297,19 +1261,17 @@ export default function ContractWorkflowDesigner({
     if (!serviceLine?.id || !canActivate || (hasActiveRuntime && !structureEditable)) return;
     const amendmentReason = changeReason;
     const hasUnassignedNode = nodes.some(node => !(node.data.assignments || []).length);
-    // Node có người Phòng Đo vẽ mà không gắn hạng mục khoán nào → họ làm việc mà
-    // không nhận khoán. Cảnh báo (không chặn) để giám đốc biết trước khi kích hoạt.
-    const PHONG_DO_VE = 'Phòng Đo vẽ';
-    const nodeDoVeThieuKhoan = nodes.filter(node => {
-      const coNguoiDoVe = (node.data.assignments || []).some(a => {
-        const phong = a.department_name || employees.find(e => e.id === a.employee_id)?.department_name;
-        return phong === PHONG_DO_VE;
+    const SURVEY_DEPARTMENT = 'Phòng Đo vẽ';
+    const surveyNodesWithoutPieceRate = nodes.filter(node => {
+      const hasSurveyStaff = (node.data.assignments || []).some(a => {
+        const dept = a.department_name || employees.find(e => e.id === a.employee_id)?.department_name;
+        return dept === SURVEY_DEPARTMENT;
       });
-      if (!coNguoiDoVe) return false;
-      const coKhoan = (node.data.checklist || []).some(
+      if (!hasSurveyStaff) return false;
+      const hasPieceRate = (node.data.checklist || []).some(
         item => item.compensation?.is_payable && item.compensation?.work_item_id
       );
-      return !coKhoan;
+      return !hasPieceRate;
     }).map(node => node.data.code || node.data.label || node.id);
     const projectedKeys = new Set();
     const projectedTotal = nodes.reduce((total, node) => total + (node.data.assignments || []).reduce(
@@ -1328,16 +1290,16 @@ export default function ContractWorkflowDesigner({
       ? `\nKhoán dự kiến được khóa: ${formatMoney(projectedTotal)}. Tiền chỉ được ghi nhận sau nghiệm thu.`
       : '';
     const actionLabel = hasActiveRuntime ? 'Áp dụng bản sửa đổi' : 'Kích hoạt';
-    const canhBao = [];
-    if (hasUnassignedNode) canhBao.push('Một số Node chưa được phân công.');
-    if (nodeDoVeThieuKhoan.length) {
-      canhBao.push(
-        `Node đo vẽ chưa gắn hạng mục khoán: ${nodeDoVeThieuKhoan.join(', ')} — `
+    const warnings = [];
+    if (hasUnassignedNode) warnings.push('Một số Node chưa được phân công.');
+    if (surveyNodesWithoutPieceRate.length) {
+      warnings.push(
+        `Node đo vẽ chưa gắn hạng mục khoán: ${surveyNodesWithoutPieceRate.join(', ')} — `
         + 'nhân viên đo vẽ sẽ không nhận khoán cho các bước này.'
       );
     }
-    const message = canhBao.length
-      ? `${canhBao.join('\n')}\nBạn vẫn muốn ${actionLabel.toLowerCase()}?`
+    const message = warnings.length
+      ? `${warnings.join('\n')}\nBạn vẫn muốn ${actionLabel.toLowerCase()}?`
       : `${actionLabel} sẽ lưu một Revision có lịch sử riêng.${compensationMessage}\nTiếp tục?`;
     setActivationConfirmation({ amendmentReason, message, phase: 'initial' });
   };
@@ -1376,11 +1338,11 @@ export default function ContractWorkflowDesigner({
     }
     setChangeReason(amendmentReason);
     setActivating(true);
-    const daGui = currentPayload(amendmentReason);
+    const payloadToSend = currentPayload(amendmentReason);
     try {
       const result = await requestJson(`/api/contracts/workflow/${encodeURIComponent(serviceLine.id)}/activate`, {
         method: 'POST',
-        body: JSON.stringify(daGui),
+        body: JSON.stringify(payloadToSend),
       });
       addToast?.(
         `${result.amended ? 'Đã áp dụng bản sửa đổi' : 'Đã kích hoạt'}: ${result.node_count} Node mới, `
@@ -1391,7 +1353,7 @@ export default function ContractWorkflowDesigner({
       setEditMode(false);
       setChangeReason('');
       setActivationConfirmation(null);
-      setMocDaLuu(dauVanTayGraph(daGui.graph));
+      setSavedFingerprint(getGraphFingerprint(payloadToSend.graph));
       await onPersisted?.();
     } catch (error) {
       addToast?.(error.message, 'error');
@@ -1473,33 +1435,34 @@ export default function ContractWorkflowDesigner({
   };
 
   // Quy trình vẽ xong chỉ dùng cho hạng mục này. Lưu thành mẫu để hợp đồng sau
-  // chọn lại, khỏi phải dựng lại từ đầu.
-  const luuThanhMau = async () => {
-    const ten = tenMau.trim();
-    if (ten.length < 2) { addToast?.('Đặt tên cho mẫu quy trình', 'error'); return; }
-    setLuuMau(true);
+  const handleSaveAsTemplate = async () => {
+    const name = templateName.trim();
+    if (name.length < 2) { addToast?.('Đặt tên cho mẫu quy trình', 'error'); return; }
+    setIsSavingTemplateInProgress(true);
     try {
       const graph = flowToGraph(nodes, edges, startNode, workflowLabels);
       const res = await requestJson('/api/contracts/workflow/templates', {
         method: 'POST',
-        body: JSON.stringify({ name: ten, graph }),
+        body: JSON.stringify({ name, graph }),
       });
-      addToast?.(`Đã lưu mẫu “${res?.data?.name || ten}”`, 'success');
-      setDangLuuMau(false);
-      setTenMau('');
+      addToast?.(`Đã lưu mẫu “${res?.data?.name || name}”`, 'success');
+      setIsSavingTemplate(false);
+      setTemplateName('');
       onPersisted?.();
     } catch (error) {
       addToast?.(error.message || 'Không lưu được mẫu quy trình', 'error');
     } finally {
-      setLuuMau(false);
+      setIsSavingTemplateInProgress(false);
     }
   };
 
-  // Phím tắt trên sơ đồ. Chỉ bắt khi con trỏ KHÔNG nằm trong ô nhập — nếu không
-  // thì gõ tên bước xong bấm Delete là xoá mất cả bước thay vì xoá một ký tự.
+  // Keyboard shortcuts on workflow canvas
+  const saveDraftRef = useRef(saveDraft);
+  saveDraftRef.current = saveDraft;
+
   useEffect(() => {
     if (!structureEditable) return undefined;
-    const dangGoChu = () => {
+    const isTypingInInput = () => {
       const el = document.activeElement;
       if (!el) return false;
       return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
@@ -1507,21 +1470,19 @@ export default function ContractWorkflowDesigner({
     const onKey = (event) => {
       const cmd = event.metaKey || event.ctrlKey;
       if (!cmd) return;
-      const phim = event.key.toLowerCase();
-      if (phim === 'z') {
-        if (dangGoChu()) return;
+      const key = event.key.toLowerCase();
+      if (key === 'z') {
+        if (isTypingInInput()) return;
         event.preventDefault();
-        apMoc(event.shiftKey ? 1 : -1);
-      } else if (phim === 's') {
-        // Chặn cả khi đang gõ: Cmd+S ở đây luôn là lưu quy trình, không bao giờ
-        // là lưu trang web.
+        applyHistorySnapshot(event.shiftKey ? 1 : -1);
+      } else if (key === 's') {
         event.preventDefault();
-        saveDraft();
+        saveDraftRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [structureEditable, apMoc, saveDraft]);
+  }, [structureEditable, applyHistorySnapshot]);
 
   const saveActiveLayout = async () => {
     if (!serviceLine?.id || !hasActiveRuntime || !canAmendWorkflow || isWorkflowTerminal) return;
@@ -1621,20 +1582,20 @@ export default function ContractWorkflowDesigner({
               bước nào — mà đó mới là việc chính của họ. */}
           <div className="workflow-node-picker">
             <button type="button" disabled={!structureEditable} className="workspace-icon-button"
-              aria-expanded={dangChonNode} aria-haspopup="listbox"
-              onClick={() => setDangChonNode(value => !value)}>
+              aria-expanded={isSelectingNode} aria-haspopup="listbox"
+              onClick={() => setIsSelectingNode(value => !value)}>
               <Plus size={16} /> Thêm node
             </button>
-            {dangChonNode && structureEditable && (
+            {isSelectingNode && structureEditable && (
               <>
-                <div className="workflow-node-picker__backdrop" onClick={() => setDangChonNode(false)} />
+                <div className="workflow-node-picker__backdrop" onClick={() => setIsSelectingNode(false)} />
                 <div className="workflow-node-picker__menu" role="listbox">
-                  {nodesConTheThem.length === 0 ? (
+                  {availableCatalogNodes.length === 0 ? (
                     <p className="workflow-node-picker__empty">
                       Đã dùng hết {catalog.length} bước trong danh mục. Mỗi bước chỉ đặt được một lần
                       trong cùng quy trình.
                     </p>
-                  ) : nodesConTheThem.map(item => (
+                  ) : availableCatalogNodes.map(item => (
                     <button key={item.code} type="button" role="option"
                       className="workflow-node-picker__item" onClick={() => addCatalogNode(item)}>
                       <span className="workflow-node-picker__code">{item.code}</span>
@@ -1648,29 +1609,27 @@ export default function ContractWorkflowDesigner({
               </>
             )}
           </div>
-          {/* Vẽ xong một quy trình dùng được thì giữ lại làm mẫu, hợp đồng sau
-              chọn thẳng thay vì dựng lại từng bước. */}
           {structureEditable && nodes.length > 0 && (
             <div className="workflow-node-picker">
               <button type="button" className="workspace-icon-button"
-                onClick={() => { setDangLuuMau(value => !value); setTenMau(''); }}>
+                onClick={() => { setIsSavingTemplate(value => !value); setTemplateName(''); }}>
                 <Save size={15} /> Lưu thành mẫu
               </button>
-              {dangLuuMau && (
+              {isSavingTemplate && (
                 <>
-                  <div className="workflow-node-picker__backdrop" onClick={() => setDangLuuMau(false)} />
+                  <div className="workflow-node-picker__backdrop" onClick={() => setIsSavingTemplate(false)} />
                   <div className="workflow-node-picker__menu workflow-save-template">
                     <label htmlFor="ten-mau-quy-trinh">Tên mẫu quy trình</label>
-                    <input id="ten-mau-quy-trinh" className="form-control" value={tenMau} autoFocus
+                    <input id="ten-mau-quy-trinh" className="form-control" value={templateName} autoFocus
                       placeholder="VD: Quy trình tách thửa rút gọn"
-                      onChange={(event) => setTenMau(event.target.value)}
-                      onKeyDown={(event) => { if (event.key === 'Enter') luuThanhMau(); }} />
+                      onChange={(event) => setTemplateName(event.target.value)}
+                      onKeyDown={(event) => { if (event.key === 'Enter') handleSaveAsTemplate(); }} />
                     <p>Lưu {nodes.length} bước đang vẽ. Mẫu hiện trong danh sách “Mẫu quy trình” cho mọi hợp đồng sau.</p>
                     <div className="workflow-save-template__footer">
-                      <button type="button" className="workspace-icon-button" onClick={() => setDangLuuMau(false)}>Huỷ</button>
-                      <button type="button" className="btn btn-primary btn-sm" disabled={luuMau || tenMau.trim().length < 2}
-                        onClick={luuThanhMau}>
-                        {luuMau ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />} Lưu mẫu
+                      <button type="button" className="workspace-icon-button" onClick={() => setIsSavingTemplate(false)}>Huỷ</button>
+                      <button type="button" className="btn btn-primary btn-sm" disabled={isSavingTemplateInProgress || templateName.trim().length < 2}
+                        onClick={handleSaveAsTemplate}>
+                        {isSavingTemplateInProgress ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />} Lưu mẫu
                       </button>
                     </div>
                   </div>
@@ -1756,17 +1715,15 @@ export default function ContractWorkflowDesigner({
             onConnect={onConnect}
             onInit={setFlowInstance}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-            onPaneClick={() => { setSelectedNodeId(''); setMenuChuot(null); }}
-            onNodeContextMenu={(event, node) => moMenuChuot(event, node, 'node')}
-            onEdgeContextMenu={(event, edge) => moMenuChuot(event, edge, 'edge')}
-            onNodesDelete={khiXoaBuoc}
-            onEdgesDelete={khiXoaNhanh}
-            /* Delete/Backspace xoá thứ đang chọn; giữ Cmd (macOS) hoặc Ctrl để
-               chọn nhiều rồi xoá một lần. Khoá hết khi quy trình không cho sửa. */
+            onPaneClick={() => { setSelectedNodeId(''); setContextMenu(null); }}
+            onNodeContextMenu={(event, node) => openContextMenu(event, node, 'node')}
+            onEdgeContextMenu={(event, edge) => openContextMenu(event, edge, 'edge')}
+            onNodesDelete={handleNodesDelete}
+            onEdgesDelete={handleEdgesDelete}
             deleteKeyCode={structureEditable ? ['Delete', 'Backspace'] : null}
             multiSelectionKeyCode={['Meta', 'Control']}
             selectionKeyCode={'Shift'}
-            onMoveStart={() => setMenuChuot(null)}
+            onMoveStart={() => setContextMenu(null)}
             fitView
             fitViewOptions={{ padding: 0.16, minZoom: 0.62, maxZoom: 1 }}
             snapToGrid
@@ -1774,9 +1731,6 @@ export default function ContractWorkflowDesigner({
             minZoom={0.45}
             maxZoom={1.5}
             defaultEdgeOptions={{ type: 'workflowEdge' }}
-            /* Chấm nối nhỏ, mà sơ đồ thường xem ở mức thu nhỏ 0,6–0,7 nên trên
-               màn hình còn chưa tới 7px. Bán kính bắt mặc định 20px hẹp hơn cả
-               khoảng cách giữa hai chấm cạnh nhau. */
             connectionRadius={45}
             nodesDraggable={canMoveLayout}
             nodesConnectable={structureEditable}
@@ -1790,25 +1744,25 @@ export default function ContractWorkflowDesigner({
               nodeColor={node => NODE_COLORS[node.data.executionStatus] || NODE_COLORS.pending}
             />
           </ReactFlow>
-          {menuChuot && (
+          {contextMenu && (
             <>
-              <div className="workflow-ctx__backdrop" onClick={() => setMenuChuot(null)}
-                onContextMenu={(event) => { event.preventDefault(); setMenuChuot(null); }} />
-              <div className="workflow-ctx" style={{ left: menuChuot.x, top: menuChuot.y }} role="menu">
+              <div className="workflow-ctx__backdrop" onClick={() => setContextMenu(null)}
+                onContextMenu={(event) => { event.preventDefault(); setContextMenu(null); }} />
+              <div className="workflow-ctx" style={{ left: contextMenu.x, top: contextMenu.y }} role="menu">
                 <p className="workflow-ctx__title">
-                  {menuChuot.loai === 'node' ? 'Bước' : 'Nhánh'} · {menuChuot.ten}
+                  {contextMenu.type === 'node' ? 'Bước' : 'Nhánh'} · {contextMenu.label}
                 </p>
-                {menuChuot.loai === 'node' ? (
+                {contextMenu.type === 'node' ? (
                   <>
-                    <button type="button" role="menuitem" onClick={() => { setStartNode(menuChuot.id); setMenuChuot(null); }}>
+                    <button type="button" role="menuitem" onClick={() => { setStartNode(contextMenu.id); setContextMenu(null); }}>
                       <Play size={14} /> Đặt làm bước bắt đầu
                     </button>
-                    <button type="button" role="menuitem" className="is-danger" onClick={() => xoaBuoc(menuChuot.id)}>
+                    <button type="button" role="menuitem" className="is-danger" onClick={() => deleteNode(contextMenu.id)}>
                       <Trash2 size={14} /> Xoá bước này
                     </button>
                   </>
                 ) : (
-                  <button type="button" role="menuitem" className="is-danger" onClick={() => xoaNhanh(menuChuot.id)}>
+                  <button type="button" role="menuitem" className="is-danger" onClick={() => deleteEdge(contextMenu.id)}>
                     <Trash2 size={14} /> Xoá nhánh này
                   </button>
                 )}
@@ -2252,7 +2206,7 @@ export default function ContractWorkflowDesigner({
                     <div className="wcl-prop">
                       <span className="wcl-prop__label"><Paperclip size={13} /> Minh chứng</span>
                       {checklistEditable ? (
-                        <button type="button" className="wcl-prop__add" onClick={() => updateChecklistItem(index, { require_evidence: true })}>
+                        <button type="button" className="wcl-add-inline" onClick={() => updateChecklistItem(index, { require_evidence: true })}>
                           <Plus size={12} /> Thêm yêu cầu minh chứng
                         </button>
                       ) : (
@@ -2545,27 +2499,25 @@ export default function ContractWorkflowDesigner({
         </button>
       </div>
 
-      {/* Rời khỏi màn khi còn thay đổi chưa lưu. "Lưu" ở đây chỉ LƯU TẠM —
-          Áp dụng vào quy trình đang chạy là quyết định lớn, bắt buộc nhập lý do
-          và làm đổi việc của nhân viên, không nên nằm sau một hộp thoại bấm vội. */}
+      {/* Navigation prompt when unsaved changes exist */}
       <Modal
-        open={Boolean(dangHoiThoat)}
-        onClose={() => traLoiThoat('olai')}
+        open={Boolean(pendingNavigationPrompt)}
+        onClose={() => handleNavigationPromptChoice('stay')}
         closeOnOverlay={!saving}
         title="Quy trình còn thay đổi chưa lưu"
         id="workflow-unsaved-modal"
         footer={(
           <>
             <button type="button" className="btn btn-secondary" disabled={saving}
-              onClick={() => traLoiThoat('olai')}>
+              onClick={() => handleNavigationPromptChoice('stay')}>
               Ở lại
             </button>
             <button type="button" className="btn btn-secondary workflow-unsaved-discard" disabled={saving}
-              onClick={() => traLoiThoat('bo')}>
+              onClick={() => handleNavigationPromptChoice('discard')}>
               Thoát không lưu
             </button>
             <button type="button" className="btn btn-primary workflow-unsaved-save" disabled={saving}
-              onClick={() => traLoiThoat('luu')}>
+              onClick={() => handleNavigationPromptChoice('save')}>
               {saving ? <LoaderCircle size={16} className="spin" /> : <Save size={16} />} Lưu tạm rồi thoát
             </button>
           </>

@@ -4,7 +4,7 @@ import {
   RefreshCw, Trash2, ArrowRightLeft, AlertCircle, ReceiptText
 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
-import { SensitiveActionModal, FilterBar } from '../components/ui'
+import { SensitiveActionModal, FilterBar, Select } from '../components/ui'
 import ReceiptFileInput from '../components/finance/ReceiptFileInput'
 import ReceiptLinks from '../components/finance/ReceiptLinks'
 import { buildPaymentFormData } from '../components/finance/paymentReceipts'
@@ -72,7 +72,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [loadingTargets, setLoadingTargets] = useState(false)
 
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ amount: '', payment_method: 'Tiền mặt', note: '' })
+  const [form, setForm] = useState({ amount: '', payment_method: 'CASH', note: '' })
   const [receiptFiles, setReceiptFiles] = useState([])
 
   const [search, setSearch] = useState('')
@@ -123,6 +123,22 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     })
   }, [rows, search, filterDelivery])
 
+  const debtSummary = useMemo(() => {
+    const overdue = rows.filter(r => r.is_delivered && getDaysDiff(r.delivered_at) >= 7)
+    const awaitingDelivery = rows.filter(r => !r.is_delivered)
+    return {
+      overdueCount: overdue.length,
+      overdueAmount: overdue.reduce((sum, row) => sum + Number(row.remaining || 0), 0),
+      awaitingDeliveryCount: awaitingDelivery.length,
+    }
+  }, [rows])
+
+  const deliveryFilterLabel = {
+    delivered: 'Đã bàn giao',
+    undelivered: 'Chưa bàn giao',
+    late: 'Nợ quá 7 ngày',
+  }[filterDelivery]
+
   const handleOpenTransferDebt = async (r) => {
     setTransferringRow(r)
     setTargetContractId('')
@@ -158,7 +174,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
       })
       addToast(`Đã ghi nhận ${formatMoney(form.amount)} — chờ giám đốc duyệt`, 'success')
       setRecordingRow(null)
-      setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+      setForm({ amount: '', payment_method: 'CASH', note: '' })
       setReceiptFiles([])
       load(false)
     } catch (err) {
@@ -177,7 +193,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
       })
-      addToast(`✅ Giám đốc đã duyệt xóa nợ / miễn giảm cho hợp đồng ${writingOffRow.contract_id}!`, 'success')
+      addToast(`Giám đốc đã duyệt xóa nợ / miễn giảm cho hợp đồng ${writingOffRow.contract_id}!`, 'success')
       setWritingOffRow(null)
       await load()
     } catch (err) {
@@ -199,7 +215,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
           reason: transferReason.trim()
         })
       })
-      addToast(`✅ Giám đốc đã duyệt chuyển nợ ${formatMoney(transferringRow.remaining)} sang hợp đồng ${targetContractId}!`, 'success')
+      addToast(`Giám đốc đã duyệt chuyển nợ ${formatMoney(transferringRow.remaining)} sang hợp đồng ${targetContractId}!`, 'success')
       setTransferringRow(null)
       setTargetContractId('')
       setTransferReason('')
@@ -219,23 +235,54 @@ export default function DebtCollection({ user = null, isDirector = false }) {
           <h2>Thu công nợ & Xử lý nợ tồn</h2>
           <p>Mọi hợp đồng chưa thu đủ tiền, kể cả khi hồ sơ chưa tới bước bàn giao. Ghi nhận thu tiền, hoặc Giám đốc duyệt xóa nợ / chuyển nợ.</p>
         </div>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => load()}>
-          <RefreshCw size={14} /> Làm mới
-        </button>
+        <div className="debt__head-actions">
+          <span className="debt__sync-note">Tự cập nhật mỗi 30 giây</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => load()}>
+            <RefreshCw size={14} /> Làm mới
+          </button>
+        </div>
       </header>
 
-      <div className="debt__totals">
-        <div className="debt__total">
-          <span>Hợp đồng đang nợ</span>
-          <strong>{meta.total}</strong>
+      <div className="debt__totals-grid">
+        <div className="debt__total-card debt__total-card--primary">
+          <div className="debt__total-icon">
+            <ReceiptText size={20} />
+          </div>
+          <div className="debt__total-content">
+            <span>Hợp đồng đang nợ</span>
+            <strong>{meta.total} <small>hồ sơ</small></strong>
+            <p>Hồ sơ chưa thu đủ 100%</p>
+          </div>
         </div>
-        <div className="debt__total debt__total--money">
-          <span>Tổng còn phải thu</span>
-          <strong>{formatMoney(meta.total_remaining)}</strong>
+        <div className="debt__total-card debt__total-card--highlight">
+          <div className="debt__total-icon">
+            <AlertCircle size={20} />
+          </div>
+          <div className="debt__total-content">
+            <span>Tổng còn phải thu</span>
+            <strong>{formatMoney(meta.total_remaining)}</strong>
+            <p>Cần tiếp tục đôn đốc thu nợ</p>
+          </div>
+        </div>
+        <div className="debt__total-card debt__total-card--danger">
+          <div className="debt__total-icon"><AlertTriangle size={20} /></div>
+          <div className="debt__total-content">
+            <span>Cần ưu tiên</span>
+            <strong>{debtSummary.overdueCount} <small>hồ sơ</small></strong>
+            <p>Đã bàn giao quá 7 ngày · {formatMoney(debtSummary.overdueAmount)}</p>
+          </div>
+        </div>
+        <div className="debt__total-card debt__total-card--waiting">
+          <div className="debt__total-icon"><PackageCheck size={20} /></div>
+          <div className="debt__total-content">
+            <span>Chưa bàn giao</span>
+            <strong>{debtSummary.awaitingDeliveryCount} <small>hồ sơ đang chờ</small></strong>
+            <p>Cần theo dõi tiến độ hồ sơ</p>
+          </div>
         </div>
       </div>
 
-      <div style={{ margin: '16px 0' }}>
+      <div className="debt__filter-wrap">
         <FilterBar
           search={search}
           onSearchChange={setSearch}
@@ -258,6 +305,12 @@ export default function DebtCollection({ user = null, isDirector = false }) {
           onFilterChange={(_, v) => setFilterDelivery(v)}
           onReset={() => { setSearch(''); setFilterDelivery('All'); }}
         />
+        <div className="debt__filter-summary" aria-live="polite">
+          <span>Theo dữ liệu đã tải</span>
+          <span>{filteredRows.length}/{rows.length} hồ sơ đang hiển thị</span>
+          {search.trim() && <span className="debt__filter-chip">Từ khóa: {search.trim()}</span>}
+          {deliveryFilterLabel && <span className="debt__filter-chip">{deliveryFilterLabel}</span>}
+        </div>
       </div>
 
       {loading ? (
@@ -329,14 +382,14 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                       </p>
                     )}
 
-                    <div className="debt__actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="debt__actions">
                       {r.remaining > 0 && (
                         <>
                           {!effectiveIsDirector && (
                             <button type="button" className="btn btn-primary btn-sm"
                               onClick={() => {
                                 setRecordingRow(r)
-                                setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                                setForm({ amount: '', payment_method: 'CASH', note: '' })
                                 setReceiptFiles([])
                               }}>
                               <Plus size={14} /> Ghi nhận thanh toán
@@ -393,7 +446,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                               </div>
                               <div className="debt__history-item-bottom">
                                 <span className="debt__history-method">
-                                  {inst.payment_method || 'Tiền mặt'}
+                                  {inst.payment_method_label || (inst.payment_method === 'BANK_TRANSFER' || inst.payment_method === 'Chuyển khoản' ? 'Chuyển khoản' : 'Tiền mặt')}
                                 </span>
                                 <div className="debt__history-extra">
                                   {inst.receipt_attachments?.length || inst.receipt_attachment_url ? (
@@ -446,11 +499,15 @@ export default function DebtCollection({ user = null, isDirector = false }) {
               <ReceiptFileInput files={receiptFiles} onChange={setReceiptFiles} disabled={saving} />
             </div>
             <label>Hình thức
-              <select className="form-control" value={form.payment_method}
-                onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
-                <option>Tiền mặt</option>
-                <option>Chuyển khoản</option>
-              </select>
+              <Select
+                value={form.payment_method}
+                options={[
+                  { value: 'CASH', label: 'Tiền mặt' },
+                  { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+                ]}
+                onChange={(value) => setForm({ ...form, payment_method: value })}
+                className="ui-select--field"
+              />
             </label>
             <label>Ghi chú
               <input className="form-control" value={form.note}
@@ -566,23 +623,18 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                 </div>
               ) : (
                 <>
-                  <select
-                    className="form-control"
+                  <Select
                     value={targetContractId}
-                    onChange={(e) => setTargetContractId(e.target.value)}
-                    style={{
-                      height: 44,
-                      fontWeight: 600,
-                      color: targetContractId ? '#0f172a' : '#64748b'
-                    }}
-                  >
-                    <option value="">-- Chọn hợp đồng nhận nợ ({eligibleTargets.length} hợp đồng khả dụng) --</option>
-                    {eligibleTargets.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.id} — {t.service_type} (Tổng: {formatMoney(t.total_value)} | Nợ hiện tại: {formatMoney(t.remaining_amount)})
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: `-- Chọn hợp đồng nhận nợ (${eligibleTargets.length} hợp đồng khả dụng) --` },
+                      ...eligibleTargets.map((t) => ({
+                        value: t.id,
+                        label: `${t.id} — ${t.service_type} (Tổng: ${formatMoney(t.total_value)} | Nợ hiện tại: ${formatMoney(t.remaining_amount)})`
+                      }))
+                    ]}
+                    onChange={(value) => setTargetContractId(value)}
+                    className="ui-select--field"
+                  />
 
                   {/* Thẻ xem trước kết quả gộp nợ */}
                   {selectedTarget && (

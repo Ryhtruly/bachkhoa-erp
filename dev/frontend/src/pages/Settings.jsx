@@ -70,7 +70,7 @@ const FIELD_GROUPS = [
   }
 ];
 
-function TestButton({ groupId, fieldKey, settings, onResult }) {
+function TestButton({ _groupId, fieldKey, settings, onResult }) {
   const [status, setStatus] = useState('idle'); // idle | loading | ok | fail
 
   const handleTest = async () => {
@@ -266,7 +266,7 @@ export default function Settings() {
                               groupId={group.id}
                               fieldKey={field.testKey}
                               settings={settings}
-                              onResult={(ok, msg) => ok ? showToast(`✅ ${msg || 'Kết nối thành công!'}`, 'success') : showToast(`❌ ${msg || 'Kết nối thất bại'}`, 'error')}
+                              onResult={(ok, msg) => ok ? showToast(msg || 'Kết nối thành công!', 'success') : showToast(msg || 'Kết nối thất bại', 'error')}
                             />
                           )}
                         </div>

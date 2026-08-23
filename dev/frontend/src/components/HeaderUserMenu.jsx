@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, LogOut, Settings, UserRound, Wallet } from 'lucide-react';
 import { useDropdownPosition } from '../lib/useDropdownPosition';
 import { Modal } from './ui';
 import AvatarImage from './AvatarImage';
-import MyPayroll from '../features/employee-portal/MyPayroll';
+
+const MyPayroll = lazy(() => import('../features/employee-portal/MyPayroll'));
 
 export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
   const triggerRef = useRef(null);
@@ -77,7 +78,9 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
           title="Phiếu Lương Cá Nhân"
           size="xl"
         >
-          <MyPayroll isModal={true} />
+          <Suspense fallback={<div className="app-tab-loader" role="status">Đang tải phiếu lương...</div>}>
+            <MyPayroll isModal={true} />
+          </Suspense>
         </Modal>
       )}
     </div>

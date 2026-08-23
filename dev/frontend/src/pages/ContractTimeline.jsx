@@ -92,15 +92,7 @@ function formatDuration(daysValue, hoursValue) {
   return parts.length ? parts.join(' ') : 'Chưa đặt thời hạn';
 }
 
-export function timelineMilestones(node) {
-  return [
-    ['Sẵn sàng', node.ready_at],
-    ['Bắt đầu', node.started_at],
-    ...((node.submissions || []).map((item) => [`Nộp #${item.attempt_no}`, item.submitted_at])),
-    ['Hoàn tất', node.completed_at],
-    ['Hạn xử lý', node.deadline_at],
-  ].filter(([, value]) => Boolean(value)).map(([label, value]) => ({ label, value }));
-}
+import { timelineMilestones } from './contractTimelineUtils';
 
 function nodeStatusClass(node) {
   if (node.is_overdue) return 'overdue';

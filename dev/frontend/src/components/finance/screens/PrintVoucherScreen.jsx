@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DatePicker } from '../../ui';
-import { fmtShort, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING, VOUCHER_SIGNERS } from '../utils';
+import { DatePicker, Select } from '../../ui';
+import { fmtShort, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
 import { COMPANY_IDENTITY } from '../../../lib/companyIdentity';
+import { printElement } from '../print/printDocument';
 import voucherPrintStyles from './PrintVoucherScreen.print.css?inline';
+import './PrintVoucherScreen.css';
+import { getVoucherSignatureRoles } from './voucherSignatureUtils';
+import { useDocumentSigners } from '../print/documentSigners';
 import {
   Printer,
   PlusCircle,
@@ -43,18 +47,33 @@ const formatDisplayDate = (d) => {
 
 export function VoucherTemplate({
   title, voucherId, date, personName, labelPerson, description, amount, amountWords,
-  category, paymentMethod, department, contractId, projectId, accounting, documentRef
+  category, paymentMethod, department, contractId, projectId, _accounting, creatorName = '', signerSnapshot = null,
+  documentRef, paperSize = 'a4'
 }) {
   const isReceiptVoucher = title.includes('THU');
   const isAdvancePayment = title.includes('TẠM ỨNG');
   const isAdvanceReimbursement = title.includes('HOÀN ỨNG');
+  const documentSigners = useDocumentSigners();
+  const effectiveDocumentSigners = signerSnapshot || documentSigners;
+
+  const isBankTransfer = paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'Chuyển khoản';
+  const paymentMethodLabel = isBankTransfer ? 'Chuyển khoản' : (paymentMethod === 'CASH' || paymentMethod === 'Tiền mặt' ? 'Tiền mặt' : (paymentMethod || 'Tiền mặt'));
 
   const formCode = isReceiptVoucher ? '01 - TT' : (isAdvancePayment ? '02 - TT/TỨ' : (isAdvanceReimbursement ? '03 - TT/HỨ' : '02 - TT'));
-  const debitAccount = isReceiptVoucher ? (paymentMethod === 'Chuyển khoản' ? '1121' : '1111') : (isAdvancePayment ? '141' : (isAdvanceReimbursement ? '642 / 154' : (category && category.includes('Lương') ? '334' : '642')));
-  const creditAccount = isReceiptVoucher ? (category && category.includes('Thu') ? '131 / 511' : '131') : (paymentMethod === 'Chuyển khoản' ? '1121' : '1111');
+  const debitAccount = isReceiptVoucher ? (isBankTransfer ? '1121' : '1111') : (isAdvancePayment ? '141' : (isAdvanceReimbursement ? '642 / 154' : (category && category.includes('Lương') ? '334' : '642')));
+  const creditAccount = isReceiptVoucher ? (category && category.includes('Thu') ? '131 / 511' : '131') : (isBankTransfer ? '1121' : '1111');
+  const signatureRoles = getVoucherSignatureRoles({
+    isReceiptVoucher,
+    isBankTransfer,
+    isAdvanceDocument: isAdvancePayment ? 'advance' : (isAdvanceReimbursement ? 'reimbursement' : null),
+    labelPerson,
+    personName,
+    creatorName,
+    signerNames: effectiveDocumentSigners,
+  });
 
   return (
-    <div ref={documentRef} className="voucher-print-document" style={{
+    <div ref={documentRef} className="voucher-print-document" data-paper-size={paperSize} data-signature-count={signatureRoles.length} style={{
       background: '#ffffff',
       color: '#000000',
       fontFamily: '"Times New Roman", Times, serif',
@@ -97,7 +116,7 @@ export function VoucherTemplate({
         <div className="voucher-print-ledger" style={{ display: 'flex', justifyContent: 'center', gap: 32, fontSize: '0.9rem', fontWeight: 600 }}>
           <span>Số: <strong style={{ fontFamily: 'monospace' }}>{voucherId || '........'}</strong></span>
           <span>Quyển số: <strong>01</strong></span>
-          <span>Nợ: <strong>{debitAccount}</strong></span>
+          <span>Nợ: <strong>{deAccount(debitAccount)}</strong></span>
           <span>Có: <strong>{creditAccount}</strong></span>
         </div>
       </div>
@@ -133,7 +152,7 @@ export function VoucherTemplate({
         <div className="voucher-print-row" style={{ display: 'flex' }}>
           <span className="voucher-print-label" style={{ minWidth: 250 }}>- Hình thức thanh toán:</span>
           <span className="voucher-print-value" style={{ flex: 1, borderBottom: '1px dotted #666', paddingBottom: 2 }}>
-            {paymentMethod || 'Tiền mặt'} (Hạng mục: {category || 'Khác'})
+            {paymentMethodLabel} (Hạng mục: {category || 'Khác'})
           </span>
         </div>
         {(contractId || projectId) && (
@@ -157,48 +176,22 @@ export function VoucherTemplate({
         Ngày {date ? formatDisplayDate(date).split('/')[0] : '...'} tháng {date ? formatDisplayDate(date).split('/')[1] : '...'} năm {date ? formatDisplayDate(date).split('/')[2] : '2026'}
       </div>
 
-      {/* 5 Cột Chữ Ký Chuẩn Bộ Tài Chính */}
+      {/* Vai trò chữ ký thay đổi theo loại chứng từ và hình thức thanh toán. */}
       <div className="voucher-print-signatures" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(5, 1fr)',
+        gridTemplateColumns: `repeat(${signatureRoles.length}, 1fr)`,
         textAlign: 'center',
         gap: 8,
         marginBottom: 36
       }}>
-        <div className="voucher-print-signature">
-          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Giám đốc</div>
-          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên, đóng dấu)</div>
-          <div className="voucher-print-signature-space" style={{ height: 50 }} />
-          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{VOUCHER_SIGNERS.director}</div>
-        </div>
-
-        <div className="voucher-print-signature">
-          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Kế toán trưởng</div>
-          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
-          <div className="voucher-print-signature-space" style={{ height: 50 }} />
-          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{accounting || 'Nguyễn Thị A'}</div>
-        </div>
-
-        <div className="voucher-print-signature">
-          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Thủ quỹ</div>
-          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
-          <div className="voucher-print-signature-space" style={{ height: 50 }} />
-          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>&nbsp;</div>
-        </div>
-
-        <div className="voucher-print-signature">
-          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>Người lập phiếu</div>
-          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
-          <div className="voucher-print-signature-space" style={{ height: 50 }} />
-          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{VOUCHER_SIGNERS.creator}</div>
-        </div>
-
-        <div className="voucher-print-signature">
-          <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>{labelPerson || (isReceiptVoucher ? 'Người nộp tiền' : 'Người nhận tiền')}</div>
-          <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>(Ký, họ tên)</div>
-          <div className="voucher-print-signature-space" style={{ height: 50 }} />
-          <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{personName || ''}</div>
-        </div>
+        {signatureRoles.map(role => (
+          <div className="voucher-print-signature" key={role.title}>
+            <div className="voucher-print-signature-title" style={{ fontWeight: 800, fontSize: '0.88rem', textTransform: 'uppercase' }}>{role.title}</div>
+            <div className="voucher-print-signature-note" style={{ fontSize: '0.78rem', fontStyle: 'italic', color: '#555' }}>{role.note}</div>
+            <div className="voucher-print-signature-space" style={{ height: 50 }} />
+            <div className="voucher-print-signature-name" style={{ fontWeight: 700, fontSize: '0.88rem' }}>{role.name || '\u00a0'}</div>
+          </div>
+        ))}
       </div>
 
       {/* Dòng Xác Nhận Đã Nhận Đủ Tiền Ở Dưới Cùng */}
@@ -207,6 +200,10 @@ export function VoucherTemplate({
       </div>
     </div>
   );
+}
+
+function deAccount(val) {
+  return val || '1111';
 }
 
 const CATEGORY_OPTIONS = [
@@ -229,9 +226,8 @@ const CATEGORY_OPTIONS = [
 ];
 
 const METHOD_OPTIONS = [
-  { value: 'Chuyển khoản', label: 'Chuyển khoản' },
-  { value: 'Tiền mặt', label: 'Tiền mặt' },
-  { value: 'Tạm ứng', label: 'Tạm ứng' },
+  { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+  { value: 'CASH', label: 'Tiền mặt' },
 ];
 
 const CATEGORIES_REQUIRE_LINK = [
@@ -247,9 +243,9 @@ const TX_TYPE_META = {
   'Hoàn ứng': { title: 'PHIẾU QUYẾT TOÁN HOÀN ỨNG', action: 'Quyết toán chứng từ tạm ứng', color: '#6366f1', bg: 'rgba(99,102,241,0.08)', prefix: 'PT/PC', labelPerson: 'Người quyết toán' }
 };
 
-const defaultCreatedBy = VOUCHER_SIGNERS.creator;
-const defaultAccounting = 'Nguyễn Thị A';
-const defaultApprovedBy = VOUCHER_SIGNERS.director;
+const defaultCreatedBy = '';
+const defaultAccounting = '';
+const defaultApprovedBy = '';
 
 const emptyForm = {
   id: '',
@@ -257,18 +253,19 @@ const emptyForm = {
   description: '',
   category: 'Chi tiếp khách & Giao tế',
   payer_payee: '',
-  payment_method: 'Chuyển khoản',
+  payment_method: 'BANK_TRANSFER',
   department_code: '',
   amount: '',
-  status: 'Hoàn thành',
+  status: 'COMPLETED',
   created_by: defaultCreatedBy,
   accounting: defaultAccounting,
   approved_by: defaultApprovedBy,
   contract_id: '',
-  project_id: ''
+  project_id: '',
+  signer_snapshot: null
 };
 
-export default function PrintVoucherScreen({ month }) {
+export default function PrintVoucherScreen({ month, user }) {
   const voucherDocumentRef = useRef(null);
   const [mode, setMode] = useState('create');
   const [txType, setTxType] = useState('Chi');
@@ -278,7 +275,8 @@ export default function PrintVoucherScreen({ month }) {
   const [activeAdvances, setActiveAdvances] = useState([]);
   const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
 
-  const [form, setForm] = useState(emptyForm);
+  const currentUserName = user?.full_name || user?.name || user?.username || '';
+  const [form, setForm] = useState({ ...emptyForm, created_by: currentUserName });
 
   const [contracts, setContracts] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -287,7 +285,7 @@ export default function PrintVoucherScreen({ month }) {
   const [refreshing, setRefreshing] = useState(false);
   const { addToast } = useToast();
 
-  const loadAll = async (isRefresh = false) => {
+  const loadAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
@@ -310,11 +308,11 @@ export default function PrintVoucherScreen({ month }) {
       if (isRefresh) setRefreshing(false);
       else setLoading(false);
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
 
   const handleRefresh = () => {
     loadAll(true);
@@ -324,20 +322,22 @@ export default function PrintVoucherScreen({ month }) {
     if (mode === 'create') {
       const fetchNextId = async () => {
         try {
-          // Thiếu token thì số chứng từ để trống, kế toán không lập được phiếu.
           const d = await apiFetch(`${API}/api/finance/next-voucher-id?type=${txType}`);
           setForm({
             ...emptyForm,
-            id: d.next_id,
+            // Giữ mọi input ở trạng thái controlled kể cả khi API trả payload
+            // thiếu next_id (ví dụ mock/instance cũ đang trả { data: [] }).
+            id: d.next_id || '',
+            created_by: currentUserName,
             transaction_date: getTodayIso(),
             category: txType === 'Tạm ứng' ? 'Tạm ứng kinh phí' : (txType === 'Hoàn ứng' ? 'Quyết toán tạm ứng' : 'Khác'),
-            payment_method: txType === 'Tạm ứng' ? 'Tạm ứng' : 'Chuyển khoản'
+            payment_method: txType === 'Tạm ứng' ? 'Tạm ứng' : 'BANK_TRANSFER'
           });
-        } catch (e) { }
+        } catch { }
       };
       fetchNextId();
     }
-  }, [mode, txType]);
+  }, [currentUserName, mode, txType]);
 
   useEffect(() => {
     if (mode === 'print' && selectedId) {
@@ -362,15 +362,16 @@ export default function PrintVoucherScreen({ month }) {
           description: tx.description || '',
           category: tx.category || 'Khác',
           payer_payee: tx.partner || tx.payer_payee || '',
-          payment_method: tx.payment_method || 'Chuyển khoản',
-          department_code: tx.department_code || '',
-          amount: String(tx.amount || ''),
-          status: tx.status || 'Hoàn thành',
-          created_by: defaultCreatedBy,
+            payment_method: tx.payment_method || 'BANK_TRANSFER',
+            department_code: tx.department_code || '',
+            amount: String(tx.amount || ''),
+            status: tx.status || 'COMPLETED',
+            created_by: tx.created_by_name || tx.signer_snapshot?.creator_name || '',
           accounting: defaultAccounting,
           approved_by: defaultApprovedBy,
           contract_id: tx.contract_id || '',
-          project_id: tx.project_id || ''
+          project_id: tx.project_id || '',
+          signer_snapshot: tx.signer_snapshot || null
         });
       }
     }
@@ -407,6 +408,41 @@ export default function PrintVoucherScreen({ month }) {
       .map(name => ({ value: name, label: name }));
   }, [departments, transactions, form.department_code]);
 
+  const availableProjects = useMemo(() => {
+    if (!form.contract_id) return projects;
+    return projects.filter(p => p.contract_id === form.contract_id);
+  }, [projects, form.contract_id]);
+
+  const handleContractChange = (val) => {
+    const matched = val ? projects.filter(p => p.contract_id === val) : [];
+    let nextProjectId = form.project_id;
+    if (val) {
+      if (matched.length === 1) {
+        nextProjectId = matched[0].id;
+      } else if (matched.length > 1) {
+        const stillValid = matched.some(p => p.id === form.project_id);
+        if (!stillValid) nextProjectId = '';
+      } else {
+        nextProjectId = '';
+      }
+    }
+    setForm(prev => ({
+      ...prev,
+      contract_id: val,
+      project_id: nextProjectId
+    }));
+  };
+
+  const handleProjectChange = (val) => {
+    const selectedProj = projects.find(p => p.id === val);
+    const parentContractId = selectedProj?.contract_id;
+    setForm(prev => ({
+      ...prev,
+      project_id: val,
+      contract_id: parentContractId || prev.contract_id
+    }));
+  };
+
   const filteredAdvances = useMemo(() => {
     if (!month) return activeAdvances;
     return activeAdvances.filter(a => {
@@ -421,7 +457,7 @@ export default function PrintVoucherScreen({ month }) {
     try {
       const words = spellVietnameseCurrency(n);
       return typeof words === 'string' ? words : '';
-    } catch (e) {
+    } catch {
       return '';
     }
   }, [form.amount]);
@@ -434,56 +470,12 @@ export default function PrintVoucherScreen({ month }) {
 
   const handlePrint = () => {
     const sourceDocument = voucherDocumentRef.current;
-    if (!sourceDocument) {
-      addToast('Không tìm thấy nội dung chứng từ để in', 'error');
-      return;
-    }
-
-    const printFrame = document.createElement('iframe');
-    printFrame.setAttribute('title', 'Bản in chứng từ thu chi');
-    printFrame.setAttribute('aria-hidden', 'true');
-    Object.assign(printFrame.style, {
-      position: 'fixed',
-      left: '-10000px',
-      top: '0',
-      width: '210mm',
-      height: '297mm',
-      border: '0',
-      opacity: '0',
-      pointerEvents: 'none',
+    printElement({
+      element: sourceDocument,
+      title: `Chứng từ ${voucherInfo.title}`,
+      styles: voucherPrintStyles,
+      onError: message => addToast(message, 'error'),
     });
-
-    let cleanupTimer;
-    const cleanup = () => {
-      window.clearTimeout(cleanupTimer);
-      printFrame.remove();
-    };
-
-    printFrame.onload = () => {
-      const printWindow = printFrame.contentWindow;
-      if (!printWindow) {
-        cleanup();
-        addToast('Trình duyệt không thể mở bản in', 'error');
-        return;
-      }
-
-      printWindow.addEventListener('afterprint', cleanup, { once: true });
-      cleanupTimer = window.setTimeout(cleanup, 120000);
-      printWindow.focus();
-      printWindow.print();
-    };
-
-    printFrame.srcdoc = `<!doctype html>
-      <html lang="vi">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Chứng từ thu chi</title>
-          <style>${voucherPrintStyles}</style>
-        </head>
-        <body>${sourceDocument.outerHTML}</body>
-      </html>`;
-    document.body.appendChild(printFrame);
   };
 
   const handleQuickAddAmount = (addValue) => {
@@ -518,6 +510,10 @@ export default function PrintVoucherScreen({ month }) {
     setLoading(true);
     try {
       let saved;
+      const canonicalType = txType === 'Thu' ? 'INCOME' : txType === 'Chi' ? 'EXPENSE' : txType === 'Tạm ứng' ? 'ADVANCE' : 'REIMBURSEMENT';
+      const canonicalMethod = form.payment_method === 'Tiền mặt' ? 'CASH' : form.payment_method === 'Chuyển khoản' ? 'BANK_TRANSFER' : form.payment_method;
+      const canonicalStatus = form.status === 'Hoàn thành' ? 'COMPLETED' : form.status === 'Chờ duyệt' ? 'PENDING' : form.status;
+
       if (txType === 'Tạm ứng') {
         saved = await apiFetch(`${API}/api/finance/advance/create`, {
           method: 'POST',
@@ -527,7 +523,7 @@ export default function PrintVoucherScreen({ month }) {
             amount: Number(form.amount),
             payer_payee: form.payer_payee,
             note: form.description,
-            payment_method: form.payment_method
+            payment_method: canonicalMethod
           })
         });
       } else if (txType === 'Hoàn ứng') {
@@ -545,16 +541,16 @@ export default function PrintVoucherScreen({ month }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            type: txType,
+            type: canonicalType,
             amount: Number(form.amount),
             category: form.category,
             payer_payee: form.payer_payee,
-            payment_method: form.payment_method,
+            payment_method: canonicalMethod,
             contract_id: form.contract_id || null,
             project_id: form.project_id || null,
             created_by: form.created_by,
             approved_by: form.approved_by,
-            status: form.status,
+            status: canonicalStatus,
             description: form.description,
             department_code: form.department_code
           })
@@ -562,8 +558,7 @@ export default function PrintVoucherScreen({ month }) {
       }
 
       addToast('Lưu chứng từ thành công!', 'success');
-      await fetchTransactions();
-      await fetchActiveAdvances();
+      await loadAll();
       setMode('print');
       setSelectedId(saved?.id || (saved?.auto_vouchers && saved?.auto_vouchers[0] ? saved?.auto_vouchers[0].id : ''));
     } catch (e) {
@@ -593,67 +588,27 @@ export default function PrintVoucherScreen({ month }) {
   const voucherInfo = getVoucherInfo();
 
   return (
-    <div className="print-screen-container" style={{ padding: '8px 0 32px 0' }}>
+    <div className="print-screen-container">
       {/* Top Bar Navigation */}
-      <div style={{
-        background: '#ffffff',
-        borderRadius: 14,
-        padding: '14px 20px',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 2px 8px -2px rgba(0,0,0,0.04)',
-        marginBottom: 20,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 16
-      }}>
+      <div className="print-screen-topbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'inline-flex', background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
+          <div className="print-screen-mode-group">
             <button
               onClick={() => setMode('create')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 8,
-                border: 'none',
-                background: mode === 'create' ? '#2563eb' : 'transparent',
-                color: mode === 'create' ? '#ffffff' : '#475569',
-                fontWeight: 700,
-                fontSize: '0.88rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                boxShadow: mode === 'create' ? '0 2px 6px rgba(37,99,235,0.3)' : 'none'
-              }}
+              className={`print-screen-mode-btn ${mode === 'create' ? 'is-active' : ''}`}
             >
               <PlusCircle size={17} /> Soạn chứng từ mới
             </button>
             <button
               onClick={() => setMode('print')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 8,
-                border: 'none',
-                background: mode === 'print' ? '#2563eb' : 'transparent',
-                color: mode === 'print' ? '#ffffff' : '#475569',
-                fontWeight: 700,
-                fontSize: '0.88rem',
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                boxShadow: mode === 'print' ? '0 2px 6px rgba(37,99,235,0.3)' : 'none'
-              }}
+              className={`print-screen-mode-btn ${mode === 'print' ? 'is-active' : ''}`}
             >
               <Printer size={17} /> Xem & In chứng từ
             </button>
           </div>
 
           {mode === 'create' && (
-            <div style={{ display: 'inline-flex', background: '#f8fafc', padding: 4, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+            <div className="print-screen-type-group">
               {Object.keys(TX_TYPE_META).map(t => {
                 const meta = TX_TYPE_META[t];
                 const active = txType === t;
@@ -661,17 +616,12 @@ export default function PrintVoucherScreen({ month }) {
                   <button
                     key={t}
                     onClick={() => setTxType(t)}
+                    className="print-screen-type-btn"
                     style={{
-                      border: 'none',
                       background: active ? meta.color : 'transparent',
-                      color: active ? '#ffffff' : '#475569',
+                      color: active ? '#ffffff' : undefined,
                       fontWeight: active ? 700 : 600,
-                      padding: '6px 14px',
-                      borderRadius: 7,
-                      fontSize: '0.84rem',
-                      cursor: 'pointer',
-                      boxShadow: active ? `0 2px 8px ${meta.color}40` : 'none',
-                      transition: 'all 0.2s'
+                      boxShadow: active ? `0 2px 8px ${meta.color}40` : 'none'
                     }}
                   >
                     {t}
@@ -686,20 +636,7 @@ export default function PrintVoucherScreen({ month }) {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              height: 38,
-              padding: '0 14px',
-              borderRadius: 8,
-              border: '1px solid #cbd5e1',
-              background: '#ffffff',
-              color: '#334155',
-              fontSize: '0.85rem',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
+            className="print-screen-btn-secondary"
             title="Tải lại danh sách"
           >
             <RefreshCw size={15} className={refreshing ? 'spin' : ''} />
@@ -707,47 +644,23 @@ export default function PrintVoucherScreen({ month }) {
           </button>
           <button
             onClick={handlePrint}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              height: 38,
-              padding: '0 18px',
-              borderRadius: 8,
-              border: 'none',
-              background: '#0f172a',
-              color: '#ffffff',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 2px 8px rgba(15,23,42,0.25)'
-            }}
+            className="print-screen-btn-primary"
           >
             <Printer size={16} /> In chứng từ (Print/PDF)
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: mode === 'print' ? '320px 1fr' : '1fr', gap: 24 }}>
+      <div className={`print-screen-grid ${mode === 'print' ? 'print-screen-grid--with-sidebar' : ''}`}>
 
         {/* Sidebar Chọn Phiếu Để In */}
         {mode === 'print' && (
-          <div style={{
-            background: '#ffffff',
-            borderRadius: 14,
-            border: '1px solid #e2e8f0',
-            padding: 16,
-            display: 'flex',
-            flexDirection: 'column',
-            height: 'fit-content',
-            maxHeight: 'calc(100vh - 180px)',
-            boxShadow: '0 4px 12px -2px rgba(0,0,0,0.03)'
-          }}>
+          <div className="print-screen-sidebar">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ fontSize: '0.92rem', fontWeight: 800, margin: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <h3 className="print-screen-sidebar-title">
                 <span>Danh sách chứng từ</span>
               </h3>
-              <span style={{ fontSize: '0.78rem', background: '#eff6ff', color: '#2563eb', fontWeight: 700, padding: '2px 8px', borderRadius: 12 }}>
+              <span className="print-screen-badge">
                 {printList.length}
               </span>
             </div>
@@ -756,40 +669,22 @@ export default function PrintVoucherScreen({ month }) {
               placeholder="Tìm mã phiếu, người nhận/nộp..."
               value={printSearch}
               onChange={e => setPrintSearch(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '9px 12px',
-                borderRadius: 8,
-                border: '1.5px solid #cbd5e1',
-                fontSize: '0.84rem',
-                marginBottom: 12,
-                outline: 'none',
-                background: '#f8fafc',
-                boxSizing: 'border-box'
-              }}
+              className="print-screen-search-input"
             />
             <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
               {printList.map(t => (
                 <div
                   key={t.id}
                   onClick={() => setSelectedId(t.id)}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: `1.5px solid ${selectedId === t.id ? '#3b82f6' : '#e2e8f0'}`,
-                    background: selectedId === t.id ? '#eff6ff' : '#ffffff',
-                    cursor: 'pointer',
-                    fontSize: '0.82rem',
-                    transition: 'all 0.15s'
-                  }}
+                  className={`print-screen-list-item ${selectedId === t.id ? 'is-selected' : ''}`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#1e293b' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
                     <span style={{ fontFamily: 'monospace' }}>{t.id}</span>
-                    <span style={{ color: t.type === 'Thu' ? '#10b981' : '#ef4444' }}>
-                      {t.type === 'Thu' ? '+' : '-'}{fmtShort(t.amount)}
+                    <span style={{ color: (t.type === 'INCOME' || t.type === 'Thu') ? 'var(--green-500, #10b981)' : 'var(--red-500, #ef4444)' }}>
+                      {(t.type === 'INCOME' || t.type === 'Thu') ? '+' : '-'}{fmtShort(t.amount)}
                     </span>
                   </div>
-                  <div style={{ color: '#64748b', fontSize: '0.78rem', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <div style={{ color: 'var(--text-tertiary, #64748b)', fontSize: '0.78rem', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {t.partner || t.payer_payee || '—'} · {t.category || 'Khác'}
                   </div>
                 </div>
@@ -803,22 +698,9 @@ export default function PrintVoucherScreen({ month }) {
 
           {/* Form Nhập Dữ Liệu Khi Ở Mode Create */}
           {mode === 'create' && (
-            <div style={{
-              background: '#ffffff',
-              borderRadius: 16,
-              border: '1px solid #e2e8f0',
-              padding: '24px 28px',
-              boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.05)'
-            }}>
+            <div className="print-screen-form-card">
               {/* Header của Form Soạn Thảo */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingBottom: 16,
-                marginBottom: 20,
-                borderBottom: '1.5px solid #f1f5f9'
-              }}>
+              <div className="print-screen-form-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <div style={{
                     width: 38,
@@ -833,10 +715,10 @@ export default function PrintVoucherScreen({ month }) {
                     <FileText size={20} />
                   </div>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>
+                    <h3 className="print-screen-form-title">
                       SOẠN THẢO {TX_TYPE_META[txType].title}
                     </h3>
-                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', fontWeight: 500 }}>
+                    <p className="print-screen-form-subtitle">
                       {TX_TYPE_META[txType].action}
                     </p>
                   </div>
@@ -859,19 +741,18 @@ export default function PrintVoucherScreen({ month }) {
                 <div style={{
                   marginBottom: 24,
                   padding: '16px 20px',
-                  background: '#f5f3ff',
+                  background: 'rgba(124, 58, 237, 0.08)',
                   borderRadius: 12,
-                  border: '1.5px solid #ddd6fe',
+                  border: '1.5px solid var(--border-subtle, #ddd6fe)',
                   boxShadow: '0 2px 6px rgba(124,58,237,0.04)'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#6d28d9', fontWeight: 800, fontSize: '0.9rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#8b5cf6', fontWeight: 800, fontSize: '0.9rem' }}>
                     <Sparkles size={18} />
                     <span>CHỌN CHỨNG TỪ TẠM ỨNG CẦN QUYẾT TOÁN:</span>
                   </div>
-                  <select
+                  <Select
                     value={selectedAdvanceId}
-                    onChange={(e) => {
-                      const advId = e.target.value;
+                    onChange={(advId) => {
                       setSelectedAdvanceId(advId);
                       const adv = activeAdvances.find(a => a.id === advId);
                       if (adv) {
@@ -886,34 +767,15 @@ export default function PrintVoucherScreen({ month }) {
                         }));
                       }
                     }}
-                    style={{
-                      width: '100%',
-                      height: 48,
-                      minHeight: 48,
-                      padding: '0 42px 0 14px',
-                      lineHeight: '45px',
-                      boxSizing: 'border-box',
-                      borderRadius: 8,
-                      border: '1.5px solid #c4b5fd',
-                      backgroundColor: '#ffffff',
-                      fontSize: '0.92rem',
-                      fontWeight: 600,
-                      color: '#4c1d95',
-                      textAlign: 'left',
-                      textAlignLast: 'left',
-                      display: 'block',
-                      cursor: 'pointer',
-                      outline: 'none',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                    }}
-                  >
-                    <option value="">-- Nhấp để chọn phiếu tạm ứng --</option>
-                    {filteredAdvances.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.id} — {a.partner || a.payer_payee} ({Number(a.amount || 0).toLocaleString('vi-VN')}₫) — {a.note || a.description || 'Không có ghi chú'}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: '-- Nhấp để chọn phiếu tạm ứng --' },
+                      ...filteredAdvances.map(a => ({
+                        value: a.id,
+                        label: `${a.id} — ${a.partner || a.payer_payee} (${Number(a.amount || 0).toLocaleString('vi-VN')}₫) — ${a.note || a.description || 'Không có ghi chú'}`
+                      }))
+                    ]}
+                    placeholder="-- Nhấp để chọn phiếu tạm ứng --"
+                  />
                 </div>
               )}
 
@@ -927,33 +789,26 @@ export default function PrintVoucherScreen({ month }) {
                 }}>
                   {/* Cột 1: Mã số phiếu */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <FileText size={14} style={{ color: '#64748b' }} /> Mã số phiếu (ID) <span style={{ color: '#ef4444' }}>*</span>
+                    <label className="print-screen-label">
+                      <FileText size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Mã số phiếu (ID) <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                     </label>
                     <input
                       type="text"
                       value={form.id}
                       readOnly
+                      className="print-screen-input print-screen-input-readonly"
                       style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 14px',
-                        borderRadius: 8,
-                        border: '1.5px solid #e2e8f0',
-                        background: '#f8fafc',
                         fontWeight: 800,
                         fontFamily: 'monospace',
-                        fontSize: '0.95rem',
-                        color: '#1e293b',
-                        boxSizing: 'border-box'
+                        fontSize: '0.95rem'
                       }}
                     />
                   </div>
 
                   {/* Cột 2: Ngày lập */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <Calendar size={14} style={{ color: '#64748b' }} /> Ngày lập chứng từ <span style={{ color: '#ef4444' }}>*</span>
+                    <label className="print-screen-label">
+                      <Calendar size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Ngày lập chứng từ <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                     </label>
                     <DatePicker
                       value={form.transaction_date}
@@ -965,8 +820,8 @@ export default function PrintVoucherScreen({ month }) {
 
                   {/* Cột 3: Người giao dịch */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <User size={14} style={{ color: '#64748b' }} /> {voucherInfo.labelPerson} <span style={{ color: '#ef4444' }}>*</span>
+                    <label className="print-screen-label">
+                      <User size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> {voucherInfo.labelPerson} <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                     </label>
                     <input
                       type="text"
@@ -974,31 +829,18 @@ export default function PrintVoucherScreen({ month }) {
                       onChange={e => setForm({ ...form, payer_payee: e.target.value })}
                       placeholder="Nhập họ tên đối tác / nhân viên..."
                       required
-                      style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 14px',
-                        borderRadius: 8,
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        fontSize: '0.92rem',
-                        fontWeight: 500,
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
+                      className="print-screen-input"
                     />
                   </div>
 
                   {/* Hàng 2 - Cột 1: Hạng mục thu chi */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <Briefcase size={14} style={{ color: '#64748b' }} /> Hạng mục thu chi <span style={{ color: '#ef4444' }}>*</span>
+                    <label className="print-screen-label">
+                      <Briefcase size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Hạng mục thu chi <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                     </label>
-                    <select
+                    <Select
                       value={form.category}
-                      onChange={e => {
-                        const v = e.target.value;
+                      onChange={v => {
                         const mapping = CATEGORY_AUTO_MAPPING[v];
                         if (mapping) {
                           setForm(prev => ({
@@ -1013,56 +855,28 @@ export default function PrintVoucherScreen({ month }) {
                           setForm(prev => ({ ...prev, category: v }));
                         }
                       }}
-                      required
-                      style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        fontSize: '0.92rem',
-                        fontWeight: 600,
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                      options={CATEGORY_OPTIONS}
+                      placeholder="Chọn hạng mục thu chi"
+                    />
                   </div>
 
                   {/* Hàng 2 - Cột 2: Hình thức thanh toán */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <CreditCard size={14} style={{ color: '#64748b' }} /> Hình thức thanh toán <span style={{ color: '#ef4444' }}>*</span>
+                    <label className="print-screen-label">
+                      <CreditCard size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Hình thức thanh toán <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                     </label>
-                    <select
+                    <Select
                       value={form.payment_method}
-                      onChange={e => setForm({ ...form, payment_method: e.target.value })}
-                      required
-                      style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        fontSize: '0.92rem',
-                        fontWeight: 600,
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      {METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                      onChange={val => setForm(prev => ({ ...prev, payment_method: val }))}
+                      options={METHOD_OPTIONS}
+                      placeholder="Chọn hình thức thanh toán"
+                    />
                   </div>
 
                   {/* Hàng 2 - Cột 3: Số tiền phát sinh */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <DollarSign size={14} style={{ color: TX_TYPE_META[txType].color }} /> Số tiền phát sinh (VNĐ) <span style={{ color: '#ef4444' }}>*</span>
+                    <label className="print-screen-label">
+                      <DollarSign size={14} style={{ color: TX_TYPE_META[txType].color }} /> Số tiền phát sinh (VNĐ) <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                     </label>
                     <input
                       type="number"
@@ -1071,18 +885,12 @@ export default function PrintVoucherScreen({ month }) {
                       placeholder="0"
                       min="1"
                       required
+                      className="print-screen-input"
                       style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 14px',
-                        borderRadius: 8,
-                        border: `1.5px solid ${TX_TYPE_META[txType].color}60`,
-                        background: '#ffffff',
+                        borderColor: `${TX_TYPE_META[txType].color}60`,
                         fontWeight: 800,
                         fontSize: '1.1rem',
-                        color: TX_TYPE_META[txType].color,
-                        outline: 'none',
-                        boxSizing: 'border-box'
+                        color: TX_TYPE_META[txType].color
                       }}
                     />
                     {/* Nút cộng tiền nhanh */}
@@ -1092,15 +900,12 @@ export default function PrintVoucherScreen({ month }) {
                           key={val}
                           type="button"
                           onClick={() => handleQuickAddAmount(val)}
+                          className="print-screen-btn-secondary"
                           style={{
-                            border: '1px solid #e2e8f0',
-                            background: '#f8fafc',
-                            color: '#475569',
+                            height: 24,
+                            padding: '0 8px',
                             fontSize: '0.72rem',
-                            fontWeight: 600,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            cursor: 'pointer'
+                            borderRadius: 4
                           }}
                         >
                           +{val >= 1000000 ? `${val / 1000000}tr` : val}
@@ -1111,12 +916,12 @@ export default function PrintVoucherScreen({ month }) {
                           type="button"
                           onClick={() => setForm(prev => ({ ...prev, amount: '' }))}
                           style={{
-                            border: '1px solid #fee2e2',
-                            background: '#fef2f2',
-                            color: '#ef4444',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            color: 'var(--red-500, #ef4444)',
                             fontSize: '0.72rem',
                             fontWeight: 600,
-                            padding: '2px 6px',
+                            padding: '2px 8px',
                             borderRadius: 4,
                             cursor: 'pointer'
                           }}
@@ -1129,93 +934,68 @@ export default function PrintVoucherScreen({ month }) {
 
                   {/* Hàng 3 - Cột 1: Mã Hợp Đồng */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <FolderOpen size={14} style={{ color: '#64748b' }} /> Liên kết Mã Hợp Đồng
+                    <label className="print-screen-label">
+                      <FolderOpen size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Liên kết Mã Hợp Đồng
                     </label>
-                    <select
+                    <Select
                       value={form.contract_id}
-                      onChange={e => setForm({ ...form, contract_id: e.target.value })}
-                      style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        fontSize: '0.88rem',
-                        fontWeight: 500,
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      <option value="">-- Không liên kết HĐ --</option>
-                      {contracts.map(c => (
-                        <option key={c.id || c.contract_id} value={c.id || c.contract_id}>
-                          {c.id || c.contract_id} — {c.customer_name || 'Khách hàng'}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={handleContractChange}
+                      options={[
+                        { value: '', label: '-- Không liên kết HĐ --' },
+                        ...contracts.map(c => ({
+                          value: c.id || c.contract_id,
+                          label: `${c.id || c.contract_id} — ${c.customer_name || 'Khách hàng'}`
+                        }))
+                      ]}
+                      placeholder="-- Không liên kết HĐ --"
+                    />
+                    {form.contract_id && (
+                      <span className={`print-screen-link-hint ${availableProjects.length > 0 ? 'is-linked' : ''}`}>
+                        {availableProjects.length > 0
+                          ? `✓ Khớp ${availableProjects.length} hồ sơ thuộc HĐ này`
+                          : 'ℹ Hợp đồng chưa có hồ sơ kỹ thuật'}
+                      </span>
+                    )}
                   </div>
 
                   {/* Hàng 3 - Cột 2: Mã Hồ Sơ / Dự Án */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <Briefcase size={14} style={{ color: '#64748b' }} /> Liên kết Mã Hồ Sơ / Dự Án
+                    <label className="print-screen-label">
+                      <Briefcase size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Liên kết Mã Hồ Sơ / Dự Án
                     </label>
-                    <select
+                    <Select
                       value={form.project_id}
-                      onChange={e => setForm({ ...form, project_id: e.target.value })}
-                      style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        fontSize: '0.88rem',
-                        fontWeight: 500,
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      <option value="">-- Không liên kết Hồ sơ --</option>
-                      {projects.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.label || 'Hồ sơ kỹ thuật chưa có mã'}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={handleProjectChange}
+                      options={[
+                        { value: '', label: form.contract_id ? '-- Chọn hồ sơ thuộc HĐ đã chọn --' : '-- Không liên kết Hồ sơ --' },
+                        ...availableProjects.map(p => ({
+                          value: p.id,
+                          label: p.label || 'Hồ sơ kỹ thuật chưa có mã'
+                        }))
+                      ]}
+                      placeholder={form.contract_id ? '-- Chọn hồ sơ thuộc HĐ --' : '-- Không liên kết Hồ sơ --'}
+                    />
+                    {form.project_id && (
+                      <span className="print-screen-link-hint is-linked">
+                        ✓ Đã liên kết hồ sơ kỹ thuật
+                      </span>
+                    )}
                   </div>
 
                   {/* Hàng 3 - Cột 3: Phòng ban thụ hưởng */}
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                      <Building2 size={14} style={{ color: '#64748b' }} /> Phòng ban thụ hưởng
+                    <label className="print-screen-label">
+                      <Building2 size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Phòng ban thụ hưởng
                     </label>
-                    <select
+                    <Select
                       value={form.department_code}
-                      onChange={e => setForm({ ...form, department_code: e.target.value })}
-                      style={{
-                        width: '100%',
-                        height: 42,
-                        padding: '0 12px',
-                        borderRadius: 8,
-                        border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        fontSize: '0.88rem',
-                        fontWeight: 500,
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
-                    >
-                      <option value="">-- Chọn phòng ban --</option>
-                      {departmentOptions.map(d => (
-                        <option key={d.value} value={d.value}>{d.label}</option>
-                      ))}
-                    </select>
+                      onChange={val => setForm(prev => ({ ...prev, department_code: val }))}
+                      options={[
+                        { value: '', label: '-- Chọn phòng ban --' },
+                        ...departmentOptions
+                      ]}
+                      placeholder="-- Chọn phòng ban --"
+                    />
                   </div>
                 </div>
 
@@ -1224,10 +1004,10 @@ export default function PrintVoucherScreen({ month }) {
                   <div style={{
                     marginBottom: 16,
                     padding: '8px 14px',
-                    background: '#f0fdf4',
-                    border: '1px solid #bbf7d0',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
                     borderRadius: 8,
-                    color: '#15803d',
+                    color: 'var(--green-500, #10b981)',
                     fontSize: '0.85rem',
                     fontWeight: 600,
                     display: 'flex',
@@ -1239,10 +1019,10 @@ export default function PrintVoucherScreen({ month }) {
                   </div>
                 )}
 
-                {/* Diễn giải chi tiết (chiếm toàn bộ chiều rộng) */}
+                {/* Diễn giải chi tiết */}
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: 6, textTransform: 'uppercase' }}>
-                    <FileText size={14} style={{ color: '#64748b' }} /> Diễn giải chi tiết <span style={{ color: '#ef4444' }}>*</span>
+                  <label className="print-screen-label">
+                    <FileText size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Diễn giải chi tiết <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
                   </label>
                   <textarea
                     rows={2}
@@ -1250,19 +1030,7 @@ export default function PrintVoucherScreen({ month }) {
                     onChange={e => setForm({ ...form, description: e.target.value })}
                     placeholder="Nội dung diễn giải chi tiết cho chứng từ..."
                     required
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: 8,
-                      border: '1.5px solid #cbd5e1',
-                      background: '#ffffff',
-                      fontSize: '0.92rem',
-                      fontWeight: 500,
-                      color: '#0f172a',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                      resize: 'vertical'
-                    }}
+                    className="print-screen-textarea"
                   />
                 </div>
 
@@ -1270,10 +1038,10 @@ export default function PrintVoucherScreen({ month }) {
                   <div style={{
                     marginBottom: 18,
                     padding: '12px 16px',
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
                     borderRadius: 10,
-                    color: '#b91c1c',
+                    color: 'var(--red-500, #ef4444)',
                     fontSize: '0.86rem',
                     display: 'flex',
                     alignItems: 'center',
@@ -1286,25 +1054,16 @@ export default function PrintVoucherScreen({ month }) {
                 )}
 
                 {/* Nút hành động Lưu */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle, #f1f5f9)' }}>
                   <button
                     type="submit"
                     disabled={loading}
+                    className="print-screen-btn-primary"
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
                       padding: '0 28px',
                       height: 44,
-                      borderRadius: 10,
-                      border: 'none',
-                      background: loading ? '#94a3b8' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                      color: '#ffffff',
-                      fontWeight: 700,
                       fontSize: '0.95rem',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      boxShadow: '0 4px 14px rgba(37,99,235,0.35)',
-                      transition: 'all 0.2s'
+                      background: loading ? 'var(--text-tertiary)' : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
                     }}
                   >
                     <Save size={18} />
@@ -1316,56 +1075,45 @@ export default function PrintVoucherScreen({ month }) {
           )}
 
           {/* Visual Voucher Display Component (Render Mẫu In Trực Quan) */}
-          <div className="voucher-print-area-wrapper" style={{
-            background: '#ffffff',
-            borderRadius: 16,
-            border: '1px solid #e2e8f0',
-            padding: '32px 36px',
-            boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05)'
-          }}>
-            <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <div className="print-screen-preview-card">
+            <div className="no-print print-screen-preview-head">
+              <span className="print-screen-preview-label">
                 BẢN XEM TRƯỚC MẪU IN (A4)
               </span>
               <button
                 type="button"
                 onClick={handlePrint}
-                className="no-print"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 14px',
-                  borderRadius: 6,
-                  border: '1px solid #cbd5e1',
-                  background: '#f8fafc',
-                  color: '#334155',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
+                className="no-print print-screen-btn-secondary"
+                style={{ height: 32, padding: '0 12px' }}
               >
                 <Printer size={15} /> In nhanh
               </button>
             </div>
 
-            <VoucherTemplate
-              title={voucherInfo.title}
-              voucherId={form.id}
-              date={form.transaction_date}
-              personName={form.payer_payee}
-              labelPerson={voucherInfo.labelPerson}
-              description={form.description}
-              amount={form.amount}
-              amountWords={amountInWords}
-              category={form.category}
-              paymentMethod={form.payment_method}
-              department={form.department_code}
-              contractId={form.contract_id}
-              projectId={projects.find(project => project.id === form.project_id)?.label || (form.project_id ? 'Hồ sơ đã liên kết' : '')}
-              accounting={form.accounting}
-              documentRef={voucherDocumentRef}
-            />
+            <p className="no-print print-screen-preview-hint" role="note">
+              Trên màn hình hẹp, vuốt ngang để xem đủ khổ A4.
+            </p>
+            <div className="print-screen-preview-scroll">
+              <VoucherTemplate
+                title={voucherInfo.title}
+                voucherId={form.id}
+                date={form.transaction_date}
+                personName={form.payer_payee}
+                labelPerson={voucherInfo.labelPerson}
+                description={form.description}
+                amount={form.amount}
+                amountWords={amountInWords}
+                creatorName={form.created_by || form.signer_snapshot?.creator_name || currentUserName}
+                category={form.category}
+                paymentMethod={form.payment_method}
+                department={form.department_code}
+                contractId={form.contract_id}
+                projectId={projects.find(project => project.id === form.project_id)?.label || (form.project_id ? 'Hồ sơ đã liên kết' : '')}
+                accounting={form.accounting}
+                signerSnapshot={form.signer_snapshot}
+                documentRef={voucherDocumentRef}
+              />
+            </div>
           </div>
 
         </div>

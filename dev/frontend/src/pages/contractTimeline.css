@@ -68,7 +68,7 @@
   min-height: 34px;
   border: 1px solid var(--timeline-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--timeline-surface);
   color: var(--timeline-ink);
   font: inherit;
   font-size: 0.8rem;
@@ -81,7 +81,7 @@
 .contract-timeline__refresh:hover,
 .contract-timeline__today-button:hover,
 .contract-timeline__icon-button:hover:not(:disabled),
-.contract-timeline__secondary-button:hover { border-color: #bdc9d9; box-shadow: 0 5px 14px rgba(26, 39, 61, 0.08); }
+.contract-timeline__secondary-button:hover { border-color: var(--border-hover); box-shadow: 0 5px 14px rgba(26, 39, 61, 0.08); }
 .contract-timeline__refresh:disabled,
 .contract-timeline__icon-button:disabled { cursor: default; opacity: 0.42; }
 
@@ -105,8 +105,8 @@
   padding: 0 11px;
   border: 1px solid var(--timeline-border);
   border-radius: 10px;
-  background: #fff;
-  color: #7a8799;
+  background: var(--timeline-surface);
+  color: var(--timeline-muted);
   margin: 0;
   text-transform: none;
   letter-spacing: normal;
@@ -192,8 +192,8 @@
   overflow: auto;
   border: 0;
   border-radius: 0;
-  background: #fff;
-  scrollbar-color: #b9c5d4 transparent;
+  background: var(--timeline-soft);
+  scrollbar-color: var(--border-default) transparent;
   scrollbar-width: thin;
 }
 
@@ -203,8 +203,8 @@
   top: 0;
   z-index: 20;
   height: 76px;
-  border-bottom: 1px solid #d7dfeb;
-  background: #fff;
+  border-bottom: 1px solid var(--timeline-border);
+  background: var(--timeline-surface);
 }
 
 .contract-timeline__axis-tree {
@@ -216,11 +216,11 @@
   justify-content: center;
   height: 76px;
   padding: 0 18px;
-  border-right: 1px solid #cfd8e5;
-  background: linear-gradient(120deg, #fff8f5, #fff);
+  border-right: 1px solid var(--timeline-border);
+  background: var(--timeline-surface);
 }
-.contract-timeline__axis-tree span { color: #38465c; font-size: 0.69rem; font-weight: 800; letter-spacing: 0.08em; }
-.contract-timeline__axis-tree small { margin-top: 3px; color: #8a96a8; font-size: 0.66rem; }
+.contract-timeline__axis-tree span { color: var(--timeline-ink); font-size: 0.69rem; font-weight: 800; letter-spacing: 0.08em; }
+.contract-timeline__axis-tree small { margin-top: 3px; color: var(--timeline-muted); font-size: 0.66rem; }
 
 .contract-timeline__axis,
 .contract-timeline__track,
@@ -264,8 +264,8 @@
   justify-content: center;
   height: 38px;
   overflow: hidden;
-  border-right: 1px solid #cfd8e5;
-  color: #4f5e75;
+  border-right: 1px solid var(--timeline-border);
+  color: var(--timeline-muted);
   font-size: 0.7rem;
   font-weight: 750;
   white-space: nowrap;
@@ -279,10 +279,10 @@
   justify-content: center;
   height: 38px;
   overflow: hidden;
-  border-top: 1px solid #d7dfeb;
-  border-right: 1px solid #d7dfeb;
-  background: rgba(255, 255, 255, 0.5);
-  color: #66758b;
+  border-top: 1px solid var(--timeline-border);
+  border-right: 1px solid var(--timeline-border);
+  background: var(--timeline-surface);
+  color: var(--timeline-muted);
   font-size: 0.63rem;
   font-weight: 700;
   white-space: nowrap;
@@ -304,8 +304,8 @@
 .contract-timeline__contract-row {
   position: relative;
   height: 62px;
-  border-bottom: 1px solid #d9e1ec;
-  background: #f8fafd;
+  border-bottom: 1px solid var(--timeline-border);
+  background: var(--timeline-soft);
 }
 
 .contract-timeline__contract-cell {
@@ -319,8 +319,8 @@
   height: 62px;
   padding: 0 14px;
   border: 0;
-  border-right: 1px solid #cfd8e5;
-  background: linear-gradient(100deg, #f8fafd 0%, #fff 100%);
+  border-right: 1px solid var(--timeline-border);
+  background: var(--timeline-soft);
   color: var(--timeline-ink);
   font: inherit;
   text-align: left;
@@ -335,8 +335,8 @@
   padding: 4px 6px;
   overflow: hidden;
   border-radius: 99px;
-  background: #edf1f6;
-  color: #657187;
+  background: var(--timeline-surface);
+  color: var(--timeline-muted);
   font-size: 0.56rem;
   font-style: normal;
   font-weight: 800;
@@ -355,8 +355,8 @@
 .contract-timeline__service-row {
   position: relative;
   min-height: 88px;
-  border-bottom: 1px solid #e2e8f0;
-  background: #fff;
+  border-bottom: 1px solid var(--timeline-border);
+  background: var(--timeline-surface);
 }
 
 .contract-timeline__service-cell {
@@ -368,8 +368,8 @@
   gap: 10px;
   height: 100%;
   padding: 12px 14px 12px 34px;
-  border-right: 1px solid #cfd8e5;
-  background: #fff;
+  border-right: 1px solid var(--timeline-border);
+  background: var(--timeline-surface);
 }
 
 .contract-timeline__tree-branch {
@@ -378,8 +378,8 @@
   bottom: 50%;
   left: 21px;
   width: 12px;
-  border-bottom: 1px solid #cbd5e1;
-  border-left: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--timeline-border);
+  border-left: 1px solid var(--timeline-border);
 }
 
 .contract-timeline__service-icon {
@@ -612,3 +612,326 @@
   .contract-timeline__modal-grid { grid-template-columns: 1fr; }
   .contract-timeline__modal-grid > div.is-wide { grid-column: auto; }
 }
+
+/* ============================================================
+   Dark Mode Overrides for Timeline
+   ============================================================ */
+
+[data-theme='dark'] .contract-timeline-page {
+  --timeline-ink: var(--text-primary);
+  --timeline-muted: var(--text-secondary);
+  --timeline-border: var(--border-default);
+  --timeline-surface: var(--bg-card);
+  --timeline-soft: var(--bg-deep);
+  background: var(--bg-card);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__title-bar {
+  background: var(--bg-card);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__toolbar {
+  background: var(--bg-deep);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__search,
+[data-theme='dark'] .contract-timeline__select {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__search input,
+[data-theme='dark'] .contract-timeline__select select {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__select select option {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__refresh,
+[data-theme='dark'] .contract-timeline__today-button,
+[data-theme='dark'] .contract-timeline__icon-button,
+[data-theme='dark'] .contract-timeline__secondary-button {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__refresh:hover,
+[data-theme='dark'] .contract-timeline__today-button:hover,
+[data-theme='dark'] .contract-timeline__icon-button:hover:not(:disabled),
+[data-theme='dark'] .contract-timeline__secondary-button:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-hover);
+}
+
+[data-theme='dark'] .contract-timeline__legend {
+  background: var(--bg-card);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__board {
+  background: var(--bg-deep);
+  scrollbar-color: var(--border-default) transparent;
+}
+
+[data-theme='dark'] .contract-timeline__axis-row {
+  background: var(--bg-card);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__axis-tree {
+  background: var(--bg-card);
+  border-right-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__axis-tree span {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__axis-tree small {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .contract-timeline__axis {
+  background-color: var(--bg-deep);
+  background-image:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) var(--timeline-major)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--timeline-day) - 1px), rgba(255, 255, 255, 0.03) calc(var(--timeline-day) - 1px), rgba(255, 255, 255, 0.03) var(--timeline-day));
+}
+
+[data-theme='dark'] .contract-timeline__axis.is-compact {
+  background-image:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) var(--timeline-major));
+}
+
+[data-theme='dark'] .contract-timeline__track {
+  background-color: var(--bg-deep);
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--timeline-lane) - 1px), rgba(255, 255, 255, 0.05) calc(var(--timeline-lane) - 1px), rgba(255, 255, 255, 0.05) var(--timeline-lane)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) var(--timeline-major)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--timeline-day) - 1px), rgba(255, 255, 255, 0.03) calc(var(--timeline-day) - 1px), rgba(255, 255, 255, 0.03) var(--timeline-day));
+}
+
+[data-theme='dark'] .contract-timeline__track.is-compact {
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--timeline-lane) - 1px), rgba(255, 255, 255, 0.05) calc(var(--timeline-lane) - 1px), rgba(255, 255, 255, 0.05) var(--timeline-lane)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) calc(var(--timeline-major) - 1px), rgba(255, 255, 255, 0.08) var(--timeline-major));
+}
+
+[data-theme='dark'] .contract-timeline__contract-track {
+  background: repeating-linear-gradient(to right, transparent 0, transparent 119px, rgba(255, 255, 255, 0.03) 119px, rgba(255, 255, 255, 0.03) 120px);
+}
+
+[data-theme='dark'] .contract-timeline__month {
+  border-right-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__scale-tick {
+  border-top-color: var(--border-default);
+  border-right-color: var(--border-default);
+  background: var(--bg-card);
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .contract-timeline__today-axis {
+  background: rgba(241, 84, 45, 0.2);
+  color: #fb923c;
+  border: 1px solid rgba(241, 84, 45, 0.4);
+}
+
+[data-theme='dark'] .contract-timeline__contract-row {
+  background: var(--bg-surface);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell {
+  background: var(--bg-surface);
+  border-right-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell small {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell em {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell em.is-overdue {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell em.is-running {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell em.is-completed {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+[data-theme='dark'] .contract-timeline__contract-cell em.is-cancelled {
+  background: rgba(100, 116, 139, 0.2);
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .contract-timeline__service-row {
+  background: var(--bg-card);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__service-cell {
+  background: var(--bg-card);
+  border-right-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__tree-branch {
+  border-bottom-color: var(--border-default);
+  border-left-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__service-icon {
+  background: rgba(241, 84, 45, 0.15);
+  color: #fb923c;
+}
+
+[data-theme='dark'] .contract-timeline__service-copy strong {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__service-copy span {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__service-copy small.is-draft {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+/* Node bars in dark mode */
+[data-theme='dark'] .contract-timeline__node-bar {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__node-bar.is-completed {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15));
+  color: #34d399;
+}
+
+[data-theme='dark'] .contract-timeline__node-bar.is-running {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.25), rgba(245, 158, 11, 0.15));
+  color: #fbbf24;
+}
+
+[data-theme='dark'] .contract-timeline__node-bar.is-overdue {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15));
+  color: #f87171;
+}
+
+[data-theme='dark'] .contract-timeline__node-bar.is-waiting {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: linear-gradient(90deg, rgba(100, 116, 139, 0.25), rgba(100, 116, 139, 0.15));
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__node-bar.is-unscheduled {
+  border-color: var(--border-default);
+  background: rgba(30, 41, 59, 0.7);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__avatar {
+  border-color: var(--bg-card);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__avatar-more {
+  border-color: var(--bg-card);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__tooltip {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__tooltip dl {
+  border-top-color: var(--border-default);
+  border-bottom-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__tooltip dt {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .contract-timeline__tooltip dd {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__modal {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__modal-close {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__modal-grid > div {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__modal-grid span {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .contract-timeline__modal-grid strong {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__person {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__modal footer {
+  border-top-color: var(--border-default);
+}
+
+[data-theme='dark'] .contract-timeline__state {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .contract-timeline__state strong {
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .contract-timeline__state button {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+

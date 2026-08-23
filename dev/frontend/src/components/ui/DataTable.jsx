@@ -150,17 +150,25 @@ export default function DataTable({
                   </td>
                 </tr>
               )
-              : paged.map((row) => {
+              : paged.map((row, index) => {
                   const key = getKey(row);
                   const isSelected = selected.includes(key);
                   const customRowClass = typeof rowClassName === 'function'
                     ? rowClassName(row)
                     : rowClassName;
+                  const rowIndex = pageSize > 0 ? (safePage - 1) * pageSize + index : index;
                   return (
                     <tr
                       key={key}
                       className={`dt-row${isSelected ? ' dt-row--selected' : ''}${onRowClick ? ' dt-row--clickable' : ''}${customRowClass ? ` ${customRowClass}` : ''}`}
+                      tabIndex={onRowClick ? 0 : undefined}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
+                      onKeyDown={onRowClick ? (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onRowClick(row);
+                        }
+                      } : undefined}
                     >
                       {selectable && (
                         <td onClick={(e) => { e.stopPropagation(); toggleRow(key); }}>
@@ -175,7 +183,7 @@ export default function DataTable({
                       )}
                       {columns.map((col) => (
                         <td key={col.key} style={{ textAlign: col.align || 'left' }} className={col.stickyRight ? 'dt-sticky-right' : ''}>
-                          {col.render ? col.render(row[col.key], row) : (row[col.key] ?? '—')}
+                          {col.render ? col.render(row[col.key], row, rowIndex) : (row[col.key] ?? '—')}
                         </td>
                       ))}
                     </tr>

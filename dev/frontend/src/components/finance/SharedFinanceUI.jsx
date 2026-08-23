@@ -1,6 +1,6 @@
 import React from 'react';
 import { RefreshCw } from 'lucide-react';
-import { DatePicker, Dropdown } from '../ui';
+import { DatePicker, Dropdown, Select } from '../ui';
 import { fmt, fmtShort, spellVietnameseCurrency } from './utils';
 
 export function FinanceScreenHeader({ title, subtitle, onRefresh, actions, children }) {
@@ -8,7 +8,7 @@ export function FinanceScreenHeader({ title, subtitle, onRefresh, actions, child
     <div className="finance-screen-header">
       <div>
         <div className="finance-screen-title">{title}</div>
-        <div className="finance-screen-sub">{subtitle}</div>
+        {subtitle && <div className="finance-screen-sub">{subtitle}</div>}
       </div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         {actions}
@@ -37,7 +37,7 @@ export function BalanceCard({ icon, label, title, amount, hint, subtitle, amount
   return (
     <div className="balance-card" style={containerStyle || {}}>
       {icon && (
-        <div className="balance-card__icon" style={{ background: !isPositive ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' }}>
+        <div className="balance-card__icon" style={{ background: !isPositive ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)' }}>
           {icon}
         </div>
       )}
@@ -52,20 +52,35 @@ export function BalanceCard({ icon, label, title, amount, hint, subtitle, amount
   );
 }
 
-export function SummaryStrip({ countText, items = [] }) {
-  // items: [{ label: 'Tổng thu', value: 1000, color: '#10b981', prefix: '+' }, ...]
+export function SummaryStrip({ countText, items = [], totalText, totalAmount }) {
+  // Backward compatibility: support totalText/totalAmount if items is empty
+  const finalItems = items && items.length > 0
+    ? items
+    : (totalText ? [{ label: totalText, value: totalAmount ?? 0, color: 'var(--orange-500)' }] : []);
+
   return (
     <div className="summary-strip">
-      <span style={{ color: 'var(--text-tertiary)' }}>{countText}</span>
-      {items.map((item, idx) => (
-        <span key={idx} style={{ color: item.color, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-          {item.label && `${item.label}: `}
-          {item.prefix}{fmt(Math.abs(item.value))}
-        </span>
-      ))}
+      {countText && <span className="summary-strip__count">{countText}</span>}
+      {finalItems.length > 0 && (
+        <div className="summary-strip__items">
+          {finalItems.map((item, idx) => (
+            <div key={idx} className="summary-strip__badge">
+              {item.label && <span className="summary-strip__label">{item.label}:</span>}
+              <span className="summary-strip__value" style={{ color: item.color || 'var(--text-primary)' }}>
+                {item.prefix || ''}{fmt(Math.abs(item.value ?? item.amount ?? 0))}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
+const DEFAULT_PAYMENT_METHOD_OPTIONS = [
+  { value: 'Chuyển khoản', label: 'Chuyển khoản' },
+  { value: 'Tiền mặt', label: 'Tiền mặt' },
+];
 
 export function ExcelGridTable({
   title, subtitle, accentColor,
@@ -101,7 +116,7 @@ export function ExcelGridTable({
             <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 800, letterSpacing: 1, color: accentColor || '#10b981' }}>
               {title}
             </h2>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: '0.82rem', color: '#444' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 8, fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
               {subtitle ? (
                 <span>{subtitle}</span>
               ) : (
@@ -140,9 +155,14 @@ export function ExcelGridTable({
           <td style={{ fontWeight: 'bold' }}>Hạng mục</td>
           <td>
             {categoryOptions && !isReadOnly ? (
-              <select value={category} onChange={e => onCategoryChange?.(e.target.value)} required>
-                {categoryOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+              <Select
+                value={category}
+                options={categoryOptions}
+                onChange={onCategoryChange}
+                required
+                placeholder="— Chọn hạng mục —"
+                className="ui-select--field"
+              />
             ) : (
               <input type="text" disabled={isReadOnly || (categoryOptions === undefined && onCategoryChange === undefined)} value={category} onChange={e => onCategoryChange?.(e.target.value)} required />
             )}
@@ -158,15 +178,15 @@ export function ExcelGridTable({
           <td>
             {methodReadOnly || isReadOnly ? (
               <input type="text" disabled={isReadOnly} readOnly value={method} />
-            ) : methodOptions ? (
-              <select disabled={isReadOnly} value={method} onChange={e => onMethodChange?.(e.target.value)}>
-                {methodOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
             ) : (
-              <select disabled={isReadOnly} value={method} onChange={e => onMethodChange?.(e.target.value)}>
-                <option value="Chuyển khoản">Chuyển khoản</option>
-                <option value="Tiền mặt">Tiền mặt</option>
-              </select>
+              <Select
+                disabled={isReadOnly}
+                value={method}
+                options={methodOptions || DEFAULT_PAYMENT_METHOD_OPTIONS}
+                onChange={onMethodChange}
+                placeholder="— Chọn hình thức —"
+                className="ui-select--field"
+              />
             )}
           </td>
         </tr>
@@ -224,7 +244,7 @@ export function ExcelGridTable({
         </tr>
 
         <tr>
-          <td colSpan={4} style={{ padding: '12px 10px', fontSize: '0.98rem', borderBottom: showSignature ? '2px solid #000' : 'none' }}>
+          <td colSpan={4} style={{ padding: '12px 10px', fontSize: '0.98rem', borderBottom: showSignature ? '2px solid var(--border-default)' : 'none' }}>
             <span style={{ fontWeight: 'bold' }}>Số tiền (bằng chữ): </span>
             <span style={{ fontStyle: 'italic', textDecoration: 'underline', color: 'var(--text-secondary)' }}>
               {amountDisplay ? spellVietnameseCurrency(amountDisplay.toString().replace(/[^\d]/g, '')) : 'Không đồng'}
@@ -259,7 +279,7 @@ export function ExcelGridTable({
               <div className="signature-title">{receiverLabel || 'Người nhận / nộp'}</div>
               <div className="signature-sub">(Ký, ghi rõ họ tên)</div>
               <div className="signature-input">
-                <input type="text" readOnly value={receiver || personName} style={{ fontSize: '0.85rem', color: '#555' }} />
+                <input type="text" readOnly value={receiver || personName} style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)' }} />
               </div>
             </td>
           </tr>

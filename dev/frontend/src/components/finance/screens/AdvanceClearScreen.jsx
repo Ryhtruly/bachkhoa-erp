@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DataTable, Badge, Modal, FormRow, FormGrid, FilterBar, SubTabs, Dropdown } from '../../ui';
-import { fmt, fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
-import { FinanceScreenHeader, BalanceCard, SummaryStrip, ExcelGridTable } from '../SharedFinanceUI';
+import { DataTable, Modal, FormRow, FilterBar } from '../../ui';
+import { fmt, fmtAmt, parseAmt, spellVietnameseCurrency } from '../utils';
+import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
-import { PlusCircle, RefreshCw, AlertCircle, Link, RotateCcw } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
 
-export default function AdvanceClearScreen({ month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser }) {
+export default function AdvanceClearScreen({ month: propMonth, setMonth: propSetMonth }) {
   const [advances, setAdvances] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
@@ -17,7 +17,6 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   const [result, setResult] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [currentUser, setCurrentUser] = useState(propUser || null);
   const { addToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -41,18 +40,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
 
   useEffect(() => { 
     load(); 
-    if (propIsDirector === undefined && !propUser) {
-      apiFetch('/api/auth/me').then(u => setCurrentUser(u)).catch(() => {});
-    }
   }, []);
-
-  const isDirector = propIsDirector !== undefined
-    ? propIsDirector
-    : Boolean(
-        currentUser?.is_director ||
-        currentUser?.username === 'admin' ||
-        currentUser?.role_name === 'admin'
-      );
 
   const sortedFiltered = useMemo(() => {
     if (!advances || !Array.isArray(advances)) return [];
@@ -67,11 +55,11 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
           (item.description || '')?.toLowerCase().includes(search.toLowerCase());
 
         // 2. Bộ lọc hình thức thanh toán
-        const matchMethod = filters.payment_method === 'All' || item.payment_method === filters.payment_method;
+        const matchMethod = filters.payment_method === 'All' || item.payment_method === filters.payment_method || item.payment_method_label === filters.payment_method || item['Hình thức'] === filters.payment_method;
 
         // 3. Bộ lọc trạng thái phiếu
         const itemStatus = item.status || '';
-        const matchStatus = filters.status === 'All' || itemStatus === filters.status;
+        const matchStatus = filters.status === 'All' || itemStatus === filters.status || item.status_label === filters.status;
 
         // 4. Bộ lọc tháng
         const itemMonth = item.date ? item.date.slice(0, 7) : item.created_at?.slice(0, 7);
@@ -126,31 +114,31 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
     { 
       key: '_action', label: 'Xử lý', width: 130, align: 'center', 
       render: (_, row) => {
-        if (row.status === 'Từ chối') {
+        if (row.status === 'Đã quyết toán' || row.status === 'REIMBURSEMENT') {
           return (
-            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 6, background: '#fee2e2', color: '#b91c1c', fontWeight: 700, border: '1px solid #fecaca', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+            <span className="badge badge--neutral badge--sm">
+              Đã quyết toán
+            </span>
+          );
+        }
+        if (row.status === 'REJECTED' || row.status === 'Từ chối' || row.status === 'rejected') {
+          return (
+            <span className="badge badge--danger badge--sm">
               Từ chối
             </span>
           );
         }
-        if (row.status === 'Đã hủy') {
+        if (row.status === 'CANCELLED' || row.status === 'Đã hủy' || row.status === 'cancelled') {
           return (
-            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 6, background: '#f1f5f9', color: '#64748b', fontWeight: 700, border: '1px solid #e2e8f0', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+            <span className="badge badge--neutral badge--sm">
               Đã hủy
             </span>
           );
         }
-        if (row.status === 'Chờ duyệt' || row.status === 'pending') {
+        if (row.status === 'PENDING' || row.status === 'Chờ duyệt' || row.status === 'pending') {
           return (
-            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 6, background: '#fef3c7', color: '#b45309', fontWeight: 700, border: '1px solid #fde68a', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+            <span className="badge badge--warning badge--sm">
               Chờ duyệt
-            </span>
-          );
-        }
-        if (row.status === 'Đã duyệt' || row.status === 'approved') {
-          return (
-            <span style={{ fontSize: '0.72rem', padding: '3px 8px', borderRadius: 6, background: 'rgba(16, 185, 129, 0.15)', color: '#065f46', fontWeight: 700, border: '1px solid rgba(16, 185, 129, 0.25)', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
-              Đã duyệt
             </span>
           );
         }
@@ -182,13 +170,13 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
         onSearchChange={setSearch}
         searchPlaceholder="Tìm số phiếu, đối tác, dự án..."
         filters={[
-          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 175, options: [{ value: 'All', label: 'Tất cả hình thức' }, { value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] },
+          { key: 'payment_method', label: 'Hình thức', type: 'select', width: 175, options: [{ value: 'All', label: 'Tất cả hình thức' }, { value: 'CASH', label: 'Tiền mặt' }, { value: 'BANK_TRANSFER', label: 'Chuyển khoản' }] },
           { key: 'status', label: 'Trạng thái', type: 'select', width: 180, options: [
             { value: 'All', label: 'Tất cả trạng thái' },
-            { value: 'Hoàn thành', label: 'Hoàn thành' },
-            { value: 'Chờ duyệt', label: 'Chờ duyệt' },
-            { value: 'Từ chối', label: 'Từ chối' },
-            { value: 'Đã hủy', label: 'Đã hủy' }
+            { value: 'COMPLETED', label: 'Hoàn thành' },
+            { value: 'PENDING', label: 'Chờ duyệt' },
+            { value: 'REJECTED', label: 'Từ chối' },
+            { value: 'CANCELLED', label: 'Đã hủy' }
           ] }
         ]}
         values={filters}
@@ -200,11 +188,19 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
         onSortChange={setSort}
       />
 
+      <div className="finance-tip-banner">
+        <span style={{ fontSize: '1rem' }}>💡</span>
+        <span>
+          <strong>Quy trình hoàn ứng:</strong> Kế toán bấm <strong>"Quyết toán"</strong> khi nhân sự nộp hóa đơn thực tế. Hệ thống sẽ tự động đối trừ và sinh <em>Phiếu Thu (hoàn thừa)</em> hoặc <em>Phiếu Chi (chi bù)</em> vào Sổ Quỹ.
+        </span>
+      </div>
+
       {sortedFiltered.length > 0 && (
         <SummaryStrip 
           countText={`${sortedFiltered.length} đề xuất`} 
-          totalText="Tổng tạm ứng" 
-          totalAmount={sortedFiltered.reduce((s, t) => s + (t.amount || 0), 0)} 
+          items={[
+            { label: 'Tổng tạm ứng', value: sortedFiltered.reduce((s, t) => s + (t.amount || 0), 0), color: 'var(--amber-500)', prefix: '−' }
+          ]}
         />
       )}
 

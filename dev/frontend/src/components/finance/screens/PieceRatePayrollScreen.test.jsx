@@ -57,4 +57,41 @@ describe('PieceRatePayrollScreen payroll closing', () => {
       expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
     });
   });
+
+  it('uses a dedicated responsive layout class for the print preview modal', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (String(url).includes('/api/payroll/options')) {
+        return response({
+          departments: [{
+            id: 'dept-1', code: 'SURVEY', name: 'Phòng Đo vẽ',
+            employees: [{ id: 'emp-1', full_name: 'Nguyễn Văn A', job_title: 'Software Engineer' }],
+          }],
+          years: [2026],
+          default_year: 2026,
+          default_month: 8,
+        });
+      }
+      if (String(url).includes('/api/payroll/employee-ledger')) {
+        return response({
+          employee: { id: 'emp-1', full_name: 'Nguyễn Văn A', job_title: 'Software Engineer', department: 'Phòng Đo vẽ' },
+          period_status: 'Open',
+          summary: { pending_record_count: 0, pending_record_total: 0 },
+          details: [],
+          adjustments: [],
+          warnings: [],
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ToastProvider><PieceRatePayrollScreen /></ToastProvider>);
+
+    const printButton = await screen.findByRole('button', { name: 'In Phiếu Lương' }, { timeout: 5000 });
+    await waitFor(() => expect(printButton).not.toBeDisabled());
+    fireEvent.click(printButton);
+
+    expect(await screen.findByRole('dialog', { name: /Xem Trước Bản In/i })).toBeInTheDocument();
+    expect(document.querySelector('.payroll-preview-modal')).toBeInTheDocument();
+  });
 });

@@ -2,9 +2,17 @@ export const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) 
 export const fmtShort = (v) => fmt(v);
 export const fmtAmt = (v) => v ? Number(v.replace(/[^\d]/g, '')).toLocaleString('vi-VN') : '';
 export const parseAmt = (v) => parseFloat(String(v).replace(/[^\d]/g, '')) || 0;
-export const formatDate = (value) => value
-  ? new Intl.DateTimeFormat('vi-VN').format(new Date(`${value}T00:00:00`))
-  : '—';
+export const formatDate = (value) => {
+  if (!value) return '—';
+  try {
+    const str = String(value).trim();
+    const d = new Date(str.includes('T') ? str : `${str}T00:00:00`);
+    if (isNaN(d.getTime())) return str;
+    return new Intl.DateTimeFormat('vi-VN').format(d);
+  } catch {
+    return String(value);
+  }
+};
 
 export const getLocalISOTime = () => {
     const tzOffset = (new Date()).getTimezoneOffset() * 60000;
@@ -66,14 +74,9 @@ export const spellVietnameseCurrency = (number) => {
   return res;
 };
 
-export const VOUCHER_SIGNERS = Object.freeze({
-  director: 'Lê Văn Sáu',
-  creator: 'Lê Văn Sáu',
-});
-
 export const CATEGORY_AUTO_MAPPING = {
-  "Văn phòng phẩm": { department_code: "Phòng Đo vẽ", payer_payee: "Hồ Thị Mỹ Hằng", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director },
-  "In ấn - Photocopy": { department_code: "Phòng Pháp lý", payer_payee: "Trần Thụy Tường Vy", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director },
-  "Chi tiếp khách & Giao tế": { department_code: "Phòng Sale / CSKH", payer_payee: "Nhân viên CSKH", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director },
-  "Chi thụ lý bản vẽ & Trích lục": { department_code: "Phòng Đo vẽ", payer_payee: "Nguyễn Văn A", created_by: VOUCHER_SIGNERS.creator, approved_by: VOUCHER_SIGNERS.director }
+  "Văn phòng phẩm": { department_code: "Phòng Đo vẽ", payer_payee: "", created_by: "", approved_by: "" },
+  "In ấn - Photocopy": { department_code: "Phòng Pháp lý", payer_payee: "", created_by: "", approved_by: "" },
+  "Chi tiếp khách & Giao tế": { department_code: "Phòng Sale / CSKH", payer_payee: "", created_by: "", approved_by: "" },
+  "Chi thụ lý bản vẽ & Trích lục": { department_code: "Phòng Đo vẽ", payer_payee: "", created_by: "", approved_by: "" }
 };

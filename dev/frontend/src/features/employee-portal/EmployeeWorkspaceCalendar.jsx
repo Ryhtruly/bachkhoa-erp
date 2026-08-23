@@ -15,7 +15,7 @@ import LegalDossierNodePanel from '../legal-dossier/LegalDossierNodePanel'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import HandoverPanel from '../handover/HandoverPanel'
 
-export const CHECKLIST_STATUS = Object.freeze({
+const CHECKLIST_STATUS = Object.freeze({
   NOT_STARTED: 'pending',
   PENDING_APPROVAL: 'pending_approval',
   LATE_PENDING_APPROVAL: 'late_pending_approval',

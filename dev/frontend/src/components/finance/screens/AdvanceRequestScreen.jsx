@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Modal, FormRow, FormGrid, FilterBar, Dropdown } from '../../ui';
-import { fmtShort, fmtAmt, parseAmt, spellVietnameseCurrency, VOUCHER_SIGNERS } from '../utils';
+import { fmtAmt, parseAmt, spellVietnameseCurrency } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { PlusCircle, HandCoins } from 'lucide-react';
@@ -18,8 +18,9 @@ const DEPARTMENT_OPTIONS = [
   { value: 'Phòng Đo vẽ', label: 'Phòng Đo vẽ' },
   { value: 'Phòng Pháp lý', label: 'Phòng Pháp lý' },
   { value: 'Phòng Kế toán', label: 'Phòng Kế toán' },
-  { value: 'Phòng Sale / CSKH', label: 'Phòng Sale / CSKH' },
-  { value: 'Ban Giám đốc', label: 'Ban Giám đốc' },
+  { value: 'Phòng Tiếp nhận', label: 'Phòng Tiếp nhận' },
+  { value: 'Phòng Hành chính Nhân sự', label: 'Phòng Hành chính Nhân sự' },
+  { value: 'Khác', label: 'Khác' },
 ];
 
 const ADVANCE_CATEGORIES = [
@@ -45,15 +46,16 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
     department_code: 'Phòng Đo vẽ',
     category: 'Chi phí tạm ứng công tác / đo vẽ hiện trường',
     note: '',
-    payment_method: 'Chuyển khoản',
+    payment_method: 'BANK_TRANSFER',
     transaction_date: getTodayIso(),
-    created_by: VOUCHER_SIGNERS.creator,
-    status: 'Chờ duyệt'
+    created_by: propUser?.full_name || propUser?.name || '',
+    status: 'PENDING'
   });
   const [amtDisplay, setAmtDisplay] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [detailId, setDetailId] = useState(null);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const { addToast } = useToast();
 
   const [search, setSearch] = useState('');
@@ -63,20 +65,22 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   const setMonth = propSetMonth !== undefined ? propSetMonth : setLocalMonth;
   const [sort, setSort] = useState('desc');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const d = await apiFetch(`${API}/api/finance/advance`);
       setData(Array.isArray(d) ? d : []);
     } catch {
-      // ignore
+      setLoadError('Không thể tải danh sách tạm ứng');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const [rAdv, rC, rEmp, rUser] = await Promise.allSettled([
         apiFetch(`${API}/api/finance/advance`),
@@ -84,20 +88,25 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         apiFetch(`${API}/api/finance/employees`),
         propIsDirector === undefined && !propUser ? apiFetch('/api/auth/me') : Promise.resolve(propUser || null)
       ]);
-      if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) setData(rAdv.value);
+      if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) {
+        setData(rAdv.value);
+      } else if (rAdv.status === 'rejected') {
+        setData([]);
+        setLoadError('Không thể tải danh sách tạm ứng');
+      }
       if (rC.status === 'fulfilled') setContracts(Array.isArray(rC.value) ? rC.value : rC.value?.data || []);
       if (rEmp.status === 'fulfilled') setEmployees(Array.isArray(rEmp.value) ? rEmp.value : rEmp.value?.data || []);
       if (rUser.status === 'fulfilled' && rUser.value) setCurrentUser(rUser.value);
     } catch {
-      // ignore
+      setLoadError('Không thể tải danh sách tạm ứng');
     } finally {
       setLoading(false);
     }
-  };
+  }, [propIsDirector, propUser]);
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
 
   const isDirector = propIsDirector !== undefined
     ? propIsDirector
@@ -165,7 +174,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
       note: '',
       payment_method: 'Chuyển khoản',
       transaction_date: getTodayIso(),
-      created_by: VOUCHER_SIGNERS.creator,
+      created_by: currentUser?.full_name || currentUser?.name || '',
       status: 'Chờ duyệt'
     });
     setModal(true);
@@ -204,7 +213,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
           note: finalNote,
           payment_method: form.payment_method,
           created_by: form.created_by,
-          status: 'Chờ duyệt',
+          status: 'PENDING',
           department_code: form.department_code || null
         })
       });
@@ -229,10 +238,12 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
       if (!matchSearch) return false;
     }
     if (filters.payment_method !== 'All') {
-      if (t.payment_method !== filters.payment_method) return false;
+      const matchPm = t.payment_method === filters.payment_method || t.payment_method_label === filters.payment_method || t['Hình thức'] === filters.payment_method;
+      if (!matchPm) return false;
     }
     if (filters.status !== 'All') {
-      if (t.status !== filters.status) return false;
+      const matchSt = t.status === filters.status || t.status_label === filters.status;
+      if (!matchSt) return false;
     }
     if (month) {
       const tDate = t.date || t.transaction_date || (t.created_at ? t.created_at.slice(0, 10) : '');
@@ -302,11 +313,19 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         onSortChange={setSort}
       />
 
+      {loadError && (
+        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#991b1b' }}>
+          <span>{loadError}</span>
+          <button type="button" onClick={loadAll} className="btn btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: '0.82rem' }}>Thử lại</button>
+        </div>
+      )}
+
       {sortedFiltered.length > 0 && (
         <SummaryStrip
           countText={`${sortedFiltered.length} đề xuất`}
-          totalText="Tổng tạm ứng"
-          totalAmount={sortedFiltered.reduce((s, t) => s + (t.amount || 0), 0)}
+          items={[
+            { label: 'Tổng tạm ứng', value: sortedFiltered.reduce((s, t) => s + (t.amount || 0), 0), color: 'var(--amber-500)', prefix: '−' }
+          ]}
         />
       )}
 
@@ -320,11 +339,11 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         onRowClick={row => setDetailId(row.id)}
       />
 
-      <Modal open={modal} onClose={() => setModal(false)} size="md" title="Lập Đề Xuất Tạm Ứng">
+      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Lập Đề Xuất Tạm Ứng">
         <form onSubmit={handleSubmit}>
           {/* Header notice */}
           <div style={{
-            background: 'rgba(245, 158, 11, 0.08)',
+            background: 'rgba(245, 158, 11, 0.1)',
             border: '1px solid rgba(245, 158, 11, 0.25)',
             padding: '12px 16px',
             borderRadius: '10px',
@@ -332,25 +351,17 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
             gap: 12
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <HandCoins size={22} color="#d97706" />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: '0.94rem', color: '#b45309' }}>Phiếu Đề Xuất Tạm Ứng Kinh Phí</div>
-                <div style={{ fontSize: '0.78rem', color: '#92400e' }}>Phiếu sẽ được gửi lên Ban Giám Đốc phê duyệt trước khi xuất quỹ</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+              <HandCoins size={22} color="var(--amber-500)" style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--text-primary)' }}>Phiếu Đề Xuất Tạm Ứng Kinh Phí</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Phiếu sẽ được gửi lên Ban Giám Đốc phê duyệt trước khi xuất quỹ</div>
               </div>
             </div>
-            <span style={{
-              background: '#fef3c7',
-              color: '#b45309',
-              fontSize: '0.76rem',
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: 6,
-              border: '1px solid #fde68a',
-              whiteSpace: 'nowrap'
-            }}>
+            <span className="badge badge--warning" style={{ flexShrink: 0 }}>
               Chờ duyệt
             </span>
           </div>
@@ -391,16 +402,16 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
           <FormGrid cols={2}>
             <FormRow label="Người nhận tạm ứng" required>
               <Dropdown
-                options={employeeOptions.length > 0 ? employeeOptions : [
-                  { value: 'Nguyễn Văn A', label: 'Nguyễn Văn A (Nhân viên đo vẽ)', dept: 'Phòng Đo vẽ' },
-                  { value: 'Hồ Thị Mỹ Hằng', label: 'Hồ Thị Mỹ Hằng (Phòng Pháp lý)', dept: 'Phòng Pháp lý' },
-                  { value: 'Trần Thụy Tường Vy', label: 'Trần Thụy Tường Vy (Phòng Pháp lý)', dept: 'Phòng Pháp lý' }
-                ]}
+                options={employeeOptions}
                 value={form.payer_payee}
                 onChange={handleEmployeeSelect}
-                placeholder="— Chọn nhân sự nhận tiền —"
+                placeholder={employeeOptions.length > 0 ? '— Chọn nhân sự nhận tiền —' : 'Chưa có nhân sự khả dụng'}
+                disabled={employeeOptions.length === 0}
                 required
               />
+              {employeeOptions.length === 0 && (
+                <div className="form-help form-help--warning">Chưa tải được danh sách nhân sự. Vui lòng thử làm mới trước khi lập phiếu.</div>
+              )}
             </FormRow>
 
             <FormRow label="Phòng ban" required>
@@ -415,22 +426,19 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
 
             <FormRow label="Hợp đồng / Dự án liên kết">
               <Dropdown
-                options={contractOptions.length > 0 ? contractOptions : [
-                  { value: '377/BK-2026', label: '377/BK-2026 — Lê hữu trí' },
-                  { value: '2001/BK-2026', label: '2001/BK-2026 — Trần Thụy Tường Vy' },
-                  { value: 'HD-0P-cc2d5f', label: 'HD-0P-cc2d5f — Công Ty Nộp Thừa Test' }
-                ]}
+                options={contractOptions}
                 value={form.contract_id}
                 onChange={(val) => setForm(prev => ({ ...prev, contract_id: val }))}
-                placeholder="— Chọn HĐ liên kết (nếu có) —"
+                placeholder={contractOptions.length > 0 ? '— Chọn HĐ liên kết (nếu có) —' : 'Chưa có hợp đồng khả dụng'}
+                disabled={contractOptions.length === 0}
               />
             </FormRow>
 
             <FormRow label="Hình thức nhận tiền" required>
               <Dropdown
                 options={[
-                  { value: 'Chuyển khoản', label: 'Chuyển khoản (Ngân hàng)' },
-                  { value: 'Tiền mặt', label: 'Tiền mặt (Thủ quỹ)' }
+                  { value: 'BANK_TRANSFER', label: 'Chuyển khoản (Ngân hàng)' },
+                  { value: 'CASH', label: 'Tiền mặt (Thủ quỹ)' }
                 ]}
                 value={form.payment_method}
                 onChange={(val) => setForm(prev => ({ ...prev, payment_method: val }))}

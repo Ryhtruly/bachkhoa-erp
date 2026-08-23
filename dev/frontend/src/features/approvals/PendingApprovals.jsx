@@ -121,7 +121,7 @@ export default function PendingApprovals() {
               <p><span>Hợp đồng</span><strong>{viewingRow.contract_id}</strong></p>
               <p><span>Số tiền</span><strong className="is-money">{formatMoney(viewingRow.amount)}</strong></p>
               <p><span>Ngày thu</span><strong>{formatDate(viewingRow.transaction_date)}</strong></p>
-              <p><span>Hình thức</span><strong>{viewingRow.payment_method || '—'}</strong></p>
+              <p><span>Hình thức</span><strong>{viewingRow.payment_method_label || (viewingRow.payment_method === 'BANK_TRANSFER' || viewingRow.payment_method === 'Chuyển khoản' ? 'Chuyển khoản' : viewingRow.payment_method === 'CASH' || viewingRow.payment_method === 'Tiền mặt' ? 'Tiền mặt' : viewingRow.payment_method) || '—'}</strong></p>
             </div>
 
             {viewingRow.receipt_attachments?.length || viewingRow.receipt_attachment_url ? (

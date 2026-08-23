@@ -3,7 +3,7 @@
 .receipt-input { display: grid; gap: 8px; }
 .receipt-input__native { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .receipt-input__pick { min-height: 46px; border: 1.5px dashed var(--border-hover); border-radius: 10px; background: var(--bg-surface); color: var(--text-secondary); font: inherit; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer; }
-.receipt-input__pick:hover:not(:disabled) { border-color: #ff5733; color: #d93d1e; background: #fff7f4; }
+.receipt-input__pick:hover:not(:disabled) { border-color: var(--orange-500); color: var(--orange-500); background: color-mix(in srgb, var(--orange-500) 8%, var(--bg-surface)); }
 .receipt-input__pick:disabled { opacity: .6; cursor: not-allowed; }
 .receipt-input > small { color: var(--text-tertiary); font-size: .76rem; }
 .receipt-input__files { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }

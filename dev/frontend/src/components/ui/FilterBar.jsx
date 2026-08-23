@@ -1,6 +1,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import { Search, Filter, X, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import DatePicker from './DatePicker';
+import Select from './Select';
 
 /**
  * FilterBar — Thanh tìm kiếm + lọc dữ liệu dùng chung
@@ -124,43 +125,33 @@ const FilterBar = memo(function FilterBar({
           {onDateFilterModeChange && (
             <div className="filter-bar-modern__control-group">
               <span className="filter-bar-modern__control-label">Lọc theo:</span>
-              <div className="filter-bar-modern__select-wrapper">
-                <select
-                  className="filter-bar-modern__control-select"
-                  value={dateFilterMode || 'day'}
-                  onChange={e => onDateFilterModeChange(e.target.value)}
-                >
-                  <option value="day">Ngày</option>
-                  <option value="month">Tháng</option>
-                  <option value="year">Năm</option>
-                </select>
-                <ChevronDown size={14} className="select-icon" />
-              </div>
+              <Select
+                className="ui-select--compact"
+                ariaLabel="Lọc theo"
+                value={dateFilterMode || 'day'}
+                onChange={onDateFilterModeChange}
+                options={[
+                  { value: 'day', label: 'Ngày' },
+                  { value: 'month', label: 'Tháng' },
+                  { value: 'year', label: 'Năm' },
+                ]}
+              />
             </div>
           )}
 
           {sort !== undefined && (
             <div className="filter-bar-modern__control-group">
               <span className="filter-bar-modern__control-label">Sắp xếp:</span>
-              <div className="filter-bar-modern__select-wrapper">
-                <select
-                  className="filter-bar-modern__control-select"
-                  value={sort || (sortOptions?.[0]?.value ?? 'desc')}
-                  onChange={e => onSortChange && onSortChange(e.target.value)}
-                >
-                  {sortOptions ? (
-                    sortOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))
-                  ) : (
-                    <>
-                      <option value="desc">Mới nhất</option>
-                      <option value="asc">Cũ nhất</option>
-                    </>
-                  )}
-                </select>
-                <ChevronDown size={14} className="select-icon" />
-              </div>
+              <Select
+                className="ui-select--compact"
+                ariaLabel="Sắp xếp"
+                value={sort || (sortOptions?.[0]?.value ?? 'desc')}
+                onChange={(value) => onSortChange && onSortChange(value)}
+                options={sortOptions || [
+                  { value: 'desc', label: 'Mới nhất' },
+                  { value: 'asc', label: 'Cũ nhất' },
+                ]}
+              />
             </div>
           )}
 
@@ -204,22 +195,18 @@ const FilterBar = memo(function FilterBar({
             <div key={f.key} className="filter-bar-modern__field" style={{ width: f.width || 200 }}>
               <label htmlFor={`filter-${f.key}`}>{f.label}</label>
               {f.type === 'select' && (
-                <div className="custom-select-wrap">
-                  <select
-                    id={`filter-${f.key}`}
-                    value={values[f.key] ?? 'All'}
-                    onChange={(e) => onFilterChange?.(f.key, e.target.value)}
-                    className="custom-select"
-                  >
-                    {!(f.options || []).some(opt => opt.value === 'All' || opt.value === '') && (
-                      <option value="All">{f.allLabel || (f.label ? `Tất cả ${f.label.toLowerCase()}` : 'Tất cả')}</option>
-                    )}
-                    {(f.options || []).map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label ?? opt.value}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="select-icon" />
-                </div>
+                <Select
+                  id={`filter-${f.key}`}
+                  value={values[f.key] ?? 'All'}
+                  onChange={(value) => onFilterChange?.(f.key, value)}
+                  className="ui-select--field"
+                  options={[
+                    ...(!(f.options || []).some(opt => opt.value === 'All' || opt.value === '')
+                      ? [{ value: 'All', label: f.allLabel || (f.label ? `Tất cả ${f.label.toLowerCase()}` : 'Tất cả') }]
+                      : []),
+                    ...(f.options || []).map((opt) => ({ value: opt.value, label: opt.label ?? opt.value })),
+                  ]}
+                />
               )}
               {f.type === 'date' && (
                 <input

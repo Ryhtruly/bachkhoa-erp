@@ -1,16 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Wallet,
-  TrendingUp,
-  Landmark,
-  ClipboardCheck,
   History,
   Calendar,
   ChevronRight,
   ChevronLeft,
   CheckCircle2,
   Clock,
-  HelpCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import './myPayroll.css';
@@ -72,7 +68,9 @@ export default function MyPayroll({ isModal = false }) {
   }, []);
 
   const employee = profile?.employee || {};
-  const history = profile?.payroll_history || (profile?.latest_payroll ? [profile.latest_payroll] : []);
+  const history = useMemo(() => {
+    return profile?.payroll_history || (profile?.latest_payroll ? [profile.latest_payroll] : []);
+  }, [profile?.payroll_history, profile?.latest_payroll]);
 
   // Danh sách các năm có trong lịch sử để tạo bộ lọc
   const availableYears = useMemo(() => {
@@ -111,7 +109,15 @@ export default function MyPayroll({ isModal = false }) {
   };
 
   if (loading && !profile) return <div className="my-payroll__state">Đang tải dữ liệu lương…</div>;
-  if (error && !profile) return <div className="my-payroll__state">{error}</div>;
+  if (error && !profile) return (
+    <div className="my-payroll__state my-payroll__state--error" role="alert">
+      <strong>Không tải được dữ liệu lương</strong>
+      <p>Kiểm tra kết nối rồi thử tải lại để xem phiếu lương.</p>
+      <button type="button" className="btn btn-secondary btn-sm" onClick={() => fetchPayroll()}>
+        Thử lại
+      </button>
+    </div>
+  );
 
   const payroll =
     history.find((h) => (h.month || '').startsWith(selectedMonth)) ||
@@ -128,7 +134,7 @@ export default function MyPayroll({ isModal = false }) {
     );
   }
 
-  const hasPiece = payroll ? Number(payroll.piece_amount) > 0 || Number(payroll.tasks_completed) > 0 : false;
+  const _hasPiece = payroll ? Number(payroll.piece_amount) > 0 || Number(payroll.tasks_completed) > 0 : false;
   const adjustment = payroll ? Number(payroll.adjustment_amount) || 0 : 0;
   const isCurrentMonth =
     payroll?.is_current ||
@@ -176,61 +182,55 @@ export default function MyPayroll({ isModal = false }) {
         </div>
       )}
 
-      {/* KHỐI 1: 4 Thẻ KPI Summary hiển thị ngang */}
+      {/* Khối tổng quan: một điểm nhấn chính và bảng cấu thành lương */}
       {payroll && (
-        <div className="my-payroll__kpi-grid">
-          {/* KPI 1: Tổng thực lĩnh */}
-          <div className="my-payroll__kpi-card my-payroll__kpi-card--primary">
-            <div className="my-payroll__kpi-head">
-              <span className="my-payroll__kpi-label">Tổng thực nhận</span>
+        <div className="my-payroll__pay-summary">
+          <div className="my-payroll__net-panel">
+            <div className="my-payroll__net-head">
+              <div>
+                <span className="my-payroll__eyebrow">Kỳ lương</span>
+                <span className="my-payroll__kpi-label">Tổng thực nhận</span>
+              </div>
               <span className={`my-payroll__status-tag ${isCurrentMonth ? 'is-current' : 'is-closed'}`}>
                 {isCurrentMonth ? <Clock size={11} /> : <CheckCircle2 size={11} />}
                 {isCurrentMonth ? 'Tạm tính' : 'Đã chốt'}
               </span>
             </div>
-            <div className="my-payroll__kpi-val">{formatVND(payroll.total_salary)}</div>
-            <div className="my-payroll__kpi-sub">
+            <strong className="my-payroll__net-value">{formatVND(payroll.total_salary)}</strong>
+            <span className="my-payroll__net-caption">
               {formatMonth(payroll.month)} · {isCurrentMonth ? 'Sẽ chốt khi hết kỳ' : 'Đã khóa sổ'}
-            </div>
+            </span>
           </div>
 
-          {/* KPI 2: Lương cơ bản */}
-          <div className="my-payroll__kpi-card">
-            <div className="my-payroll__kpi-head">
-              <span className="my-payroll__kpi-label">Lương cơ bản</span>
-              <div className="my-payroll__kpi-icon is-orange"><Landmark size={14} /></div>
+          <div className="my-payroll__breakdown" aria-label="Chi tiết cấu thành lương">
+            <div className="my-payroll__breakdown-heading">
+              <span>Chi tiết cấu thành lương</span>
+              <span>Đơn vị: VNĐ</span>
             </div>
-            <div className="my-payroll__kpi-val">{formatVND(payroll.base_salary)}</div>
-            <div className="my-payroll__kpi-sub">Theo hợp đồng LĐ</div>
-          </div>
-
-          {/* KPI 3: Lương khoán việc */}
-          <div className="my-payroll__kpi-card">
-            <div className="my-payroll__kpi-head">
-              <span className="my-payroll__kpi-label">Lương khoán</span>
-              <div className="my-payroll__kpi-icon is-blue"><ClipboardCheck size={14} /></div>
-            </div>
-            <div className="my-payroll__kpi-val">
-              {Number(payroll.piece_amount) > 0 ? formatVND(payroll.piece_amount) : '0₫'}
-            </div>
-            <div className="my-payroll__kpi-sub">
-              {Number(payroll.tasks_completed) > 0
-                ? `${payroll.tasks_completed} việc nghiệm thu`
-                : 'Chưa có việc khoán'}
-            </div>
-          </div>
-
-          {/* KPI 4: Thưởng / Khấu trừ */}
-          <div className="my-payroll__kpi-card">
-            <div className="my-payroll__kpi-head">
-              <span className="my-payroll__kpi-label">Thưởng / Trừ</span>
-              <div className="my-payroll__kpi-icon is-green"><TrendingUp size={14} /></div>
-            </div>
-            <div className={`my-payroll__kpi-val ${adjustment < 0 ? 'is-negative' : ''}`}>
-              {adjustment !== 0 ? formatVND(adjustment) : '0₫'}
-            </div>
-            <div className="my-payroll__kpi-sub">
-              {adjustment > 0 ? 'Đã duyệt thưởng' : adjustment < 0 ? 'Khoản khấu trừ' : 'Không phát sinh'}
+            <div className="my-payroll__breakdown-list">
+              <div className="my-payroll__breakdown-item">
+                <span className="my-payroll__breakdown-label">Lương cơ bản</span>
+                <strong>{formatVND(payroll.base_salary)}</strong>
+                <small>Theo hợp đồng lao động</small>
+              </div>
+              <div className="my-payroll__breakdown-item">
+                <span className="my-payroll__breakdown-label">Lương khoán / phụ cấp</span>
+                <strong>{Number(payroll.piece_amount) > 0 ? formatVND(payroll.piece_amount) : '0₫'}</strong>
+                <small>
+                  {Number(payroll.tasks_completed) > 0
+                    ? `${payroll.tasks_completed} việc nghiệm thu`
+                    : 'Chưa có việc khoán'}
+                </small>
+              </div>
+              <div className="my-payroll__breakdown-item">
+                <span className="my-payroll__breakdown-label">Thưởng / khấu trừ</span>
+                <strong className={adjustment < 0 ? 'is-negative' : adjustment > 0 ? 'is-positive' : ''}>
+                  {adjustment !== 0 ? formatVND(adjustment) : '0₫'}
+                </strong>
+                <small>
+                  {adjustment > 0 ? 'Đã duyệt thưởng' : adjustment < 0 ? 'Khoản khấu trừ' : 'Không phát sinh'}
+                </small>
+              </div>
             </div>
           </div>
         </div>
@@ -242,7 +242,7 @@ export default function MyPayroll({ isModal = false }) {
           <div className="my-payroll__history-toolbar">
             <div className="my-payroll__history-title">
               <History size={16} />
-              <h3>Lịch sử bảng lương các kỳ</h3>
+              <h3>Lịch sử các kỳ lương</h3>
               <span className="my-payroll__history-badge">{filteredHistory.length} kỳ</span>
             </div>
 
@@ -270,6 +270,9 @@ export default function MyPayroll({ isModal = false }) {
             )}
           </div>
 
+          <p className="responsive-table-hint my-payroll__table-hint" role="note">
+            Vuốt ngang để xem đầy đủ lịch sử lương trên màn hình hẹp.
+          </p>
           <div className="my-payroll__table-container">
             <table className="my-payroll__table">
               <thead>
@@ -291,7 +294,7 @@ export default function MyPayroll({ isModal = false }) {
                       key={mKey}
                       className={`${isRowSelected ? 'is-selected' : ''}${h.is_current ? ' is-current-row' : ''}`}
                       onClick={() => handleSelectHistoryRow(h.month)}
-                      title="Bấm để xem chi tiết kỳ này ở 4 thẻ trên"
+                      title="Bấm để xem chi tiết kỳ này ở khối tổng quan"
                     >
                       <td>
                         <div className="my-payroll__period-cell">
@@ -380,16 +383,10 @@ export default function MyPayroll({ isModal = false }) {
             </div>
           )}
 
-          {/* Info Tip Banner bên trong Card */}
-          <div className="my-payroll__info-tip">
-            <div className="my-payroll__info-tip-icon">
-              <HelpCircle size={15} />
-            </div>
-            <div className="my-payroll__info-tip-content">
-              <span>Cần giải đáp thắc mắc về số liệu bảng lương?</span>
-              <p>Vui lòng liên hệ trực tiếp <strong>Giám đốc</strong> hoặc <strong>bộ phận Kế toán</strong> để được hỗ trợ đối soát.</p>
-            </div>
-          </div>
+          <aside className="my-payroll__support-note">
+            <strong>Đối soát số liệu?</strong>
+            <span>Liên hệ Giám đốc hoặc bộ phận Kế toán nếu cần giải thích thêm.</span>
+          </aside>
         </div>
       )}
     </section>

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Book, UploadCloud, Link as LinkIcon, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow } from '../components/ui';
 import { getAccessToken } from '../lib/api';
@@ -27,7 +27,7 @@ export default function Wiki() {
 
   const categories = ['Tất cả', 'Quy trình ISO', 'Sổ tay nhân sự', 'Tài liệu đào tạo', 'Quy định khác'];
 
-  const fetchWiki = async () => {
+  const fetchWiki = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -45,20 +45,24 @@ export default function Wiki() {
           setTotalPages(data.meta.total_pages);
         }
       }
-    } catch (err) {
+    } catch {
       showMessage('Lỗi tải danh sách tài liệu', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery, categoryFilter, showMessage]);
 
-  // Fetch when page, category, or search (debounced) changes
+  // Fetch immediately on mount / filter change, debounce text search
   useEffect(() => {
+    if (!searchQuery) {
+      fetchWiki();
+      return undefined;
+    }
     const timer = setTimeout(() => {
       fetchWiki();
     }, 300);
     return () => clearTimeout(timer);
-  }, [page, categoryFilter, searchQuery]);
+  }, [fetchWiki, searchQuery]);
 
   const handleUploadWiki = async (e) => {
     e.preventDefault();

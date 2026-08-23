@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import '@xyflow/react/dist/style.css'
 import './index.css'
 import App from './App.jsx'
+import { applyTheme, getInitialTheme } from './lib/theme'
+
+applyTheme(getInitialTheme())
 
 const nativeFetch = window.fetch.bind(window)
 window.fetch = (input, init = {}) => {

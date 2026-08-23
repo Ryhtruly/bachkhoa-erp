@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, MessageSquare, ShieldAlert, Camera, Server, RefreshCw, CheckCircle, Database } from 'lucide-react';
+import React, { useState } from 'react';
+import { MessageSquare, ShieldAlert, Camera, Server, RefreshCw, Database } from 'lucide-react';
 
 export default function Automations() {
   // Integrations state
@@ -16,7 +16,7 @@ export default function Automations() {
     autoExportDocx: true,
   });
 
-  const [logs, setLogs] = useState([
+  const [logs] = useState([
     { time: '14:05:22', msg: 'Zalo: Đã gửi báo giá tự động cho khách hàng Nguyễn Văn A', type: 'info' },
     { time: '12:30:10', msg: 'System: Tự động sinh Hợp Đồng (BK-HD-2309) & Hồ sơ Đo vẽ từ CRM', type: 'success' },
     { time: '08:00:05', msg: 'Hanet: Cảnh báo nhân sự Lê Văn Dựng check-in trễ 15 phút', type: 'warning' },

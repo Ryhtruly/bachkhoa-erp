@@ -1382,15 +1382,18 @@
 .wcl-inline-input:focus, .wcl-inline-select:focus { outline: 0; border-color: var(--orange-500); box-shadow: 0 0 0 3px rgba(235, 74, 35, 0.10); }
 .wcl-prop__clear { flex: 0 0 26px; width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; }
 .wcl-prop__clear:hover { color: var(--red-500); background: rgba(239, 68, 68, 0.08); }
-.wcl-add-inline {
+.wcl-add-inline,
+.wcl-prop__add {
   display: inline-flex; align-items: center; gap: 5px;
   height: 28px; padding: 0 11px; border-radius: 7px;
   border: 1px dashed var(--border-default); background: transparent;
   color: var(--text-secondary); font-size: 0.78rem; font-weight: 600; cursor: pointer;
   transition: border-color .15s, color .15s, background .15s;
 }
-.wcl-add-inline:hover:not(:disabled) { border-color: var(--orange-500); color: var(--orange-600); background: rgba(235, 74, 35, 0.05); }
-.wcl-add-inline:disabled { opacity: .5; cursor: default; }
+.wcl-add-inline:hover:not(:disabled),
+.wcl-prop__add:hover:not(:disabled) { border-color: var(--orange-500); color: var(--orange-600); background: rgba(235, 74, 35, 0.05); }
+.wcl-add-inline:disabled,
+.wcl-prop__add:disabled { opacity: .5; cursor: default; }
 
 /* Đơn giá khoán & Minh chứng — hỗ trợ hàng phụ xuống dòng gọn gàng */
 .wcl-prop--pay, .wcl-prop--evidence { flex-wrap: wrap; }

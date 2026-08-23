@@ -341,6 +341,46 @@
   transition: all 0.2s;
 }
 
+.fin-fund-card__diff-box--empty {
+  background: var(--bg-surface, #f8fafc);
+  border-color: var(--border-subtle, #e2e8f0);
+  color: var(--text-tertiary, #64748b);
+}
+.fin-fund-card__diff-box--empty .fin-fund-card__diff-val,
+.fin-fund-card__diff-box--empty .fin-fund-card__diff-status {
+  color: var(--text-tertiary, #64748b);
+}
+
+.fin-fund-card__diff-box--match {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+.fin-fund-card__diff-box--match .fin-fund-card__diff-val,
+.fin-fund-card__diff-box--match .fin-fund-card__diff-status {
+  color: #15803d;
+}
+
+.fin-fund-card__diff-box--deficit {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.fin-fund-card__diff-box--deficit .fin-fund-card__diff-val,
+.fin-fund-card__diff-box--deficit .fin-fund-card__diff-status {
+  color: #b91c1c;
+}
+
+.fin-fund-card__diff-box--surplus {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+.fin-fund-card__diff-box--surplus .fin-fund-card__diff-val,
+.fin-fund-card__diff-box--surplus .fin-fund-card__diff-status {
+  color: #1d4ed8;
+}
+
 .fin-fund-card__diff-label {
   display: block;
   font-size: 0.72rem;
@@ -821,4 +861,223 @@
 .fin-settings__rule-item strong {
   font-family: var(--font-mono, monospace);
   color: var(--text-primary, #0f172a);
+}
+
+/* ============================================================
+   Dark Mode Support for Settings & Fund Settlement
+   ============================================================ */
+
+[data-theme='dark'] .fin-settings__card,
+[data-theme='dark'] .fin-fund-card,
+[data-theme='dark'] .fin-settings__threshold-box {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme='dark'] .fin-settings__header-badge,
+[data-theme='dark'] .fin-history-count-badge,
+[data-theme='dark'] .fin-history-empty__icon,
+[data-theme='dark'] .fin-settings__preset-chip {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .fin-settings__preset-chip:hover {
+  background: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .fin-settings__top-bar,
+[data-theme='dark'] .fin-fund-card__sys-box,
+[data-theme='dark'] .fin-settings__table-wrap,
+[data-theme='dark'] .fin-settings__thresholds-grid,
+[data-theme='dark'] .fin-settings__rule-box {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .fin-settings__time-input,
+[data-theme='dark'] .fin-settings__text-input,
+[data-theme='dark'] .fin-fund-card__input-box,
+[data-theme='dark'] .fin-fund-card__textarea,
+[data-theme='dark'] .fin-settings__threshold-input {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  color-scheme: dark;
+}
+
+[data-theme='dark'] .fin-settings__time-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(0.85);
+  cursor: pointer;
+}
+
+[data-theme='dark'] .fin-fund-card__head {
+  border-bottom-color: var(--border-subtle);
+}
+
+[data-theme='dark'] .fin-settings__table th {
+  border-bottom-color: var(--border-default);
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .fin-settings__table td {
+  border-bottom-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .fin-settings__table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme='dark'] .fin-user-tag {
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .fin-fund-card__tag--cash {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+[data-theme='dark'] .fin-fund-card__tag--bank {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+[data-theme='dark'] .fin-director-pill {
+  background: rgba(234, 88, 12, 0.15);
+  color: #fb923c;
+  border-color: rgba(234, 88, 12, 0.3);
+}
+
+[data-theme='dark'] .fin-settings__clear-filter-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Dark Mode Diff Boxes */
+[data-theme='dark'] .fin-fund-card__diff-box--empty {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+  color: var(--text-tertiary);
+}
+[data-theme='dark'] .fin-fund-card__diff-box--empty .fin-fund-card__diff-val,
+[data-theme='dark'] .fin-fund-card__diff-box--empty .fin-fund-card__diff-status {
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .fin-fund-card__diff-box--match {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+[data-theme='dark'] .fin-fund-card__diff-box--match .fin-fund-card__diff-val,
+[data-theme='dark'] .fin-fund-card__diff-box--match .fin-fund-card__diff-status {
+  color: #34d399;
+}
+
+[data-theme='dark'] .fin-fund-card__diff-box--deficit {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+[data-theme='dark'] .fin-fund-card__diff-box--deficit .fin-fund-card__diff-val,
+[data-theme='dark'] .fin-fund-card__diff-box--deficit .fin-fund-card__diff-status {
+  color: #f87171;
+}
+
+[data-theme='dark'] .fin-fund-card__diff-box--surplus {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+[data-theme='dark'] .fin-fund-card__diff-box--surplus .fin-fund-card__diff-val,
+[data-theme='dark'] .fin-fund-card__diff-box--surplus .fin-fund-card__diff-status {
+  color: #60a5fa;
+}
+
+/* ─── Mobile layout: keep dense configuration cards inside the viewport ─── */
+@media screen and (max-width: 640px) {
+  .fin-settings {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    padding: 12px 8px 32px;
+  }
+
+  .fin-settings__card,
+  .fin-settings__top-bar,
+  .fin-settings__funds-grid,
+  .fin-settings__thresholds-grid,
+  .fin-fund-card,
+  .fin-settings__threshold-box {
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .fin-settings__card {
+    padding: 18px 12px;
+  }
+
+  .fin-settings__title,
+  .fin-settings__subtitle,
+  .fin-settings__thresholds-desc {
+    overflow-wrap: anywhere;
+  }
+
+  .fin-settings__funds-grid,
+  .fin-settings__thresholds-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .fin-fund-card,
+  .fin-settings__threshold-box {
+    padding: 14px;
+  }
+
+  .fin-fund-card__head,
+  .fin-settings__threshold-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .fin-fund-card__title,
+  .fin-settings__threshold-title {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .fin-fund-card__sys-val,
+  .fin-fund-card__diff-val,
+  .fin-fund-card__amount-input,
+  .fin-settings__threshold-input,
+  .fin-settings__rule-item {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .fin-settings__time-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 112px);
+  }
+
+  .fin-settings__history-head,
+  .fin-settings__thresholds-head {
+    align-items: stretch;
+  }
+
+  .fin-settings__history-controls,
+  .fin-settings__save-threshold-btn {
+    width: 100%;
+  }
+
+  .fin-settings__save-threshold-btn {
+    justify-content: center;
+  }
 }

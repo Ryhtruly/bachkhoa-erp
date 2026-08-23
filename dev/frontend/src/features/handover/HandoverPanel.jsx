@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Circle, Eye, FolderDown, Lock, Plus, ShieldAlert, ShieldCheck } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
-import { SensitiveActionModal } from '../../components/ui'
+import { SensitiveActionModal, Select } from '../../components/ui'
 import ReceiptFileInput from '../../components/finance/ReceiptFileInput'
 import ReceiptLinks from '../../components/finance/ReceiptLinks'
 import { buildPaymentFormData } from '../../components/finance/paymentReceipts'
@@ -47,7 +47,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
   const [deliverNote, setDeliverNote] = useState('')
   const [showOverrideModal, setShowOverrideModal] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ amount: '', payment_method: 'Tiền mặt', note: '' })
+  const [form, setForm] = useState({ amount: '', payment_method: 'CASH', note: '' })
   const [receiptFiles, setReceiptFiles] = useState([])
 
   const handleOverrideHandover = async (reason) => {
@@ -64,7 +64,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
         addToast?.(payload.detail || 'Không thực hiện được ngoại lệ', 'error')
         return
       }
-      addToast?.('✅ Giám đốc đã duyệt ngoại lệ cho nợ & mở khóa bàn giao!', 'success')
+      addToast?.('Giám đốc đã duyệt ngoại lệ cho nợ & mở khóa bàn giao!', 'success')
       setShowOverrideModal(false)
       await load()
       onChanged?.()
@@ -186,29 +186,6 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
       addToast?.("Mất kết nối tới máy chủ", "error")
     } finally {
       setDangTaiGoi(false)
-    }
-  }
-
-  const handleVoucherDecision = async (voucherId, decision) => {
-    setSaving(true)
-    try {
-      const res = await fetch(`/api/finance/cashflow/${voucherId}/${decision}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: decision === 'reject' ? JSON.stringify({ reason: 'Từ chối tại bước bàn giao' }) : '{}',
-      })
-      const payload = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        addToast?.(payload.detail || 'Thao tác thất bại', 'error')
-        return
-      }
-      addToast?.(decision === 'approve' ? 'Đã duyệt — công nợ đã trừ' : 'Đã từ chối phiếu', 'success')
-      await load()
-      onChanged?.()
-    } catch {
-      addToast?.('Mất kết nối tới máy chủ', 'error')
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -342,7 +319,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
               )}
               {!readOnly && !isDossierLane && lane.can_record_payment && !lane.done && (
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => {
-                  setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                  setForm({ amount: '', payment_method: 'CASH', note: '' })
                   setReceiptFiles([])
                   setShowPayment(true)
                 }}>
@@ -382,11 +359,15 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
             <ReceiptFileInput files={receiptFiles} onChange={setReceiptFiles} disabled={saving} />
           </div>
           <label>Hình thức
-            <select className="form-control" value={form.payment_method}
-              onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
-              <option>Tiền mặt</option>
-              <option>Chuyển khoản</option>
-            </select>
+            <Select
+              value={form.payment_method}
+              options={[
+                { value: 'CASH', label: 'Tiền mặt' },
+                { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+              ]}
+              onChange={(value) => setForm(prev => ({ ...prev, payment_method: value }))}
+              className="ui-select--field"
+            />
           </label>
           <label>Ghi chú
             <input className="form-control" value={form.note}
@@ -401,7 +382,7 @@ export default function HandoverPanel({ taskNodeId, addToast, onChanged, readOnl
                 const ok = await submitPayment()
                 if (ok) {
                   setShowPayment(false)
-                  setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+                  setForm({ amount: '', payment_method: 'CASH', note: '' })
                   setReceiptFiles([])
                 }
               }}>

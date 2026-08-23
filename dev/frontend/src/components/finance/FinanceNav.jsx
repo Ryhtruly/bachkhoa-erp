@@ -5,7 +5,7 @@ import {
   Hammer, UsersRound, Settings, Wallet, Layers, Users
 } from 'lucide-react';
 
-export const FINANCE_GROUPS = [
+const FINANCE_GROUPS = [
   {
     id: 'cashflow',
     label: 'Dòng Tiền & Sổ Quỹ',
@@ -48,7 +48,7 @@ export const FINANCE_GROUPS = [
   }
 ];
 
-export default function FinanceNav({ activeTab, onSelectTab, isDirector, user }) {
+export default function FinanceNav({ activeTab, onSelectTab, isDirector }) {
   const visibleGroups = useMemo(() => {
     return FINANCE_GROUPS.map(group => {
       let filteredTabs = group.tabs;
@@ -88,23 +88,28 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
 
   return (
     <div className="finance-grouped-nav-container" style={{
-      background: '#ffffff',
+      background: 'var(--bg-card)',
       borderRadius: '16px',
       border: '1px solid var(--border-default)',
-      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
+      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
       padding: '14px 18px',
       marginBottom: '8px'
     }}>
       {/* ── Hàng 1: 3 Nhóm Chính (Group Switcher) ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        paddingBottom: '12px',
-        borderBottom: '1px solid var(--border-subtle)',
-        overflowX: 'auto',
-        scrollbarWidth: 'none'
-      }}>
+      <div
+        className="finance-grouped-nav__groups"
+        role="region"
+        aria-label="Nhóm phân hệ tài chính"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          paddingBottom: '12px',
+          borderBottom: '1px solid var(--border-subtle)',
+          overflowX: 'auto',
+          scrollbarWidth: 'none'
+        }}
+      >
         <span style={{
           fontSize: '0.76rem',
           fontWeight: 700,
@@ -134,34 +139,34 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
                 fontSize: '0.85rem',
                 fontWeight: isSelected ? 700 : 600,
                 color: isSelected ? group.color : 'var(--text-secondary)',
-                backgroundColor: isSelected ? group.bgColor : '#f8fafc',
-                border: isSelected ? `1.5px solid ${group.color}40` : '1px solid #e2e8f0',
+                backgroundColor: isSelected ? group.bgColor : 'var(--bg-surface)',
+                border: isSelected ? `1.5px solid ${group.color}60` : '1px solid var(--border-default)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 whiteSpace: 'nowrap',
-                boxShadow: isSelected ? `0 2px 8px ${group.color}15` : 'none'
+                boxShadow: isSelected ? `0 2px 8px ${group.color}20` : 'none'
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.backgroundColor = '#f1f5f9';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-card-hover, rgba(148, 163, 184, 0.12))';
                   e.currentTarget.style.color = 'var(--text-primary)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
                   e.currentTarget.style.color = 'var(--text-secondary)';
                 }
               }}
             >
-              <GroupIcon size={16} color={isSelected ? group.color : '#64748b'} />
+              <GroupIcon size={16} color={isSelected ? group.color : 'var(--text-tertiary)'} />
               <span>{group.label}</span>
               <span style={{
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 padding: '1px 6px',
                 borderRadius: '99px',
-                backgroundColor: isSelected ? group.color : '#cbd5e1',
+                backgroundColor: isSelected ? group.color : 'var(--border-hover)',
                 color: '#ffffff'
               }}>
                 {group.tabs.length}
@@ -172,14 +177,19 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
       </div>
 
       {/* ── Hàng 2: Các Tab Con Của Nhóm Đang Chọn (Pill Subtabs) ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        paddingTop: '12px',
-        overflowX: 'auto',
-        scrollbarWidth: 'thin'
-      }}>
+      <div
+        className="finance-grouped-nav__tabs"
+        role="region"
+        aria-label="Các màn hình tài chính"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          paddingTop: '12px',
+          overflowX: 'auto',
+          scrollbarWidth: 'thin'
+        }}
+      >
         {activeGroup.tabs.map((tab) => {
           const TabIcon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -206,9 +216,9 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
                   e.currentTarget.style.color = 'var(--text-primary)';
-                  e.currentTarget.style.border = '1px solid #e2e8f0';
+                  e.currentTarget.style.border = '1px solid var(--border-subtle)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -219,7 +229,7 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
                 }
               }}
             >
-              <TabIcon size={15} color={isActive ? '#ffffff' : '#64748b'} />
+              <TabIcon size={15} />
               <span>{tab.label}</span>
             </button>
           );

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
 
@@ -12,20 +12,29 @@ export function ToastProvider({ children }) {
     
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
+    }, 3500);
   }, []);
 
   return (
     <ToastContext.Provider value={{ addToast }}>
       {children}
-      <div id="toast-container" style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div id="toast-container" className="toast-container">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast-${toast.type}`} style={{ animation: 'slideIn 0.3s ease-out forwards' }}>
-            {toast.type === 'success' && <CheckCircle size={18} />}
-            {toast.type === 'error' && <AlertCircle size={18} />}
-            {toast.type === 'info' && <Info size={18} />}
-            <span>{toast.message}</span>
-            <button className="toast-close" onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}>✕</button>
+          <div key={toast.id} className={`toast toast-${toast.type}`} role="status">
+            <span className="toast-icon">
+              {toast.type === 'success' && <CheckCircle size={18} />}
+              {toast.type === 'error' && <AlertCircle size={18} />}
+              {toast.type === 'info' && <Info size={18} />}
+            </span>
+            <span className="toast-message">{toast.message}</span>
+            <button
+              type="button"
+              className="toast-close"
+              aria-label="Đóng thông báo"
+              onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+            >
+              <X size={15} />
+            </button>
           </div>
         ))}
       </div>

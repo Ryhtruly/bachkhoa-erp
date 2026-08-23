@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Lock, CheckCircle2, AlertTriangle, ShieldCheck, Printer, Banknote } from 'lucide-react';
-import { Badge, DataTable, DatePicker, FormRow, SensitiveActionModal } from '../../ui';
+import { Users, Lock, CheckCircle2, Printer } from 'lucide-react';
+import { Badge, DataTable, DatePicker, SensitiveActionModal } from '../../ui';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
 import { useToast } from '../../../contexts/ToastContext';
@@ -9,7 +9,7 @@ import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
-export default function PayrollOfficeScreen({ user, isDirector = false }) {
+export default function PayrollOfficeScreen({ isDirector = false, user }) {
   const printDocumentRef = useRef(null);
   const [data, setData] = useState([]);
   const [periods, setPeriods] = useState([]);
@@ -42,9 +42,8 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
   const currentPeriod = periods.find(p => p.period_month?.startsWith(month));
   const isLocked = (currentPeriod?.status || '').toLowerCase() === 'locked';
   const isPaid = (currentPeriod?.status || '').toLowerCase() === 'paid';
-  const isOpen = !isLocked && !isPaid;
 
-  const handleLockPayroll = async (reason) => {
+  const handleLockPayroll = async () => {
     setSubmitting(true);
     try {
       const targetId = currentPeriod?.id || month;
@@ -143,6 +142,17 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
         </div>
 
         <div className="payroll-ledger__actions">
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <DatePicker
+              selectionMode="month"
+              value={month}
+              onChange={setMonth}
+              placeholder="Chọn tháng"
+              dialogLabel="Chọn tháng bảng lương văn phòng"
+              clearable={false}
+            />
+          </div>
+
           <Badge variant={isPaid ? 'success' : isLocked ? 'warning' : 'neutral'} dot>
             Kỳ lương: {isPaid ? 'Đã chi trả' : isLocked ? 'Đã chốt sổ' : 'Đang mở · Chưa chốt'}
           </Badge>
@@ -178,19 +188,29 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
         </div>
       </div>
 
-      <div className="payroll-filter-grid" style={{ gridTemplateColumns: 'minmax(200px, 260px) 1fr' }}>
-        <FormRow label="Kỳ lương">
-          <DatePicker
-            selectionMode="month"
-            value={month}
-            onChange={setMonth}
-            placeholder="Chọn tháng"
-            dialogLabel="Chọn tháng bảng lương văn phòng"
-            clearable={false}
-            className="date-picker--fill"
-          />
-        </FormRow>
-      </div>
+      {!isPaid && (
+        <div style={{
+          fontSize: '0.8rem',
+          color: isLocked ? 'var(--green-600, #16a34a)' : 'var(--amber-600, #d97706)',
+          background: isLocked ? 'rgba(22, 163, 74, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+          border: `1px solid ${isLocked ? 'rgba(22, 163, 74, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+          borderRadius: 8,
+          padding: '8px 14px',
+          margin: '0 0 14px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span style={{ fontSize: '1rem' }}>{isLocked ? '🔒' : '💡'}</span>
+          <span>
+            {isLocked ? (
+              <><strong>Bảng lương đã chốt sổ:</strong> Số liệu thu nhập đã được đóng băng cố định. Giám đốc bấm <em>"Xác nhận đã chi trả"</em> khi hoàn tất chuyển khoản lương cho nhân sự.</>
+            ) : (
+              <><strong>Kỳ lương đang mở (Tạm tính):</strong> Bảng lương hiển thị số liệu ước tính. Giám đốc bấm <em>"Chốt sổ lương"</em> để khóa số liệu trước khi giải ngân.</>
+            )}
+          </span>
+        </div>
+      )}
 
       <div className="payroll-summary-grid">
         <div className="payroll-summary-card payroll-summary-card--primary">
@@ -215,15 +235,20 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
         </div>
       </div>
 
-      <DataTable
-        columns={cols}
-        data={data}
-        loading={loading}
-        rowKey="id"
-        emptyText={`Chưa có dữ liệu nhân sự cho tháng ${month}.`}
-        pageSize={15}
-        compact
-      />
+      <div className="responsive-table-shell payroll-office__table">
+        <p className="responsive-table-hint" role="note">
+          Vuốt ngang để xem đầy đủ các khoản lương trên màn hình hẹp.
+        </p>
+        <DataTable
+          columns={cols}
+          data={data}
+          loading={loading}
+          rowKey="id"
+          emptyText={`Chưa có dữ liệu nhân sự cho tháng ${month}.`}
+          pageSize={15}
+          compact
+        />
+      </div>
 
       <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '277mm', pointerEvents: 'none' }}>
         <FinancePrintReport
@@ -245,9 +270,9 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
           rows={data}
           footerRow={printFooterRow}
           signers={[
-            { role: 'Người lập biểu', title: 'Kế toán tiền lương', name: 'Nguyễn Thị A' },
-            { role: 'Kế toán trưởng', title: 'Kế toán trưởng', name: 'Phạm Thị B' },
-            { role: 'Giám đốc', title: 'Đại diện theo pháp luật', name: 'Nguyễn Văn C' },
+            { role: 'Người lập biểu', name: user?.full_name || user?.username || '', note: '(Ký, họ tên)' },
+            { role: 'Kế toán trưởng', note: '(Ký, họ tên)' },
+            { role: 'Giám đốc', note: '(Ký, họ tên, đóng dấu)' },
           ]}
           emptyText="Không có nhân sự phát sinh lương trong kỳ"
         />
@@ -258,10 +283,10 @@ export default function PayrollOfficeScreen({ user, isDirector = false }) {
         onClose={() => setSensitiveModal(null)}
         onConfirm={sensitiveModal === 'lock' ? handleLockPayroll : handlePayPayroll}
         title={sensitiveModal === 'lock' ? `Xác nhận chốt bảng lương tháng ${month}` : `Xác nhận đã chi trả lương tháng ${month}`}
-        warningText={sensitiveModal === 'lock' ? 'Sau khi chốt sổ, các chính sách lương và hoa hồng trong tháng sẽ được khóa cố định để kế toán thực hiện chi trả.' : 'Hành động này xác nhận doanh nghiệp đã hoàn tất chuyển tiền/thanh toán lương cho toàn bộ CBNV trong tháng.'}
+        description={sensitiveModal === 'lock' ? 'Sau khi chốt sổ, các chính sách lương và hoa hồng trong tháng sẽ được khóa cố định để kế toán thực hiện chi trả.' : 'Hành động này xác nhận doanh nghiệp đã hoàn tất chuyển tiền/thanh toán lương cho toàn bộ CBNV trong tháng.'}
         requireReason={false}
-        confirmText={sensitiveModal === 'lock' ? 'Chốt sổ lương' : 'Đánh dấu đã trả'}
-        loading={submitting}
+        actionLabel={sensitiveModal === 'lock' ? 'Chốt sổ lương' : 'Đánh dấu đã trả'}
+        isLoading={submitting}
       />
     </div>
   );

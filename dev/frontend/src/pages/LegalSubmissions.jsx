@@ -149,7 +149,7 @@ export default function LegalSubmissions() {
       } else if (showLoading) {
         addToast('Lỗi khi tải danh sách hồ sơ pháp lý', 'error');
       }
-    } catch (err) {
+    } catch {
       if (showLoading) addToast('Không thể kết nối đến máy chủ', 'error');
     } finally {
       if (showLoading) setLoading(false);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, X, Send, Bot, User, Trash2 } from 'lucide-react';
+import { MessageCircle, X, Send, Bot, Trash2 } from 'lucide-react';
 
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,7 +14,7 @@ export default function ChatWidget() {
     if (saved) {
       try {
         setMessages(JSON.parse(saved));
-      } catch (e) {
+      } catch {
         console.error('Failed to parse chat history');
       }
     } else {
@@ -25,17 +25,17 @@ export default function ChatWidget() {
     }
   }, []);
 
-  // Save to localStorage when messages change
-  useEffect(() => {
-    localStorage.setItem('chatbot_history', JSON.stringify(messages));
-    scrollToBottom();
-  }, [messages]);
-
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
+
+  // Save to localStorage when messages change
+  useEffect(() => {
+    localStorage.setItem('chatbot_history', JSON.stringify(messages));
+    scrollToBottom();
+  }, [messages]);
 
   const clearHistory = () => {
     const initial = [{ role: 'assistant', content: 'Xin chào! Tôi là trợ lý AI nội bộ. Bạn có câu hỏi gì về quy trình, thông tin công ty cần hỗ trợ không?' }];
@@ -76,7 +76,7 @@ export default function ChatWidget() {
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: 'Xin lỗi, đã xảy ra lỗi hệ thống hoặc chưa cấu hình API Key.' }]);
       }
-    } catch (error) {
+    } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Lỗi kết nối tới máy chủ. Vui lòng kiểm tra mạng.' }]);
     } finally {
       setIsLoading(false);

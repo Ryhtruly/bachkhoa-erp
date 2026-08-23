@@ -138,7 +138,7 @@ export default function CRM() {
             key: 'source',
             label: 'Nguồn khách hàng',
             type: 'select',
-            width: 200,
+            width: 240,
             options: [
               { value: 'Facebook', label: 'Facebook' },
               { value: 'Zalo cá nhân', label: 'Zalo cá nhân' },
@@ -161,7 +161,13 @@ export default function CRM() {
       />
 
       {/* Kanban Board */}
-      <div className="crm-grid" id="crm-kanban-board" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginTop: '24px' }}>
+      <div
+        className="crm-grid"
+        id="crm-kanban-board"
+        role="region"
+        aria-label="Quy trình khách hàng theo trạng thái"
+        tabIndex={0}
+      >
         {columns.map(col => {
           const colLeads = filteredLeads.filter(l => l.status === col);
           return (

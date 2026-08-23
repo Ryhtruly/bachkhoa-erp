@@ -88,9 +88,6 @@ export default function Contracts({ isDirector = false }) {
     customer_email: 'admin@nhadatbachkhoa.com', service_type: '',
     address: '', contract_value: '', date_signed: '', due_date: '', sales_source: ''
   });
-  const [addressLocation, setAddressLocation] = useState({
-    provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '',
-  });
 
   useEffect(() => {
     // Danh mục cho bộ lọc dịch vụ — lọc theo task_type_id để phân biệt trùng tên.
@@ -240,7 +237,7 @@ export default function Contracts({ isDirector = false }) {
         body: JSON.stringify({ ...formData, ...payload })
       });
 
-      addToast('✅ Hợp đồng đã được lưu vào hệ thống!', 'success');
+      addToast('Hợp đồng đã được lưu vào hệ thống!', 'success');
       try {
         if (!data?.download_url) throw new Error('Không nhận được đường dẫn tài liệu Word');
         const documentBlob = await fetchProtectedDocumentBlob(data.download_url, getAccessToken());
