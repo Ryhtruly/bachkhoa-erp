@@ -174,7 +174,7 @@ export default function ReceivablesScreen({ user }) {
   const footerRow = {
     index: '',
     contract_id: '',
-    customer_name: 'TỔNG CỘNG',
+    customer_name: 'Tổng cộng',
     total_value: fmt(totalValueSum),
     paid_amount: fmt(totalPaidSum),
     remaining_amount: fmt(totalRemaining),
@@ -275,13 +275,13 @@ export default function ReceivablesScreen({ user }) {
   ];
 
   return (
-    <div>
+    <div className="card card--workspace receivables-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <FinanceScreenHeader 
-        title="Công Nợ Phải Thu & Dư Nợ Khách Hàng"
+        title="Công nợ phải thu & dư nợ khách hàng"
         onRefresh={load}
         actions={
           <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Printer size={15} /> In Sổ Công Nợ
+            <Printer size={15} /> In sổ công nợ
           </button>
         }
         subtitle="Quản lý chi tiết dư nợ theo từng hợp đồng, theo dõi tuổi nợ và xử lý khoản nộp thừa"
@@ -295,13 +295,13 @@ export default function ReceivablesScreen({ user }) {
       )}
 
       {/* 4 Thẻ KPI Công nợ nhanh */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
         <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(79, 70, 229, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <FileText size={20} color="#6366f1" />
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Tổng Giá Trị HĐ</div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>Tổng giá trị HĐ</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalValueSum)}</div>
           </div>
         </div>
@@ -311,7 +311,7 @@ export default function ReceivablesScreen({ user }) {
             <CheckCircle2 size={20} color="#10b981" />
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Đã Thu Hồi</div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>Đã thu hồi</div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalPaidSum)}</div>
           </div>
         </div>
@@ -321,8 +321,8 @@ export default function ReceivablesScreen({ user }) {
             <AlertTriangle size={20} color="#ef4444" />
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Còn Phải Thu {overdueCount > 0 && <span style={{ color: '#ef4444', fontWeight: 800 }}>({overdueCount} quá hạn)</span>}
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>
+              Còn phải thu {overdueCount > 0 && <span style={{ color: '#ef4444', fontWeight: 800 }}>({overdueCount} quá hạn)</span>}
             </div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalRemaining)}</div>
           </div>
@@ -333,13 +333,14 @@ export default function ReceivablesScreen({ user }) {
             <RotateCcw size={20} color="#a855f7" />
           </div>
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Nộp Thừa / Hoàn {overpaidCount > 0 && <span style={{ color: '#a855f7', fontWeight: 800 }}>({overpaidCount} HĐ)</span>}
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>
+              Nộp thừa / Hoàn {overpaidCount > 0 && <span style={{ color: '#a855f7', fontWeight: 800 }}>({overpaidCount} HĐ)</span>}
             </div>
             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#a855f7', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalExcess)}</div>
           </div>
         </div>
       </div>
+
       <FilterBar
         search={search}
         onSearchChange={setSearch}
@@ -421,11 +422,11 @@ export default function ReceivablesScreen({ user }) {
       )}
 
       <DataTable columns={cols} data={filteredData} loading={loading} rowKey="id"
-        emptyText="Không tìm thấy công nợ phù hợp bộ lọc" pageSize={15}
+        emptyText="Không tìm thấy công nợ phù hợp bộ lọc" pageSize={10}
         rowClassName={row => row.overdue ? 'row-overdue' : ''}
       />
 
-      <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '277mm', pointerEvents: 'none' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
         <FinancePrintReport
           documentRef={printDocumentRef}
           title="Sổ Công Nợ Phải Thu"

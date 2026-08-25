@@ -158,9 +158,9 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   ];
 
   return (
-    <div>
+    <div className="card card--workspace advance-clear-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <FinanceScreenHeader 
-        title="Quyết Toán Hoàn Ứng" 
+        title="Quyết toán hoàn ứng" 
         subtitle="Đối chiếu hóa đơn thực tế vs tạm ứng — Hệ thống tự tạo phiếu bù"
         onRefresh={load}
       />
@@ -204,9 +204,9 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
         />
       )}
 
-      <DataTable columns={cols} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng cần quyết toán" pageSize={15} />
+      <DataTable columns={cols} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng cần quyết toán" pageSize={10} />
 
-      <Modal open={modal} onClose={() => setModal(false)} size="sm" title="Quyết Toán Tạm Ứng">
+      <Modal open={modal} onClose={() => setModal(false)} size="sm" title="Quyết toán tạm ứng">
         {result ? (
           <div style={{ padding: '16px 0' }}>
             <div style={{ textAlign: 'center', marginBottom: 12, display: 'flex', justifyContent: 'center' }}><CheckCircle2 size={36} color="#10b981" /></div>
@@ -281,7 +281,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
               <button type="button" className="btn btn-secondary" onClick={() => setModal(false)}>Hủy</button>
               <button type="submit" className="btn btn-primary" disabled={submitting}>
-                {submitting ? 'Đang xử lý...' : 'Xác Nhận Quyết Toán'}
+                {submitting ? 'Đang xử lý...' : 'Xác nhận quyết toán'}
               </button>
             </div>
           </form>

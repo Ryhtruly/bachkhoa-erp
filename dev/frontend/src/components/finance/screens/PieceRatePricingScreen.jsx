@@ -132,21 +132,18 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
 
   const columns = [
     {
-      key: 'name', label: 'HẠNG MỤC KHOÁN', width: 260,
-      render: (v, row) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <strong style={{ color: '#0f172a', fontSize: '0.92rem' }}>{v}</strong>
-          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontFamily: 'monospace' }}>{row.code}</span>
-        </div>
+      key: 'name', label: 'Hạng mục khoán', width: 260,
+      render: (v) => (
+        <strong style={{ color: 'var(--text-primary)', fontSize: '0.92rem' }}>{v}</strong>
       ),
     },
-    { key: 'department_name', label: 'PHÒNG BAN', width: 130,
-      render: (v) => <span style={{ fontSize: '0.82rem', color: v ? '#475569' : '#cbd5e1' }}>{v || 'Chưa gán'}</span> },
-    { key: 'main', label: 'ĐƠN GIÁ CHÍNH', width: 150, align: 'right', render: giaCell('MAIN') },
-    { key: 'assistant', label: 'PHỤ ĐO', width: 150, align: 'right', render: giaCell('ASSISTANT') },
-    { key: 'submitter', label: 'NGƯỜI NỘP', width: 130, align: 'right', render: giaCell('SUBMITTER') },
+    { key: 'department_name', label: 'Phòng ban', width: 130,
+      render: (v) => <span style={{ fontSize: '0.82rem', color: v ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>{v || 'Chưa gán'}</span> },
+    { key: 'main', label: 'Đơn giá chính', width: 150, align: 'right', render: giaCell('MAIN') },
+    { key: 'assistant', label: 'Phụ đo', width: 150, align: 'right', render: giaCell('ASSISTANT') },
+    { key: 'submitter', label: 'Người nộp', width: 130, align: 'right', render: giaCell('SUBMITTER') },
     {
-      key: 'actions', label: 'THAO TÁC', width: 150, align: 'center',
+      key: 'actions', label: 'Thao tác', width: 150, align: 'center',
       render: (_, row) => {
         const coPending = Object.keys(row.pending || {}).length > 0;
         return (
@@ -176,11 +173,11 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   ];
 
   return (
-    <div className="card piece-rate-pricing" data-testid="piece-rate-pricing" style={{ padding: 24, borderRadius: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 16 }}>
+    <div className="card card--workspace piece-rate-pricing" data-testid="piece-rate-pricing" style={{ padding: 24, borderRadius: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 14 }}>
         <div>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
-            <Banknote size={22} color="#10b981" /> Bảng Đơn Giá Khoán Công Việc
+            <Banknote size={22} color="#10b981" /> Bảng đơn giá khoán công việc
           </h3>
           <div className="sub" style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: 4 }}>
             Đơn giá thật hệ thống dùng để trả khoán. Sửa giá tạo đề xuất; giám đốc duyệt mới áp dụng, bản cũ giữ lại để đối chiếu.
@@ -194,7 +191,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
       </div>
 
       <DataTable columns={columns} data={filtered} loading={loading} rowKey="work_item_id"
-        emptyText="Không tìm thấy hạng mục khoán" pageSize={25} />
+        emptyText="Không tìm thấy hạng mục khoán" pageSize={10} />
 
       {/* Modal sửa đơn giá — tạo đề xuất (draft) */}
       <Modal open={Boolean(editing)} onClose={() => !saving && setEditing(null)} size="md" closeOnOverlay={!saving}
@@ -233,7 +230,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
           <div className="piece-rate-pricing__history-scroll" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             <table className="piece-rate-pricing__history-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
               <thead>
-                <tr style={{ textAlign: 'left', color: '#64748b', borderBottom: '1.5px solid #e2e8f0' }}>
+                <tr style={{ textAlign: 'left', color: 'var(--text-tertiary)', borderBottom: '1.5px solid var(--border-default)' }}>
                   <th style={{ padding: '8px 6px' }}>Vai trò</th>
                   <th style={{ padding: '8px 6px', textAlign: 'right' }}>Đơn giá</th>
                   <th style={{ padding: '8px 6px' }}>Hiệu lực</th>
@@ -243,16 +240,16 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
               </thead>
               <tbody>
                 {history.data.map(r => (
-                  <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '8px 6px' }}>{ROLE_LABELS[r.role_code] || r.role_code}</td>
-                    <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700 }}>{fmt(r.amount)}</td>
-                    <td style={{ padding: '8px 6px' }}>{r.effective_from} → {r.effective_to || 'nay'}</td>
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '8px 6px', color: 'var(--text-primary)' }}>{ROLE_LABELS[r.role_code] || r.role_code}</td>
+                    <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(r.amount)}</td>
+                    <td style={{ padding: '8px 6px', color: 'var(--text-secondary)' }}>{r.effective_from} → {r.effective_to || 'nay'}</td>
                     <td style={{ padding: '8px 6px' }}>
                       <span style={{ color: r.status === 'published' ? '#10b981' : r.status === 'draft' ? '#f59e0b' : '#94a3b8', fontWeight: 700 }}>
                         {r.status === 'published' ? 'Đang/đã áp dụng' : r.status === 'draft' ? 'Chờ duyệt' : 'Lưu trữ'}
                       </span>
                     </td>
-                    <td style={{ padding: '8px 6px', color: '#64748b' }}>{r.approved_by || '—'}</td>
+                    <td style={{ padding: '8px 6px', color: 'var(--text-tertiary)' }}>{r.approved_by || '—'}</td>
                   </tr>
                 ))}
               </tbody>

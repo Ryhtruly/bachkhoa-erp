@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight, Inbox } from 'lucide-react';
+import { Select } from './Select';
 
 /**
  * DataTable — Bảng dữ liệu dùng chung
@@ -15,7 +16,8 @@ import { ChevronUp, ChevronDown, ChevronsLeft, ChevronLeft, ChevronRight, Chevro
  *   selectable?: boolean                      — bật checkbox chọn row
  *   selected?: string[]                       — mảng key đã chọn
  *   onSelectionChange?: (keys: string[]) => void
- *   pageSize?: number                         — 0 = tắt phân trang
+ *   pageSize?: number                         — 0 = tắt phân trang, mặc định 10
+ *   pageSizeOptions?: number[]                — các tùy chọn số dòng/trang, mặc định [10, 25, 50]
  *   stickyHeader?: boolean
  *   compact?: boolean
  */
@@ -30,13 +32,24 @@ export default function DataTable({
   selectable = false,
   selected = [],
   onSelectionChange,
-  pageSize = 20,
+  pageSize = 10,
+  pageSizeOptions = [10, 25, 50],
   stickyHeader = true,
   compact = false,
 }) {
+  const rootRef = useRef(null);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc'); // 'asc' | 'desc'
   const [page, setPage] = useState(1);
+  const [currentPageSize, setCurrentPageSize] = useState(pageSize > 0 ? pageSize : 10);
+
+  useEffect(() => {
+    if (pageSize > 0) {
+      setCurrentPageSize(pageSize);
+    }
+  }, [pageSize]);
+
+  const activePageSize = pageSize === 0 ? 0 : currentPageSize;
 
   const getKey = (row) =>
     typeof rowKey === 'function' ? rowKey(row) : row[rowKey];
@@ -53,14 +66,47 @@ export default function DataTable({
   }, [data, sortKey, sortDir]);
 
   // ── Paginate ──
-  const totalPages = pageSize > 0 ? Math.ceil(sorted.length / pageSize) : 1;
+  const totalPages = activePageSize > 0 ? Math.ceil(sorted.length / activePageSize) : 1;
   const safePage = Math.min(page, totalPages || 1);
-  const paged = pageSize > 0 ? sorted.slice((safePage - 1) * pageSize, safePage * pageSize) : sorted;
+  const paged = activePageSize > 0 ? sorted.slice((safePage - 1) * activePageSize, safePage * activePageSize) : sorted;
+
+  const goToPage = (nextPage) => {
+    const target = typeof nextPage === 'function' ? nextPage(safePage) : nextPage;
+    const clamped = Math.max(1, Math.min(totalPages, target));
+    setPage(clamped);
+
+    // Cuộn mượt mà lên đầu bảng nếu người dùng đang ở vị trí cuộn bên dưới
+    if (rootRef.current && typeof window !== 'undefined') {
+      const tableWrap = rootRef.current.querySelector('.table-wrap');
+      if (tableWrap) {
+        tableWrap.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      const rect = rootRef.current.getBoundingClientRect();
+      const headerOffset = 76;
+      if (rect.top < headerOffset || rect.top > window.innerHeight) {
+        const targetY = (window.pageYOffset || window.scrollY || 0) + rect.top - headerOffset;
+        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+
+        let parent = rootRef.current.parentElement;
+        while (parent && parent !== document.body) {
+          const style = window.getComputedStyle(parent);
+          if (
+            (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+            parent.scrollHeight > parent.clientHeight
+          ) {
+            parent.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+          parent = parent.parentElement;
+        }
+      }
+    }
+  };
 
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('asc'); }
-    setPage(1);
+    goToPage(1);
   };
 
   // ── Selection ──
@@ -79,10 +125,10 @@ export default function DataTable({
   };
 
   // ── Skeleton rows ──
-  const skeletonRows = Array.from({ length: pageSize > 0 ? Math.min(pageSize, 8) : 8 });
+  const skeletonRows = Array.from({ length: activePageSize > 0 ? Math.min(activePageSize, 8) : 8 });
 
   return (
-    <div className={`dt-wrapper${compact ? ' dt-wrapper--compact' : ''}`}>
+    <div ref={rootRef} className={`dt-wrapper${compact ? ' dt-wrapper--compact' : ''}`}>
       {/* Table */}
       <div className="table-wrap">
         <table>
@@ -156,7 +202,7 @@ export default function DataTable({
                   const customRowClass = typeof rowClassName === 'function'
                     ? rowClassName(row)
                     : rowClassName;
-                  const rowIndex = pageSize > 0 ? (safePage - 1) * pageSize + index : index;
+                  const rowIndex = activePageSize > 0 ? (safePage - 1) * activePageSize + index : index;
                   return (
                     <tr
                       key={key}
@@ -196,15 +242,35 @@ export default function DataTable({
       {/* Pagination */}
       {pageSize > 0 && sorted.length > 0 && (
         <div className="dt-pagination">
-          <span className="dt-pagination__info">
-            {selectable && selected.length > 0 && (
-              <span className="dt-selected-count">{selected.length} đã chọn ·&nbsp;</span>
+          <div className="dt-pagination__left">
+            <span className="dt-pagination__info">
+              {selectable && selected.length > 0 && (
+                <span className="dt-selected-count">{selected.length} đã chọn ·&nbsp;</span>
+              )}
+              {(safePage - 1) * activePageSize + 1}–{Math.min(safePage * activePageSize, sorted.length)}&nbsp;/&nbsp;{sorted.length} bản ghi
+            </span>
+            {pageSizeOptions && pageSizeOptions.length > 0 && (
+              <div className="dt-pagination__size-selector">
+                <span className="dt-pagination__size-label">Hiển thị:</span>
+                <Select
+                  value={currentPageSize}
+                  onChange={(val) => {
+                    setCurrentPageSize(Number(val));
+                    goToPage(1);
+                  }}
+                  options={pageSizeOptions.map((opt) => ({
+                    value: opt,
+                    label: `${opt} / trang`,
+                  }))}
+                  className="ui-select--compact dt-pagination__select"
+                  ariaLabel="Số bản ghi mỗi trang"
+                />
+              </div>
             )}
-            {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)}&nbsp;/&nbsp;{sorted.length} bản ghi
-          </span>
+          </div>
           <div className="dt-pagination__controls">
-            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => setPage(1)} disabled={safePage === 1} aria-label="Trang đầu"><ChevronsLeft size={15} /></button>
-            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} aria-label="Trang trước"><ChevronLeft size={15} /></button>
+            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => goToPage(1)} disabled={safePage === 1} aria-label="Trang đầu"><ChevronsLeft size={15} /></button>
+            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => goToPage((p) => Math.max(1, p - 1))} disabled={safePage === 1} aria-label="Trang trước"><ChevronLeft size={15} /></button>
             <span className="dt-pagination__pages">
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 1)
@@ -220,12 +286,12 @@ export default function DataTable({
                         key={item}
                         className={`btn btn-sm${safePage === item ? ' btn-primary' : ' btn-ghost'}`}
                         style={{ minWidth: 34 }}
-                        onClick={() => setPage(item)}
+                        onClick={() => goToPage(item)}
                       >{item}</button>
                 )}
             </span>
-            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} aria-label="Trang sau"><ChevronRight size={15} /></button>
-            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => setPage(totalPages)} disabled={safePage === totalPages} aria-label="Trang cuối"><ChevronsRight size={15} /></button>
+            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => goToPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} aria-label="Trang sau"><ChevronRight size={15} /></button>
+            <button className="btn btn-icon btn-sm btn-ghost" onClick={() => goToPage(totalPages)} disabled={safePage === totalPages} aria-label="Trang cuối"><ChevronsRight size={15} /></button>
           </div>
         </div>
       )}

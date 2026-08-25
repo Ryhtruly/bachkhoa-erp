@@ -87,11 +87,11 @@ describe('PieceRatePayrollScreen payroll closing', () => {
 
     render(<ToastProvider><PieceRatePayrollScreen /></ToastProvider>);
 
-    const printButton = await screen.findByRole('button', { name: 'In Phiếu Lương' }, { timeout: 5000 });
+    const printButton = await screen.findByRole('button', { name: /In phiếu lương/i }, { timeout: 5000 });
     await waitFor(() => expect(printButton).not.toBeDisabled());
     fireEvent.click(printButton);
 
-    expect(await screen.findByRole('dialog', { name: /Xem Trước Bản In/i })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: /Xem trước bản in/i })).toBeInTheDocument();
     expect(document.querySelector('.payroll-preview-modal')).toBeInTheDocument();
   });
 });

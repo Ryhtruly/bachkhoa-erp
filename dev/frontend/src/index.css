@@ -95,6 +95,33 @@
   box-sizing: border-box;
 }
 
+/* ─── Global Interactive Elements Cursor Reset ─── */
+button,
+a,
+select,
+summary,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"]::-webkit-file-upload-button,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"] {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[role="button"][aria-disabled="true"],
+[disabled] {
+  cursor: not-allowed !important;
+}
+
 html {
   font-size: 15px;
   scrollbar-gutter: stable;
@@ -1082,6 +1109,68 @@ body {
   border-color: var(--orange-500);
   box-shadow: 0 12px 32px rgba(235, 74, 35, 0.1);
   transform: translateY(-2px);
+}
+
+/* Khung làm việc lớn / Workspace container / Form tabs phải đứng yên, không nhảy lên khi hover */
+.tab-pane .card,
+.payroll-ledger,
+.fin-settings-card,
+.card--static,
+.card--workspace {
+  transition: border-color var(--duration), box-shadow var(--duration);
+}
+
+.tab-pane .card:hover,
+.payroll-ledger:hover,
+.fin-settings-card:hover,
+.card--static:hover,
+.card--workspace:hover {
+  transform: none !important;
+  border-color: var(--border-default);
+  box-shadow: var(--shadow-card);
+}
+
+/* ─── Workspace Cards & Full-Height Stretcher ─── */
+.cashflow-screen-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cashflow-screen-container > * {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.card--workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.card--workspace .dt-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.card--workspace .table-wrap {
+  flex: 1;
+  overflow-y: visible;
+}
+
+.card--workspace .dt-empty {
+  height: 100%;
+  min-height: 200px;
+}
+
+.card--workspace .dt-pagination {
+  margin-top: auto;
 }
 
 /* ==========================================
@@ -3131,7 +3220,7 @@ tbody tr:hover td.dt-sticky-right {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 8px 16px;
   border: 1px solid var(--border-default);
   border-top: none;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
@@ -3139,6 +3228,54 @@ tbody tr:hover td.dt-sticky-right {
   font-size: 0.8rem;
   color: var(--text-tertiary);
   font-weight: 500;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dt-pagination__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+}
+
+.dt-pagination__info {
+  white-space: nowrap;
+}
+
+.dt-pagination__size-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.dt-pagination__size-label {
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.dt-pagination__select {
+  min-width: 108px;
+  width: auto;
+}
+
+.dt-pagination__select .ui-select__trigger {
+  min-height: 28px !important;
+  height: 28px !important;
+  padding: 2px 8px 2px 10px !important;
+  border-radius: 6px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  gap: 6px !important;
+}
+
+.dt-pagination__select .ui-select__chevron {
+  width: 12px !important;
+  height: 12px !important;
 }
 
 .dt-pagination__controls {
@@ -3953,37 +4090,34 @@ textarea.form-control {
 
 /* ─── Balance Card ─── */
 .balance-card {
-  padding: 20px 24px;
+  padding: 10px 16px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
   background: var(--bg-card);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .balance-card__icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.6rem;
   flex-shrink: 0;
 }
 
 .balance-card__label {
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .balance-card__amount {
-  font-size: 1.6rem;
+  font-size: 1.25rem;
   font-weight: 800;
   font-family: var(--font-mono);
   letter-spacing: -0.5px;
@@ -3998,9 +4132,9 @@ textarea.form-control {
 }
 
 .balance-card__sub {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--text-tertiary);
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 /* ─── Overdue row ─── */
@@ -4021,26 +4155,26 @@ textarea.form-control {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
 }
 
 .finance-screen-title {
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 800;
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   letter-spacing: -0.02em;
 }
 
 .finance-screen-sub {
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   color: var(--text-tertiary);
-  margin-top: 4px;
-  line-height: 1.4;
+  margin-top: 2px;
+  line-height: 1.35;
 }
 
 /* ─── Summary strip ─── */
@@ -4049,13 +4183,13 @@ textarea.form-control {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 10px 16px;
+  gap: 10px;
+  padding: 6px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm, 8px);
-  margin-bottom: 14px;
-  font-size: 0.85rem;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
 }
@@ -4631,7 +4765,7 @@ textarea.form-control {
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
 }
 
 .payroll-ledger__header h3 {

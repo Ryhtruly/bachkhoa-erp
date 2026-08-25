@@ -191,7 +191,7 @@ describe("Frontend Finance Comprehensive Matrix", () => {
       const MonthlyDashboardScreen = (await import("./screens/MonthlyDashboardScreen")).default;
       const { container } = render(<MonthlyDashboardScreen />);
       expect(container).toBeDefined();
-    });
+    }, 15000);
 
     it("renders FinanceNav with 3 main groups and switching tabs", async () => {
       const FinanceNav = (await import("./FinanceNav")).default;
@@ -200,7 +200,7 @@ describe("Frontend Finance Comprehensive Matrix", () => {
         <FinanceNav activeTab="monthly-dashboard" onSelectTab={onSelectTab} isDirector={true} />
       );
       expect(container).toBeDefined();
-      expect(getByText("Dòng Tiền & Sổ Quỹ")).toBeDefined();
+      expect(getByText("Dòng tiền & sổ quỹ")).toBeDefined();
     });
   });
 

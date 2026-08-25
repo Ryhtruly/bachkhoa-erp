@@ -126,7 +126,7 @@ export default function MyPayroll({ isModal = false }) {
 
   if (!payroll && (!history || history.length === 0)) {
     return (
-      <section className={`my-payroll ${isModal ? 'my-payroll--modal' : 'my-payroll--screen'}`}>
+      <section className={`my-payroll ${isModal ? 'my-payroll--modal' : 'my-payroll--screen card card--workspace my-payroll-workspace'}`}>
         <div className="my-payroll__state">
           Chưa có dữ liệu lương cho kỳ này. Lương sẽ hiện khi bộ phận nhân sự thiết lập mức lương cơ bản hoặc phát sinh khoán công việc.
         </div>
@@ -143,7 +143,7 @@ export default function MyPayroll({ isModal = false }) {
       new Date(payroll.month).getFullYear() === new Date().getFullYear());
 
   return (
-    <section className={`my-payroll ${isModal ? 'my-payroll--modal' : 'my-payroll--screen'}`}>
+    <section className={`my-payroll ${isModal ? 'my-payroll--modal' : 'my-payroll--screen card card--workspace my-payroll-workspace'}`}>
       {/* Header trang — Chỉ hiển thị đầy đủ khi ở ngoài Screen, trong Modal chỉ hiển thị thanh trạng thái tinh gọn */}
       {!isModal ? (
         <header className="my-payroll__heading">

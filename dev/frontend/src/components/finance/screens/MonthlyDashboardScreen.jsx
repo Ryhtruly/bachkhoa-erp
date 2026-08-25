@@ -99,9 +99,9 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   // Cấu hình bảng in A4
   const printColumns = [
     { key: 'name', label: 'Hạng mục / Phòng ban', align: 'left' },
-    { key: 'income', label: 'Tổng Thu', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
-    { key: 'expenditure', label: 'Tổng Chi', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
-    { key: 'net', label: 'Chênh Lệch', align: 'right', format: (_, row) => fmt((row.income || 0) - (row.expenditure || row.expense || 0)) },
+    { key: 'income', label: 'Tổng thu', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'expenditure', label: 'Tổng chi', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'net', label: 'Chênh lệch', align: 'right', format: (_, row) => fmt((row.income || 0) - (row.expenditure || row.expense || 0)) },
   ];
 
   const printRows = (d.categories || []).map((cat) => ({
@@ -112,7 +112,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
 
   const printFooterRow = (
     <tr className="finance-print-footer-row">
-      <td style={{ fontWeight: 700 }}>TỔNG CỘNG</td>
+      <td style={{ fontWeight: 700 }}>Tổng cộng</td>
       <td className="is-right" style={{ fontWeight: 700, color: '#059669' }}>{fmt(totalIncome)}</td>
       <td className="is-right" style={{ fontWeight: 700, color: '#dc2626' }}>{fmt(totalExpenditure)}</td>
       <td className="is-right" style={{ fontWeight: 700, color: netDifference >= 0 ? '#059669' : '#dc2626' }}>{fmt(netDifference)}</td>
@@ -120,23 +120,23 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   );
 
   return (
-    <div className="finance-monthly-dashboard" data-testid="finance-monthly-dashboard" style={{ padding: '8px 0', fontFamily: 'system-ui, sans-serif' }}>
+    <div className="finance-monthly-dashboard" data-testid="finance-monthly-dashboard" style={{ padding: 0, fontFamily: 'system-ui, sans-serif' }}>
       {/* Selector Header */}
       <div className="finance-monthly-dashboard__header" style={{
         background: 'var(--bg-card)',
-        borderRadius: 16,
-        padding: '20px 24px',
+        borderRadius: 14,
+        padding: '16px 20px',
         border: '1px solid var(--border-default)',
-        marginBottom: 20,
+        marginBottom: 12,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: 16
+        gap: 14
       }}>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BarChart2 size={22} color="var(--orange-500)" /> BẢNG ĐIỀU KHIỂN THU - CHI (THEO THÁNG)
+            <BarChart2 size={22} color="var(--orange-500)" /> Báo cáo thu - chi theo tháng
           </h2>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', margin: '4px 0 0 0' }}>
             Báo cáo tổng hợp doanh số thu chi phân bổ theo Hạng mục chi phí và Phòng ban
@@ -178,7 +178,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
               title="Xem trước mẫu in khổ A4 và in/lưu PDF"
             >
               <Printer size={16} color="var(--orange-500)" />
-              <span>Xem Trước & In A4</span>
+              <span>Xem trước &amp; in A4</span>
             </button>
           </div>
         </div>
@@ -191,7 +191,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
         border: '1px solid var(--border-subtle)',
         borderRadius: 8,
         padding: '8px 14px',
-        margin: '-10px 0 16px 0',
+        margin: '0 0 12px 0',
         display: 'flex',
         alignItems: 'center',
         gap: 8
@@ -203,9 +203,9 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
       </div>
 
       {/* 3 Summary Cards */}
-      <div className="finance-monthly-dashboard__summary-grid" data-testid="finance-monthly-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: '20px 24px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="finance-monthly-dashboard__summary-grid" data-testid="finance-monthly-summary" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 16 }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 20px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TrendingUp size={22} color="#10b981" />
           </div>
           <div>
@@ -216,8 +216,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           </div>
         </div>
 
-        <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: '20px 24px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 20px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <TrendingDown size={22} color="#ef4444" />
           </div>
           <div>
@@ -228,8 +228,8 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           </div>
         </div>
 
-        <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: '20px 24px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: netDifference >= 0 ? 'rgba(59,130,246,0.12)' : 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 20px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: netDifference >= 0 ? 'rgba(59,130,246,0.12)' : 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Scale size={22} color={netDifference >= 0 ? '#3b82f6' : '#ef4444'} />
           </div>
           <div>
@@ -242,7 +242,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
       </div>
 
       {/* Grid: 2 Hàng (Hạng mục & Phòng ban) */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         
         {/* PHẦN 1: THEO HẠNG MỤC THU / CHI */}
         <div

@@ -97,7 +97,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
 
   const printFooterRow = {
     index: '',
-    full_name: 'TỔNG CỘNG',
+    full_name: 'Tổng cộng',
     department: '',
     job_title: '',
     base_salary: fmt(totalBaseSalary),
@@ -116,25 +116,25 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
   };
 
   const cols = [
-    { key: 'full_name', label: 'NHÂN SỰ', width: 180, render: (v, row) => (
+    { key: 'full_name', label: 'Nhân sự', width: 180, render: (v, row) => (
       <div>
         <strong style={{ display: 'block', color: 'var(--text-primary)' }}>{v}</strong>
         <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{row.job_title || row.department || 'Nhân viên'}</span>
       </div>
     )},
-    { key: 'department', label: 'PHÒNG BAN', width: 140, render: v => <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{v || 'Công ty'}</span> },
-    { key: 'base_salary', label: 'LƯƠNG CƠ BẢN', width: 130, align: 'right', render: v => <span style={{ fontFamily: 'var(--font-mono)' }}>{fmt(v || 0)}</span> },
-    { key: 'bonus', label: 'KPI & THƯỞNG', width: 130, align: 'right', render: (v) => <span style={{ fontFamily: 'var(--font-mono)', color: v > 0 ? '#10b981' : 'inherit' }}>{v > 0 ? `+${fmt(v)}` : '0₫'}</span> },
-    { key: 'sales_commission', label: 'HOA HỒNG BĐS', width: 140, align: 'right', render: (v) => <span style={{ fontFamily: 'var(--font-mono)', color: v > 0 ? '#3b82f6' : 'inherit' }}>{v > 0 ? `+${fmt(v)}` : '0₫'}</span> },
-    { key: 'total_salary', label: 'TỔNG NHẬN', width: 150, align: 'right', render: (v) => <strong style={{ fontFamily: 'var(--font-mono)', color: '#ef4444', fontSize: '0.95rem' }}>{fmt(v || 0)}</strong> },
+    { key: 'department', label: 'Phòng ban', width: 140, render: v => <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{v || 'Công ty'}</span> },
+    { key: 'base_salary', label: 'Lương cơ bản', width: 130, align: 'right', render: v => <span style={{ fontFamily: 'var(--font-mono)' }}>{fmt(v || 0)}</span> },
+    { key: 'bonus', label: 'KPI & thưởng', width: 130, align: 'right', render: (v) => <span style={{ fontFamily: 'var(--font-mono)', color: v > 0 ? '#10b981' : 'inherit' }}>{v > 0 ? `+${fmt(v)}` : '0₫'}</span> },
+    { key: 'sales_commission', label: 'Hoa hồng BĐS', width: 140, align: 'right', render: (v) => <span style={{ fontFamily: 'var(--font-mono)', color: v > 0 ? '#3b82f6' : 'inherit' }}>{v > 0 ? `+${fmt(v)}` : '0₫'}</span> },
+    { key: 'total_salary', label: 'Tổng nhận', width: 150, align: 'right', render: (v) => <strong style={{ fontFamily: 'var(--font-mono)', color: '#ef4444', fontSize: '0.95rem' }}>{fmt(v || 0)}</strong> },
   ];
 
   return (
-    <div className="card payroll-ledger">
+    <div className="card card--workspace payroll-ledger">
       <div className="payroll-ledger__header">
         <div>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-            <Users size={20} color="var(--orange-500)" /> Lương VP & Hoa Hồng Sales
+            <Users size={20} color="var(--orange-500)" /> Lương VP & hoa hồng Sales
           </h3>
           <div className="sub" style={{ marginTop: 4 }}>
             Lương cơ bản + KPI + Hoa hồng BĐS theo tháng.
@@ -245,12 +245,12 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
           loading={loading}
           rowKey="id"
           emptyText={`Chưa có dữ liệu nhân sự cho tháng ${month}.`}
-          pageSize={15}
+          pageSize={10}
           compact
         />
       </div>
 
-      <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '277mm', pointerEvents: 'none' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
         <FinancePrintReport
           documentRef={printDocumentRef}
           title={(

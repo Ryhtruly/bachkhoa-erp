@@ -501,7 +501,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
       </Modal>
 
       {detail && (
-        <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '186mm', pointerEvents: 'none' }}>
+        <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
           <VoucherTemplate
             title={voucherTitle}
             voucherId={transactionId || detail.id}

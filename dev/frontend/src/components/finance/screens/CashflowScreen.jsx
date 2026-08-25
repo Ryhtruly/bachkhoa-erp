@@ -167,18 +167,15 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const isExpense = t => t.type === 'EXPENSE' || t.type === 'Chi' || t.type === 'ADVANCE' || t.type === 'Tạm ứng' || t.transaction_type === 'EXPENSE' || t.transaction_type === 'Chi';
 
   // 1. Số liệu tổng quan kỳ / quỹ (CỐ ĐỊNH theo tháng, không bị nhảy về 0đ khi lọc bảng con)
+
   const periodIncome = useMemo(() => data.filter(t => isIncome(t) && isCountedTransaction(t)).reduce((s, t) => s + t.amount, 0), [data]);
   const periodExpense = useMemo(() => data.filter(t => isExpense(t) && isCountedTransaction(t)).reduce((s, t) => s + t.amount, 0), [data]);
   const periodNet = periodIncome - periodExpense;
 
-  // 2. Số liệu của danh sách đang lọc (Hiển thị trên SummaryStrip và Báo cáo in)
   const filteredIncome = useMemo(() => sortedFiltered.filter(t => isIncome(t) && isCountedTransaction(t)).reduce((s, t) => s + t.amount, 0), [sortedFiltered]);
   const filteredExpense = useMemo(() => sortedFiltered.filter(t => isExpense(t) && isCountedTransaction(t)).reduce((s, t) => s + t.amount, 0), [sortedFiltered]);
   const filteredNet = filteredIncome - filteredExpense;
 
-  // Bản in chỉ bao gồm giao dịch thực sự được ghi nhận vào sổ quỹ.
-  // Các trạng thái chờ duyệt, từ chối và đã hủy vẫn có thể hiện trên bảng thao tác,
-  // nhưng không được đưa vào danh sách in để tổng cuối bảng luôn khớp với các dòng in.
   const printRows = useMemo(() => getPrintableTransactions(sortedFiltered), [sortedFiltered]);
   const printIncome = useMemo(() => printRows.filter(t => isIncome(t)).reduce((s, t) => s + t.amount, 0), [printRows]);
   const printExpense = useMemo(() => printRows.filter(t => isExpense(t)).reduce((s, t) => s + t.amount, 0), [printRows]);
@@ -204,7 +201,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     id: '',
     type: '',
     'Hạng mục': '',
-    'Diễn giải': 'TỔNG CỘNG',
+    'Diễn giải': 'Tổng cộng',
     'Đối tác': '',
     'Hình thức': '',
     income: fmt(printIncome),
@@ -221,23 +218,23 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   };
 
   return (
-    <div>
+    <div className="card card--workspace cashflow-workspace" style={{ padding: '16px 20px', borderRadius: 14 }}>
       <FinanceScreenHeader
-        title={mode === 'all' ? 'Nhật Ký Thu Chi' : mode === 'cash' ? 'Quỹ Tiền Mặt' : 'Tài Khoản Ngân Hàng'}
+        title={mode === 'all' ? 'Nhật ký thu chi' : mode === 'cash' ? 'Quỹ tiền mặt' : 'Tài khoản ngân hàng'}
         subtitle={mode === 'all' ? 'Quản lý dòng tiền, theo dõi các khoản thu chi thực tế' : mode === 'cash' ? 'Theo dõi số dư và biến động thu chi quỹ tiền mặt thực tế' : 'Theo dõi số dư và biến động thu chi tài khoản ngân hàng'}
         onRefresh={load}
         actions={
           <>
             <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Printer size={15} /> In Sổ Quỹ
+              <Printer size={15} /> In sổ quỹ
             </button>
             {!isDirector && (
               <>
                 <button className="btn btn-primary" onClick={() => setModal('Thu')} style={{ background: '#10b981', borderColor: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <PlusCircle size={15} /> Thu Tiền
+                  <PlusCircle size={15} /> Lập phiếu thu
                 </button>
                 <button className="btn btn-primary" onClick={() => setModal('Chi')} style={{ background: '#ef4444', borderColor: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <MinusCircle size={15} /> Chi Tiền
+                  <MinusCircle size={15} /> Lập phiếu chi
                 </button>
               </>
             )}
@@ -252,13 +249,12 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         </div>
       )}
 
-      {/* 3 Thẻ KPI tổng hợp cố định theo kỳ (có thể bấm để lọc nhanh bảng bên dưới) */}
-      <div className="cashflow-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
+      <div className="cashflow-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
         {mode === 'all' ? (
           <>
             <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Thu' ? 'All' : 'Thu' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Thu">
               <BalanceCard
-                title={`Tổng Thu (Toàn Hệ Thống)${filters.type === 'Thu' ? ' • Đang lọc' : ''}`}
+                title={`Tổng thu (toàn hệ thống)${filters.type === 'Thu' ? ' • Đang lọc' : ''}`}
                 amount={periodIncome}
                 icon={<TrendingUp size={20} color="#10b981" />}
                 forcePositive
@@ -267,7 +263,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
             </div>
             <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Chi' ? 'All' : 'Chi' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Chi">
               <BalanceCard
-                title={`Tổng Chi (Toàn Hệ Thống)${filters.type === 'Chi' ? ' • Đang lọc' : ''}`}
+                title={`Tổng chi (toàn hệ thống)${filters.type === 'Chi' ? ' • Đang lọc' : ''}`}
                 amount={periodExpense}
                 icon={<TrendingDown size={20} color="#ef4444" />}
                 forceNegative
@@ -276,7 +272,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
             </div>
             <div onClick={() => setFilters(p => ({ ...p, type: 'All' }))} style={{ cursor: 'pointer' }} title="Bấm để xem tất cả Thu & Chi">
               <BalanceCard
-                title="Dòng Tiền Ròng (Thu - Chi)"
+                title="Dòng tiền ròng (Thu - Chi)"
                 amount={periodNet}
                 icon={<Scale size={20} color={periodNet >= 0 ? "#10b981" : "#ef4444"} />}
               />
@@ -286,14 +282,14 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           <>
             <div onClick={() => setFilters(p => ({ ...p, type: 'All' }))} style={{ cursor: 'pointer' }} title="Bấm để xem tất cả">
               <BalanceCard
-                title="Số Dư Hiện Tại"
+                title="Số dư hiện tại"
                 amount={balance.balance}
                 icon={mode === 'cash' ? <Wallet size={20} color="#10b981" /> : <Building2 size={20} color="#3b82f6" />}
               />
             </div>
             <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Thu' ? 'All' : 'Thu' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Thu">
               <BalanceCard
-                title={`Tổng Thu${filters.type === 'Thu' ? ' • Đang lọc' : ''}`}
+                title={`Tổng thu${filters.type === 'Thu' ? ' • Đang lọc' : ''}`}
                 amount={balance.total_income}
                 icon={<TrendingUp size={20} color="#10b981" />}
                 forcePositive
@@ -302,7 +298,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
             </div>
             <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Chi' ? 'All' : 'Chi' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Chi">
               <BalanceCard
-                title={`Tổng Chi${filters.type === 'Chi' ? ' • Đang lọc' : ''}`}
+                title={`Tổng chi${filters.type === 'Chi' ? ' • Đang lọc' : ''}`}
                 amount={balance.total_expenditure}
                 icon={<TrendingDown size={20} color="#ef4444" />}
                 forceNegative
@@ -345,9 +341,9 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
       )}
 
       <DataTable columns={CF_COLS} data={sortedFiltered} loading={loading} rowKey="id"
-        emptyText="Chưa có giao dịch nào" pageSize={15} onRowClick={row => setDetailId(row.id)} />
+        emptyText="Chưa có giao dịch nào" pageSize={10} onRowClick={row => setDetailId(row.id)} />
 
-      <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '277mm', pointerEvents: 'none' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
         <FinancePrintReport
           documentRef={printDocumentRef}
           title={reportTitle}

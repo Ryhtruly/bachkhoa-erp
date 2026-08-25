@@ -262,9 +262,9 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   });
 
   return (
-    <div>
+    <div className="card card--workspace advance-request-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <FinanceScreenHeader
-        title="Đề Xuất Tạm Ứng"
+        title="Đề xuất tạm ứng"
         subtitle="Ứng tiền cho kỹ sư/chỉ huy trưởng/pháp lý trước khi đi công trường hoặc thực hiện nhiệm vụ"
         onRefresh={load}
         actions={
@@ -276,7 +276,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
               style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
               title="Nhân viên / Kế toán lập đề xuất xin tạm ứng kinh phí"
             >
-              <PlusCircle size={16} /> Lập Đề Xuất Tạm Ứng
+              <PlusCircle size={16} /> Lập đề xuất tạm ứng
             </button>
           ) : null
         }
@@ -335,11 +335,11 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         loading={loading}
         rowKey="id"
         emptyText="Chưa có phiếu tạm ứng"
-        pageSize={15}
+        pageSize={10}
         onRowClick={row => setDetailId(row.id)}
       />
 
-      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Lập Đề Xuất Tạm Ứng">
+      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Lập đề xuất tạm ứng">
         <form onSubmit={handleSubmit}>
           {/* Header notice */}
           <div style={{
@@ -357,7 +357,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
               <HandCoins size={22} color="var(--amber-500)" style={{ flexShrink: 0 }} />
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--text-primary)' }}>Phiếu Đề Xuất Tạm Ứng Kinh Phí</div>
+                <div style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--text-primary)' }}>Phiếu đề xuất tạm ứng kinh phí</div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Phiếu sẽ được gửi lên Ban Giám Đốc phê duyệt trước khi xuất quỹ</div>
               </div>
             </div>
@@ -368,7 +368,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
 
           {/* Amount input */}
           <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
               Số tiền xin tạm ứng <span className="form-required">*</span>
             </label>
             <div style={{ position: 'relative' }}>

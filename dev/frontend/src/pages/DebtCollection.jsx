@@ -228,7 +228,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   }
 
   return (
-    <section className="debt">
+    <section className="debt card card--workspace debt-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <header className="debt__head">
         <div>
           <span className="debt__eyebrow">Kế toán & Giám đốc</span>

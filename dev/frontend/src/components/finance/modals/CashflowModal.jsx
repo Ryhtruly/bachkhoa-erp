@@ -228,7 +228,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
       title={
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {isIncome ? <PlusCircle size={18} color={accent} /> : <MinusCircle size={18} color={accent} />}
-          <span style={{ color: accent }}>Lập {isIncome ? 'Phiếu Thu' : 'Phiếu Chi'}</span>
+          <span style={{ color: accent }}>Lập {isIncome ? 'phiếu thu' : 'phiếu chi'}</span>
         </span>
       }
     >
@@ -244,7 +244,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
                 color: (type === t || (t === 'Thu' && type === 'INCOME') || (t === 'Chi' && type === 'EXPENSE')) ? (t === 'Thu' ? '#10b981' : '#ef4444') : 'var(--text-tertiary)',
                 fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s'
               }}>
-              {t === 'Thu' ? '↑ Phiếu Thu' : '↓ Phiếu Chi'}
+              {t === 'Thu' ? '↑ Phiếu thu' : '↓ Phiếu chi'}
             </button>
           ))}
         </div>
@@ -426,7 +426,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           <button type="button" className="btn btn-secondary" onClick={onClose}>Hủy</button>
           <button type="submit" className="btn" disabled={submitting}
             style={{ background: accent, color: '#fff', padding: '0 24px', opacity: submitting ? 0.6 : 1 }}>
-            {submitting ? 'Đang xử lý...' : `Ghi nhận ${isIncome ? 'Phiếu Thu' : 'Phiếu Chi'}`}
+            {submitting ? 'Đang xử lý...' : `Ghi nhận ${isIncome ? 'phiếu thu' : 'phiếu chi'}`}
           </button>
         </div>
       </form>

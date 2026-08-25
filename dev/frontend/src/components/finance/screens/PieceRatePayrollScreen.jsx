@@ -234,7 +234,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
   const detailColumns = [
     {
       key: 'task_id',
-      label: 'HỒ SƠ / HỢP ĐỒNG',
+      label: 'Hồ sơ / Hợp đồng',
       width: 190,
       render: (value, row) => (
         <div className="payroll-task">
@@ -246,13 +246,13 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     },
     {
       key: 'task_name',
-      label: 'CÔNG VIỆC',
+      label: 'Công việc',
       width: 170,
       render: (value) => <strong>{value || 'Chưa xác định'}</strong>,
     },
     {
       key: 'role',
-      label: 'VAI TRÒ',
+      label: 'Vai trò',
       width: 100,
       align: 'center',
       render: (value) => (
@@ -263,20 +263,20 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     },
     {
       key: 'event_date',
-      label: 'NGÀY GHI NHẬN',
+      label: 'Ngày ghi nhận',
       width: 130,
       render: formatDate,
     },
     {
       key: 'base_rate',
-      label: 'TIỀN KHOÁN',
+      label: 'Tiền khoán',
       width: 130,
       align: 'right',
       render: (value) => <strong className="payroll-money">{fmt(value)}</strong>,
     },
     {
       key: 'allowance',
-      label: 'PHỤ CẤP',
+      label: 'Phụ cấp',
       width: 130,
       align: 'right',
       render: (_, row) => fmt(
@@ -286,7 +286,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     },
     {
       key: 'priority_bonus',
-      label: 'THƯỞNG',
+      label: 'Thưởng',
       width: 115,
       align: 'right',
       render: (value) => (
@@ -295,7 +295,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     },
     {
       key: 'penalty',
-      label: 'PHẠT',
+      label: 'Phạt',
       width: 115,
       align: 'right',
       render: (value) => (
@@ -306,14 +306,14 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     },
     {
       key: 'net_amount',
-      label: 'TỔNG NHẬN',
+      label: 'Tổng nhận',
       width: 140,
       align: 'right',
       render: (value) => <strong className="payroll-money payroll-money--accent">{fmt(value)}</strong>,
     },
     {
       key: 'status',
-      label: 'TRẠNG THÁI',
+      label: 'Trạng thái',
       width: 135,
       align: 'center',
       render: (value, row) => {
@@ -335,24 +335,24 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
   const adjustmentColumns = [
     {
       key: 'event_date',
-      label: 'NGÀY',
+      label: 'Ngày',
       width: 120,
       render: (v, row) => formatDate(v || row.event_date || row.effective_date),
     },
     {
       key: 'type',
-      label: 'LOẠI ĐIỀU CHỈNH',
+      label: 'Loại điều chỉnh',
       width: 180,
       render: (value) => adjustmentLabels[value] || value || 'Khác',
     },
     {
       key: 'reason',
-      label: 'LÝ DO / GHI CHÚ',
+      label: 'Lý do / Ghi chú',
       render: (value) => value || '—',
     },
     {
       key: 'amount',
-      label: 'SỐ TIỀN',
+      label: 'Số tiền',
       width: 140,
       align: 'right',
       render: (value, row) => {
@@ -373,7 +373,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     { key: 'event_date', label: 'Ngày ghi nhận', align: 'center', width: '105px', format: formatDate },
     { key: 'base_rate', label: 'Tiền khoán', align: 'right', width: '110px', format: (val) => fmt(val || 0) },
     { key: 'allowance', label: 'Phụ cấp', align: 'right', width: '90px', format: (val) => fmt(val || 0) },
-    { key: 'adj', label: 'Thưởng/Phạt', align: 'right', width: '110px', format: (val) => fmt(val || 0) },
+    { key: 'adj', label: 'Thưởng / Phạt', align: 'right', width: '110px', format: (val) => fmt(val || 0) },
     { key: 'net_amount', label: 'Tổng nhận', align: 'right', width: '115px', format: (val) => fmt(val || 0) },
     { key: 'status_label', label: 'Trạng thái', align: 'center', width: '125px' },
   ];
@@ -421,7 +421,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
   );
 
   return (
-    <div className="card payroll-ledger">
+    <div className="card card--workspace payroll-ledger">
       <div className="payroll-ledger__header">
         <div>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Banknote size={20} color="var(--orange-500)" /> Lương khoán nhiệm vụ</h3>
@@ -446,7 +446,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
               title="Xuất phiếu lương Excel của nhân viên đang chọn"
             >
               {exportingPersonal ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} color="#10b981" />}
-              <span>Xuất Phiếu Lương</span>
+              <span>Xuất phiếu lương</span>
             </button>
 
             <button
@@ -458,7 +458,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
               title="Xuất bảng lương Excel tổng hợp phòng ban"
             >
               {exportingDept ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} color="#0284c7" />}
-              <span>Xuất Bảng Tổng Hợp</span>
+              <span>Xuất bảng tổng hợp</span>
             </button>
 
             <button
@@ -470,7 +470,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
               title="Xem trước mẫu in phiếu lương A4"
             >
               <Printer size={14} color="var(--orange-500)" />
-              <span>In Phiếu Lương</span>
+              <span>In phiếu lương</span>
             </button>
 
             {isDirector && (
@@ -587,7 +587,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
           loading={loading || optionsLoading}
           rowKey="id"
           emptyText="Không có nhiệm vụ phát sinh lương trong kỳ này"
-          pageSize={15}
+          pageSize={10}
           compact
         />
       </div>
@@ -611,7 +611,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
       <Modal
         open={previewMode === 'personal'}
         onClose={() => setPreviewMode(null)}
-        title={`Xem Trước Bản In Phiếu Lương - ${ledger?.employee?.full_name || 'Nhân viên'} (Khổ A4)`}
+        title={`Xem trước bản in phiếu lương - ${ledger?.employee?.full_name || 'Nhân viên'} (Khổ A4)`}
         size="2xl"
         overlayClassName="payroll-preview-modal"
         className="payroll-preview-modal"

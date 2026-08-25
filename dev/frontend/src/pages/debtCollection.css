@@ -4,10 +4,12 @@
 .debt {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 0 16px 0;
-  height: 100%;
-  overflow-y: auto;
+  gap: 14px;
+  padding: 20px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  box-sizing: border-box;
 }
 
 .debt__head {
@@ -19,10 +21,8 @@
 }
 .debt__eyebrow {
   display: inline-block;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text-tertiary, #64748b);
   margin-bottom: 3px;
 }
@@ -112,10 +112,8 @@
 }
 
 .debt__total-content span {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text-tertiary, #64748b);
   margin-bottom: 2px;
 }
@@ -314,11 +312,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .debt__history-count {
@@ -449,10 +445,8 @@
   flex-direction: column;
   gap: 6px;
   color: var(--text-tertiary);
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 .debt__req { color: #dc2626; text-transform: none; letter-spacing: 0; }
 .debt__form-hint {

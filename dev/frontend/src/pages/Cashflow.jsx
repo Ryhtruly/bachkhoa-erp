@@ -52,14 +52,14 @@ export default function Cashflow({ landing, user, isDirector }) {
   };
 
   return (
-    <section className="tab-pane active" id="tab-thuchi" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '14px' }}>
+    <section className="tab-pane active" id="tab-thuchi" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - var(--header-h) - var(--shell-gap) * 2 - 4px)', gap: '8px' }}>
       <FinanceNav
         activeTab={activeMenu}
         onSelectTab={setActiveMenu}
         user={user}
         isDirector={isDirector}
       />
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 4px 24px 4px' }}>
+      <div className="cashflow-screen-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 2px 0 2px' }}>
         {renderContent()}
       </div>
     </section>

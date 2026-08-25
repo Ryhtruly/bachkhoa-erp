@@ -42,11 +42,11 @@ describe('Finance Export and A4 Print Features', () => {
 
     render(<MonthlyDashboardScreen month="2026-08" />);
 
-    expect(await screen.findByText('Xuất Excel')).toBeInTheDocument();
-    expect(screen.getByText('Xem Trước & In A4')).toBeInTheDocument();
+    expect(await screen.findByText(/Xuất Excel/i)).toBeInTheDocument();
+    expect(screen.getByText(/Xem trước & in A4/i)).toBeInTheDocument();
 
     // 1. Click Xuất Excel
-    fireEvent.click(screen.getByText('Xuất Excel'));
+    fireEvent.click(screen.getByText(/Xuất Excel/i));
     await waitFor(() => {
       expect(downloadFileMock).toHaveBeenCalledWith(
         expect.stringContaining('/api/finance/export/monthly-dashboard-excel?month=2026-08'),
@@ -55,8 +55,8 @@ describe('Finance Export and A4 Print Features', () => {
     });
 
     // 2. Click Xem Trước & In A4
-    fireEvent.click(screen.getByText('Xem Trước & In A4'));
-    expect(screen.getByText(/Xem Trước Bản In Báo Cáo Dòng Tiền & Thu Chi/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Xem trước & in A4/i));
+    expect(screen.getByText(/Xem trước bản in báo cáo dòng tiền & thu chi/i)).toBeInTheDocument();
     expect(screen.getByText('In / Lưu PDF')).toBeInTheDocument();
   });
 

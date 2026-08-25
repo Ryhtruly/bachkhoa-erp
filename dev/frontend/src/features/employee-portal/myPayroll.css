@@ -14,6 +14,31 @@
   box-sizing: border-box;
 }
 
+.my-payroll--screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: calc(100dvh - var(--header-h) - 32px);
+  padding: 20px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+
+.my-payroll--screen .my-payroll__history-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.my-payroll--screen .my-payroll__table-container {
+  flex: 1;
+  max-height: none;
+  min-height: 180px;
+}
+
 /* ── Header Screen ───────────────────────────────────────────────────────── */
 .my-payroll__heading {
   display: flex;
@@ -265,11 +290,9 @@
 }
 .my-payroll__history-title h3 {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 0.92rem;
   font-weight: 700;
   color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .my-payroll__history-badge {
@@ -350,10 +373,8 @@
   box-sizing: border-box;
   background: var(--bg-surface);
   color: var(--text-tertiary);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
   text-align: left;
   border-bottom: 1px solid var(--border-default);
   white-space: nowrap;
@@ -523,6 +544,21 @@
 .my-payroll__page-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.my-payroll__support-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.my-payroll__support-note strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* ── Info Tip Banner ─────────────────────────────────────────────────── */
