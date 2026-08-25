@@ -7,8 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import {
   CheckCircle2, AlertTriangle, PlusCircle, SlidersHorizontal,
   Wallet, Building2, History, ShieldCheck, RefreshCw,
-  ReceiptText, HandCoins, Save, Clock, UserCheck, Lock, ShieldAlert,
-  CalendarDays, CalendarCheck2, Banknote
+  ReceiptText, HandCoins, Save, Clock, UserCheck, Lock,
+  CalendarDays, CalendarCheck2, Banknote, Check
 } from 'lucide-react';
 import './SettingsScreen.css';
 import { DEFAULT_DOCUMENT_SIGNERS, normalizeDocumentSigners } from '../print/documentSigners';
@@ -34,19 +34,25 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [filterMonth, setFilterMonth] = useState('');
+
+  const [activeTab, setActiveTab] = useState('reconcile'); // 'reconcile' | 'signers' | 'thresholds' | 'payroll' | 'history'
+
   const [thresholds, setThresholds] = useState({
     expense_approval_threshold: 2000000,
     advance_admin_threshold: 5000000
   });
   const [savingThresholds, setSavingThresholds] = useState(false);
+
   const [payrollPolicy, setPayrollPolicy] = useState({
     payroll_cycle_type: 'CALENDAR_MONTH',
     payroll_cutoff_day: 20,
     payroll_payment_day: 5
   });
   const [savingPayrollPolicy, setSavingPayrollPolicy] = useState(false);
+
   const [documentSigners, setDocumentSigners] = useState(DEFAULT_DOCUMENT_SIGNERS);
   const [savingDocumentSigners, setSavingDocumentSigners] = useState(false);
+
   const { addToast } = useToast();
 
   const filteredHistory = useMemo(() => {
@@ -178,7 +184,6 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
     }
   }, []);
 
-  // Tải song song toàn bộ dữ liệu khi khởi tạo để tối ưu tốc độ
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     setLoadingHistory(true);
@@ -237,26 +242,36 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
     if (diff === 0) {
       return {
         variant: 'match',
-        msg: 'Khớp quỹ hoàn toàn (Không lệch)',
+        msg: 'Khớp sổ sách 100% (Không chênh lệch)',
         icon: 'check'
       };
     }
     if (diff < 0) {
       return {
         variant: 'deficit',
-        msg: 'Thiếu hụt (Tự động sinh Phiếu Chi bù quỹ)',
+        msg: 'Thiếu hụt (Tự động tạo Phiếu Chi bù quỹ)',
         icon: 'alert'
       };
     }
     return {
       variant: 'surplus',
-      msg: 'Dư thừa (Tự động sinh Phiếu Thu nạp quỹ)',
+      msg: 'Dư thừa (Tự động tạo Phiếu Thu nạp quỹ)',
       icon: 'plus'
     };
   };
 
   const discrepancyMetaCash = getDiscrepancyMeta(diffCash, actualCashBalance !== '');
   const discrepancyMetaBank = getDiscrepancyMeta(diffBank, actualBankBalance !== '');
+
+  const handleMatchSystemCash = () => {
+    setActualCashBalance(String(systemCashBalance));
+    setCashNote('');
+  };
+
+  const handleMatchSystemBank = () => {
+    setActualBankBalance(String(systemBankBalance));
+    setBankNote('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -326,808 +341,799 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
   };
 
   return (
-    <div className="fin-settings">
-      <div className="fin-settings__card">
-        {/* Header */}
-        <div className="fin-settings__header">
-          <div className="fin-settings__header-badge">
-            <SlidersHorizontal size={14} /> Quản Trị Tài Chính Doanh Nghiệp
-          </div>
-          <h3 className="fin-settings__title">
-            BIÊN BẢN CHỐT QUỸ & ĐỐI CHIẾU TÀI CHÍNH
+    <div className="card card--workspace fin-settings-card">
+      {/* Header chính của màn hình */}
+      <div className="fin-settings__header-main">
+        <div>
+          <h3 className="fin-settings__header-title">
+            <SlidersHorizontal size={20} color="var(--orange-500, #eb4a23)" />
+            Thiết Lập &amp; Chốt Quỹ Tài Chính
           </h3>
-          <p className="fin-settings__subtitle">
-            Kiểm kê và đối chiếu số dư thực tế đếm tay hoặc ứng dụng ngân hàng với sổ sách hệ thống để thiết lập mốc số dư đầu kỳ mới cho từng quỹ riêng biệt.
-          </p>
+          <div className="fin-settings__header-subtitle">
+            Quản trị chốt quỹ định kỳ, phân quyền người ký mẫu in chứng từ và cấu hình hạn mức phê duyệt.
+          </div>
         </div>
+        <div className="fin-settings__header-badges">
+          <span className="fin-director-badge">
+            <Lock size={12} /> Dành Cho Ban Giám Đốc
+          </span>
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit}>
-          {/* Khối 1: Cấu hình Thiết Lập */}
-          <div className="fin-settings__top-bar">
-            <div>
-              <label className="fin-settings__field-label">
-                <span>Mốc thời gian chốt</span>
-                {loading && <span style={{ fontSize: '0.7rem', color: '#64748b', textTransform: 'none' }}>Đang tính lại số dư...</span>}
-              </label>
-              <div className="fin-settings__time-row">
-                <DatePicker
-                  value={reconcileMoment.slice(0, 10)}
-                  onChange={(value) => {
-                    if (!value) return;
-                    const nextClosingMoment = `${value}T${reconcileMoment.slice(11, 16) || '00:00'}`;
-                    setReconcileMoment(nextClosingMoment);
-                    setActualCashBalance('');
-                    setActualBankBalance('');
-                    fetchSystemBalance(nextClosingMoment);
-                  }}
-                  placeholder="Chọn ngày chốt"
-                  dialogLabel="Chọn ngày chốt quỹ"
-                  clearable={false}
-                  className="date-picker--fill"
-                  placement="bottom"
-                />
+      {/* Tabs điều hướng nhanh liền mạch */}
+      <div className="fin-settings__tab-nav" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'reconcile'}
+          className={`fin-settings__tab-btn ${activeTab === 'reconcile' ? 'is-active' : ''}`}
+          onClick={() => setActiveTab('reconcile')}
+        >
+          <ShieldCheck size={16} /> Biên bản chốt quỹ
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'signers'}
+          className={`fin-settings__tab-btn ${activeTab === 'signers' ? 'is-active' : ''}`}
+          onClick={() => setActiveTab('signers')}
+        >
+          <UserCheck size={16} /> Người ký chứng từ
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'thresholds'}
+          className={`fin-settings__tab-btn ${activeTab === 'thresholds' ? 'is-active' : ''}`}
+          onClick={() => setActiveTab('thresholds')}
+        >
+          <ReceiptText size={16} /> Ngưỡng phê duyệt
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'payroll'}
+          className={`fin-settings__tab-btn ${activeTab === 'payroll' ? 'is-active' : ''}`}
+          onClick={() => setActiveTab('payroll')}
+        >
+          <CalendarDays size={16} /> Chu kỳ tính lương
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'history'}
+          className={`fin-settings__tab-btn ${activeTab === 'history' ? 'is-active' : ''}`}
+          onClick={() => setActiveTab('history')}
+        >
+          <History size={16} /> Lịch sử chốt quỹ
+          {history.length > 0 && <span className="fin-settings__tab-badge">{history.length}</span>}
+        </button>
+      </div>
+
+      {/* Nội dung tab chảy liền mạch bên dưới */}
+      <div className="fin-settings__body">
+        {/* ── TAB 1: BIÊN BẢN CHỐT QUỸ ───────────────────────────────────────── */}
+        {activeTab === 'reconcile' && (
+          <form onSubmit={handleSubmit} className="fin-tab-content">
+            <div className="fin-tab-content__head">
+              <h4 className="fin-tab-content__title">
+                <ShieldCheck size={17} color="var(--orange-500, #eb4a23)" /> Đối Chiếu Số Dư &amp; Thiết Lập Đầu Kỳ Mới
+              </h4>
+              <span className="fin-tab-content__sub">
+                Nhập số dư thực tế kiểm đếm để hệ thống tự động tính chênh lệch và cập nhật số dư đầu kỳ mới.
+              </span>
+            </div>
+
+            {/* Mốc thời gian & Người chốt */}
+            <div className="fin-form-grid fin-form-grid--2col">
+              <div className="fin-field">
+                <label className="fin-field__label">
+                  <span>Mốc thời gian chốt</span>
+                  {loading && <span className="fin-field__hint">Đang tính lại số dư...</span>}
+                </label>
+                <div className="fin-time-group">
+                  <DatePicker
+                    value={reconcileMoment.slice(0, 10)}
+                    onChange={(value) => {
+                      if (!value) return;
+                      const nextClosingMoment = `${value}T${reconcileMoment.slice(11, 16) || '00:00'}`;
+                      setReconcileMoment(nextClosingMoment);
+                      setActualCashBalance('');
+                      setActualBankBalance('');
+                      fetchSystemBalance(nextClosingMoment);
+                    }}
+                    placeholder="Chọn ngày chốt"
+                    dialogLabel="Chọn ngày chốt quỹ"
+                    clearable={false}
+                    className="date-picker--fill"
+                    placement="bottom"
+                  />
+                  <input
+                    type="time"
+                    aria-label="Giờ chốt quỹ"
+                    className="fin-input fin-input--time"
+                    value={reconcileMoment.slice(11, 16)}
+                    onChange={(e) => {
+                      const nextClosingMoment = `${reconcileMoment.slice(0, 10)}T${e.target.value}`;
+                      setReconcileMoment(nextClosingMoment);
+                      setActualCashBalance('');
+                      setActualBankBalance('');
+                      fetchSystemBalance(nextClosingMoment);
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="fin-field">
+                <label className="fin-field__label">
+                  <span>Người thực hiện chốt</span>
+                </label>
                 <input
-                  type="time"
-                  aria-label="Giờ chốt quỹ"
-                  className="fin-settings__time-input"
-                  value={reconcileMoment.slice(11, 16)}
-                  onChange={(e) => {
-                    const nextClosingMoment = `${reconcileMoment.slice(0, 10)}T${e.target.value}`;
-                    setReconcileMoment(nextClosingMoment);
-                    setActualCashBalance('');
-                    setActualBankBalance('');
-                    fetchSystemBalance(nextClosingMoment);
-                  }}
+                  type="text"
+                  className="fin-input"
+                  value={reconciledBy}
+                  onChange={(e) => setReconciledBy(e.target.value)}
+                  placeholder="Nhập họ tên người chốt..."
                   required
                 />
               </div>
             </div>
-            <div>
-              <label className="fin-settings__field-label">
-                <span>Người thực hiện chốt</span>
-              </label>
-              <input
-                type="text"
-                className="fin-settings__text-input"
-                value={reconciledBy}
-                onChange={(e) => setReconciledBy(e.target.value)}
-                placeholder="Nhập họ tên người chốt..."
-                required
-              />
-            </div>
-          </div>
 
-          {/* Khối 2: Hai Cột Quỹ song song */}
-          <div className="fin-settings__funds-grid">
-            {/* Quỹ Tiền Mặt */}
-            <div className="fin-fund-card fin-fund-card--cash">
-              <div className="fin-fund-card__head">
-                <h4 className="fin-fund-card__title">
-                  <Wallet size={20} color="#10b981" /> Quỹ Tiền Mặt (Két Sắt)
+            {/* 2 Cột Quỹ Tiền Mặt & Ngân Hàng */}
+            <div className="fin-funds-compare-grid">
+              {/* Quỹ Tiền Mặt */}
+              <div className="fin-fund-box fin-fund-box--cash">
+                <div className="fin-fund-box__head">
+                  <div className="fin-fund-box__title">
+                    <Wallet size={18} color="#10b981" /> Quỹ Tiền Mặt (Két Sắt)
+                  </div>
+                  <button
+                    type="button"
+                    className="fin-quick-match-btn"
+                    onClick={handleMatchSystemCash}
+                    title="Điền nhanh số thực tế bằng số sổ sách"
+                  >
+                    <Check size={13} /> Khớp sổ sách
+                  </button>
+                </div>
+
+                <div className="fin-sys-balance-row">
+                  <span>Số dư sổ sách ghi nhận:</span>
+                  <strong>{loading ? 'Đang tải...' : `${systemCashBalance.toLocaleString('vi-VN')} ₫`}</strong>
+                </div>
+
+                <div className="fin-field">
+                  <label className="fin-field__label">
+                    <span>Số thực tế kiểm đếm két sắt</span>
+                    <span className="fin-req">*</span>
+                  </label>
+                  <div className="fin-amount-input-wrap">
+                    <input
+                      type="text"
+                      className="fin-input fin-input--amount"
+                      value={formatInputDisplay(actualCashBalance)}
+                      onChange={(e) => setActualCashBalance(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="0"
+                    />
+                    <span className="fin-currency-unit">₫</span>
+                  </div>
+                </div>
+
+                {/* Chênh lệch */}
+                <div className={`fin-diff-strip fin-diff-strip--${discrepancyMetaCash.variant}`}>
+                  <div>
+                    <span className="fin-diff-strip__label">Chênh lệch đối chiếu:</span>
+                    <strong className="fin-diff-strip__val">
+                      {actualCashBalance === ''
+                        ? '—'
+                        : (diffCash === 0
+                          ? '±0 ₫'
+                          : (diffCash > 0
+                            ? `+${diffCash.toLocaleString('vi-VN')} ₫`
+                            : `-${Math.abs(diffCash).toLocaleString('vi-VN')} ₫`))}
+                    </strong>
+                  </div>
+                  <div className="fin-diff-strip__msg">
+                    {discrepancyMetaCash.icon === 'check' && <CheckCircle2 size={15} />}
+                    {discrepancyMetaCash.icon === 'alert' && <AlertTriangle size={15} />}
+                    {discrepancyMetaCash.icon === 'plus' && <PlusCircle size={15} />}
+                    <span>{discrepancyMetaCash.msg}</span>
+                  </div>
+                </div>
+
+                {/* Giải trình */}
+                <div className="fin-field">
+                  <label className="fin-field__label">
+                    <span>Giải trình chênh lệch</span>
+                    {actualCashBalance !== '' && diffCash !== 0 && (
+                      <span className="fin-req-tag">Bắt buộc khi có lệch</span>
+                    )}
+                  </label>
+                  <textarea
+                    className="fin-textarea"
+                    rows={2}
+                    value={cashNote}
+                    onChange={(e) => setCashNote(e.target.value)}
+                    placeholder={
+                      actualCashBalance !== '' && diffCash !== 0
+                        ? 'Bắt buộc nhập nguyên nhân chênh lệch két sắt...'
+                        : 'Ghi chú kiểm kê (nếu có)...'
+                    }
+                    required={actualCashBalance !== '' && diffCash !== 0}
+                  />
+                </div>
+              </div>
+
+              {/* Quỹ Ngân Hàng */}
+              <div className="fin-fund-box fin-fund-box--bank">
+                <div className="fin-fund-box__head">
+                  <div className="fin-fund-box__title">
+                    <Building2 size={18} color="#3b82f6" /> Quỹ Chuyển Khoản (Ngân Hàng)
+                  </div>
+                  <button
+                    type="button"
+                    className="fin-quick-match-btn"
+                    onClick={handleMatchSystemBank}
+                    title="Điền nhanh số thực tế bằng số sổ sách"
+                  >
+                    <Check size={13} /> Khớp sổ sách
+                  </button>
+                </div>
+
+                <div className="fin-sys-balance-row">
+                  <span>Số dư sổ sách ghi nhận:</span>
+                  <strong>{loading ? 'Đang tải...' : `${systemBankBalance.toLocaleString('vi-VN')} ₫`}</strong>
+                </div>
+
+                <div className="fin-field">
+                  <label className="fin-field__label">
+                    <span>Số thực tế trên App Ngân hàng</span>
+                    <span className="fin-req">*</span>
+                  </label>
+                  <div className="fin-amount-input-wrap">
+                    <input
+                      type="text"
+                      className="fin-input fin-input--amount"
+                      value={formatInputDisplay(actualBankBalance)}
+                      onChange={(e) => setActualBankBalance(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="0"
+                    />
+                    <span className="fin-currency-unit">₫</span>
+                  </div>
+                </div>
+
+                {/* Chênh lệch */}
+                <div className={`fin-diff-strip fin-diff-strip--${discrepancyMetaBank.variant}`}>
+                  <div>
+                    <span className="fin-diff-strip__label">Chênh lệch đối chiếu:</span>
+                    <strong className="fin-diff-strip__val">
+                      {actualBankBalance === ''
+                        ? '—'
+                        : (diffBank === 0
+                          ? '±0 ₫'
+                          : (diffBank > 0
+                            ? `+${diffBank.toLocaleString('vi-VN')} ₫`
+                            : `-${Math.abs(diffBank).toLocaleString('vi-VN')} ₫`))}
+                    </strong>
+                  </div>
+                  <div className="fin-diff-strip__msg">
+                    {discrepancyMetaBank.icon === 'check' && <CheckCircle2 size={15} />}
+                    {discrepancyMetaBank.icon === 'alert' && <AlertTriangle size={15} />}
+                    {discrepancyMetaBank.icon === 'plus' && <PlusCircle size={15} />}
+                    <span>{discrepancyMetaBank.msg}</span>
+                  </div>
+                </div>
+
+                {/* Giải trình */}
+                <div className="fin-field">
+                  <label className="fin-field__label">
+                    <span>Giải trình chênh lệch</span>
+                    {actualBankBalance !== '' && diffBank !== 0 && (
+                      <span className="fin-req-tag">Bắt buộc khi có lệch</span>
+                    )}
+                  </label>
+                  <textarea
+                    className="fin-textarea"
+                    rows={2}
+                    value={bankNote}
+                    onChange={(e) => setBankNote(e.target.value)}
+                    placeholder={
+                      actualBankBalance !== '' && diffBank !== 0
+                        ? 'Bắt buộc nhập nguyên nhân chênh lệch sao kê bank...'
+                        : 'Ghi chú kiểm kê (nếu có)...'
+                    }
+                    required={actualBankBalance !== '' && diffBank !== 0}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Action button */}
+            <div className="fin-tab-content__footer">
+              <button
+                type="submit"
+                disabled={saving || loading}
+                className="btn btn-primary fin-btn-submit"
+              >
+                {saving ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" /> Đang chốt quỹ...
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck size={18} /> Xác nhận chốt quỹ đầu kỳ
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* ── TAB 2: NGƯỜI KÝ CHỨNG TỪ ───────────────────────────────────────── */}
+        {activeTab === 'signers' && (
+          <div className="fin-tab-content">
+            <div className="fin-tab-content__head fin-tab-content__head--flex">
+              <div>
+                <h4 className="fin-tab-content__title">
+                  <UserCheck size={17} color="#0284c7" /> Cấu Hình Người Ký Chứng Từ Mẫu In
                 </h4>
-                <span className="fin-fund-card__tag fin-fund-card__tag--cash">
-                  <Wallet size={12} /> Tiền mặt
+                <span className="fin-tab-content__sub">
+                  Tên và chức danh tự động điền tại chân trang Phiếu Thu, Phiếu Chi, Sổ Quỹ và Bảng Lương.
                 </span>
               </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveDocumentSigners}
+                disabled={savingDocumentSigners}
+                aria-label="Lưu người ký chứng từ"
+              >
+                {savingDocumentSigners ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
+                <span>{savingDocumentSigners ? 'Đang lưu...' : 'Lưu người ký'}</span>
+              </button>
+            </div>
 
-              {/* Số dư hệ thống */}
-              <div className="fin-fund-card__sys-box">
-                <span className="fin-fund-card__sys-label">Số dư hệ thống ghi nhận</span>
-                <div className="fin-fund-card__sys-val">
-                  {loading ? 'Đang tải...' : `${systemCashBalance.toLocaleString('vi-VN')}₫`}
-                </div>
+            <div className="fin-form-grid fin-form-grid--2col">
+              {/* Giám đốc */}
+              <div className="fin-field">
+                <label className="fin-field__label">
+                  <span>Giám đốc / Người đại diện</span>
+                </label>
+                <input
+                  type="text"
+                  className="fin-input"
+                  value={documentSigners.director_name}
+                  onChange={e => setDocumentSigners(prev => ({ ...prev, director_name: e.target.value }))}
+                  placeholder="Lê Văn Sáu"
+                  maxLength={120}
+                />
+                <span className="fin-field__hint">In tại ô Giám đốc / Người đại diện</span>
               </div>
 
-              {/* Số dư thực tế kiểm kê */}
-              <div className="fin-fund-card__input-box">
-                <div className="fin-fund-card__input-label">
-                  <span>Số dư thực tế kiểm đếm</span>
-                  <span className="req">*</span>
-                </div>
-                <div className="fin-fund-card__input-wrap">
+              {/* Kế toán */}
+              <div className="fin-field">
+                <label className="fin-field__label">
+                  <span>Kế toán</span>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 8 }}>
                   <input
                     type="text"
-                    className="fin-fund-card__amount-input"
-                    value={formatInputDisplay(actualCashBalance)}
-                    onChange={(e) => setActualCashBalance(e.target.value.replace(/[^\d]/g, ''))}
-                    placeholder="0"
+                    className="fin-input"
+                    value={documentSigners.accountant_name}
+                    onChange={e => setDocumentSigners(prev => ({ ...prev, accountant_name: e.target.value }))}
+                    placeholder="Để trống nếu chưa xác định"
+                    maxLength={120}
                   />
-                  <span className="fin-fund-card__currency">₫</span>
+                  <Select
+                    value={documentSigners.accountant_role}
+                    onChange={value => setDocumentSigners(prev => ({ ...prev, accountant_role: value }))}
+                    options={[
+                      { value: 'Kế toán trưởng', label: 'Kế toán trưởng' },
+                      { value: 'Kế toán phụ trách', label: 'Kế toán phụ trách' },
+                    ]}
+                    placeholder="Chọn chức danh"
+                  />
                 </div>
               </div>
 
-              {/* Chênh lệch */}
-              <div className={`fin-fund-card__diff-box fin-fund-card__diff-box--${discrepancyMetaCash.variant}`}>
-                <span className="fin-fund-card__diff-label">Chênh lệch đối chiếu</span>
-                <div className="fin-fund-card__diff-val">
-                  {actualCashBalance === ''
-                    ? '—'
-                    : (diffCash === 0
-                      ? '±0₫'
-                      : (diffCash > 0
-                        ? `+${diffCash.toLocaleString('vi-VN')}₫`
-                        : `-${Math.abs(diffCash).toLocaleString('vi-VN')}₫`))}
-                </div>
-                <div className="fin-fund-card__diff-status">
-                  {discrepancyMetaCash.icon === 'check' && <CheckCircle2 size={15} />}
-                  {discrepancyMetaCash.icon === 'alert' && <AlertTriangle size={15} />}
-                  {discrepancyMetaCash.icon === 'plus' && <PlusCircle size={15} />}
-                  <span>{discrepancyMetaCash.msg}</span>
-                </div>
-              </div>
-
-              {/* Giải trình */}
-              <div className="fin-fund-card__note-wrap">
-                <label className="fin-fund-card__note-label">
-                  <span>Giải trình chênh lệch</span>
-                  {actualCashBalance !== '' && diffCash !== 0 && (
-                    <span className="req-tag">Bắt buộc khi có lệch</span>
-                  )}
+              {/* Thủ quỹ */}
+              <div className="fin-field">
+                <label className="fin-field__label">
+                  <span>Thủ quỹ</span>
                 </label>
-                <textarea
-                  className="fin-fund-card__textarea"
-                  value={cashNote}
-                  onChange={(e) => setCashNote(e.target.value)}
-                  placeholder={
-                    actualCashBalance !== '' && diffCash !== 0
-                      ? 'Bắt buộc nhập nguyên nhân chênh lệch két sắt...'
-                      : 'Ghi chú kiểm kê két sắt (nếu có)...'
-                  }
-                  required={actualCashBalance !== '' && diffCash !== 0}
+                <input
+                  type="text"
+                  className="fin-input"
+                  value={documentSigners.cashier_name}
+                  onChange={e => setDocumentSigners(prev => ({ ...prev, cashier_name: e.target.value }))}
+                  placeholder="Tùy chọn nhập tên thủ quỹ"
+                  maxLength={120}
+                />
+              </div>
+
+              {/* Kế toán tiền lương */}
+              <div className="fin-field">
+                <label className="fin-field__label">
+                  <span>Kế toán tiền lương</span>
+                </label>
+                <input
+                  type="text"
+                  className="fin-input"
+                  value={documentSigners.payroll_accountant_name}
+                  onChange={e => setDocumentSigners(prev => ({ ...prev, payroll_accountant_name: e.target.value }))}
+                  placeholder="Tùy chọn nhập người lập bảng lương"
+                  maxLength={120}
                 />
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Quỹ Chuyển Khoản */}
-            <div className="fin-fund-card fin-fund-card--bank">
-              <div className="fin-fund-card__head">
-                <h4 className="fin-fund-card__title">
-                  <Building2 size={20} color="#3b82f6" /> Quỹ Chuyển Khoản (Ngân Hàng)
-                </h4>
-                <span className="fin-fund-card__tag fin-fund-card__tag--bank">
-                  <Building2 size={12} /> Ngân hàng
+        {/* ── TAB 3: NGƯỠNG PHÊ DUYỆT TÀI CHÍNH ─────────────────────────────── */}
+        {activeTab === 'thresholds' && (
+          <div className="fin-tab-content">
+            <div className="fin-tab-content__head fin-tab-content__head--flex">
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h4 className="fin-tab-content__title">
+                    <ShieldCheck size={17} color="var(--orange-500, #eb4a23)" /> Cấu Hình Ngưỡng Phê Duyệt Tài Chính
+                  </h4>
+                  <span className="fin-tag-director"><Lock size={12} /> Quyền Giám Đốc</span>
+                </div>
+                <span className="fin-tab-content__sub">
+                  Thiết lập hạn mức chi tiêu và tạm ứng vượt ngưỡng bắt buộc phải có Giám đốc phê duyệt trực tiếp.
                 </span>
               </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveThresholds}
+                disabled={savingThresholds}
+                aria-label="Lưu ngưỡng phê duyệt tài chính"
+              >
+                {savingThresholds ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
+                <span>{savingThresholds ? 'Đang lưu...' : 'Lưu cấu hình ngưỡng'}</span>
+              </button>
+            </div>
 
-              {/* Số dư hệ thống */}
-              <div className="fin-fund-card__sys-box">
-                <span className="fin-fund-card__sys-label">Số dư hệ thống ghi nhận</span>
-                <div className="fin-fund-card__sys-val">
-                  {loading ? 'Đang tải...' : `${systemBankBalance.toLocaleString('vi-VN')}₫`}
+            <div className="fin-form-grid fin-form-grid--2col">
+              {/* Chi tiêu */}
+              <div className="fin-config-card">
+                <div className="fin-config-card__header">
+                  <ReceiptText size={18} color="#e11d48" />
+                  <strong>Hạn mức chi tiêu tự động</strong>
                 </div>
-              </div>
 
-              {/* Số dư thực tế kiểm tra App */}
-              <div className="fin-fund-card__input-box">
-                <div className="fin-fund-card__input-label">
-                  <span>Số dư thực tế trên App Bank</span>
-                  <span className="req">*</span>
-                </div>
-                <div className="fin-fund-card__input-wrap">
+                <div className="fin-amount-input-wrap">
                   <input
                     type="text"
-                    className="fin-fund-card__amount-input"
-                    value={formatInputDisplay(actualBankBalance)}
-                    onChange={(e) => setActualBankBalance(e.target.value.replace(/[^\d]/g, ''))}
-                    placeholder="0"
+                    className="fin-input fin-input--amount"
+                    value={Number(thresholds.expense_approval_threshold || 0).toLocaleString('vi-VN')}
+                    onChange={(e) =>
+                      setThresholds((prev) => ({
+                        ...prev,
+                        expense_approval_threshold: Number(e.target.value.replace(/[^\d]/g, ''))
+                      }))
+                    }
                   />
-                  <span className="fin-fund-card__currency">₫</span>
+                  <span className="fin-currency-unit">₫</span>
                 </div>
-              </div>
 
-              {/* Chênh lệch */}
-              <div className={`fin-fund-card__diff-box fin-fund-card__diff-box--${discrepancyMetaBank.variant}`}>
-                <span className="fin-fund-card__diff-label">Chênh lệch đối chiếu</span>
-                <div className="fin-fund-card__diff-val">
-                  {actualBankBalance === ''
-                    ? '—'
-                    : (diffBank === 0
-                      ? '±0₫'
-                      : (diffBank > 0
-                        ? `+${diffBank.toLocaleString('vi-VN')}₫`
-                        : `-${Math.abs(diffBank).toLocaleString('vi-VN')}₫`))}
-                </div>
-                <div className="fin-fund-card__diff-status">
-                  {discrepancyMetaBank.icon === 'check' && <CheckCircle2 size={15} />}
-                  {discrepancyMetaBank.icon === 'alert' && <AlertTriangle size={15} />}
-                  {discrepancyMetaBank.icon === 'plus' && <PlusCircle size={15} />}
-                  <span>{discrepancyMetaBank.msg}</span>
-                </div>
-              </div>
-
-              {/* Giải trình */}
-              <div className="fin-fund-card__note-wrap">
-                <label className="fin-fund-card__note-label">
-                  <span>Giải trình chênh lệch</span>
-                  {actualBankBalance !== '' && diffBank !== 0 && (
-                    <span className="req-tag">Bắt buộc khi có lệch</span>
-                  )}
-                </label>
-                <textarea
-                  className="fin-fund-card__textarea"
-                  value={bankNote}
-                  onChange={(e) => setBankNote(e.target.value)}
-                  placeholder={
-                    actualBankBalance !== '' && diffBank !== 0
-                      ? 'Bắt buộc nhập nguyên nhân chênh lệch sao kê bank...'
-                      : 'Ghi chú kiểm kê app bank (nếu có)...'
-                  }
-                  required={actualBankBalance !== '' && diffBank !== 0}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={saving || loading}
-            className="fin-settings__submit-btn"
-          >
-            {saving ? (
-              <>
-                <RefreshCw size={18} className="animate-spin" /> Đang lưu mốc chốt...
-              </>
-            ) : (
-              <>
-                <ShieldCheck size={18} /> Xác Nhận Chốt Quỹ & Thiết Lập Đầu Kỳ Mới
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Khối 3: Lịch sử chốt quỹ */}
-        <div className="fin-settings__history-section">
-          <div className="fin-settings__history-head">
-            <div className="fin-settings__history-title-wrap">
-              <h4 className="fin-settings__history-title">
-                <History size={20} color="var(--orange-500, #eb4a23)" /> Lịch Sử Chốt Quỹ Trước Đó
-              </h4>
-              <span className="fin-history-count-badge">
-                {filteredHistory.length} đợt ghi nhận
-              </span>
-            </div>
-
-            <div className="fin-settings__history-controls">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-tertiary, #64748b)' }}>Chọn tháng:</span>
-                <DatePicker
-                  selectionMode="month"
-                  value={filterMonth}
-                  onChange={setFilterMonth}
-                  placeholder="Chọn tháng"
-                  dialogLabel="Chọn tháng lịch sử chốt quỹ"
-                />
-              </div>
-              {filterMonth && (
-                <button
-                  type="button"
-                  onClick={() => setFilterMonth('')}
-                  className="fin-settings__clear-filter-btn"
-                >
-                  Xóa lọc
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="fin-settings__table-wrap">
-            {loadingHistory ? (
-              <div style={{ padding: '36px 16px', textAlign: 'center', color: '#64748b' }}>
-                <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
-                <span>Đang tải lịch sử chốt quỹ...</span>
-              </div>
-            ) : filteredHistory.length === 0 ? (
-              <div className="fin-history-empty">
-                <div className="fin-history-empty__icon">
-                  <History size={26} />
-                </div>
-                <p className="fin-history-empty__title">Chưa có lịch sử chốt quỹ phù hợp</p>
-                <p className="fin-history-empty__desc">
-                  {filterMonth
-                    ? `Không tìm thấy mốc chốt quỹ nào trong tháng ${filterMonth.split('-')[1]}/${filterMonth.split('-')[0]}. Thử chọn tháng khác hoặc bấm "Xóa lọc".`
-                    : 'Dữ liệu chốt quỹ và số dư đầu kỳ mới sau khi xác nhận sẽ được lưu vết tự động và thống kê tại đây.'}
-                </p>
-              </div>
-            ) : (
-              <table className="fin-settings__table">
-                <thead>
-                  <tr>
-                    <th>Mốc Thời Gian Chốt</th>
-                    <th>Hình Thức Quỹ</th>
-                    <th style={{ textAlign: 'right' }}>Số Dư Đầu Kỳ Mới</th>
-                    <th>Người Thực Hiện</th>
-                    <th>Ghi Chú / Giải Trình</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredHistory.map((row) => (
-                    <tr key={row.id}>
-                      <td style={{ fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                          <Clock size={13} color="#64748b" /> {row.effective_date}
-                        </span>
-                      </td>
-                      <td>
-                        <span
-                          className={`fin-fund-card__tag ${
-                            (row.payment_method === 'CASH' || row.payment_method === 'Tiền mặt')
-                              ? 'fin-fund-card__tag--cash'
-                              : 'fin-fund-card__tag--bank'
-                          }`}
-                        >
-                          {(row.payment_method === 'CASH' || row.payment_method === 'Tiền mặt') ? (
-                            <>
-                              <Wallet size={12} /> Tiền mặt
-                            </>
-                          ) : (
-                            <>
-                              <Building2 size={12} /> Chuyển khoản
-                            </>
-                          )}
-                        </span>
-                      </td>
-                      <td className="mono-amount">
-                        {fmt(row.opening_balance)}
-                      </td>
-                      <td>
-                        <span className="fin-user-tag">
-                          <UserCheck size={13} color="#4f46e5" /> {row.closing_user || '—'}
-                        </span>
-                      </td>
-                      <td style={{ color: '#64748b', fontSize: '0.84rem' }}>{row.notes || '—'}</td>
-                    </tr>
+                {/* Presets */}
+                <div className="fin-presets-row">
+                  <span className="fin-presets-label">Chọn nhanh:</span>
+                  {EXPENSE_PRESETS.map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`fin-preset-btn ${thresholds.expense_approval_threshold === val ? 'is-active' : ''}`}
+                      onClick={() => setThresholds((prev) => ({ ...prev, expense_approval_threshold: val }))}
+                    >
+                      {val >= 1_000_000 ? `${val / 1_000_000}tr` : val.toLocaleString('vi-VN')}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
+                </div>
 
-        {/* Khối 4: Cấu hình người ký chứng từ */}
-        <section className="fin-settings__thresholds-section" aria-labelledby="document-signers-title">
-          <div className="fin-settings__thresholds-head">
-            <div className="fin-settings__thresholds-title-wrap">
-              <h4 id="document-signers-title" className="fin-settings__thresholds-title">
-                <UserCheck size={18} color="#0ea5e9" /> Người ký chứng từ
-              </h4>
-              <p className="fin-settings__thresholds-desc">
-                Dùng cho phiếu Thu/Chi, sổ quỹ, công nợ và bảng lương. Kế toán có thể để trống khi chưa xác định.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="fin-settings__save-threshold-btn"
-              onClick={handleSaveDocumentSigners}
-              disabled={savingDocumentSigners}
-            >
-              {savingDocumentSigners ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
-              {savingDocumentSigners ? 'Đang lưu...' : 'Lưu người ký'}
-            </button>
-          </div>
-
-          <div className="fin-settings__thresholds-grid">
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">Giám đốc / Người đại diện</span>
-              </div>
-              <input
-                type="text"
-                className="fin-settings__threshold-input"
-                value={documentSigners.director_name}
-                onChange={e => setDocumentSigners(prev => ({ ...prev, director_name: e.target.value }))}
-                placeholder="Lê Văn Sáu"
-                maxLength={120}
-              />
-              <div className="fin-settings__rule-box">
-                <div className="fin-settings__rule-item">
-                  Tên này được dùng cho ô Giám đốc trên các mẫu in.
+                <div className="fin-rule-box">
+                  <div>✓ Chi tiêu <strong>≤ {fmt(thresholds.expense_approval_threshold || 0)}</strong>: Kế toán duyệt tự động</div>
+                  <div style={{ color: '#ef4444', marginTop: 4 }}>⚠ Chi tiêu <strong>&gt; {fmt(thresholds.expense_approval_threshold || 0)}</strong>: Bắt buộc Giám đốc duyệt</div>
                 </div>
               </div>
-            </div>
 
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">Kế toán</span>
-              </div>
-              <input
-                type="text"
-                className="fin-settings__threshold-input"
-                value={documentSigners.accountant_name}
-                onChange={e => setDocumentSigners(prev => ({ ...prev, accountant_name: e.target.value }))}
-                placeholder="Để trống nếu chưa xác định"
-                maxLength={120}
-              />
-              <div style={{ marginTop: 10 }}>
-                <Select
-                  value={documentSigners.accountant_role}
-                  onChange={value => setDocumentSigners(prev => ({ ...prev, accountant_role: value }))}
-                  options={[
-                    { value: 'Kế toán trưởng', label: 'Kế toán trưởng' },
-                    { value: 'Kế toán phụ trách', label: 'Kế toán phụ trách' },
-                  ]}
-                  placeholder="Chọn chức danh kế toán"
-                />
-              </div>
-              <div className="fin-settings__rule-box">
-                <div className="fin-settings__rule-item">
-                  Không tự động điền tên nếu chưa cấu hình.
+              {/* Tạm ứng */}
+              <div className="fin-config-card">
+                <div className="fin-config-card__header">
+                  <HandCoins size={18} color="#0284c7" />
+                  <strong>Hạn mức tạm ứng nội bộ</strong>
                 </div>
-              </div>
-            </div>
 
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">Thủ quỹ</span>
-              </div>
-              <input
-                type="text"
-                className="fin-settings__threshold-input"
-                value={documentSigners.cashier_name}
-                onChange={e => setDocumentSigners(prev => ({ ...prev, cashier_name: e.target.value }))}
-                placeholder="Tùy chọn"
-                maxLength={120}
-              />
-            </div>
-
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">Kế toán tiền lương</span>
-              </div>
-              <input
-                type="text"
-                className="fin-settings__threshold-input"
-                value={documentSigners.payroll_accountant_name}
-                onChange={e => setDocumentSigners(prev => ({ ...prev, payroll_accountant_name: e.target.value }))}
-                placeholder="Tùy chọn"
-                maxLength={120}
-              />
-            </div>
-          </div>
-
-          <p className="fin-settings__thresholds-desc" style={{ marginTop: 14 }}>
-            Không sửa dữ liệu chứng từ đã lưu; bản in dùng cấu hình hiện tại. Không tự xác nhận chữ ký điện tử và không thay thế chữ ký tay.
-          </p>
-        </section>
-
-        {/* Khối 5: Cấu hình Ngưỡng Tài Chính (Dành cho Giám Đốc) */}
-        <div className="fin-settings__thresholds-section">
-          <div className="fin-settings__thresholds-head">
-            <div>
-              <div className="fin-settings__thresholds-title-wrap">
-                <h4 className="fin-settings__thresholds-title">
-                  <ShieldCheck size={20} color="var(--orange-500, #eb4a23)" /> CẤU HÌNH NGƯỠNG PHÊ DUYỆT TÀI CHÍNH
-                </h4>
-                <span className="fin-director-pill">
-                  <Lock size={11} /> Quyền Giám Đốc
-                </span>
-              </div>
-              <p className="fin-settings__thresholds-desc">
-                Thiết lập hạn mức chi tiêu và tạm ứng vượt ngưỡng bắt buộc phải có Giám đốc phê duyệt trực tiếp.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="fin-settings__save-threshold-btn"
-              onClick={handleSaveThresholds}
-              disabled={savingThresholds}
-            >
-              {savingThresholds ? (
-                <>
-                  <RefreshCw size={14} className="animate-spin" /> Đang lưu...
-                </>
-              ) : (
-                <>
-                  <Save size={15} /> Lưu Cấu Hình Ngưỡng
-                </>
-              )}
-            </button>
-          </div>
-
-          <div className="fin-settings__thresholds-grid">
-            {/* Card 1: Duyệt chi */}
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">
-                  <ReceiptText size={17} color="#e11d48" /> Hạn mức chi tiêu tự động
-                </span>
-              </div>
-
-              <div className="fin-settings__threshold-input-wrap">
-                <input
-                  type="text"
-                  className="fin-settings__threshold-input"
-                  value={Number(thresholds.expense_approval_threshold || 0).toLocaleString('vi-VN')}
-                  onChange={(e) =>
-                    setThresholds((prev) => ({
-                      ...prev,
-                      expense_approval_threshold: Number(e.target.value.replace(/[^\d]/g, ''))
-                    }))
-                  }
-                />
-                <span className="fin-settings__threshold-currency">₫</span>
-              </div>
-
-              {/* Quick presets */}
-              <div className="fin-settings__preset-chips">
-                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Chọn nhanh:</span>
-                {EXPENSE_PRESETS.map((val) => (
-                  <button
-                    key={val}
-                    type="button"
-                    className={`fin-settings__preset-chip ${thresholds.expense_approval_threshold === val ? 'is-active' : ''}`}
-                    onClick={() => setThresholds((prev) => ({ ...prev, expense_approval_threshold: val }))}
-                  >
-                    {val >= 1_000_000 ? `${val / 1_000_000}tr` : val.toLocaleString('vi-VN')}
-                  </button>
-                ))}
-              </div>
-
-              {/* Rule box */}
-              <div className="fin-settings__rule-box">
-                <div className="fin-settings__rule-item">
-                  <CheckCircle2 size={13} color="#10b981" />
-                  <span>
-                    Chi tiêu <strong>≤ {fmt(thresholds.expense_approval_threshold || 0)}</strong>: Kế toán duyệt tự động
-                  </span>
-                </div>
-                <div className="fin-settings__rule-item">
-                  <ShieldAlert size={13} color="#ef4444" />
-                  <span>
-                    Chi tiêu <strong>&gt; {fmt(thresholds.expense_approval_threshold || 0)}</strong>: Bắt buộc Giám đốc duyệt
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Card 2: Tạm ứng */}
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">
-                  <HandCoins size={17} color="#0284c7" /> Hạn mức tạm ứng nội bộ
-                </span>
-              </div>
-
-              <div className="fin-settings__threshold-input-wrap">
-                <input
-                  type="text"
-                  className="fin-settings__threshold-input"
-                  value={Number(thresholds.advance_admin_threshold || 0).toLocaleString('vi-VN')}
-                  onChange={(e) =>
-                    setThresholds((prev) => ({
-                      ...prev,
-                      advance_admin_threshold: Number(e.target.value.replace(/[^\d]/g, ''))
-                    }))
-                  }
-                />
-                <span className="fin-settings__threshold-currency">₫</span>
-              </div>
-
-              {/* Quick presets */}
-              <div className="fin-settings__preset-chips">
-                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Chọn nhanh:</span>
-                {ADVANCE_PRESETS.map((val) => (
-                  <button
-                    key={val}
-                    type="button"
-                    className={`fin-settings__preset-chip ${thresholds.advance_admin_threshold === val ? 'is-active' : ''}`}
-                    onClick={() => setThresholds((prev) => ({ ...prev, advance_admin_threshold: val }))}
-                  >
-                    {val >= 1_000_000 ? `${val / 1_000_000}tr` : val.toLocaleString('vi-VN')}
-                  </button>
-                ))}
-              </div>
-
-              {/* Rule box */}
-              <div className="fin-settings__rule-box">
-                <div className="fin-settings__rule-item">
-                  <CheckCircle2 size={13} color="#10b981" />
-                  <span>
-                    Tạm ứng <strong>≤ {fmt(thresholds.advance_admin_threshold || 0)}</strong>: Duyệt cấp phòng ban &amp; Kế toán
-                  </span>
-                </div>
-                <div className="fin-settings__rule-item">
-                  <ShieldAlert size={13} color="#ef4444" />
-                  <span>
-                    Tạm ứng <strong>&gt; {fmt(thresholds.advance_admin_threshold || 0)}</strong>: Yêu cầu Giám đốc thẩm định
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Khối 5: Cấu hình Chu kỳ Tính Lương & Ngày Chốt Công (Dành cho Giám Đốc) */}
-        <div className="fin-settings__thresholds-section" style={{ marginTop: 24 }}>
-          <div className="fin-settings__thresholds-head">
-            <div>
-              <div className="fin-settings__thresholds-title-wrap">
-                <h4 className="fin-settings__thresholds-title">
-                  <Banknote size={20} color="#8b5cf6" /> CẤU HÌNH CHU KỲ TÍNH LƯƠNG &amp; NGÀY CHỐT CÔNG
-                </h4>
-                <span className="fin-director-pill" style={{ background: 'rgba(139, 92, 246, 0.12)', color: '#8b5cf6', borderColor: 'rgba(139, 92, 246, 0.3)' }}>
-                  <Lock size={11} /> Quyền Giám Đốc
-                </span>
-              </div>
-              <p className="fin-settings__thresholds-desc">
-                Quy định mốc thời gian bắt đầu – kết thúc kỳ tính lương và ngày chi trả lương dự kiến áp dụng cho toàn công ty.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="fin-settings__save-threshold-btn"
-              style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)' }}
-              onClick={handleSavePayrollPolicy}
-              disabled={savingPayrollPolicy}
-            >
-              {savingPayrollPolicy ? (
-                <>
-                  <RefreshCw size={14} className="animate-spin" /> Đang lưu...
-                </>
-              ) : (
-                <>
-                  <Save size={15} /> Lưu Chính Sách Kỳ Lương
-                </>
-              )}
-            </button>
-          </div>
-
-          <div className="fin-settings__thresholds-grid">
-            {/* Card 1: Chọn Chế độ Chu Kỳ */}
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">
-                  <CalendarDays size={17} color="#8b5cf6" /> Phương thức xác định kỳ lương
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 10,
-                  padding: '12px 14px',
-                  borderRadius: 8,
-                  border: payrollPolicy.payroll_cycle_type === 'CALENDAR_MONTH' ? '2px solid #8b5cf6' : '1px solid var(--border-subtle, #e2e8f0)',
-                  background: payrollPolicy.payroll_cycle_type === 'CALENDAR_MONTH' ? 'rgba(139, 92, 246, 0.06)' : 'transparent',
-                  cursor: 'pointer'
-                }}>
+                <div className="fin-amount-input-wrap">
                   <input
-                    type="radio"
-                    name="payroll_cycle_type"
-                    checked={payrollPolicy.payroll_cycle_type === 'CALENDAR_MONTH'}
-                    onChange={() => setPayrollPolicy(p => ({ ...p, payroll_cycle_type: 'CALENDAR_MONTH' }))}
-                    style={{ marginTop: 3 }}
+                    type="text"
+                    className="fin-input fin-input--amount"
+                    value={Number(thresholds.advance_admin_threshold || 0).toLocaleString('vi-VN')}
+                    onChange={(e) =>
+                      setThresholds((prev) => ({
+                        ...prev,
+                        advance_admin_threshold: Number(e.target.value.replace(/[^\d]/g, ''))
+                      }))
+                    }
                   />
-                  <div>
-                    <strong style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-primary)' }}>Theo tháng dương lịch chuẩn</strong>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary, #64748b)' }}>
-                      Tính trọn vẹn từ ngày 01 đến ngày cuối cùng của tháng (01/MM – hết tháng).
-                    </span>
-                  </div>
-                </label>
+                  <span className="fin-currency-unit">₫</span>
+                </div>
 
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 10,
-                  padding: '12px 14px',
-                  borderRadius: 8,
-                  border: payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF' ? '2px solid #8b5cf6' : '1px solid var(--border-subtle, #e2e8f0)',
-                  background: payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF' ? 'rgba(139, 92, 246, 0.06)' : 'transparent',
-                  cursor: 'pointer'
-                }}>
-                  <input
-                    type="radio"
-                    name="payroll_cycle_type"
-                    checked={payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF'}
-                    onChange={() => setPayrollPolicy(p => ({ ...p, payroll_cycle_type: 'CUSTOM_CUTOFF' }))}
-                    style={{ marginTop: 3 }}
-                  />
-                  <div>
-                    <strong style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-primary)' }}>Theo ngày chốt công định kỳ (Cut-off Cycle)</strong>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary, #64748b)' }}>
-                      Chốt vào một ngày cố định hàng tháng (ví dụ: ngày 20, 25) để kịp tổng hợp và trả lương.
-                    </span>
-                  </div>
-                </label>
+                {/* Presets */}
+                <div className="fin-presets-row">
+                  <span className="fin-presets-label">Chọn nhanh:</span>
+                  {ADVANCE_PRESETS.map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`fin-preset-btn ${thresholds.advance_admin_threshold === val ? 'is-active' : ''}`}
+                      onClick={() => setThresholds((prev) => ({ ...prev, advance_admin_threshold: val }))}
+                    >
+                      {val >= 1_000_000 ? `${val / 1_000_000}tr` : val.toLocaleString('vi-VN')}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="fin-rule-box">
+                  <div>✓ Tạm ứng <strong>≤ {fmt(thresholds.advance_admin_threshold || 0)}</strong>: Duyệt cấp phòng ban &amp; Kế toán</div>
+                  <div style={{ color: '#ef4444', marginTop: 4 }}>⚠ Tạm ứng <strong>&gt; {fmt(thresholds.advance_admin_threshold || 0)}</strong>: Yêu cầu Giám đốc thẩm định</div>
+                </div>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Card 2: Ngày Chốt & Ngày Trả Lương */}
-            <div className="fin-settings__threshold-box">
-              <div className="fin-settings__threshold-head">
-                <span className="fin-settings__threshold-title">
-                  <CalendarCheck2 size={17} color="#0284c7" /> Thiết lập ngày chốt &amp; ngày chi trả
+        {/* ── TAB 4: CHU KỲ TÍNH LƯƠNG ───────────────────────────────────────── */}
+        {activeTab === 'payroll' && (
+          <div className="fin-tab-content">
+            <div className="fin-tab-content__head fin-tab-content__head--flex">
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h4 className="fin-tab-content__title">
+                    <Banknote size={17} color="#8b5cf6" /> Cấu Hình Chu Kỳ Tính Lương &amp; Ngày Chốt Công
+                  </h4>
+                  <span className="fin-tag-director"><Lock size={12} /> Quyền Giám Đốc</span>
+                </div>
+                <span className="fin-tab-content__sub">
+                  Quy định mốc thời gian bắt đầu – kết thúc kỳ tính lương và ngày chi trả lương dự kiến.
                 </span>
               </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSavePayrollPolicy}
+                disabled={savingPayrollPolicy}
+                aria-label="Lưu chính sách chu kỳ lương"
+              >
+                {savingPayrollPolicy ? <RefreshCw size={15} className="animate-spin" /> : <Save size={15} />}
+                <span>{savingPayrollPolicy ? 'Đang lưu...' : 'Lưu chính sách'}</span>
+              </button>
+            </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
-                {payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF' && (
-                  <div>
-                    <label style={{ fontSize: '0.82rem', fontWeight: 700, display: 'block', marginBottom: 6, color: 'var(--text-secondary)' }}>
-                      Ngày kết thúc kỳ lương hàng tháng (Cut-off Day):
+            <div className="fin-form-grid fin-form-grid--2col">
+              {/* Phương thức xác định */}
+              <div className="fin-config-card">
+                <div className="fin-config-card__header">
+                  <CalendarDays size={18} color="#8b5cf6" />
+                  <strong>Phương thức xác định kỳ lương</strong>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
+                  <label className="fin-radio-option">
+                    <input
+                      type="radio"
+                      name="payroll_cycle_type"
+                      checked={payrollPolicy.payroll_cycle_type === 'CALENDAR_MONTH'}
+                      onChange={() => setPayrollPolicy(p => ({ ...p, payroll_cycle_type: 'CALENDAR_MONTH' }))}
+                    />
+                    <div>
+                      <strong>Theo tháng dương lịch chuẩn</strong>
+                      <span>Tính trọn vẹn từ ngày 01 đến ngày cuối cùng của tháng (01/MM – hết tháng).</span>
+                    </div>
+                  </label>
+
+                  <label className="fin-radio-option">
+                    <input
+                      type="radio"
+                      name="payroll_cycle_type"
+                      checked={payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF'}
+                      onChange={() => setPayrollPolicy(p => ({ ...p, payroll_cycle_type: 'CUSTOM_CUTOFF' }))}
+                    />
+                    <div>
+                      <strong>Theo ngày chốt công định kỳ (Cut-off)</strong>
+                      <span>Chốt vào một ngày cố định hàng tháng (ví dụ: ngày 20, 25) để kịp tổng hợp bảng lương.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Thiết lập ngày */}
+              <div className="fin-config-card">
+                <div className="fin-config-card__header">
+                  <CalendarCheck2 size={18} color="#0284c7" />
+                  <strong>Thiết lập ngày chốt &amp; ngày chi trả</strong>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 10 }}>
+                  {payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF' && (
+                    <div className="fin-field">
+                      <label className="fin-field__label">
+                        <span>Ngày kết thúc kỳ lương hàng tháng (Cut-off Day):</span>
+                      </label>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                          type="number"
+                          min="1"
+                          max="28"
+                          className="fin-input"
+                          style={{ width: 120 }}
+                          value={payrollPolicy.payroll_cutoff_day}
+                          onChange={(e) => setPayrollPolicy(p => ({ ...p, payroll_cutoff_day: Math.min(28, Math.max(1, Number(e.target.value) || 1)) }))}
+                        />
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Hàng tháng</span>
+                      </div>
+                      <div className="fin-presets-row" style={{ marginTop: 6 }}>
+                        <span className="fin-presets-label">Gợi ý:</span>
+                        {[15, 20, 25].map(day => (
+                          <button
+                            key={day}
+                            type="button"
+                            className={`fin-preset-btn ${payrollPolicy.payroll_cutoff_day === day ? 'is-active' : ''}`}
+                            onClick={() => setPayrollPolicy(p => ({ ...p, payroll_cutoff_day: day }))}
+                          >
+                            Ngày {day}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="fin-field">
+                    <label className="fin-field__label">
+                      <span>Ngày chi trả lương dự kiến (Payment Day):</span>
                     </label>
-                    <div className="fin-settings__threshold-input-wrap">
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       <input
                         type="number"
                         min="1"
-                        max="28"
-                        className="fin-settings__threshold-input"
-                        value={payrollPolicy.payroll_cutoff_day}
-                        onChange={(e) => setPayrollPolicy(p => ({ ...p, payroll_cutoff_day: Math.min(28, Math.max(1, Number(e.target.value) || 1)) }))}
+                        max="31"
+                        className="fin-input"
+                        style={{ width: 120 }}
+                        value={payrollPolicy.payroll_payment_day}
+                        onChange={(e) => setPayrollPolicy(p => ({ ...p, payroll_payment_day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))}
                       />
-                      <span className="fin-settings__threshold-currency">Hàng tháng</span>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Tháng kế tiếp</span>
                     </div>
-                    {/* Presets */}
-                    <div className="fin-settings__preset-chips" style={{ marginTop: 6 }}>
-                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Gợi ý:</span>
-                      {[15, 20, 25].map(day => (
+                    <div className="fin-presets-row" style={{ marginTop: 6 }}>
+                      <span className="fin-presets-label">Gợi ý:</span>
+                      {[5, 10, 15].map(day => (
                         <button
                           key={day}
                           type="button"
-                          className={`fin-settings__preset-chip ${payrollPolicy.payroll_cutoff_day === day ? 'is-active' : ''}`}
-                          onClick={() => setPayrollPolicy(p => ({ ...p, payroll_cutoff_day: day }))}
+                          className={`fin-preset-btn ${payrollPolicy.payroll_payment_day === day ? 'is-active' : ''}`}
+                          onClick={() => setPayrollPolicy(p => ({ ...p, payroll_payment_day: day }))}
                         >
                           Ngày {day}
                         </button>
                       ))}
                     </div>
                   </div>
-                )}
-
-                <div>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 700, display: 'block', marginBottom: 6, color: 'var(--text-secondary)' }}>
-                    Ngày chi trả lương dự kiến (Payment Day):
-                  </label>
-                  <div className="fin-settings__threshold-input-wrap">
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      className="fin-settings__threshold-input"
-                      value={payrollPolicy.payroll_payment_day}
-                      onChange={(e) => setPayrollPolicy(p => ({ ...p, payroll_payment_day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) }))}
-                    />
-                    <span className="fin-settings__threshold-currency">Tháng sau</span>
-                  </div>
-                  {/* Presets */}
-                  <div className="fin-settings__preset-chips" style={{ marginTop: 6 }}>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Gợi ý:</span>
-                    {[5, 10, 15].map(day => (
-                      <button
-                        key={day}
-                        type="button"
-                        className={`fin-settings__preset-chip ${payrollPolicy.payroll_payment_day === day ? 'is-active' : ''}`}
-                        onClick={() => setPayrollPolicy(p => ({ ...p, payroll_payment_day: day }))}
-                      >
-                        Ngày {day}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Preview Box */}
-              <div className="fin-settings__rule-box" style={{ marginTop: 14, background: 'rgba(139, 92, 246, 0.05)', borderColor: 'rgba(139, 92, 246, 0.2)' }}>
-                <div className="fin-settings__rule-item" style={{ alignItems: 'flex-start' }}>
-                  <CheckCircle2 size={15} color="#8b5cf6" style={{ marginTop: 2 }} />
-                  <span style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
-                    {payrollPolicy.payroll_cycle_type === 'CUSTOM_CUTOFF' ? (
-                      <>
-                        <strong>Minh họa Kỳ 07/2026:</strong> Tính từ ngày <strong>{Number(payrollPolicy.payroll_cutoff_day || 20) + 1}/06/2026</strong> đến hết ngày <strong>{payrollPolicy.payroll_cutoff_day || 20}/07/2026</strong>. Chi trả vào ngày <strong>{payrollPolicy.payroll_payment_day || 5}/08/2026</strong>.
-                      </>
-                    ) : (
-                      <>
-                        <strong>Minh họa Kỳ 07/2026:</strong> Tính từ ngày <strong>01/07/2026</strong> đến hết ngày <strong>31/07/2026</strong>. Chi trả vào ngày <strong>{payrollPolicy.payroll_payment_day || 5}/08/2026</strong>.
-                      </>
-                    )}
-                  </span>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* ── TAB 5: LỊCH SỬ CHỐT QUỸ ────────────────────────────────────────── */}
+        {activeTab === 'history' && (
+          <div className="fin-tab-content">
+            <div className="fin-tab-content__head fin-tab-content__head--flex">
+              <div>
+                <h4 className="fin-tab-content__title">
+                  <History size={17} color="var(--orange-500, #eb4a23)" /> Lịch Sử Chốt Quỹ Trước Đó
+                </h4>
+                <span className="fin-tab-content__sub">
+                  Tổng cộng {filteredHistory.length} đợt ghi nhận số dư đầu kỳ mới.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Chọn tháng:</span>
+                <DatePicker
+                  selectionMode="month"
+                  value={filterMonth}
+                  onChange={setFilterMonth}
+                  placeholder="Tất cả các tháng"
+                  dialogLabel="Chọn tháng lọc lịch sử"
+                />
+                {filterMonth && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterMonth('')}
+                    className="btn btn-secondary"
+                    style={{ height: 36, padding: '0 10px', fontSize: '0.8rem' }}
+                  >
+                    Xóa lọc
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="fin-table-wrap">
+              {loadingHistory ? (
+                <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                  <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 8px', display: 'block' }} />
+                  <span>Đang tải lịch sử chốt quỹ...</span>
+                </div>
+              ) : filteredHistory.length === 0 ? (
+                <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                  <History size={32} style={{ margin: '0 auto 8px', opacity: 0.5, display: 'block' }} />
+                  <p style={{ margin: '0 0 4px', fontWeight: 600, color: 'var(--text-primary)' }}>Chưa có lịch sử chốt quỹ phù hợp</p>
+                  <p style={{ margin: 0, fontSize: '0.82rem' }}>
+                    {filterMonth
+                      ? `Không tìm thấy đợt chốt quỹ nào trong tháng ${filterMonth.split('-')[1]}/${filterMonth.split('-')[0]}.`
+                      : 'Dữ liệu chốt quỹ sau khi xác nhận sẽ được lưu vết tự động tại đây.'}
+                  </p>
+                </div>
+              ) : (
+                <table className="fin-table">
+                  <thead>
+                    <tr>
+                      <th>Mốc Thời Gian Chốt</th>
+                      <th>Hình Thức Quỹ</th>
+                      <th style={{ textAlign: 'right' }}>Số Dư Đầu Kỳ Mới</th>
+                      <th>Người Thực Hiện</th>
+                      <th>Ghi Chú / Giải Trình</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredHistory.map((row) => (
+                      <tr key={row.id}>
+                        <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                            <Clock size={13} color="var(--text-tertiary)" /> {row.effective_date}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={`fin-tag-method ${
+                              (row.payment_method === 'CASH' || row.payment_method === 'Tiền mặt')
+                                ? 'fin-tag-method--cash'
+                                : 'fin-tag-method--bank'
+                            }`}
+                          >
+                            {(row.payment_method === 'CASH' || row.payment_method === 'Tiền mặt') ? (
+                              <>
+                                <Wallet size={12} /> Tiền mặt
+                              </>
+                            ) : (
+                              <>
+                                <Building2 size={12} /> Chuyển khoản
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono, monospace)' }}>
+                          {fmt(row.opening_balance)}
+                        </td>
+                        <td>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-secondary)' }}>
+                            <UserCheck size={13} color="var(--orange-500)" /> {row.closing_user || '—'}
+                          </span>
+                        </td>
+                        <td style={{ color: 'var(--text-secondary)', fontSize: '0.84rem' }}>{row.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
