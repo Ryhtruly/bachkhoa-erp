@@ -27,14 +27,40 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(REMEMBERED_USERNAME_STORAGE_KEY)));
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState(getInitialTheme);
+
+  // 'login' | 'forgot_identify' | 'forgot_otp' | 'forgot_new_pass'
+  const [mode, setMode] = useState('login');
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [maskedEmail, setMaskedEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [countdown, setCountdown] = useState(0);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
-  const handleSubmit = async (event) => {
+  useEffect(() => {
+    let timer;
+    if (countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((c) => c - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [countdown]);
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setError('');
+    setSuccessMessage('');
+  };
+
+  const handleLoginSubmit = async (event) => {
     event.preventDefault();
     if (loading) return;
     setLoading(true);
@@ -54,6 +80,124 @@ export default function Login({ onLogin }) {
       setError(loginError.message === 'Failed to fetch'
         ? 'Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.'
         : loginError.message);
+      setLoading(false);
+    }
+  };
+
+  const handleForgotRequestSubmit = async (event) => {
+    event.preventDefault();
+    if (loading) return;
+    if (!forgotIdentifier.trim()) {
+      setError('Vui lòng nhập tên đăng nhập hoặc email.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/forgot-password/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotIdentifier.trim() }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Không thể gửi mã OTP.');
+
+      setMaskedEmail(payload.email_masked || '');
+      setCountdown(60);
+      setOtp('');
+      setMode('forgot_otp');
+    } catch (err) {
+      setError(err.message === 'Failed to fetch' ? 'Không thể kết nối máy chủ.' : err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (loading || countdown > 0) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/forgot-password/request-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotIdentifier.trim() }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Không thể gửi lại mã OTP.');
+
+      setCountdown(60);
+      setSuccessMessage('Đã gửi lại mã OTP thành công.');
+    } catch (err) {
+      setError(err.message || 'Không thể gửi lại mã OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtpSubmit = async (event) => {
+    event.preventDefault();
+    if (loading) return;
+    const cleanOtp = otp.trim();
+    if (!cleanOtp || cleanOtp.length < 6) {
+      setError('Vui lòng nhập đủ 6 chữ số OTP.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/forgot-password/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotIdentifier.trim(), otp: cleanOtp }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Mã OTP không hợp lệ.');
+
+      setMode('forgot_new_pass');
+    } catch (err) {
+      setError(err.message || 'Mã OTP không hợp lệ.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (event) => {
+    event.preventDefault();
+    if (loading) return;
+
+    if (newPassword.length < 6) {
+      setError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Mật khẩu xác nhận không khớp.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/forgot-password/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: forgotIdentifier.trim(),
+          otp: otp.trim(),
+          new_password: newPassword,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Không thể đặt lại mật khẩu.');
+
+      setSuccessMessage('Đổi mật khẩu thành công! Đang đưa bạn vào hệ thống...');
+      setTimeout(() => {
+        onLogin(payload.token, payload.user);
+      }, 1000);
+    } catch (err) {
+      setError(err.message || 'Không thể đặt lại mật khẩu.');
       setLoading(false);
     }
   };
@@ -172,43 +316,259 @@ export default function Login({ onLogin }) {
           </section>
 
           <aside className="rail">
+            {/* Header của khay */}
             <div className="rail-hd">
-              <span className="num">01</span>
-              <div><h2>Đăng nhập</h2><p>Khung xác thực hệ thống</p></div>
+              <span className="num">{mode === 'login' ? '01' : '02'}</span>
+              <div>
+                <h2>
+                  {mode === 'login' && 'Đăng nhập'}
+                  {mode === 'forgot_identify' && 'Quên mật khẩu'}
+                  {mode === 'forgot_otp' && 'Xác thực OTP'}
+                  {mode === 'forgot_new_pass' && 'Đặt lại mật khẩu'}
+                </h2>
+                <p>
+                  {mode === 'login' && 'Khung xác thực hệ thống'}
+                  {mode === 'forgot_identify' && 'Bước 1: Xác thực tài khoản'}
+                  {mode === 'forgot_otp' && 'Bước 2: Nhập mã 6 số'}
+                  {mode === 'forgot_new_pass' && 'Bước 3: Mật khẩu mới'}
+                </p>
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit}>
-              <div className="field">
-                <label htmlFor="u">Tài khoản</label>
-                <input id="u" type="text" value={username} autoComplete="username" required
-                  disabled={loading} onChange={(e) => setUsername(e.target.value)} />
-              </div>
-              <div className="field">
-                <label htmlFor="p">Mật khẩu</label>
-                <input id="p" type="password" placeholder="••••••••" autoComplete="current-password"
-                  required disabled={loading} value={password}
-                  onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              <div className="row">
-                <label className="check">
-                  <input type="checkbox" checked={remember} disabled={loading}
-                    onChange={(e) => setRemember(e.target.checked)} />
-                  <i className="box" />Ghi nhớ
-                </label>
-                <a href="#">Quên mật khẩu?</a>
-              </div>
+            {/* Form Đăng nhập */}
+            {mode === 'login' && (
+              <form onSubmit={handleLoginSubmit}>
+                <div className="field">
+                  <label htmlFor="u">Tài khoản</label>
+                  <input
+                    id="u"
+                    type="text"
+                    value={username}
+                    autoComplete="username"
+                    required
+                    disabled={loading}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="p">Mật khẩu</label>
+                  <input
+                    id="p"
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    required
+                    disabled={loading}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                <div className="row">
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      disabled={loading}
+                      onChange={(e) => setRemember(e.target.checked)}
+                    />
+                    <i className="box" />Ghi nhớ
+                  </label>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => {
+                      setForgotIdentifier(username || '');
+                      switchMode('forgot_identify');
+                    }}
+                  >
+                    Quên mật khẩu?
+                  </button>
+                </div>
 
-              {error && (
-                <p className="alarm" role="alert">
-                  <b>Lỗi</b>
-                  <span>{error}</span>
-                </p>
-              )}
+                {error && (
+                  <p className="alarm" role="alert">
+                    <b>Lỗi</b>
+                    <span>{error}</span>
+                  </p>
+                )}
 
-              <button className="go" type="submit" disabled={loading}>
-                {loading ? 'Đang xác thực…' : 'Truy cập hệ thống →'}
-              </button>
-            </form>
+                <button className="go" type="submit" disabled={loading}>
+                  {loading ? 'Đang xác thực…' : 'Truy cập hệ thống →'}
+                </button>
+              </form>
+            )}
+
+            {/* Bước 1: Quên mật khẩu - Nhập Identifier */}
+            {mode === 'forgot_identify' && (
+              <form onSubmit={handleForgotRequestSubmit}>
+                <div className="info-box">
+                  Nhập tên đăng nhập hoặc địa chỉ email để nhận mã OTP khôi phục mật khẩu.
+                </div>
+
+                <div className="field">
+                  <label htmlFor="forgot-id">Tài khoản hoặc Email</label>
+                  <input
+                    id="forgot-id"
+                    type="text"
+                    placeholder="Ví dụ: admin hoặc user@gmail.com"
+                    value={forgotIdentifier}
+                    required
+                    disabled={loading}
+                    onChange={(e) => setForgotIdentifier(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                {error && (
+                  <p className="alarm" role="alert">
+                    <b>Lỗi</b>
+                    <span>{error}</span>
+                  </p>
+                )}
+
+                <button className="go" type="submit" disabled={loading}>
+                  {loading ? 'Đang gửi mã…' : 'Gửi mã OTP qua Email →'}
+                </button>
+
+                <div className="actions-secondary">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => switchMode('login')}
+                    disabled={loading}
+                  >
+                    ← Quay lại đăng nhập
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Bước 2: Quên mật khẩu - Nhập mã OTP */}
+            {mode === 'forgot_otp' && (
+              <form onSubmit={handleVerifyOtpSubmit}>
+                <div className="info-box">
+                  Mã OTP 6 số đã được gửi đến <strong>{maskedEmail || forgotIdentifier}</strong> (hiệu lực trong 10 phút).
+                </div>
+
+                <div className="field">
+                  <label htmlFor="otp-input">Mã OTP (6 chữ số)</label>
+                  <input
+                    id="otp-input"
+                    type="text"
+                    className="otp-input"
+                    placeholder="••••••"
+                    maxLength={6}
+                    value={otp}
+                    required
+                    disabled={loading}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    autoFocus
+                  />
+                </div>
+
+                {error && (
+                  <p className="alarm" role="alert">
+                    <b>Lỗi</b>
+                    <span>{error}</span>
+                  </p>
+                )}
+
+                {successMessage && (
+                  <p className="success-box" role="status">
+                    <b>Thành công</b>
+                    <span>{successMessage}</span>
+                  </p>
+                )}
+
+                <button className="go" type="submit" disabled={loading || otp.length < 6}>
+                  {loading ? 'Đang xác thực…' : 'Tiếp tục đặt mật khẩu →'}
+                </button>
+
+                <div className="actions-secondary">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => switchMode('forgot_identify')}
+                    disabled={loading}
+                  >
+                    ← Đổi email
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={handleResendOtp}
+                    disabled={loading || countdown > 0}
+                  >
+                    {countdown > 0 ? `Gửi lại sau (${countdown}s)` : 'Gửi lại mã OTP'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Bước 3: Quên mật khẩu - Nhập Mật khẩu mới */}
+            {mode === 'forgot_new_pass' && (
+              <form onSubmit={handleResetPasswordSubmit}>
+                <div className="info-box">
+                  Mã OTP hợp lệ. Vui lòng nhập mật khẩu mới (tối thiểu 6 ký tự).
+                </div>
+
+                <div className="field">
+                  <label htmlFor="new-p">Mật khẩu mới</label>
+                  <input
+                    id="new-p"
+                    type="password"
+                    placeholder="Tối thiểu 6 ký tự"
+                    value={newPassword}
+                    required
+                    disabled={loading}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="confirm-p">Xác nhận mật khẩu mới</label>
+                  <input
+                    id="confirm-p"
+                    type="password"
+                    placeholder="Nhập lại mật khẩu mới"
+                    value={confirmPassword}
+                    required
+                    disabled={loading}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+
+                {error && (
+                  <p className="alarm" role="alert">
+                    <b>Lỗi</b>
+                    <span>{error}</span>
+                  </p>
+                )}
+
+                {successMessage && (
+                  <p className="success-box" role="status">
+                    <b>Thành công</b>
+                    <span>{successMessage}</span>
+                  </p>
+                )}
+
+                <button className="go" type="submit" disabled={loading}>
+                  {loading ? 'Đang lưu…' : 'Cập nhật & Đăng nhập →'}
+                </button>
+
+                <div className="actions-secondary">
+                  <button
+                    type="button"
+                    className="btn-link"
+                    onClick={() => switchMode('login')}
+                    disabled={loading}
+                  >
+                    ← Hủy & Về đăng nhập
+                  </button>
+                </div>
+              </form>
+            )}
 
             <div className="rail-ft"><span>BK-ERP-2026</span><span>Bảo mật SSL</span></div>
           </aside>
@@ -224,3 +584,5 @@ export default function Login({ onLogin }) {
     </div>
   );
 }
+
+

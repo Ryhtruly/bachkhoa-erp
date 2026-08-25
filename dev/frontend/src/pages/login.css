@@ -402,6 +402,73 @@
   color: var(--fg-3);
 }
 
+.bk-login .info-box {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--fg-3);
+  background: var(--line);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.bk-login .success-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 20px;
+  padding: 11px 13px;
+  border-left: 2px solid var(--ok);
+  background: rgba(52, 135, 90, 0.12);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+.bk-login .success-box b {
+  flex: none;
+  color: var(--ok);
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.bk-login .otp-input {
+  text-align: center;
+  font-size: 24px !important;
+  letter-spacing: 12px !important;
+  font-weight: 700 !important;
+}
+
+.bk-login .actions-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.bk-login .btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--fg-2);
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-2);
+  transition: .15s;
+}
+.bk-login .btn-link:hover:not(:disabled) {
+  color: var(--acc);
+  border-color: var(--acc);
+}
+.bk-login .btn-link:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  border-color: transparent;
+}
+
 /* ── thanh dưới ──────────────────────────────────────────────── */
 .bk-login .bot {
   display: flex;

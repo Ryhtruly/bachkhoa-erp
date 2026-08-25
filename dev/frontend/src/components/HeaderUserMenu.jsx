@@ -1,9 +1,10 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, LogOut, Settings, UserRound, Wallet } from 'lucide-react';
+import { ChevronDown, KeyRound, LogOut, Settings, UserRound, Wallet } from 'lucide-react';
 import { useDropdownPosition } from '../lib/useDropdownPosition';
 import { Modal } from './ui';
 import AvatarImage from './AvatarImage';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const MyPayroll = lazy(() => import('../features/employee-portal/MyPayroll'));
 
@@ -11,6 +12,7 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const [payslipOpen, setPayslipOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const style = useDropdownPosition(open, triggerRef, panelRef, 220);
   const name = user?.full_name || user?.username || 'Đang tải...';
 
@@ -58,6 +60,16 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
               <Wallet size={16} color="#10b981" /> Phiếu lương của tôi
             </button>
           )}
+          <button
+            type="button"
+            className="header-user-menu__item"
+            onClick={() => {
+              onOpenChange?.(false);
+              setChangePasswordOpen(true);
+            }}
+          >
+            <KeyRound size={16} color="var(--primary-600, #E86832)" /> Đổi mật khẩu
+          </button>
           <button type="button" className="header-user-menu__item" disabled title="Chưa có chức năng">
             <UserRound size={16} /> Hồ sơ cá nhân
           </button>
@@ -82,6 +94,13 @@ export default function HeaderUserMenu({ user, onLogout, open, onOpenChange }) {
             <MyPayroll isModal={true} />
           </Suspense>
         </Modal>
+      )}
+
+      {changePasswordOpen && (
+        <ChangePasswordModal
+          open={changePasswordOpen}
+          onClose={() => setChangePasswordOpen(false)}
+        />
       )}
     </div>
   );
