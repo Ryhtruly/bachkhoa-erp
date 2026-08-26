@@ -23,13 +23,16 @@ from src.contracts import (
     query_contract_read_model
 )
 from src.contracts.workflow_runtime import (
+    TaskClaimConflict,
     WorkflowValidationError,
     activate_workflow,
     auto_finalize_node_if_ready,
     validate_workflow_graph,
     cancel_workflow,
     replace_node_assignments,
+    request_workflow_rollback,
     review_task_node_acceptance,
+    review_workflow_rollback,
     save_workflow_draft,
 )
 from src.contracts.timeline import project_node_timeline
@@ -135,6 +138,14 @@ class NodeAcceptanceReviewPayload(BaseModel):
     decision: str
     outcome: str | None = None
     note: str | None = None
+    # Duyệt đạt DÙ hồ sơ còn thiếu tài liệu. Lý do bắt buộc — kiểm ở tầng
+    # nghiệp vụ (review_task_node_acceptance) chứ không chỉ ở đây, vì hàm đó
+    # còn được gọi từ chỗ khác ngoài route này.
+    shortage_accepted: bool = False
+    shortage_reason: str | None = None
+    # {checklist_result_id: ghi chú} khi trả lại — nhân viên phải biết TỪNG mục
+    # sai chỗ nào, không phải một câu chung cho cả gói.
+    checklist_notes: dict[str, str] | None = None
 
 
 class WorkflowCancellationPayload(BaseModel):
@@ -824,11 +835,22 @@ def get_contract_workspace(
                     select n.id, n.node_key, n.node_code, n.occurrence_no, n.status, n.outcome,
                            n.started_at, n.deadline_at, n.is_overdue, n.submitted_at,
                            n.accepted_at, n.completed_at, n.blocked_reason,
+                           n.execution_data,
                            (
                              select a.id from public.task_node_acceptances a
                              where a.task_node_id = n.id and a.status = 'pending'
                              order by a.attempt_no desc limit 1
-                           ) as pending_acceptance_id
+                           ) as pending_acceptance_id,
+                           -- Ảnh chụp "lúc nộp thiếu gì" phải đi cùng lượt chờ
+                           -- duyệt. Không kèm ở đây thì màn duyệt phải gọi thêm
+                           -- một API nữa, hoặc tệ hơn là tính lại tại thời điểm
+                           -- duyệt — ra một tình trạng khác lúc người ta gửi.
+                           (
+                             select a.submission_payload -> 'missing'
+                             from public.task_node_acceptances a
+                             where a.task_node_id = n.id and a.status = 'pending'
+                             order by a.attempt_no desc limit 1
+                           ) as pending_missing
                     from public.task_nodes n
                     where n.workflow_instance_id = :workflow_instance_id
                     order by n.created_at asc, n.occurrence_no asc
@@ -926,7 +948,7 @@ def get_contract_workspace(
         if workflow_row:
             agency_nodes = [
                 node for node in execution_nodes
-                if node["node_code"] in {"K06", "K07", "K08"}
+                if node["node_code"] in {"K05", "K06"}
                 and (
                     node["status"] in {"in_progress", "submitted", "accepted"}
                     or node["started_at"] is not None
@@ -1014,7 +1036,7 @@ def get_contract_workspace(
             "workflow": workflow,
         })
 
-    # ── 1. Cache Workflow Node Catalog (K01–K09) ──
+    # ── 1. Cache Workflow Node Catalog (K01–K07) ──
     workflow_catalog = get_cached_json("bachkhoa:catalog:workflow_nodes")
     if workflow_catalog is None:
         workflow_catalog = [dict(row) for row in db.execute(
@@ -1317,6 +1339,8 @@ def activate_service_line_workflow(
         db.commit()
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache("bachkhoa:contracts:*")
+        invalidate_cache("task_pool:*")
+        invalidate_cache("employee_daily_summary:*")
         publish_timeline_change("workflow_revision_activated", entity_id=service_line_id)
         return {"message": "Đã kích hoạt workflow", **result}
     except WorkflowValidationError as exc:
@@ -1519,6 +1543,8 @@ def review_checklist_evidence(
     if auto.get("finalized"):
         # Bước vừa tự nghiệm thu: sinh khoán + mở bước kế → làm mới cache tiền/hợp đồng.
         invalidate_money_caches()
+        invalidate_cache("task_pool:*")
+        invalidate_cache("employee_daily_summary:*")
         publish_timeline_change("node_acceptance_reviewed", entity_id=auto.get("task_node_id"))
     elif auto.get("submitted"):
         # Bàn giao / rẽ nhánh: đã tự nộp, vào hàng chờ giám đốc nghiệm thu.
@@ -1547,12 +1573,111 @@ def review_node_acceptance(
             outcome=payload.outcome,
             review_note=payload.note,
             actor_id=user.id,
+            shortage_accepted=bool(getattr(payload, "shortage_accepted", False)),
+            shortage_reason=getattr(payload, "shortage_reason", None),
+            checklist_notes=getattr(payload, "checklist_notes", None),
         )
         db.commit()
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache("bachkhoa:contracts:*")
-        publish_timeline_change("node_acceptance_reviewed", entity_id=acceptance_id)
+        invalidate_cache("task_pool:*")
+        invalidate_cache("employee_daily_summary:*")
+        publish_timeline_change("TASK_ACCEPTED", entity_id=acceptance_id)
         return result
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class RollbackRequestPayload(BaseModel):
+    reason: str
+
+
+class RollbackReviewPayload(BaseModel):
+    decision: str
+    review_note: Optional[str] = None
+
+
+@router.post("/workflow/nodes/{task_node_id}/rollback-requests")
+def request_node_rollback(
+    task_node_id: str,
+    payload: RollbackRequestPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("checklist", "update")),
+):
+    """Nhân viên lập phiếu xin quay lại bước này. Chưa đụng gì tới quy trình."""
+    try:
+        result = request_workflow_rollback(
+            db,
+            target_task_node_id=task_node_id,
+            reason=payload.reason,
+            requester_user_id=user.id,
+        )
+        db.commit()
+        publish_timeline_change("ROLLBACK_REQUESTED", entity_id=task_node_id)
+        return result
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/workflow/rollback-requests")
+def list_pending_rollback_requests(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    """Hàng chờ duyệt phiếu quay lại của Giám đốc."""
+    rows = db.execute(
+        text("""
+            select r.id, r.reason, r.created_at, r.workflow_instance_id,
+                   n.node_code, n.status as node_status,
+                   coalesce(nullif(wn.name, ''), n.node_code) as node_name,
+                   sl.contract_id,
+                   coalesce(tt.name, sl.service_type, 'Hạng mục') as service_line_name,
+                   coalesce(cu.full_name, 'Khách hàng') as customer_name,
+                   u.username as requested_by_name,
+                   jsonb_array_length(coalesce(r.affected_node_ids, '[]'::jsonb)) as affected_count
+            from public.workflow_rollback_requests r
+            join public.task_nodes n on n.id = r.target_task_node_id
+            join public.workflow_nodes wn on wn.code = n.node_code
+            join public.workflow_instances wi on wi.id = r.workflow_instance_id
+            join public.service_lines sl on sl.id = wi.service_line_id
+            join public.contracts c on c.id = sl.contract_id
+            left join public.customers cu on cu.id = c.customer_id
+            left join public.task_types tt on tt.id = sl.task_type_id
+            left join public.users u on u.id = r.requested_by
+            where r.status = 'pending'
+            order by r.created_at
+        """)
+    ).mappings().all()
+    return {"status": "success", "data": [dict(row) for row in rows]}
+
+
+@router.post("/workflow/rollback-requests/{request_id}/review")
+def review_node_rollback(
+    request_id: str,
+    payload: RollbackReviewPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    """Quản lý/Giám đốc duyệt phiếu quay lại — duyệt là chạy cascade xuống các bước sau."""
+    try:
+        result = review_workflow_rollback(
+            db,
+            request_id=request_id,
+            decision=payload.decision,
+            review_note=payload.review_note,
+            actor_id=user.id,
+        )
+        db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:contracts:*")
+        invalidate_cache("task_pool:*")
+        publish_timeline_change("ROLLBACK_REVIEWED", entity_id=request_id)
+        return result
+    except TaskClaimConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1685,7 +1810,7 @@ def override_handover(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("contract", "approve")),
 ):
-    """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K08."""
+    """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K06."""
     ket_qua = ContractService.override_handover(db, contract_id, payload.reason, actor_id=user.id)
     invalidate_money_caches()
     return ket_qua
