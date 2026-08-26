@@ -9,6 +9,7 @@ import ContractDocumentViewer from '../components/contracts/ContractDocumentView
 import '../components/contracts/contracts.css';
 
 import ContractWorkspace from '../components/contracts/ContractWorkspace';
+import DocumentRegister from '../features/document-register/DocumentRegister';
 
 const CONTRACT_GROUPS_PER_PAGE = 15;
 function getContractId(contract) {
@@ -210,6 +211,50 @@ export default function Contracts({ isDirector = false }) {
       return;
     }
 
+    const sourceDocuments = Array.from(payload.source_documents || []);
+    const existingContractId = payload.existing_contract_id || '';
+    const contractPayload = { ...payload };
+    delete contractPayload.source_documents;
+    delete contractPayload.existing_contract_id;
+
+    const uploadSourceDocuments = async (contractId, files) => {
+      const failedFiles = [];
+      for (const file of files) {
+        try {
+          const body = new FormData();
+          body.append('file', file);
+          await apiFetch(`/api/document-register/contracts/${encodeURI(contractId)}/source-documents`, {
+            method: 'POST',
+            body,
+            timeout: 60_000,
+          });
+        } catch (uploadError) {
+          console.warn(`Không tải được tài liệu nguồn ${file.name}:`, uploadError);
+          failedFiles.push(file);
+        }
+      }
+      return failedFiles;
+    };
+
+    // Hợp đồng đã tạo thành công ở lượt trước nhưng một vài tệp lỗi: chỉ tải lại
+    // đúng các tệp đó, tuyệt đối không tạo thêm một hợp đồng trùng.
+    if (existingContractId) {
+      setSavingContract(true);
+      try {
+        const failedFiles = await uploadSourceDocuments(existingContractId, sourceDocuments);
+        if (failedFiles.length > 0) {
+          addToast(`Còn ${failedFiles.length} tệp chưa tải được. Bạn có thể thử lại.`, 'error');
+          return { contract_id: existingContractId, failed_files: failedFiles };
+        }
+        addToast('Đã tải đủ hồ sơ khách gửi.', 'success');
+        setIsModalOpen(false);
+        if (page === 1) fetchContracts(); else setPage(1);
+        return { contract_id: existingContractId, failed_files: [] };
+      } finally {
+        setSavingContract(false);
+      }
+    }
+
     const safeCustName = (payload.customer_name || 'KhachHang').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
     const safeContractId = (payload.contract_id || formData.contract_id || 'HD').replace(/[/\\?%*:|"<>]/g, '_');
     const suggestedFileName = `HopDong_${safeContractId}_${safeCustName}.docx`;
@@ -237,7 +282,7 @@ export default function Contracts({ isDirector = false }) {
       const data = await apiFetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, ...payload })
+        body: JSON.stringify({ ...formData, ...contractPayload })
       });
 
       addToast('✅ Hợp đồng đã được lưu vào hệ thống!', 'success');
@@ -263,11 +308,21 @@ export default function Contracts({ isDirector = false }) {
         addToast('Hợp đồng đã lưu nhưng chưa thể ghi tệp Word. Bạn có thể mở tài liệu để xem lại.', 'error');
       }
 
+      const savedContractId = data?.id || data?.contract_id || payload.contract_id;
+      const failedFiles = await uploadSourceDocuments(savedContractId, sourceDocuments);
+      if (failedFiles.length > 0) {
+        addToast(`Hợp đồng đã tạo, nhưng còn ${failedFiles.length} tệp chưa tải được. Chỉ cần bấm “Tải lại tệp lỗi”.`, 'error');
+        if (page === 1) fetchContracts(); else setPage(1);
+        return { contract_id: savedContractId, failed_files: failedFiles };
+      }
+      if (sourceDocuments.length > 0) addToast(`Đã lưu ${sourceDocuments.length} tài liệu khách gửi.`, 'success');
+
       setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
       setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
       setIsModalOpen(false);
       if (page === 1) fetchContracts();
       else setPage(1);
+      return { contract_id: savedContractId, failed_files: [] };
     } catch (err) {
       addToast('Lỗi: ' + (err.message || 'Không thể tạo hợp đồng'), 'error');
     } finally {
@@ -414,7 +469,10 @@ export default function Contracts({ isDirector = false }) {
                 rowKey="id"
                 onRowClick={setSelectedContract}
                 rowClassName={(row) => {
-                  return getContractId(row) === getContractId(selectedContract) ? 'contract-selected-row' : '';
+                  const classes = [];
+                  if (getContractId(row) === getContractId(selectedContract)) classes.push('contract-selected-row');
+                  if (Number(row.remaining_amount || 0) > 0.009) classes.push('contract-debt-row');
+                  return classes.join(' ');
                 }}
                 emptyText="Chưa có hợp đồng nào"
                 pageSize={0}
@@ -460,6 +518,17 @@ export default function Contracts({ isDirector = false }) {
                       <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
                       {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><FileText size={15} /> Mở tài liệu</button>}
                     </div>
+
+                    {/* Giấy tờ khách hàng đưa lúc ký — thu ngay ở đây, cùng chỗ
+                        với thao tác tạo hợp đồng, thay vì đợi ai đó nhận việc.
+                        Một sổ dùng chung cho mọi hạng mục của hợp đồng. */}
+                    <DocumentRegister
+                      contractId={getContractId(selectedContract)}
+                      addToast={addToast}
+                      collapsible
+                      title="Giấy tờ khách hàng cung cấp"
+                      showSourceRepository
+                    />
                   </div>
                   <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
                     <WorkflowIcon size={17} /> Quy trình

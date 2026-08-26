@@ -11,6 +11,37 @@ vi.mock('../contexts/ToastContext', () => ({ useToast: () => ({ addToast }) }))
 describe('Contracts', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  it('đánh dấu toàn dòng hợp đồng còn nợ để chạy viền cảnh báo đỏ', async () => {
+    vi.stubGlobal('fetch', vi.fn((url) => {
+      const u = String(url)
+      if (u.startsWith('/api/contracts/workspace-list')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            data: [{
+              id: '003/BK-2026',
+              customer_name: 'Nguyễn Văn A',
+              total_value: 10_000_000,
+              remaining_amount: 2_000_000,
+              service_lines: [{ name: 'Cắm mốc' }],
+              status: 'active',
+            }],
+            pagination: {},
+          }),
+        })
+      }
+      if (u === '/api/config') return Promise.resolve({ ok: true, json: async () => ({ personnel: [], services: [] }) })
+      if (u === '/api/catalog/service-packages') return Promise.resolve({ ok: true, json: async () => ({ data: [] }) })
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    }))
+
+    const { container } = render(<Contracts />)
+
+    await screen.findAllByText('003/BK-2026')
+    expect(container.querySelector('tr.contract-debt-row')).toBeInTheDocument()
+    expect(screen.getByText(/còn 2\.000\.000/)).toBeInTheDocument()
+  })
+
   // Địa chỉ bất động sản phải chọn từ danh mục địa giới, không gõ tay — gõ tay
   // thì mỗi người viết một kiểu và không bao giờ lọc hay đối chiếu được.
   it('bắt chọn tỉnh/phường từ danh mục, phường khoá cho tới khi chọn tỉnh', async () => {

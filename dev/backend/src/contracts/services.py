@@ -1,3 +1,4 @@
+import logging
 import uuid
 import re
 from datetime import datetime, timezone
@@ -241,6 +242,76 @@ def build_current_contract_document_data(db: Session, contract_id: str) -> tuple
     }, filename
 
 
+CHE_DO_CHON_GIAY = ("DEFAULT", "CUSTOM", "NONE")
+
+
+def phan_giai_lua_chon_giay(mode, template_ids):
+    """Đổi payload tường minh thành thứ tầng dưới hiểu, hoặc 422.
+
+    Trả về ``TU_DONG_THEO_MAC_DINH`` (sentinel nội bộ) hoặc một danh sách mã mẫu.
+    Sentinel là chi tiết cài đặt của server — KHÔNG bao giờ được sinh ra từ việc
+    client thiếu field.
+    """
+    from fastapi import HTTPException
+
+    if mode is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Thiếu document_selection_mode. Phải nói rõ DEFAULT, CUSTOM hay NONE.",
+        )
+    if mode not in CHE_DO_CHON_GIAY:
+        raise HTTPException(
+            status_code=422,
+            detail=f"document_selection_mode không hợp lệ. Chọn: {', '.join(CHE_DO_CHON_GIAY)}.",
+        )
+
+    if mode == "DEFAULT":
+        if template_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Chế độ DEFAULT không nhận danh sách tự chọn. Dùng CUSTOM nếu muốn tự chọn.",
+            )
+        return TU_DONG_THEO_MAC_DINH
+
+    if mode == "CUSTOM":
+        # Yêu cầu ít nhất một mã: "CUSTOM mà rỗng" và "NONE" nhìn giống nhau
+        # trong dữ liệu nhưng khác hẳn về ý định. Bắt nói rõ bằng NONE.
+        if not template_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Chế độ CUSTOM phải chọn ít nhất một loại giấy. "
+                       "Không thu giấy nào thì dùng NONE.",
+            )
+        return list(template_ids)
+
+    # NONE
+    if template_ids:
+        raise HTTPException(
+            status_code=422,
+            detail="Chế độ NONE không đi kèm danh sách giấy tờ.",
+        )
+    return []
+
+
+class _TuDongTheoMacDinh:
+    """Sentinel: người gọi KHÔNG đi qua màn chọn giấy.
+
+    Phân biệt ba thứ hoàn toàn khác nhau, mà nếu cùng biểu diễn bằng ``None``
+    thì frontend quên gửi field sẽ bị hiểu nhầm thành "tự chọn mặc định":
+
+    * ``[]``                  — người dùng CHỦ ĐỘNG chọn không thu giấy nào
+    * ``["t1", "t2"]``        — chọn đúng hai mẫu đó
+    * ``TU_DONG_THEO_MAC_DINH`` — luồng tự động, chưa có UI chọn; lấy đúng những
+      applicability có ``is_default = true``, không phải mọi mẫu phù hợp
+    """
+
+    def __repr__(self) -> str:  # pragma: no cover - chỉ để log dễ đọc
+        return "TU_DONG_THEO_MAC_DINH"
+
+
+TU_DONG_THEO_MAC_DINH = _TuDongTheoMacDinh()
+
+
 def _create_initial_service_line(
     db: Session,
     *,
@@ -252,6 +323,10 @@ def _create_initial_service_line(
     priority: str = "NORMAL",
     priority_reason: str | None = None,
     priority_set_by: str | None = None,
+    # KHÔNG có giá trị mặc định: mọi nơi tạo Hạng mục buộc phải nói rõ ý định.
+    # Có mặc định thì một đường tạo mới quên truyền sẽ lặng lẽ dựng cả bộ giấy.
+    checklist_template_ids: list[str] | _TuDongTheoMacDinh,
+    actor_id: str | None = None,
 ) -> ServiceLine:
     """Create the first contract item from the create-contract form.
 
@@ -277,6 +352,13 @@ def _create_initial_service_line(
                 .first()
             )
 
+    # Chặn TRƯỚC khi tạo. Nếu schema chưa sẵn sàng thì phải từ chối tường minh
+    # (503) chứ không được đẻ ra một Hạng mục V1 rồi coi như thành công — đó
+    # đúng là kiểu hỏng âm thầm mà cả thiết kế này sinh ra để tránh.
+    from src.dossiers.register import require_v2_schema
+
+    require_v2_schema(db)
+
     service_line = ServiceLine(
         id=str(uuid.uuid4()),
         contract_id=contract_id,
@@ -293,7 +375,79 @@ def _create_initial_service_line(
         priority_set_at=(datetime.now(timezone.utc) if priority != "NORMAL" else None),
     )
     db.add(service_line)
+
+    # Sổ giấy tờ phải ra đời CÙNG Hạng mục, trong cùng transaction.
+    #
+    # Tách hai bước là mở ra một khe: Hạng mục đã là version 2 (nghĩa là "chỉ đọc
+    # sổ riêng của tôi") nhưng sổ chưa kịp dựng — nhân viên mở ra thấy trống
+    # trơn, tưởng hợp đồng không cần giấy nào và cho qua K01. Lỗi ở bước
+    # materialize thì Hạng mục cũng phải biến mất theo.
+    #
+    # flush để service_line có mặt trong transaction: slot có FK trỏ vào nó.
+    db.flush()
+
+    # Ghi mô hình sổ bằng SQL thuần, KHÔNG qua model: cột này chưa được map để
+    # các truy vấn ORM khác còn chạy được trên CSDL chưa migrate. Đến đây thì
+    # require_v2_schema() ở trên đã bảo đảm cột tồn tại.
+    db.execute(
+        text("update public.service_lines set document_register_version = 2 where id = :id"),
+        {"id": service_line.id},
+    )
+
+    _materialize_so_giay_to(
+        db,
+        service_line_id=service_line.id,
+        checklist_template_ids=checklist_template_ids,
+        actor_id=actor_id,
+    )
     return service_line
+
+
+def _materialize_so_giay_to(
+    db: Session,
+    *,
+    service_line_id: str,
+    checklist_template_ids: list[str] | _TuDongTheoMacDinh,
+    actor_id: str | None,
+) -> int:
+    """Chụp lựa chọn giấy tờ thành sổ của Hạng mục. Dùng chung cho MỌI đường tạo.
+
+    ``None`` = người gọi không đi qua màn chọn (đường tự động, API ngoài) — dựng
+    theo bộ gợi ý mặc định để Hạng mục không ra đời với sổ trống ngoài ý muốn.
+    ``[]`` = người dùng CỐ Ý không thu giấy nào — tôn trọng, và đó vẫn là một
+    Hạng mục version 2 hợp lệ.
+    """
+    from src.core.audit import log_action
+    from src.dossiers.register import applicable_templates, materialize_service_line_register
+
+    if isinstance(checklist_template_ids, _TuDongTheoMacDinh):
+        chon = [
+            muc["id"] for muc in applicable_templates(db, service_line_id)
+            if muc["is_default"]
+        ]
+        nguon_chon = "TU_DONG_MAC_DINH"
+    else:
+        # Kể cả danh sách rỗng — đó là một lựa chọn, không phải thiếu dữ liệu.
+        chon = list(checklist_template_ids)
+        nguon_chon = "NGUOI_DUNG_CHON"
+
+    so_o = materialize_service_line_register(
+        db, service_line_id, template_ids=chon, actor_id=actor_id
+    )
+    log_action(
+        db,
+        actor_id,
+        "SERVICE_LINE_REGISTER_MATERIALIZED",
+        "service_line",
+        {
+            "service_line_id": service_line_id,
+            "nguon_chon": nguon_chon,
+            "so_mau_chon": len(chon),
+            "so_o_tao": so_o,
+            "document_register_version": 2,
+        },
+    )
+    return so_o
 
 
 class ContractService:
@@ -339,8 +493,12 @@ class ContractService:
                 contract_id=new_hd.id,
                 service_type=service_type,
                 price=contract_val,
+                # Đường tạo hợp đồng từ task (không qua màn soạn) — khai DEFAULT
+                # tường minh, đúng như đường CRM.
+                checklist_template_ids=phan_giai_lua_chon_giay("DEFAULT", None),
+                actor_id=actor_id,
             )
-            
+
             rec = Receivable(
                 id=str(uuid.uuid4()),
                 contract_id=new_hd.id,
@@ -363,9 +521,31 @@ class ContractService:
                 }
             ))
             
+            # Sổ gốc mở ngay lúc ký hợp đồng: đó là lúc CSKH cầm giấy tờ của
+            # khách trên tay. Chờ tới khi kích hoạt quy trình mới dựng sổ thì
+            # giấy đã nhận rồi mà không có chỗ ghi.
+            #
+            # Nhưng KHÔNG được để hợp đồng hỏng vì sổ: sổ là thứ phái sinh và tự
+            # lành — mở lại lúc kích hoạt quy trình, và thao tác mở là idempotent.
+            # Hợp đồng mới là thứ khách đã ký, mất nó mới là mất thật.
+            try:
+                from src.dossiers.register import open_contract_register
+
+                # Không truyền template_ids nữa: lựa chọn đã materialize vào
+                # sổ của Hạng mục ở trên. Giữ lời gọi này cho tương thích —
+                # Hạng mục version 2 không đọc ô cấp Hợp đồng nên chúng vô hại,
+                # còn hợp đồng cũ / đường API ngoài vẫn cần sổ gốc.
+                open_contract_register(db, new_hd.id, actor_id=actor_id_val)
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "Không mở được sổ giấy tờ cho hợp đồng %s; sẽ mở lại khi kích hoạt quy trình.",
+                    new_hd.id,
+                    exc_info=True,
+                )
+
             db.commit()
             sync_contract_read_model_after_write(db)
-            
+
             telegram_service.notify_new_contract({
                 "contract_id": new_hd.id,
                 "customer_name": cust_name,
@@ -454,6 +634,16 @@ class ContractService:
 
     @staticmethod
     def generate_and_save_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
+        # Phân giải lựa chọn giấy tờ NGAY ĐẦU, trước mọi lệnh ghi.
+        #
+        # Payload thiếu hoặc mâu thuẫn phải nổ 422 khi chưa có gì được tạo — bảo
+        # đảm bằng thứ tự thực thi chứ không dựa vào rollback. Rollback vẫn có,
+        # nhưng phụ thuộc vào nó nghĩa là mọi đường gọi mới đều phải nhớ bọc
+        # try/except cho đúng, và sẽ có ngày ai đó quên.
+        lua_chon_giay = phan_giai_lua_chon_giay(
+            getattr(payload, "document_selection_mode", None),
+            getattr(payload, "document_template_ids", None),
+        )
         try:
             template = resolve_published_contract_template(db, payload.contract_template_id)
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
@@ -485,6 +675,11 @@ class ContractService:
             )
             db.add(new_hd)
 
+            # Xác thực actor TRƯỚC khi tạo Hạng mục: materialize sổ giấy tờ ghi
+            # audit ngay trong lời gọi đó, cần biết ai là người thao tác.
+            actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
+            actor_id_val = actor_id if actor_exists else None
+
             service_line = _create_initial_service_line(
                 db,
                 contract_id=new_hd.id,
@@ -492,6 +687,11 @@ class ContractService:
                 price=contract_val,
                 address=address,
                 task_type_id=getattr(payload, "task_type_id", None),
+                # Lựa chọn của người soạn hợp đồng neo vào HẠNG MỤC, không vào
+                # Hợp đồng: một Hợp đồng nhiều Hạng mục thì mỗi Hạng mục có bộ
+                # giấy riêng, chốt ở cấp Hợp đồng là sai phạm vi.
+                checklist_template_ids=lua_chon_giay,
+                actor_id=actor_id_val,
                 priority=(getattr(payload, "priority", None) or "NORMAL"),
                 priority_reason=getattr(payload, "priority_reason", None),
                 priority_set_by=actor_id,
@@ -505,9 +705,6 @@ class ContractService:
             )
             db.add(rec)
             
-            actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
-            actor_id_val = actor_id if actor_exists else None
-
             db.add(ContractGeneratedDocument(
                 contract_id=contract_id,
                 template_id=template.id,
@@ -553,7 +750,7 @@ class ContractService:
 
     @staticmethod
     def override_handover(db: Session, contract_id: str, reason: str, actor_id: str) -> dict:
-        """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K08."""
+        """Giám đốc duyệt cho nợ và cho phép xuất biên bản bàn giao tại Node K06."""
         if not (reason or "").strip():
             raise HTTPException(status_code=400, detail="Bắt buộc phải nhập lý do phê duyệt ngoại lệ.")
         try:
