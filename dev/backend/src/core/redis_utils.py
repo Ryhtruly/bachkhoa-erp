@@ -98,6 +98,7 @@ def invalidate_money_caches() -> None:
     hai phút — không khác gì hệ thống nuốt mất phiếu.
     """
     invalidate_cache("bachkhoa:finance:*")
+    invalidate_cache("bachkhoa:handover:*")
     invalidate_cache("bachkhoa:contract_workspace:*")
     invalidate_cache("bachkhoa:contracts:*")
 

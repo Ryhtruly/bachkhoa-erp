@@ -6,7 +6,9 @@ Viết hai bản là hai chỗ để lệch nhau.
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -14,7 +16,9 @@ from sqlalchemy.orm import Session
 from src.core.auth import check_user_permission, require_permission
 from src.db.database import get_db
 from src.db.models import User
+from src.dossiers import documents
 from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note
+from src.services.timeline_realtime import publish_timeline_change
 from src.dossiers.legal_lifecycle import (
     ACTION_LABELS,
     CLOSE_RESULTS,
@@ -297,3 +301,85 @@ def add_submission(
     )
     db.commit()
     return {"status": "success", "data": {"id": new_id, "submit_seq": seq}}
+
+
+# ── Kho giấy tờ của hồ sơ (tab Hồ sơ pháp lý) ──────────────────────────────────
+# Từ K04 trở đi mỗi bước sinh ra một bộ giấy tờ khác nhau, nên kho được chia
+# thành ba ngăn theo giai đoạn và chỉ ngăn của bước ĐANG chạy mới nhận thêm tệp.
+
+@router.get("/{dossier_id}/documents")
+def list_dossier_documents(
+    dossier_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("legal_submission", "read")),
+):
+    return documents.list_documents(db, dossier_id)
+
+
+@router.post("/{dossier_id}/documents")
+async def upload_dossier_document(
+    dossier_id: str,
+    stage: str = Form(...),
+    slot_key: Optional[str] = Form(None),
+    note: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("legal_submission", "read")),
+):
+    """Nhân viên scan giấy tờ và lưu vào đúng ngăn giai đoạn của hồ sơ."""
+    if not check_user_permission(db, user, "legal_submission", "update"):
+        raise HTTPException(status_code=403, detail="Không có quyền xử lý hồ sơ pháp lý")
+
+    data = await file.read(documents.MAX_DOCUMENT_BYTES + 1)
+    try:
+        result = documents.create_document(
+            db,
+            dossier_id,
+            stage=stage,
+            file_name=file.filename or "tai-lieu",
+            content_type=file.content_type,
+            data=data,
+            actor_id=user.id,
+            slot_key=slot_key,
+            note=note,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("legal_dossier_document_added", entity_id=dossier_id)
+    return {"status": "success", "data": result}
+
+
+@router.get("/documents/{document_id}/download")
+def download_dossier_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("legal_submission", "read")),
+):
+    """Đọc tệp qua máy chủ — bucket là private, không phát link trực tiếp."""
+    row, body = documents.read_document(db, document_id)
+    return Response(
+        content=body,
+        media_type=row["content_type"] or "application/octet-stream",
+        headers={
+            "Content-Disposition": (
+                f'inline; filename*=UTF-8\'\'{quote(row["file_name"])}'
+            ),
+            "Cache-Control": "private, max-age=60",
+        },
+    )
+
+
+@router.delete("/documents/{document_id}")
+def remove_dossier_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("legal_submission", "read")),
+):
+    if not check_user_permission(db, user, "legal_submission", "update"):
+        raise HTTPException(status_code=403, detail="Không có quyền xử lý hồ sơ pháp lý")
+    result = documents.delete_document(db, document_id, actor_id=user.id)
+    db.commit()
+    publish_timeline_change("legal_dossier_document_removed", entity_id=document_id)
+    return {"status": "success", "data": result}

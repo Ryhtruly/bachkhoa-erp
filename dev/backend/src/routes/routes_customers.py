@@ -21,7 +21,7 @@ from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
 router = APIRouter(prefix="/api/customers", tags=["01b. Customers"])
 
 # Cùng nguồn chân lý với màn Thu Công Nợ: công nợ tính từ phiếu thu ĐÃ DUYỆT,
-# bàn giao đọc từ cờ is_handover của node (không hardcode mã K08).
+# bàn giao đọc từ cờ is_handover của node (không hardcode mã K06).
 _APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
 _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
 

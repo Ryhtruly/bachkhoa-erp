@@ -631,6 +631,11 @@ body {
   padding: 2px;
 }
 
+.main--employee {
+  --main-pad-x: 2px;
+  padding: 2px;
+}
+
 /* ─── Global Workspace Header Title Bar (Hợp Đồng, Timeline, Pháp Lý, Đo Vẽ) ─── */
 .contract-pane-title {
   display: flex;

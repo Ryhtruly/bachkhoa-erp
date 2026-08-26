@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.routes.routes_contracts import router as contracts_router
+from src.routes.routes_slot_requests import router as slot_requests_router
 from src.routes.routes_dashboard import router as dashboard_router
 from src.routes.routes_catalog import router as catalog_router
 from src.routes.routes_customers import router as customers_router
@@ -31,6 +32,7 @@ from src.routes.routes_employee_portal import router as employee_portal_router
 from src.routes.routes_user_admin import router as user_admin_router
 from src.routes.routes_notifications import router as notifications_router
 from src.routes.routes_legal_submissions import router as legal_submissions_router
+from src.routes.routes_document_register import router as document_register_router
 from src.routes.routes_legal_dossiers import router as legal_dossiers_router
 from src.routes.routes_handover import router as handover_router
 from src.routes.routes_survey_records import router as survey_records_router
@@ -179,6 +181,7 @@ app.include_router(employee_portal_router)
 app.include_router(dashboard_router)
 app.include_router(catalog_router)
 app.include_router(customers_router)
+app.include_router(slot_requests_router)
 app.include_router(contracts_router, prefix="/api/contracts")
 app.include_router(finance_router)
 app.include_router(cashflow_router)
@@ -192,6 +195,7 @@ app.include_router(kpi_router)
 app.include_router(notifications_router)
 app.include_router(legal_submissions_router)
 app.include_router(legal_dossiers_router)
+app.include_router(document_register_router)
 app.include_router(handover_router)
 app.include_router(survey_records_router)
 app.include_router(payroll_router)

@@ -12,6 +12,8 @@ import Cashflow from './pages/Cashflow';
 import KPI from './pages/KPI';
 import HumanResources from './pages/HumanResources';
 import ContractTimeline from './pages/ContractTimeline';
+import ApprovalQueue from './features/approvals/ApprovalQueue';
+import DocumentTemplateSettings from './features/document-register/DocumentTemplateSettings';
 import Login from './pages/Login';
 import SetPassword from './pages/SetPassword';
 import ChatWidget from './components/ChatWidget';
@@ -105,6 +107,14 @@ function App() {
     return () => window.removeEventListener('bachkhoa:timeline-open-node', openTimelineNode);
   }, []);
 
+  useEffect(() => {
+    const navigateFromFeature = (event) => {
+      if (event.detail?.tab === 'cashflow') setActiveTab('cashflow');
+    };
+    window.addEventListener('app:navigate', navigateFromFeature);
+    return () => window.removeEventListener('app:navigate', navigateFromFeature);
+  }, []);
+
   if (window.location.pathname === '/set-password') {
     return (
       <SetPassword
@@ -154,6 +164,8 @@ function App() {
     { key: 'settings', Component: Settings, permission: 'settings', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'contracts', Component: Contracts, permission: 'contract', props: { user: profile, isDirector } },
     { key: 'timeline', Component: ContractTimeline, directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'approvals', Component: ApprovalQueue, directorOnly: true, props: {} },
+    { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
     { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'debt-collection', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
@@ -230,9 +242,9 @@ function App() {
             permissions={permissions}
             isDirector={isDirector}
           />
-          <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}${activeTab === 'timeline' ? ' main--timeline' : ''}${activeTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers'].includes(activeTab) ? ' main--list' : ''}`}>
+          <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}${activeTab === 'timeline' ? ' main--timeline' : ''}${activeTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers', 'doc-templates'].includes(activeTab) ? ' main--list' : ''}${employeeTab === 'employee-dashboard' ? ' main--employee' : ''}`}>
             {(employeeMode ? allowedEmployeeTabs : allowedTabs).map(({ key, Component, props }) => (
-              <div key={key} style={{ display: (employeeMode ? employeeTab : activeTab) === key ? 'block' : 'none' }}>
+              <div key={key} style={{ display: (employeeMode ? employeeTab : activeTab) === key ? 'block' : 'none', minHeight: '100%' }}>
                 <Component {...(props || {})} />
               </div>
             ))}

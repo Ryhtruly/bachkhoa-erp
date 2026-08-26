@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, Inbox, FileStack } from 'lucide-react';
 
 export default function Sidebar({ activeTab, setActiveTab, mode = 'management', permissions = {}, isDirector = false }) {
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
@@ -14,6 +14,10 @@ export default function Sidebar({ activeTab, setActiveTab, mode = 'management', 
     { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck, permission: 'legal_submission' },
     { id: 'contracts', label: 'Hợp Đồng', icon: FileText, permission: 'contract' },
     { id: 'timeline', label: 'Quản Lý Timeline', icon: ChartNoAxesGantt, directorOnly: true },
+    // Mọi phiếu cần chữ ký Giám đốc gom về một chỗ — tách ra nhiều màn thì
+    // phiếu nằm ở màn ít mở sẽ treo hàng tuần.
+    { id: 'approvals', label: 'Hàng Chờ Duyệt', icon: Inbox, directorOnly: true },
+    { id: 'doc-templates', label: 'Mẫu Giấy Tờ', icon: FileStack, directorOnly: true },
     { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet, permission: 'finance' },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr', directorOnly: true },
     { id: 'wiki', label: 'Nhân Sự & Đào Tạo', icon: BookOpen, permission: 'hr' },

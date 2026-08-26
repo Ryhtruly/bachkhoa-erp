@@ -135,6 +135,12 @@ class ServiceLine(Base):
     priority_reason = Column(Text, nullable=True)
     priority_set_by = Column(String, nullable=True)
     priority_set_at = Column(DateTime(timezone=True), nullable=True)
+    # document_register_version CỐ Ý KHÔNG map ở đây trong suốt cửa sổ EXPAND.
+    #
+    # Map vào model là mọi truy vấn ORM trên ServiceLine đều SELECT cột đó — kể
+    # cả danh sách hợp đồng, cache, báo cáo — nên chỉ cần CSDL chưa có cột là
+    # toàn bộ gãy 500. Ghi/đọc cột này đi bằng SQL thuần, sau cổng
+    # require_v2_schema(). Map vào model ở đợt CONTRACT, khi cột đã chắc chắn có.
 
 
 class ContractTemplate(Base):

@@ -1,12 +1,65 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Bot, User, Trash2 } from 'lucide-react';
 
+const CHAT_BUTTON_SIZE = 56;
+const CHAT_WINDOW_SIZE = { width: 360, height: 500 };
+const CHAT_EDGE_GAP = 16;
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const getViewportSize = () => ({
+  width: typeof window === 'undefined' ? 1280 : window.innerWidth,
+  height: typeof window === 'undefined' ? 800 : window.innerHeight
+});
+
+const getDefaultButtonPosition = () => {
+  const viewport = getViewportSize();
+  return {
+    x: viewport.width - CHAT_BUTTON_SIZE - 24,
+    y: viewport.height - CHAT_BUTTON_SIZE - 24
+  };
+};
+
+const clampPosition = (position, size) => {
+  const viewport = getViewportSize();
+  return {
+    x: clamp(position.x, CHAT_EDGE_GAP, Math.max(CHAT_EDGE_GAP, viewport.width - size.width - CHAT_EDGE_GAP)),
+    y: clamp(position.y, CHAT_EDGE_GAP, Math.max(CHAT_EDGE_GAP, viewport.height - size.height - CHAT_EDGE_GAP))
+  };
+};
+
+const readStoredPosition = () => {
+  if (typeof window === 'undefined') return getDefaultButtonPosition();
+  const fallback = getDefaultButtonPosition();
+  try {
+    const saved = window.localStorage.getItem('chatbot_floating_position');
+    if (!saved) return fallback;
+    const parsed = JSON.parse(saved);
+    if (Number.isFinite(parsed?.x) && Number.isFinite(parsed?.y)) {
+      return clampPosition(parsed, { width: CHAT_BUTTON_SIZE, height: CHAT_BUTTON_SIZE });
+    }
+  } catch (error) {
+    console.error('Failed to parse chat position');
+  }
+  return fallback;
+};
+
 export default function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [buttonPosition, setButtonPosition] = useState(readStoredPosition);
+  const [windowPosition, setWindowPosition] = useState(() => {
+    const buttonPos = readStoredPosition();
+    return clampPosition({
+      x: buttonPos.x - CHAT_WINDOW_SIZE.width + CHAT_BUTTON_SIZE,
+      y: buttonPos.y - CHAT_WINDOW_SIZE.height + CHAT_BUTTON_SIZE
+    }, CHAT_WINDOW_SIZE);
+  });
   const messagesEndRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressOpenRef = useRef(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -83,16 +136,102 @@ export default function ChatWidget() {
     }
   };
 
+  const persistButtonPosition = (nextPosition) => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('chatbot_floating_position', JSON.stringify(nextPosition));
+  };
+
+  const startButtonDrag = (event) => {
+    if (event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      type: 'button',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      moved: false
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const startWindowDrag = (event) => {
+    if (event.button !== 0) return;
+    const rect = event.currentTarget.closest('[data-chat-window]')?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = {
+      type: 'window',
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      moved: false
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleDragMove = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
+      drag.moved = true;
+    }
+    const next = {
+      x: event.clientX - drag.offsetX,
+      y: event.clientY - drag.offsetY
+    };
+    if (drag.type === 'button') {
+      setButtonPosition(clampPosition(next, { width: CHAT_BUTTON_SIZE, height: CHAT_BUTTON_SIZE }));
+      return;
+    }
+    setWindowPosition(clampPosition(next, CHAT_WINDOW_SIZE));
+  };
+
+  const finishDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.type === 'button') {
+      setButtonPosition(current => {
+        const clamped = clampPosition(current, { width: CHAT_BUTTON_SIZE, height: CHAT_BUTTON_SIZE });
+        persistButtonPosition(clamped);
+        return clamped;
+      });
+      if (drag.moved) {
+        suppressOpenRef.current = true;
+        window.setTimeout(() => {
+          suppressOpenRef.current = false;
+        }, 0);
+      }
+    }
+    dragRef.current = null;
+  };
+
+  const openChat = () => {
+    if (suppressOpenRef.current) return;
+    setWindowPosition(clampPosition({
+      x: buttonPosition.x - CHAT_WINDOW_SIZE.width + CHAT_BUTTON_SIZE,
+      y: buttonPosition.y - CHAT_WINDOW_SIZE.height + CHAT_BUTTON_SIZE
+    }, CHAT_WINDOW_SIZE));
+    setIsOpen(true);
+  };
+
   return (
     <>
       {/* Floating Button */}
       <button 
-        onClick={() => setIsOpen(true)}
+        onPointerDown={startButtonDrag}
+        onPointerMove={handleDragMove}
+        onPointerUp={finishDrag}
+        onPointerCancel={finishDrag}
+        onClick={openChat}
         className="btn btn-primary"
+        aria-label="Mở trợ lý nội bộ"
         style={{
           position: 'fixed',
-          bottom: '24px',
-          right: '24px',
+          left: `${buttonPosition.x}px`,
+          top: `${buttonPosition.y}px`,
           width: '56px',
           height: '56px',
           borderRadius: '50%',
@@ -101,7 +240,10 @@ export default function ChatWidget() {
           justifyContent: 'center',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           zIndex: 9999,
-          padding: 0
+          padding: 0,
+          cursor: 'grab',
+          touchAction: 'none',
+          userSelect: 'none'
         }}
       >
         <MessageCircle size={28} />
@@ -109,10 +251,10 @@ export default function ChatWidget() {
 
       {/* Chat Window */}
       {isOpen && (
-        <div style={{
+        <div data-chat-window style={{
           position: 'fixed',
-          bottom: '24px',
-          right: '24px',
+          left: `${windowPosition.x}px`,
+          top: `${windowPosition.y}px`,
           width: '360px',
           height: '500px',
           backgroundColor: 'var(--bg-card)',
@@ -125,13 +267,21 @@ export default function ChatWidget() {
           overflow: 'hidden'
         }}>
           {/* Header */}
-          <div style={{
+          <div
+            onPointerDown={startWindowDrag}
+            onPointerMove={handleDragMove}
+            onPointerUp={finishDrag}
+            onPointerCancel={finishDrag}
+            style={{
             padding: '16px',
             backgroundColor: 'rgba(59, 130, 246, 0.1)',
             borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center'
+            alignItems: 'center',
+            cursor: 'grab',
+            touchAction: 'none',
+            userSelect: 'none'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Bot color="var(--blue-500)" size={20} />
@@ -140,6 +290,7 @@ export default function ChatWidget() {
             <div style={{ display: 'flex', gap: '8px' }}>
               <button 
                 onClick={clearHistory}
+                onPointerDown={event => event.stopPropagation()}
                 title="Xóa lịch sử trò chuyện"
                 style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px' }}
               >
@@ -147,6 +298,7 @@ export default function ChatWidget() {
               </button>
               <button 
                 onClick={() => setIsOpen(false)}
+                onPointerDown={event => event.stopPropagation()}
                 style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: '4px' }}
               >
                 <X size={20} />

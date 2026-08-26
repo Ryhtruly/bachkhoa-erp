@@ -19,6 +19,8 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import { isDossierLocked } from '../lib/dossierStatus';
 import LegalDossierActions from '../features/legal-dossier/LegalDossierActions';
+import DossierDocuments from '../features/legal-dossier/DossierDocuments';
+import DocumentRegister from '../features/document-register/DocumentRegister';
 import './legalSubmissions.css';
 
 const API = '';
@@ -531,6 +533,20 @@ export default function LegalSubmissions() {
                     onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} />
                 </Field>
               </div>
+
+              {/* Giấy tờ scan lưu thẳng vào kho của hạng mục, chia ngăn theo bước.
+                  Khác ô "Tệp hồ sơ" phía trên: ô đó chỉ là link Drive gõ tay. */}
+              <DocumentRegister
+                contractId={detailData?.contract_id}
+                serviceLineId={detailData?.service_line_id}
+                addToast={addToast}
+              />
+
+              <DossierDocuments
+                dossierId={detailData?.dossier_id}
+                addToast={addToast}
+                onChanged={() => fetchSubmissions()}
+              />
             </section>
 
             <div className="legal-detail__footer">

@@ -1,6 +1,14 @@
 """Core System & Security models: User, Role, UserRole, RolePermission, AuthToken, AuditLog, Notification."""
 
 from src.db.models._base import *
+from sqlalchemy import Sequence
+
+
+audit_log_id_seq = Sequence(
+    "audit_log_id_seq",
+    schema="public",
+    metadata=Base.metadata,
+)
 
 
 class User(Base):
@@ -103,17 +111,21 @@ class AuthToken(Base):
     expires_at = Column(DateTime(timezone=True))
     user_agent = Column(String, nullable=True)
 
-import time
-
-def generate_audit_id():
-    return time.time_ns() // 1000
-
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    id = Column(BigInteger, primary_key=True, autoincrement=False, default=generate_audit_id)
+    id = Column(
+        BigInteger,
+        primary_key=True,
+        autoincrement=False,
+        server_default=audit_log_id_seq.next_value(),
+    )
     actor_id = Column(String, ForeignKey("users.id"), nullable=True)
     action = Column(String)
     object_type = Column(String)
+    # Đi cặp với object_type. Có trên live từ migration audit_log_object_id nhưng
+    # model quên khai, nên mọi database dựng mới từ model đều thiếu cột này và
+    # các câu INSERT có object_id lăn ra lỗi.
+    object_id = Column(String, nullable=True)
     payload_json = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
 

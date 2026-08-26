@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 import datetime
 import uuid
 import os
@@ -187,6 +187,32 @@ def update_lead_status(
             price=numeric_total_value,
         )
         db.add(new_service_line)
+        # Cùng transaction với việc tạo Hạng mục: lỗi dựng sổ thì Hạng mục cũng
+        # không được ra đời. Đường tự động này không đi qua màn chọn giấy nên
+        # truyền None — dựng theo bộ gợi ý mặc định của gói/hạng mục.
+        db.flush()
+        from src.contracts.services import _materialize_so_giay_to, phan_giai_lua_chon_giay
+        from src.dossiers.register import require_v2_schema
+
+        # Cùng mô hình sổ v2 với đường soạn hợp đồng tay. Đường tự động này đúng
+        # loại dễ bị bỏ quên: không ai mở ra xem hằng ngày, mà Hạng mục nó đẻ ra
+        # vẫn chạy quy trình như mọi Hạng mục khác.
+        require_v2_schema(db)
+        db.execute(
+            text("update public.service_lines set document_register_version = 2 where id = :id"),
+            {"id": new_service_line.id},
+        )
+
+        _materialize_so_giay_to(
+            db,
+            service_line_id=new_service_line.id,
+            # Luồng tự động, chưa có màn chọn giấy. Khai chế độ DEFAULT TƯỜNG
+            # MINH ngay tại đây thay vì dựa vào giá trị mặc định của tham số —
+            # để đọc code là thấy ngay ý định, và đổi mặc định ở nơi khác không
+            # âm thầm đổi hành vi của đường này.
+            checklist_template_ids=phan_giai_lua_chon_giay("DEFAULT", None),
+            actor_id=user.id,
+        )
         contract_created = True
 
     db.add(AuditLog(
