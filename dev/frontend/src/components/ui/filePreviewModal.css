@@ -1,0 +1,111 @@
+/* Xem tài liệu hầu như luôn được mở TỪ BÊN TRONG một lớp phủ khác — form soạn
+   hợp đồng (.ctr-form-overlay) ở z-index 1200, popover trong đó ở 1300. Lớp phủ
+   modal chung chỉ có z-index 100, nên nếu không nâng riêng chỗ này thì hộp xem
+   tài liệu rơi xuống DƯỚI form: người dùng bấm vào tên tệp, không thấy gì hiện
+   ra, mà Modal vẫn khoá cuộn body và họ cũng không bấm tới được để đóng — đúng
+   cảm giác "đơ như bị che". Giữ dưới 9999 để toast vẫn nổi trên cùng. */
+.file-preview-overlay { z-index: 1400; }
+
+.file-preview-overlay .modal {
+  max-width: min(900px, calc(100vw - 32px));
+  max-height: min(88vh, 860px);
+  overflow: hidden;
+}
+
+.file-preview-overlay .modal-body { min-height: 0; }
+
+.file-preview {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.file-preview__image,
+.file-preview__pdf {
+  display: block;
+  width: 100%;
+  height: min(65vh, 650px);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+/* Bề mặt dựng Word: nền xám để trang giấy trắng nổi lên như trong Word, cuộn
+   riêng bên trong chứ không kéo dài modal. Cùng bộ giá trị với trình xem tài
+   liệu hợp đồng (.contract-document-viewer__surface) để hai chỗ nhìn như một. */
+.file-preview__docx {
+  height: min(65vh, 650px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #d9dde3;
+}
+.file-preview__docx .docx-wrapper { padding: 0; background: transparent; }
+.file-preview__docx .docx { margin: 0 auto 18px; box-shadow: 0 2px 14px rgba(15, 23, 42, 0.2); }
+
+.file-preview__status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+}
+
+.file-preview__image {
+  object-fit: contain;
+  background-image:
+    linear-gradient(45deg, #f1f5f9 25%, transparent 25%),
+    linear-gradient(-45deg, #f1f5f9 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f1f5f9 75%),
+    linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+.file-preview__fallback {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 220px;
+  padding: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.file-preview__fallback strong {
+  overflow-wrap: anywhere;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.file-preview__fallback p { margin: 5px 0 0; color: #64748b; }
+.file-preview__icon { display: grid; place-items: center; color: #e54821; }
+
+.file-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.file-preview__actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.file-preview__actions a:hover { border-color: #e54821; color: #c23816; }
+
+@media (max-width: 640px) {
+  .file-preview-overlay .modal { max-width: calc(100vw - 20px); }
+  .file-preview__image, .file-preview__pdf, .file-preview__docx { height: 58vh; }
+  .file-preview__fallback { min-height: 170px; padding: 20px; }
+  .file-preview__actions a { flex: 1; justify-content: center; }
+}

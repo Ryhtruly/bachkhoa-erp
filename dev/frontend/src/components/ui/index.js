@@ -12,3 +12,5 @@ export { Badge, StatusBadge, WarningBadge, Tag } from './Badge';
 export { Dropdown } from './Dropdown';
 export { SensitiveActionModal } from './SensitiveActionModal';
 export { default as ConfirmationModal } from './ConfirmationModal';
+export { default as CustomSelect } from './CustomSelect';
+export { default as FilePreviewModal } from './FilePreviewModal';

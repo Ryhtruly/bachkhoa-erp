@@ -20,6 +20,7 @@ import {
   Banknote,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDashed,
@@ -47,6 +48,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
+import CustomSelect from '../ui/CustomSelect';
 import { apiFetch } from '../../lib/api';
 import AvatarImage from '../AvatarImage';
 import { giuKhiChuaLuu } from '../../lib/canhBaoChuaLuu';
@@ -62,7 +64,15 @@ import {
   removeChecklistDefinition,
 } from './workflowChecklistState';
 import HandoverPanel from '../../features/handover/HandoverPanel';
+import DocumentRegister from '../../features/document-register/DocumentRegister';
+import GiayDuocMien from '../../features/document-register/GiayDuocMien';
+import ThieuTaiLieuKhiNop from '../../features/document-register/ThieuTaiLieuKhiNop';
 import LegalDossierNodePanel from '../../features/legal-dossier/LegalDossierNodePanel';
+import {
+  calculateWorkflowProgress,
+  formatWorkflowDuration,
+} from './workflowProgress';
+import { neoTuyenVaoHandle, pathMidpoint } from './workflowEdgeRouting';
 
 function resolveWorkflowLabels(graph) {
   return {
@@ -106,9 +116,44 @@ const safeExternalUrl = value => {
     return null;
   }
 };
+const formatShortDateTime = value => {
+  if (!value) return '—';
+  const d = new Date(value);
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const day = d.getDate();
+  const month = d.getMonth() + 1;
+  return `${hours}:${minutes} · ${day}/${month}`;
+};
+const visibleNodeAssignments = (data = {}) => {
+  const runtimeAssignments = Array.isArray(data.runtimeAssignments) ? data.runtimeAssignments : [];
+  if (runtimeAssignments.length) return runtimeAssignments;
+  const visibleAssignments = Array.isArray(data.visibleAssignments) ? data.visibleAssignments : [];
+  if (visibleAssignments.length) return visibleAssignments;
+  return Array.isArray(data.assignments) ? data.assignments : [];
+};
+
+function WorkflowElapsed({ startedAt, completedAt, actualDurationSeconds, status }) {
+  const running = status === 'in_progress' && Boolean(startedAt);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return undefined;
+    const timerId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [running]);
+  if (!startedAt && !actualDurationSeconds) return null;
+  const seconds = actualDurationSeconds
+    || Math.max(0, Math.floor(((completedAt ? new Date(completedAt).getTime() : now) - new Date(startedAt).getTime()) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const rest = seconds % 60;
+  const label = [hours, minutes, rest].map(value => String(value).padStart(2, '0')).join(':');
+  return <time className={`workflow-node__timer${running ? ' is-running' : ''}`}>⏱ {label}</time>;
+}
 
 function WorkflowNode({ id, data, selected }) {
   const status = data.executionStatus || 'pending';
+  const assignmentsForDisplay = visibleNodeAssignments(data);
   const incomingHandles = data.incomingHandles?.length
     ? data.incomingHandles
     : [{ id: 'in:default' }];
@@ -147,40 +192,63 @@ function WorkflowNode({ id, data, selected }) {
         />
       </div>
       <strong>{data.label}</strong>
-      <p>{data.description || 'Chưa có mô tả đầu ra nghiệm thu'}</p>
       <div className="workflow-node__meta">
         <span><ListChecks size={13} /> {data.checklist?.length || 0} mục</span>
-        <span><UserRoundCog size={13} /> {data.assignments?.length ? `${data.assignments.length} người` : 'Chưa giao'}</span>
+        <span>
+          <UserRoundCog size={13} />
+          {assignmentsForDisplay.length
+            ? `${assignmentsForDisplay.length} người`
+            : (data.poolDepartmentLabel || 'Chưa cấu hình')}
+        </span>
       </div>
       {data.deadlineAt && (
         <div className={`workflow-node__deadline${data.isOverdue ? ' is-overdue' : ''}`}>
           <Clock3 size={13} /> Hạn chung: {formatDateTime(data.deadlineAt)}
         </div>
       )}
-      {Boolean(data.assignments?.length) && (
-        <div className="workflow-node__avatars">
-          {data.assignments.slice(0, 4).map((assignment, index) => {
-            const name = assignment.full_name || 'Nhân viên';
-            const role = roleLabel(assignment.role_code || 'MAIN');
-            const tooltip = `${name} · ${role}`;
-            return (
-              <AvatarImage
-                key={`${assignment.employee_id || name}-${index}`}
-                className="workflow-node__avatar workflow-node__avatar--img"
-                fallbackClassName="workflow-node__avatar"
-                src={assignment.avatar_url}
-                name={name}
-                title={tooltip}
-              />
-            );
-          })}
-          {data.assignments.length > 4 && (
-            <span className="workflow-node__avatar workflow-node__avatar--more" title={`+${data.assignments.length - 4} người khác`}>
-              +{data.assignments.length - 4}
-            </span>
-          )}
+      {Boolean(assignmentsForDisplay.length)
+        && Boolean(data.startedAt || ['in_progress', 'submitted', 'rework_required', 'blocked', 'accepted'].includes(status)) && (
+        <div className={`workflow-node__team${status === 'in_progress' ? ' is-active' : ''}`}>
+          <div className="workflow-node__avatars">
+            {assignmentsForDisplay.slice(0, 4).map((assignment, index) => {
+              const name = assignment.full_name || 'Nhân viên';
+              const role = roleLabel(assignment.role_code || 'MAIN');
+              const tooltip = `${name} · ${role}`;
+              return (
+                <AvatarImage
+                  key={`${assignment.employee_id || name}-${index}`}
+                  className="workflow-node__avatar workflow-node__avatar--img"
+                  fallbackClassName="workflow-node__avatar"
+                  src={assignment.avatar_url}
+                  name={name}
+                  title={tooltip}
+                />
+              );
+            })}
+            {assignmentsForDisplay.length > 4 && (
+              <span className="workflow-node__avatar workflow-node__avatar--more" title={`+${assignmentsForDisplay.length - 4} người khác`}>
+                +{assignmentsForDisplay.length - 4}
+              </span>
+            )}
+          </div>
+          <div className="workflow-node__role-chips">
+            {assignmentsForDisplay.slice(0, 2).map((assignment, index) => (
+              <span
+                key={`${assignment.employee_id || index}:role`}
+                className={`workflow-node__role-chip workflow-node__role-chip--${(assignment.role_code || 'MAIN').toLowerCase()}`}
+              >
+                {assignment.role_code === 'MAIN' ? 'Chính' : assignment.role_code === 'ASSISTANT' ? 'Phụ' : roleLabel(assignment.role_code)}: {(assignment.full_name || 'NV').split(' ').at(-1)}
+              </span>
+            ))}
+          </div>
         </div>
       )}
+      <WorkflowElapsed
+        startedAt={data.startedAt}
+        completedAt={data.completedAt}
+        actualDurationSeconds={data.actualDurationSeconds}
+        status={status}
+      />
       {outgoingHandles.map((handle, index) => (
         <Handle
           id={handle.id}
@@ -196,8 +264,11 @@ function WorkflowNode({ id, data, selected }) {
 }
 
 const NODE_TYPES = { workflowNode: WorkflowNode };
-const WORKFLOW_NODE_WIDTH = 248;
-const WORKFLOW_NODE_HEIGHT = 168;
+// Chỉ dùng khi React Flow chưa kịp đo node (lần dựng đầu). Node thật cao thấp
+// khác nhau tuỳ có avatar/hạn chung hay không, nên không con số cố định nào đúng
+// cho mọi node — phải đọc kích thước đo được.
+const WORKFLOW_NODE_WIDTH = 254;
+const WORKFLOW_NODE_HEIGHT = 109;
 let elkInstancePromise;
 
 function getElkInstance() {
@@ -208,28 +279,7 @@ function getElkInstance() {
   return elkInstancePromise;
 }
 
-function pathMidpoint(points) {
-  const segments = points.slice(1).map((point, index) => ({
-    from: points[index],
-    to: point,
-    length: Math.abs(point.x - points[index].x) + Math.abs(point.y - points[index].y),
-  }));
-  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
-  let travelled = 0;
-  for (const segment of segments) {
-    if (travelled + segment.length >= total / 2) {
-      const ratio = segment.length ? (total / 2 - travelled) / segment.length : 0;
-      return {
-        x: segment.from.x + (segment.to.x - segment.from.x) * ratio,
-        y: segment.from.y + (segment.to.y - segment.from.y) * ratio,
-      };
-    }
-    travelled += segment.length;
-  }
-  return points[Math.floor(points.length / 2)] || { x: 0, y: 0 };
-}
-
-function WorkflowEdge({
+export function WorkflowEdge({
   id,
   data,
   markerEnd,
@@ -255,10 +305,17 @@ function WorkflowEdge({
     interactionWidth,
   };
   if (Array.isArray(routedPoints) && routedPoints.length >= 2) {
-    const edgePath = routedPoints
+    const diemDaNeo = neoTuyenVaoHandle(
+      routedPoints,
+      pathParams.sourceX,
+      pathParams.sourceY,
+      pathParams.targetX,
+      pathParams.targetY,
+    );
+    const edgePath = diemDaNeo
       .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
       .join(' ');
-    const midpoint = pathMidpoint(routedPoints);
+    const midpoint = pathMidpoint(diemDaNeo);
     return (
       <BaseEdge
         {...edgeProps}
@@ -282,6 +339,27 @@ const ASSIGNMENT_ROLES = [
   ['REVIEWER', 'Nghiệm thu'],
 ];
 
+const POOL_DEPARTMENTS = [
+  ['SALES', 'Phòng Sale/CSKH'],
+  ['SURVEY', 'Phòng Đo vẽ'],
+  ['LEGAL', 'Phòng Pháp lý'],
+  ['ACCOUNTING', 'Phòng Kế toán'],
+  ['ADMIN', 'Ban Giám đốc'],
+];
+
+const DEFAULT_POOL_BY_NODE_CODE = {
+  K01: { department: 'SALES', roles: ['MAIN'] },
+  K02: { department: 'SURVEY', roles: ['MAIN', 'ASSISTANT'] },
+  K03: { department: 'SURVEY', roles: ['MAIN'] },
+  K04: { department: 'LEGAL', roles: ['MAIN'] },
+  K05: { department: 'LEGAL', roles: ['SUBMITTER'] },
+  K06: { department: 'LEGAL', roles: ['MAIN'] },
+  K07: { department: 'LEGAL', roles: ['MAIN'] },
+};
+
+const poolDefaults = code => DEFAULT_POOL_BY_NODE_CODE[code] || { department: '', roles: [] };
+const poolDepartmentLabel = code => POOL_DEPARTMENTS.find(item => item[0] === code)?.[1] || code;
+
 const APPROVER_ROLES = [
   ['admin', 'Giám đốc'],
   ['accountant', 'Kế toán'],
@@ -291,6 +369,81 @@ const APPROVER_ROLES = [
 ];
 
 const roleLabel = code => ASSIGNMENT_ROLES.find(item => item[0] === code)?.[1] || code;
+
+function RoleMultiSelect({
+  label,
+  value = [],
+  options = [],
+  disabled = false,
+  onChange,
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+  const selected = Array.isArray(value) ? value : [];
+  const selectedLabel = selected.length
+    ? selected.map(roleLabel).join(', ')
+    : '— Chọn vai trò —';
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutside = event => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', closeOnOutside);
+    return () => document.removeEventListener('mousedown', closeOnOutside);
+  }, [open]);
+
+  const toggleRole = roleCode => {
+    const next = selected.includes(roleCode)
+      ? selected.filter(item => item !== roleCode)
+      : [...selected, roleCode];
+    onChange?.(next);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className={`custom-select-container workflow-role-select ${open ? 'is-open' : ''} ${disabled ? 'is-disabled' : ''}`}
+    >
+      <span className="custom-select-label">{label}</span>
+      <button
+        type="button"
+        className="custom-select-trigger"
+        aria-label={label}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(prev => !prev)}
+      >
+        <span className={`custom-select-value ${selected.length ? '' : 'is-placeholder'}`}>
+          {selectedLabel}
+        </span>
+        <ChevronDown size={16} className="custom-select-chevron" />
+      </button>
+      {open && (
+        <div className="custom-select-menu" role="listbox" aria-label={label}>
+          {options.map(([code, optionLabel]) => {
+            const checked = selected.includes(code);
+            return (
+              <button
+                key={code}
+                type="button"
+                className={`custom-select-option ${checked ? 'is-selected' : ''}`}
+                role="option"
+                aria-selected={checked}
+                onClick={() => toggleRole(code)}
+              >
+                <span className="custom-select-option-check">{checked && <Check size={15} />}</span>
+                <span className="custom-select-option-text">{optionLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 async function requestJson(url, options) {
   const response = await fetch(url, {
@@ -303,7 +456,7 @@ async function requestJson(url, options) {
 }
 
 function makeFallbackGraph(catalog = []) {
-  const preferredCodes = ['K01', 'K02', 'K09'];
+  const preferredCodes = ['K01', 'K02', 'K07'];
   const selected = preferredCodes
     .map(code => catalog.find(item => item.code === code))
     .filter(Boolean);
@@ -319,6 +472,8 @@ function makeFallbackGraph(catalog = []) {
       name: item.name,
       description: item.description,
       checklist: [],
+      pool_department_code: poolDefaults(item.code).department,
+      claim_roles: poolDefaults(item.code).roles,
       transitions: next ? { COMPLETED: next.code.toLowerCase() } : {},
     };
     ui[key] = { x: 90 + index * 300, y: 190 };
@@ -356,6 +511,12 @@ function graphToFlow(graph, catalog, executionNodes = [], options = {}) {
   const nodes = entries.map(([key, value], index) => {
     const catalogItem = catalog.find(item => item.code === value.task_code);
     const execution = executionByKey.get(key);
+    const definitionAssignments = Array.isArray(value.assignments) ? value.assignments : [];
+    const runtimeAssignments = Array.isArray(execution?.assignments) ? execution.assignments : [];
+    const assignments = options.preferDefinitionAssignments
+      ? definitionAssignments
+      : (runtimeAssignments.length ? runtimeAssignments : definitionAssignments);
+    const visibleAssignments = runtimeAssignments.length ? runtimeAssignments : assignments;
     const runtimeChecklistByKey = new Map(
       (execution?.checklist_results || []).map(item => [item.checklist_key, item])
     );
@@ -390,22 +551,38 @@ function graphToFlow(graph, catalog, executionNodes = [], options = {}) {
         label: value.name || catalogItem?.name || key,
         description: value.description || catalogItem?.description || '',
         checklist,
-        assignments: options.preferDefinitionAssignments
-          ? (Array.isArray(value.assignments) ? value.assignments : [])
-          : (execution?.assignments || (Array.isArray(value.assignments) ? value.assignments : [])),
+        assignments,
+        runtimeAssignments,
+        visibleAssignments,
+        poolDepartmentCode: Object.hasOwn(value, 'pool_department_code')
+          ? (value.pool_department_code || '')
+          : poolDefaults(value.task_code).department,
+        poolDepartmentLabel: poolDepartmentLabel(
+          Object.hasOwn(value, 'pool_department_code')
+            ? (value.pool_department_code || '')
+            : poolDefaults(value.task_code).department
+        ),
+        claimRoles: Object.hasOwn(value, 'claim_roles') && Array.isArray(value.claim_roles)
+          ? value.claim_roles
+          : poolDefaults(value.task_code).roles,
         taskNodeId: execution?.id || null,
         requiresGovSubmission: Boolean(value.requires_gov_submission),
         createsSurveyRecord: Boolean(value.creates_survey_record),
         isHandover: Boolean(value.is_handover),
         durationDays: value.duration_days ?? '',
         durationHours: value.duration_hours ?? '',
+        durationMinutes: value.duration_minutes ?? '',
         executionStatus: execution?.status || 'pending',
+        startedAt: execution?.started_at || null,
+        completedAt: execution?.completed_at || null,
+        actualDurationSeconds: Number(execution?.execution_data?.actual_duration_seconds || 0),
         deadlineAt: execution?.deadline_at || null,
         isOverdue: Boolean(execution?.is_overdue),
         executionStatusLabel: labels.node_statuses[execution?.status || 'pending'],
         outcome: execution?.outcome || '',
         transitions: value.transitions || {},
         pendingAcceptanceId: execution?.pending_acceptance_id || null,
+        pendingMissing: execution?.pending_missing || [],
         incomingHandles: incomingByNode.get(key) || [],
         outgoingHandles: outgoingByNode.get(key) || [],
       },
@@ -450,11 +627,14 @@ function flowToGraph(nodes, edges, startNode, labels = DEFAULT_WORKFLOW_LABELS) 
       is_handover: Boolean(node.data.isHandover),
       duration_days: Number(node.data.durationDays) || 0,
       duration_hours: Number(node.data.durationHours) || 0,
+      duration_minutes: Number(node.data.durationMinutes) || 0,
       checklist: (node.data.checklist || []).map(item => {
         const { runtime: _runtime, evidence_required: _legacyEvidence, ...definition } = item;
         return definition;
       }),
       assignments: node.data.assignments || [],
+      pool_department_code: node.data.poolDepartmentCode || null,
+      claim_roles: node.data.claimRoles || [],
       transitions,
     };
     ui[node.id] = { x: Math.round(node.position.x), y: Math.round(node.position.y) };
@@ -500,6 +680,20 @@ function comparableNodeDefinition(node = {}) {
         pay_key: compensation.pay_key || compensation.work_item_id || null,
         pay_group_key: compensation.pay_group_key || compensation.work_item_id || null,
       } : { is_payable: false },
+      // Chỉ đính kèm khi thật sự có cấu hình. Checklist cũ giữ nguyên payload,
+      // không mọc thêm khoá nào — backend cũng từ chối field lạ.
+      ...((item.output_documents || []).length
+        ? {
+            output_documents: item.output_documents
+              .filter(doc => doc.template_id)
+              .map(doc => ({
+                template_id: doc.template_id,
+                min_count: Math.max(1, Number(doc.min_count) || 1),
+                required_before_submit: doc.required_before_submit !== false,
+                needs_director_approval: Boolean(doc.needs_director_approval),
+              })),
+          }
+        : {}),
     };
   });
   return {
@@ -511,6 +705,9 @@ function comparableNodeDefinition(node = {}) {
     is_handover: Boolean(node.is_handover),
     duration_days: Number(node.duration_days) || 0,
     duration_hours: Number(node.duration_hours) || 0,
+    duration_minutes: Number(node.duration_minutes) || 0,
+    pool_department_code: node.pool_department_code || null,
+    claim_roles: [...(node.claim_roles || [])].sort(),
     checklist,
     assignments,
     transitions,
@@ -531,10 +728,16 @@ function changedActiveWorkNodes(activeGraph, draftGraph, executionNodes = []) {
 
 export default function ContractWorkflowDesigner({
   serviceLine,
+  // Cần cho sổ giấy tờ hiện ngay trong panel duyệt K01: Giám đốc phải thấy
+  // giấy nào được miễn TRƯỚC khi bấm duyệt đạt, không phải mở sang màn khác.
+  contractId = '',
   catalog = EMPTY_CATALOG,
   templates = [],
   employees = [],
   workItems = [],
+  // Danh mục loại giấy tờ để Giám đốc chọn tài liệu đầu ra. Truyền từ ngoài vào
+  // được (test dựng sẵn), không truyền thì tự nạp.
+  documentTemplates = null,
   capabilities = {},
   onPersisted,
   addToast,
@@ -542,6 +745,31 @@ export default function ContractWorkflowDesigner({
   targetType,
   targetNonce,
 }) {
+  const [loadedDocTemplates, setLoadedDocTemplates] = useState(null);
+  const docTemplates = documentTemplates ?? loadedDocTemplates ?? [];
+
+  // Nạp KHI CẦN, không nạp lúc mở designer: phần lớn quy trình không dùng tài
+  // liệu đầu ra, và một request cho thứ không ai mở tới là request thừa.
+  const ensureDocTemplates = useCallback(() => {
+    if (documentTemplates || loadedDocTemplates !== null) return;
+    setLoadedDocTemplates([]);
+    apiFetch('/api/document-register/templates')
+      .then((payload) => {
+        // Gộp mọi Dạng hồ sơ: quy trình dùng chung cho nhiều Hạng mục nên không
+        // lọc theo một thủ tục cụ thể ở đây.
+        // API trả {status, data:{groups}}; apiFetch KHÔNG bóc lớp data. Bản
+        // trước đọc thẳng payload.groups nên luôn ra rỗng — dropdown "Chọn loại
+        // tài liệu" chưa bao giờ có lựa chọn nào, mà không ai thấy vì nó im lặng
+        // rơi về mảng rỗng thay vì báo lỗi.
+        setLoadedDocTemplates(
+          ((payload?.data?.groups) || payload?.groups || [])
+            .flatMap(group => (group.items || []).map(item => ({ ...item, group: group.task_type_name })))
+            .filter(item => item.is_active)
+        );
+      })
+      .catch(() => setLoadedDocTemplates([]));
+  }, [documentTemplates, loadedDocTemplates]);
+
   const openEvidenceFile = useCallback(async (event, file) => {
     if (!isPrivateObjectKey(file.url)) return;
     event.preventDefault();
@@ -577,6 +805,29 @@ export default function ContractWorkflowDesigner({
   );
   const [nodes, setNodes, onNodesChange] = useNodesState(parsed.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(parsed.edges);
+
+  // Bảng tổng quan phân bổ cần biết TOÀN BỘ danh mục loại giấy, không chỉ những
+  // loại đã được gắn. Nạp lười theo thao tác mở trình sửa là quá muộn: Giám đốc
+  // mở panel node ra đã phải thấy ngay còn sót bao nhiêu loại.
+  useEffect(() => { ensureDocTemplates(); }, [ensureDocTemplates]);
+
+  // PHÂN BỔ TÀI LIỆU — loại giấy nào đã được gắn vào Checklist của bước nào.
+  // Không có bảng này thì Giám đốc cấu hình xong không biết mình còn sót loại
+  // nào; hậu quả là loại đó không xuất hiện ở bước nào và không ai thu.
+  const phanBoTaiLieu = useMemo(() => {
+    const cua = new Map();
+    nodes.forEach(node => {
+      (node.data?.checklist || []).forEach(item => {
+        (item.output_documents || []).forEach(doc => {
+          if (!doc.template_id) return;
+          if (!cua.has(doc.template_id)) cua.set(doc.template_id, []);
+          cua.get(doc.template_id).push(`${(node.data.code || node.id).toUpperCase()} · ${item.name || 'Checklist'}`);
+        });
+      });
+    });
+    const chuaGan = docTemplates.filter(t => !cua.has(t.id));
+    return { cua, chuaGan, daGan: docTemplates.length - chuaGan.length };
+  }, [nodes, docTemplates]);
   const [startNode, setStartNode] = useState(parsed.startNode);
   const [selectedNodeId, setSelectedNodeId] = useState(parsed.startNode);
   const [inspectorTab, setInspectorTab] = useState('node');
@@ -588,8 +839,6 @@ export default function ContractWorkflowDesigner({
   useEffect(() => {
     localStorage.setItem('bk:workflow-inspector-collapsed', inspectorCollapsed ? '1' : '0');
   }, [inspectorCollapsed]);
-  // Danh sách chọn nhanh nhân sự cho Team Bar ở đầu panel Node.
-  const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   // Kéo-thả sắp xếp checklist trong Node.
   const [dragChecklistIndex, setDragChecklistIndex] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(workflow?.template?.id || '');
@@ -619,6 +868,7 @@ export default function ContractWorkflowDesigner({
   const [cancellationReason, setCancellationReason] = useState('');
   const [agencyHandlingConfirmed, setAgencyHandlingConfirmed] = useState(false);
   const [agencyHandlingNote, setAgencyHandlingNote] = useState('');
+  const [reviewInboxOpen, setReviewInboxOpen] = useState(false);
   // Dấu vân tay của sơ đồ tại lần nạp/lưu gần nhất — mốc để biết đang sửa dở.
   const [mocDaLuu, setMocDaLuu] = useState(null);
   // Có người đang xin rời khỏi màn này; giữ hàm resolve để trả lời họ.
@@ -654,6 +904,10 @@ export default function ContractWorkflowDesigner({
           deadlineAt: fresh.data.deadlineAt,
           isOverdue: fresh.data.isOverdue,
           pendingAcceptanceId: fresh.data.pendingAcceptanceId,
+          runtimeAssignments: fresh.data.runtimeAssignments || [],
+          visibleAssignments: (fresh.data.runtimeAssignments || []).length
+            ? fresh.data.runtimeAssignments
+            : visibleNodeAssignments(node.data),
           // Chỉ đồng bộ phần runtime của checklist (kết quả duyệt, minh chứng đã nộp),
           // giữ nguyên định nghĩa checklist đang sửa dở. Phân công cũng giữ nguyên vì
           // người dùng có thể đang chỉnh trong tab Phân công mà chưa bấm lưu.
@@ -709,6 +963,11 @@ export default function ContractWorkflowDesigner({
   }, [targetNodeKey, targetType, targetNonce, nodes]);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
+  const selectedAssignmentsForDisplay = visibleNodeAssignments(selectedNode?.data);
+  const selectedHasRuntimeOnlyAssignments = Boolean(
+    selectedNode?.data?.runtimeAssignments?.length
+    && !(selectedNode?.data?.assignments || []).length
+  );
   const structureEditable = !isWorkflowTerminal && canEdit && (!hasActiveRuntime || (editMode && canAmendWorkflow));
   const canMoveLayout = !isWorkflowTerminal && canEdit && (!hasActiveRuntime || canAmendWorkflow);
   const checklistEditable = structureEditable && (
@@ -723,6 +982,10 @@ export default function ContractWorkflowDesigner({
   const canEditSelectedAssignments = structureEditable && canAssign
     && selectedNodeAllowsReassignment
     && (!hasActiveRuntime || !selectedNodeHasPayableWork || canManageCompensation);
+  const canEditSelectedDuration = structureEditable && (
+    !selectedNode?.data.taskNodeId
+    || ['pending', 'ready'].includes(selectedNode.data.executionStatus)
+  );
   const workItemById = useMemo(
     () => new Map(workItems.map(item => [item.id, item])),
     [workItems]
@@ -852,11 +1115,15 @@ export default function ContractWorkflowDesigner({
         description: item.description || '',
         checklist: [],
         role: '',
+        poolDepartmentCode: poolDefaults(item.code).department,
+        poolDepartmentLabel: poolDepartmentLabel(poolDefaults(item.code).department),
+        claimRoles: poolDefaults(item.code).roles,
         requiresGovSubmission: false,
         createsSurveyRecord: false,
         isHandover: false,
         durationDays: '',
         durationHours: '',
+        durationMinutes: '',
         executionStatus: 'pending',
       },
     };
@@ -1016,22 +1283,33 @@ export default function ContractWorkflowDesigner({
           const outgoing = node.data.outgoingHandles?.length
             ? node.data.outgoingHandles
             : [{ id: 'out:default' }];
+          // Kích thước ĐO ĐƯỢC, không phải hằng số: node có avatar hay hạn chung
+          // thì cao hơn hẳn node trống, khai cứng một con số là tuyến lệch ngay.
+          const width = node.measured?.width || node.width || WORKFLOW_NODE_WIDTH;
+          const height = node.measured?.height || node.height || WORKFLOW_NODE_HEIGHT;
+          // Vị trí cổng phải khớp đúng công thức đặt handle trong WorkflowNode,
+          // và FIXED_POS để ELK giữ nguyên chứ không tự rải lại theo ý nó.
+          const viTriCong = (index, total) => ((index + 1) / (total + 1)) * height;
           return {
             id: node.id,
-            width: WORKFLOW_NODE_WIDTH,
-            height: WORKFLOW_NODE_HEIGHT,
-            layoutOptions: { 'elk.portConstraints': 'FIXED_ORDER' },
+            width,
+            height,
+            layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
             ports: [
-              ...incoming.map(handle => ({
+              ...incoming.map((handle, index) => ({
                 id: `${node.id}__${handle.id}`,
                 width: 1,
                 height: 1,
+                x: 0,
+                y: viTriCong(index, incoming.length),
                 layoutOptions: { 'elk.port.side': 'WEST' },
               })),
-              ...outgoing.map(handle => ({
+              ...outgoing.map((handle, index) => ({
                 id: `${node.id}__${handle.id}`,
                 width: 1,
                 height: 1,
+                x: width,
+                y: viTriCong(index, outgoing.length),
                 layoutOptions: { 'elk.port.side': 'EAST' },
               })),
             ],
@@ -1074,6 +1352,41 @@ export default function ContractWorkflowDesigner({
       checklist: [...current, createChecklistDefinition(current.length + 1)],
     });
   }, [selectedNode, updateSelectedNode]);
+
+  // Ba thao tác trên danh sách tài liệu đầu ra. Cố ý XOÁ HẲN khoá khi danh sách
+  // rỗng: checklist không cấu hình gì thì payload gửi lên phải y hệt trước đây,
+  // không có "output_documents": [] lơ lửng.
+  const setOutputDocuments = useCallback((index, list) => {
+    if (!selectedNode) return;
+    updateSelectedNode({
+      checklist: selectedNode.data.checklist.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const next = { ...item };
+        if (list.length) next.output_documents = list;
+        else delete next.output_documents;
+        return next;
+      }),
+    });
+  }, [selectedNode, updateSelectedNode]);
+
+  const addOutputDocument = useCallback((index) => {
+    ensureDocTemplates();
+    const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
+    setOutputDocuments(index, [...current, {
+      template_id: '', min_count: 1,
+      required_before_submit: true, needs_director_approval: false,
+    }]);
+  }, [selectedNode, setOutputDocuments, ensureDocTemplates]);
+
+  const updateOutputDocument = useCallback((index, docIndex, patch) => {
+    const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
+    setOutputDocuments(index, current.map((doc, i) => (i === docIndex ? { ...doc, ...patch } : doc)));
+  }, [selectedNode, setOutputDocuments]);
+
+  const removeOutputDocument = useCallback((index, docIndex) => {
+    const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
+    setOutputDocuments(index, current.filter((_, i) => i !== docIndex));
+  }, [selectedNode, setOutputDocuments]);
 
   const updateChecklistItem = useCallback((index, patch) => {
     if (!selectedNode) return;
@@ -1148,7 +1461,7 @@ export default function ContractWorkflowDesigner({
   const [reviewingNodeId, setReviewingNodeId] = useState('');
   const [reviewOutcome, setReviewOutcome] = useState('');
   const [lyDoLamLai, setLyDoLamLai] = useState('');
-  const reviewNodeAcceptance = useCallback(async (acceptanceId, decision, outcome) => {
+  const reviewNodeAcceptance = useCallback(async (acceptanceId, decision, outcome, coThieu = false) => {
     // Trả việc về mà không nói vì sao thì nhân viên không biết phải sửa gì —
     // máy chủ vẫn nhận ghi chú, chỉ giao diện trước giờ gửi cứng null.
     const lyDo = lyDoLamLai.trim();
@@ -1156,12 +1469,26 @@ export default function ContractWorkflowDesigner({
       addToast?.('Ghi rõ cần làm lại chỗ nào trước khi trả việc', 'error');
       return;
     }
+    // Cho hồ sơ thiếu giấy đi tiếp là một ngoại lệ. Không ghi lý do thì sáu
+    // tháng sau không ai trả lời được vì sao hồ sơ này được cho qua.
+    if (decision === 'accepted' && coThieu && lyDo.length < 5) {
+      addToast?.('Duyệt khi còn thiếu tài liệu thì phải ghi rõ lý do chấp nhận', 'error');
+      return;
+    }
     setReviewingNodeId(acceptanceId);
     try {
       await apiFetch(`/api/contracts/workflow/acceptances/${acceptanceId}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, outcome, note: lyDo || null }),
+        body: JSON.stringify({
+          decision,
+          outcome,
+          note: lyDo || null,
+          // Duyệt đạt mà lượt nộp có ghi thiếu tài liệu thì đây là "chấp nhận
+          // thiếu" — máy chủ bắt buộc phải có lý do, và lý do chính là ô này.
+          shortage_accepted: decision === 'accepted' && coThieu,
+          shortage_reason: decision === 'accepted' && coThieu ? lyDo : null,
+        }),
       });
       addToast?.(decision === 'accepted' ? 'Đã duyệt đạt, đã mở bước tiếp theo' : 'Đã yêu cầu làm lại', 'success');
       setReviewOutcome('');
@@ -1296,12 +1623,15 @@ export default function ContractWorkflowDesigner({
   const activateCurrentWorkflow = async () => {
     if (!serviceLine?.id || !canActivate || (hasActiveRuntime && !structureEditable)) return;
     const amendmentReason = changeReason;
-    const hasUnassignedNode = nodes.some(node => !(node.data.assignments || []).length);
+    const hasUnassignedNode = nodes.some(node => (
+      !(node.data.assignments || []).length
+      && !(node.data.poolDepartmentCode && (node.data.claimRoles || []).length)
+    ));
     // Node có người Phòng Đo vẽ mà không gắn hạng mục khoán nào → họ làm việc mà
     // không nhận khoán. Cảnh báo (không chặn) để giám đốc biết trước khi kích hoạt.
     const PHONG_DO_VE = 'Phòng Đo vẽ';
     const nodeDoVeThieuKhoan = nodes.filter(node => {
-      const coNguoiDoVe = (node.data.assignments || []).some(a => {
+      const coNguoiDoVe = node.data.poolDepartmentCode === 'SURVEY' || (node.data.assignments || []).some(a => {
         const phong = a.department_name || employees.find(e => e.id === a.employee_id)?.department_name;
         return phong === PHONG_DO_VE;
       });
@@ -1329,7 +1659,7 @@ export default function ContractWorkflowDesigner({
       : '';
     const actionLabel = hasActiveRuntime ? 'Áp dụng bản sửa đổi' : 'Kích hoạt';
     const canhBao = [];
-    if (hasUnassignedNode) canhBao.push('Một số Node chưa được phân công.');
+    if (hasUnassignedNode) canhBao.push('Một số Node chưa có phòng ban hoặc vai trò nhận việc.');
     if (nodeDoVeThieuKhoan.length) {
       canhBao.push(
         `Node đo vẽ chưa gắn hạng mục khoán: ${nodeDoVeThieuKhoan.join(', ')} — `
@@ -1405,25 +1735,6 @@ export default function ContractWorkflowDesigner({
     const current = selectedNode.data.assignments || [];
     const unused = employees.find(employee => !current.some(item => item.employee_id === employee.id));
     const employee = unused || employees[0];
-    updateSelectedNode({
-      assignments: [...current, {
-        employee_id: employee.id,
-        full_name: employee.full_name,
-        department_name: employee.department_name,
-        role_code: current.length === 0 ? 'MAIN' : 'ASSISTANT',
-        is_primary: current.length === 0,
-        notes: '',
-      }],
-    });
-  };
-
-  // Gán nhanh một người cụ thể (từ Team Bar). Người đầu tiên vào node là "chính".
-  const addAssignmentFor = (employeeId) => {
-    if (!selectedNode) return;
-    const employee = employees.find(item => item.id === employeeId);
-    if (!employee) return;
-    const current = selectedNode.data.assignments || [];
-    if (current.some(item => item.employee_id === employeeId)) return;
     updateSelectedNode({
       assignments: [...current, {
         employee_id: employee.id,
@@ -1578,13 +1889,63 @@ export default function ContractWorkflowDesigner({
     }
   };
 
+  const hasRunningWorkflowNode = Boolean(
+    workflow?.execution_nodes?.some(node => node.status === 'in_progress'),
+  );
+  const [workflowClockMs, setWorkflowClockMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hasRunningWorkflowNode) return undefined;
+    const timerId = window.setInterval(() => setWorkflowClockMs(Date.now()), 30000);
+    return () => window.clearInterval(timerId);
+  }, [hasRunningWorkflowNode]);
+
+  const workflowProgress = useMemo(() => calculateWorkflowProgress(
+    workflow?.execution_nodes || [],
+    workflow?.status,
+    workflowClockMs,
+  ), [workflow?.execution_nodes, workflow?.status, workflowClockMs]);
+
+  const pendingReviewItems = useMemo(() => nodes.flatMap(node => {
+    const pending = [];
+    if (canReviewNode && node.data.pendingAcceptanceId) {
+      pending.push({
+        id: `node:${node.data.pendingAcceptanceId}`,
+        nodeId: node.id,
+        tab: 'node',
+        code: node.data.code,
+        label: node.data.label,
+        typeLabel: 'Nghiệm thu Node',
+      });
+    }
+    if (canReviewChecklist) {
+      (node.data.checklist || []).forEach(item => {
+        if (!['pending_approval', 'late_pending_approval'].includes(item.runtime?.status)) return;
+        pending.push({
+          id: `checklist:${item.runtime.id || `${node.id}:${item.key}`}`,
+          nodeId: node.id,
+          tab: 'checklist',
+          code: node.data.code,
+          label: item.name,
+          checklistResultId: item.runtime.id,
+          evidenceFiles: Array.isArray(item.runtime?.evidence_data?.files)
+            ? item.runtime.evidence_data.files
+            : [],
+          typeLabel: item.runtime.status === 'late_pending_approval'
+            ? 'Minh chứng nộp trễ'
+            : 'Minh chứng checklist',
+        });
+      });
+    }
+    return pending;
+  }), [canReviewChecklist, canReviewNode, nodes]);
+
+  useEffect(() => {
+    if (pendingReviewItems.length === 0) setReviewInboxOpen(false);
+  }, [pendingReviewItems.length]);
+
   return (
     <div className="workflow-designer">
       <div className="workflow-designer__toolbar">
-        <div>
-          <span className="eyebrow">Sơ đồ quy trình</span>
-          <strong>{serviceLine?.task_type || serviceLine?.service_type || 'Hạng mục chưa đặt tên'}</strong>
-        </div>
         <div className="workflow-designer__toolbar-actions">
           {/* Quy trình đang chạy thì luồng bị khoá cho tới khi bấm Sửa. Nhãn chỉ
               ghi "Đang vận hành" thì người dùng bấm Thêm node mãi không được mà
@@ -1595,14 +1956,14 @@ export default function ContractWorkflowDesigner({
             }`}>
               {isWorkflowCancelled ? <Ban size={13} /> : editMode ? <Pencil size={13} /> : <LockKeyhole size={13} />}
               {isWorkflowCancelled
-                ? 'Đã hủy — không sửa được nữa'
+                ? 'Đã hủy'
                 : editMode
-                  ? `Đang sửa Revision ${workflow?.revision_no || ''}`
+                  ? `Sửa R${workflow?.revision_no || ''}`
                   : isWorkflowCompleted
-                    ? 'Đã hoàn thành — không sửa được nữa'
+                    ? 'Hoàn thành'
                     : canAmendWorkflow
-                      ? 'Đang vận hành — bấm Sửa để đổi luồng'
-                      : 'Đang vận hành — chỉ xem'}
+                      ? 'Đang vận hành'
+                      : 'Chỉ xem'}
             </span>
           )}
           <label className="workflow-template-picker">
@@ -1621,6 +1982,7 @@ export default function ContractWorkflowDesigner({
               bước nào — mà đó mới là việc chính của họ. */}
           <div className="workflow-node-picker">
             <button type="button" disabled={!structureEditable} className="workspace-icon-button"
+              title="Thêm node"
               aria-expanded={dangChonNode} aria-haspopup="listbox"
               onClick={() => setDangChonNode(value => !value)}>
               <Plus size={16} /> Thêm node
@@ -1653,8 +2015,9 @@ export default function ContractWorkflowDesigner({
           {structureEditable && nodes.length > 0 && (
             <div className="workflow-node-picker">
               <button type="button" className="workspace-icon-button"
+                title="Lưu quy trình hiện tại thành mẫu"
                 onClick={() => { setDangLuuMau(value => !value); setTenMau(''); }}>
-                <Save size={15} /> Lưu thành mẫu
+                <Save size={15} /> Lưu mẫu
               </button>
               {dangLuuMau && (
                 <>
@@ -1678,23 +2041,30 @@ export default function ContractWorkflowDesigner({
               )}
             </div>
           )}
-          <button type="button" disabled={!canMoveLayout || layouting} className="workspace-icon-button" onClick={autoLayout}>
-            {layouting ? <LoaderCircle size={16} className="spin" /> : <AlignHorizontalSpaceAround size={16} />} Căn thông minh
+          <button type="button" disabled={!canMoveLayout || layouting} className="workspace-icon-button" onClick={autoLayout} title="Căn thông minh">
+            {layouting ? <LoaderCircle size={16} className="spin" /> : <AlignHorizontalSpaceAround size={16} />} Căn
           </button>
           {hasActiveRuntime && !isWorkflowTerminal && !editMode && canAmendWorkflow && (
             <>
               <button type="button" disabled={startingEdit} className="workspace-icon-button" onClick={beginWorkflowEdit}>
                 {startingEdit ? <LoaderCircle size={15} className="spin" /> : <Pencil size={15} />} Sửa
               </button>
-              <button type="button" disabled={savingLayout} className="workspace-icon-button" onClick={saveActiveLayout}>
-                {savingLayout ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />} Lưu bố cục
+              <button type="button" disabled={savingLayout} className="workspace-icon-button" onClick={saveActiveLayout} title="Lưu vị trí node và đường nối">
+                {savingLayout ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />} Lưu vị trí
               </button>
             </>
           )}
           {(!hasActiveRuntime || (editMode && !isWorkflowTerminal)) && (
             <>
-              <button type="button" disabled={saving || !structureEditable} className="workspace-icon-button" onClick={saveDraft}>
-                {saving ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />} Lưu tạm
+              <button
+                type="button"
+                disabled={saving || !structureEditable}
+                className="workspace-icon-button"
+                onClick={saveDraft}
+                title="Lưu tạm bản đang sửa"
+                aria-label="Lưu tạm"
+              >
+                {saving ? <LoaderCircle size={15} className="spin" /> : <Save size={15} />} Lưu
               </button>
               <button type="button" disabled={activating || !canActivate || !structureEditable} className="btn btn-primary btn-sm workflow-activate-button" onClick={activateCurrentWorkflow}>
                 {activating ? <LoaderCircle size={15} className="spin" /> : <Play size={15} />}
@@ -1714,20 +2084,33 @@ export default function ContractWorkflowDesigner({
         </div>
       </div>
 
-      {hasActiveRuntime && !isWorkflowTerminal && editMode && (
-        <div className="workflow-amendment-reason">
-          <Pencil size={16} />
-          <label>
-            <span>Lý do sửa quy trình đang vận hành</span>
-            <input
-              className="form-control"
-              placeholder="Ví dụ: bổ sung bước kiểm tra hồ sơ và nhánh yêu cầu bổ sung"
-              value={changeReason}
-              onChange={event => setChangeReason(event.target.value)}
-            />
-          </label>
-          <small>Bắt buộc khi áp dụng; Revision cũ vẫn được giữ nguyên để đối chiếu.</small>
-        </div>
+      {workflowProgress && (
+        <section className="workflow-progress-compact-pill" aria-label="Tiến độ quy trình">
+          <div className="workflow-progress-compact-pill__dates">
+            <span className="workflow-progress-compact-pill__label">BẮT ĐẦU</span>
+            <strong className="workflow-progress-compact-pill__value">{formatShortDateTime(workflowProgress.startedAt)}</strong>
+            <span className="workflow-progress-compact-pill__arrow">→</span>
+            <span className="workflow-progress-compact-pill__label">{workflowProgress.endLabel}</span>
+            <strong className="workflow-progress-compact-pill__value">{formatShortDateTime(workflowProgress.endAt)}</strong>
+          </div>
+
+          <span className="workflow-progress-compact-pill__divider" />
+
+          <div className="workflow-progress-compact-pill__timing">
+            <span className="workflow-progress-compact-pill__label">XỬ LÝ</span>
+            <strong className="workflow-progress-compact-pill__value is-mono">{formatWorkflowDuration(workflowProgress.durationSeconds)}</strong>
+          </div>
+
+          <span className="workflow-progress-compact-pill__divider" />
+
+          <div className="workflow-progress-compact-pill__progress">
+            <span className="workflow-progress-compact-pill__steps">{workflowProgress.finished}/{workflowProgress.total} bước</span>
+            <div className="workflow-progress-compact-pill__track">
+              <i style={{ transform: `scaleX(${workflowProgress.percent / 100})` }} />
+            </div>
+            <strong className="workflow-progress-compact-pill__percent">{workflowProgress.percent}%</strong>
+          </div>
+        </section>
       )}
 
       {isWorkflowCancelled && workflow?.cancellation && (
@@ -1819,7 +2202,7 @@ export default function ContractWorkflowDesigner({
             <div className="workflow-empty-canvas">
               <GitBranch size={28} />
               <strong>Quy trình chưa có Node</strong>
-              <span>Thêm K01–K09 từ thanh công cụ để bắt đầu.</span>
+              <span>Thêm K01–K07 từ thanh công cụ để bắt đầu.</span>
             </div>
           )}
         </div>
@@ -1857,104 +2240,97 @@ export default function ContractWorkflowDesigner({
             </div>
           ) : inspectorTab === 'node' ? (
             <div className="workflow-inspector__content">
-              <div className="workflow-inspector__heading workflow-node-title">
-                <div>
-                  <span>{selectedNode.data.code} · Node</span>
-                  <strong>{selectedNode.data.label}</strong>
+              <section className="workflow-pool-config" aria-label="Đội ngũ nhận việc">
+                <div className="workflow-pool-config__heading">
+                  <span>Đội ngũ</span>
+                  <strong>Bể việc</strong>
                 </div>
-                <div className="workflow-inspector__heading-actions">
-                  <button type="button" disabled={!structureEditable} className="danger-icon-button" onClick={removeSelectedNode} title="Xóa Node">
-                    <Trash2 size={16} />
-                  </button>
+                <div className="workflow-pool-config__department">
+                  <span className="workflow-pool-config__label">Phòng ban nhận việc</span>
+                  <CustomSelect
+                    aria-label="Phòng ban nhận việc"
+                    disabled={!structureEditable}
+                    value={selectedNode.data.poolDepartmentCode || ''}
+                    options={POOL_DEPARTMENTS}
+                    placeholder="— Chọn phòng ban —"
+                    onChange={val => updateSelectedNode({
+                      poolDepartmentCode: val,
+                      poolDepartmentLabel: poolDepartmentLabel(val),
+                    })}
+                  />
                 </div>
-              </div>
+                <div className="workflow-pool-config__roles">
+                  <RoleMultiSelect
+                    label="Vai trò được nhận việc"
+                    disabled={!structureEditable}
+                    value={selectedNode.data.claimRoles || []}
+                    options={ASSIGNMENT_ROLES}
+                    onChange={claimRoles => updateSelectedNode({ claimRoles })}
+                  />
+                </div>
+              </section>
 
-              {/* Team Bar — đội ngũ của bước: avatar người tham gia + thêm nhanh.
-                  Cả node là một phần việc; ai trong đây lo trọn checklist của node. */}
-              <div className="workflow-team-bar">
-                <div className="workflow-team-bar__people">
-                  {(selectedNode.data.assignments || []).length === 0 ? (
-                    <span className="wtb-empty">Chưa phân công ai</span>
+              <div className="workflow-section-block">
+                <label className="workflow-section-block__label">ĐẦU RA NGHIỆM THU</label>
+                <div className="workflow-section-block__card">
+                  {structureEditable ? (
+                    <textarea
+                      className="workflow-section-block__textarea"
+                      rows={2}
+                      placeholder="Tiếp nhận yêu cầu, kiểm tra sơ bộ giấy tờ đầu vào."
+                      value={selectedNode.data.description || ''}
+                      onChange={event => updateSelectedNode({ description: event.target.value })}
+                    />
                   ) : (
-                    (selectedNode.data.assignments || []).map((a, i) => {
-                      const emp = employees.find(item => item.id === a.employee_id);
-                      const nm = a.full_name || emp?.full_name || 'NV';
-                      const dept = a.department_name || emp?.department_name || '';
-                      return (
-                        <button
-                          type="button"
-                          key={`${a.employee_id}-${i}`}
-                          className={`wtb-ava${a.is_primary ? ' is-primary' : ''}`}
-                          onClick={() => setInspectorTab('assignment')}
-                          title={`${nm}${dept ? ' · ' + dept : ''} — ${roleLabel(a.role_code || 'MAIN')}${a.is_primary ? ' · chịu trách nhiệm chính' : ''}`}
-                        >
-                          {(nm || '?').trim().charAt(0).toUpperCase()}
-                        </button>
-                      );
-                    })
+                    <p className="workflow-section-block__text">
+                      {selectedNode.data.description || 'Tiếp nhận yêu cầu, kiểm tra sơ bộ giấy tờ đầu vào.'}
+                    </p>
                   )}
                 </div>
-                {canEditSelectedAssignments && employees.length > 0 && (
-                  <div className="workflow-team-bar__add">
-                    <button
-                      type="button"
-                      className="wtb-add-btn"
-                      onClick={() => setTeamPickerOpen(value => !value)}
-                      title="Thêm nhân sự vào bước"
-                    >
-                      <UserPlus size={14} /> Thêm
-                    </button>
-                    {teamPickerOpen && (
-                      <div className="wtb-picker">
-                        {employees
-                          .filter(e => !(selectedNode.data.assignments || []).some(a => a.employee_id === e.id))
-                          .map(e => (
-                            <button
-                              type="button"
-                              key={e.id}
-                              onClick={() => { addAssignmentFor(e.id); setTeamPickerOpen(false); }}
-                            >
-                              <span className="wtb-picker__ava">{(e.full_name || '?').trim().charAt(0).toUpperCase()}</span>
-                              <span className="wtb-picker__txt">
-                                <strong>{e.full_name}</strong>
-                                <small>{e.department_name || e.job_title || 'Chưa có phòng ban'}</small>
-                              </span>
-                            </button>
-                          ))}
-                        {employees.filter(e => !(selectedNode.data.assignments || []).some(a => a.employee_id === e.id)).length === 0 && (
-                          <div className="wtb-picker__empty">Đã thêm hết nhân sự</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
-              {/* Tóm tắt chỉ đọc — thay cho việc bày lại toàn bộ ô nhập.
-                  Mã và tên bước đã nằm ở tiêu đề nên không lặp lại ở đây. */}
-              {/* Trạng thái, thời lượng và cờ đều là thuộc tính của cùng một bước —
-                  xếp chung một hàng thì đọc được trong một nhịp mắt, thay vì rải
-                  ra ba khối chồng lên nhau. */}
-              <div className="workflow-node-meta">
-                <em className={`workflow-status-pill workflow-status-pill--${selectedNode.data.executionStatus}`}>
-                  {selectedNode.data.executionStatusLabel}
-                </em>
-                <span className="workflow-node-meta__dur">
-                  <Clock3 size={13} />
-                  {Number(selectedNode.data.durationDays) || Number(selectedNode.data.durationHours)
-                    ? [
-                        Number(selectedNode.data.durationDays) ? `${selectedNode.data.durationDays} ngày` : null,
-                        Number(selectedNode.data.durationHours) ? `${selectedNode.data.durationHours} giờ` : null,
-                      ].filter(Boolean).join(' ')
-                    : 'Chưa đặt thời hạn'}
-                </span>
-                {selectedNode.data.requiresGovSubmission && <span className="is-flag">Nộp cơ quan</span>}
-                {selectedNode.data.createsSurveyRecord && <span className="is-flag">Bước đo vẽ</span>}
-                {selectedNode.data.isHandover && <span className="is-flag">Bàn giao</span>}
-              </div>
+              <section className="workflow-duration-editor" aria-label="Thời hạn xử lý Node">
+                <div className="workflow-duration-editor__heading">
+                  <span>Thời hạn xử lý</span>
+                  <strong>
+                    {selectedNode.data.deadlineAt
+                      ? `Hạn ${formatDateTime(selectedNode.data.deadlineAt)}`
+                      : ([
+                          Number(selectedNode.data.durationDays) ? `${selectedNode.data.durationDays} ngày` : null,
+                          Number(selectedNode.data.durationHours) ? `${selectedNode.data.durationHours} giờ` : null,
+                          Number(selectedNode.data.durationMinutes) ? `${selectedNode.data.durationMinutes} phút` : null,
+                        ].filter(Boolean).join(' ') || 'Không đặt hạn')}
+                  </strong>
+                </div>
+                <div className="workflow-duration-editor__fields">
+                  {[
+                    ['durationDays', 'Ngày', 3650],
+                    ['durationHours', 'Giờ', 23],
+                    ['durationMinutes', 'Phút', 59],
+                  ].map(([field, label, max]) => (
+                    <label key={field}>
+                      <input
+                        type="number"
+                        min="0"
+                        max={max}
+                        step="1"
+                        aria-label={label}
+                        disabled={!canEditSelectedDuration}
+                        value={selectedNode.data[field] ?? ''}
+                        onChange={event => {
+                          const raw = event.target.value;
+                          updateSelectedNode({
+                            [field]: raw === '' ? '' : Math.min(max, Math.max(0, Math.trunc(Number(raw) || 0))),
+                          });
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
 
-              {/* Hai node đặc biệt: K06 vì THỜI GIAN (chờ cơ quan), K08 vì TIỀN
-                  (cổng công nợ). Nhận diện bằng CỜ, không bằng mã node. */}
+              {/* Hai node đặc biệt: K05 (nộp cơ quan) và K06 (bàn giao) nếu có runtime */}
               {selectedNode.data.requiresGovSubmission && selectedNode.data.taskNodeId && (
                 <LegalDossierNodePanel
                   taskNodeId={selectedNode.data.taskNodeId}
@@ -1968,36 +2344,70 @@ export default function ContractWorkflowDesigner({
                   taskNodeId={selectedNode.data.taskNodeId}
                   addToast={addToast}
                   onChanged={onPersisted}
+                  isDirector={canReviewNode}
+                  checklist={selectedNode.data.checklist || []}
+                  deadlineAt={selectedNode.data.deadlineAt || null}
                   readOnly
                 />
               )}
-              {/* Node bàn giao CHƯA kích hoạt: chưa có tiền để thu / hồ sơ để giao,
-                  nhưng vẫn cho thấy trước cấu trúc "thu tiền + bàn giao" để người
-                  thiết lập biết bước này sẽ làm gì. Panel thật hiện sau khi kích hoạt. */}
-              {selectedNode.data.isHandover && !selectedNode.data.taskNodeId && (
-                <div className="handover-preview">
-                  <div className="handover-preview__title">
-                    <Banknote size={15} /> Bước bàn giao — thu tiền &amp; giao hồ sơ
+
+              {/* TỔNG QUAN PHÂN BỔ TÀI LIỆU — đặt ở đầu panel node để Giám đốc
+                  thấy ngay còn sót loại nào. Cấu hình từng Checklist mà không có
+                  chỗ nào tổng kết thì rất dễ tưởng đã xong trong khi còn mười
+                  loại chưa bước nào nhận — và những loại đó sẽ không hiện ở bất
+                  kỳ bước nào của nhân viên. */}
+              {docTemplates.length > 0 && (
+                <div className="wcl-phanbo">
+                  <div className="wcl-phanbo__dau">
+                    <FileCheck2 size={13} /> Phân bổ tài liệu theo Checklist
                   </div>
-                  <div className="handover-preview__lane">
-                    <span className="handover-preview__dot" />
-                    <div><strong>Giao hồ sơ cho khách</strong>
-                      <small>Nhận kết quả, giao tài liệu, lấy chữ ký xác nhận</small></div>
+                  <div className="wcl-phanbo__so">
+                    <span className="wcl-phanbo__da">Đã phân bổ {phanBoTaiLieu.daGan}</span>
+                    <span className={`wcl-phanbo__chua${phanBoTaiLieu.chuaGan.length ? ' is-canh-bao' : ''}`}>
+                      Chưa phân bổ {phanBoTaiLieu.chuaGan.length}
+                    </span>
+                    <span className="wcl-phanbo__tong">/ {docTemplates.length} loại</span>
                   </div>
-                  <div className="handover-preview__lane">
-                    <span className="handover-preview__dot is-money" />
-                    <div><strong>Thu đủ tiền hợp đồng</strong>
-                      <small>Cổng công nợ mở tại đây — phải thu đủ tiền mới đóng được bước</small></div>
-                  </div>
-                  <p className="handover-preview__note">
-                    Giao diện thu tiền và bàn giao sẽ hoạt động sau khi <strong>kích hoạt quy trình</strong>.
-                  </p>
+                  {phanBoTaiLieu.chuaGan.length > 0 && (
+                    <details className="wcl-phanbo__chi-tiet">
+                      <summary>Xem {phanBoTaiLieu.chuaGan.length} loại chưa bước nào nhận</summary>
+                      <ul>
+                        {phanBoTaiLieu.chuaGan.map(t => (
+                          <li key={t.id}>{t.name} <em>· {t.source_label}</em></li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
               )}
 
+              {/* Review Card khi có yêu cầu nghiệm thu */}
               {selectedNode.data.pendingAcceptanceId && canReviewNode && (
                 <div className="workflow-review-card">
                   <div className="workflow-review-card__title"><Clock3 size={14} /> Chờ duyệt nghiệm thu</div>
+
+                  <ThieuTaiLieuKhiNop danhSach={selectedNode.data.pendingMissing || []} />
+
+                  {/* K01 là bước rà soát giấy đầu vào. Quyết định nghiệm thu ở
+                      đây CHỐT LUÔN các phiếu xin miễn đang chờ, nên Giám đốc
+                      phải thấy danh sách đó trước khi bấm — và thấy cả sổ giấy
+                      để đối chiếu, không phải mở sang màn hợp đồng rồi quay lại. */}
+                  {selectedNode.data.code === 'K01' && serviceLine?.id && (
+                    <>
+                      <GiayDuocMien serviceLineId={serviceLine.id} />
+                      {contractId && (
+                        <DocumentRegister
+                          contractId={contractId}
+                          serviceLineId={serviceLine.id}
+                          addToast={addToast}
+                          collapsible
+                          title="Sổ giấy tờ khách cung cấp"
+                          showSourceRepository
+                        />
+                      )}
+                    </>
+                  )}
+
                   <label>
                     Kết quả xử lý
                     <select
@@ -2012,7 +2422,14 @@ export default function ContractWorkflowDesigner({
                     </select>
                   </label>
                   <label>
-                    Lý do trả lại <span className="workflow-review-card__hint">chỉ cần khi yêu cầu làm lại</span>
+                    {(selectedNode.data.pendingMissing || []).length
+                      ? 'Lý do trả lại / lý do chấp nhận thiếu'
+                      : 'Lý do trả lại'}
+                    <span className="workflow-review-card__hint">
+                      {(selectedNode.data.pendingMissing || []).length
+                        ? 'bắt buộc cho cả hai lựa chọn'
+                        : 'chỉ cần khi yêu cầu làm lại'}
+                    </span>
                     <input
                       className="form-control"
                       value={lyDoLamLai}
@@ -2033,88 +2450,73 @@ export default function ContractWorkflowDesigner({
                       type="button"
                       className="btn btn-primary btn-sm"
                       disabled={reviewingNodeId === selectedNode.data.pendingAcceptanceId || (Object.keys(selectedNode.data.transitions || {}).length > 0 && !reviewOutcome)}
-                      onClick={() => reviewNodeAcceptance(selectedNode.data.pendingAcceptanceId, 'accepted', reviewOutcome || null)}
+                      onClick={() => reviewNodeAcceptance(
+                        selectedNode.data.pendingAcceptanceId,
+                        'accepted',
+                        reviewOutcome || null,
+                        (selectedNode.data.pendingMissing || []).length > 0,
+                      )}
                     >
-                      <CheckCircle2 size={14} /> Duyệt đạt
+                      <CheckCircle2 size={14} />
+                      {(selectedNode.data.pendingMissing || []).length
+                        ? ' Duyệt chấp nhận thiếu'
+                        : ' Duyệt đạt'}
                     </button>
                   </div>
                 </div>
               )}
 
-              <label>
-                Đầu ra nghiệm thu
-                <textarea
-                  className="form-control"
-                  disabled={!structureEditable}
-                  rows={4}
-                  value={selectedNode.data.description}
-                  onChange={event => updateSelectedNode({ description: event.target.value })}
-                />
-              </label>
-              <label className="workflow-check-row">
-                <input
-                  type="checkbox"
-                  disabled={!structureEditable}
-                  checked={Boolean(selectedNode.data.requiresGovSubmission)}
-                  onChange={event => updateSelectedNode({ requiresGovSubmission: event.target.checked })}
-                />
-                Yêu cầu nộp cơ quan nhà nước (tự tạo hồ sơ Pháp lý khi bắt đầu)
-              </label>
-              <label className="workflow-check-row">
-                <input
-                  type="checkbox"
-                  disabled={!structureEditable}
-                  checked={Boolean(selectedNode.data.createsSurveyRecord)}
-                  onChange={event => updateSelectedNode({ createsSurveyRecord: event.target.checked })}
-                />
-                Bước đo vẽ (tự tạo hồ sơ Đo vẽ khi bắt đầu)
-              </label>
-              <label className="workflow-check-row">
-                <input
-                  type="checkbox"
-                  disabled={!structureEditable}
-                  checked={Boolean(selectedNode.data.isHandover)}
-                  onChange={event => updateSelectedNode({ isHandover: event.target.checked })}
-                />
-                Bước bàn giao (mở cổng công nợ — phải thu đủ tiền mới đóng được)
-              </label>
-              <div className="workflow-duration">
-                <span className="workflow-duration__label">Thời hạn xử lý — tính từ lúc nhân viên bấm bắt đầu</span>
-                <div className="workflow-duration__inputs">
-                  <label>
+              {/* Mục: ĐIỀU KIỆN KÍCH HOẠT */}
+              <div className="workflow-section-block">
+                <label className="workflow-section-block__label">ĐIỀU KIỆN KÍCH HOẠT</label>
+                <div className="workflow-trigger-group">
+                  <label className="workflow-trigger-item">
                     <input
-                      type="number"
-                      min="0"
-                      className="form-control"
+                      type="checkbox"
                       disabled={!structureEditable}
-                      value={selectedNode.data.durationDays ?? ''}
-                      onChange={event => updateSelectedNode({ durationDays: event.target.value })}
+                      checked={Boolean(selectedNode.data.requiresGovSubmission)}
+                      onChange={event => updateSelectedNode({ requiresGovSubmission: event.target.checked })}
                     />
-                    ngày
+                    <div className="workflow-trigger-item__info">
+                      <strong>Yêu cầu nộp cơ quan nhà nước</strong>
+                    </div>
                   </label>
-                  <label>
+
+                  <label className="workflow-trigger-item">
                     <input
-                      type="number"
-                      min="0"
-                      max="23"
-                      className="form-control"
+                      type="checkbox"
                       disabled={!structureEditable}
-                      value={selectedNode.data.durationHours ?? ''}
-                      onChange={event => updateSelectedNode({ durationHours: event.target.value })}
+                      checked={Boolean(selectedNode.data.createsSurveyRecord)}
+                      onChange={event => updateSelectedNode({ createsSurveyRecord: event.target.checked })}
                     />
-                    giờ
+                    <div className="workflow-trigger-item__info">
+                      <strong>Bước đo vẽ</strong>
+                    </div>
+                  </label>
+
+                  <label className="workflow-trigger-item">
+                    <input
+                      type="checkbox"
+                      disabled={!structureEditable}
+                      checked={Boolean(selectedNode.data.isHandover)}
+                      onChange={event => updateSelectedNode({ isHandover: event.target.checked })}
+                    />
+                    <div className="workflow-trigger-item__info">
+                      <strong>Bước bàn giao</strong>
+                    </div>
                   </label>
                 </div>
-                <small>Để trống nếu bước này không đặt hạn.</small>
               </div>
+
+              {/* Nút: Đặt làm node bắt đầu */}
               <button
                 type="button"
                 disabled={!structureEditable}
-                className={`workflow-start-button${startNode === selectedNode.id ? ' active' : ''}`}
+                className={`workflow-start-node-dashed-btn${startNode === selectedNode.id ? ' is-active' : ''}`}
                 onClick={() => setStartNode(selectedNode.id)}
               >
-                <CheckCircle2 size={16} />
-                {startNode === selectedNode.id ? 'Đây là Node bắt đầu' : 'Đặt làm Node bắt đầu'}
+                <CheckCircle2 size={15} />
+                {startNode === selectedNode.id ? 'Node bắt đầu' : 'Đặt làm node bắt đầu'}
               </button>
             </div>
           ) : inspectorTab === 'checklist' ? (
@@ -2276,6 +2678,135 @@ export default function ContractWorkflowDesigner({
                     </div>
                   </div>
 
+                  {/* Hàng: Tài liệu đầu ra — thứ checklist này phải SINH RA và
+                      đưa vào hồ sơ có cấu trúc. Khác minh chứng: minh chứng chứng
+                      minh đã làm việc, tài liệu đầu ra là thành phần chính thức
+                      của hồ sơ Hạng mục. Mặc định thu gọn. */}
+                  {(item.output_documents || []).length > 0 ? (
+                    <div className="wcl-prop wcl-prop--output">
+                      <span className="wcl-prop__label"><FileCheck2 size={13} /> Tài liệu đầu ra</span>
+                      <div className="wcl-output-list">
+                        {(item.output_documents || []).map((doc, docIndex) => {
+                          const canhBao = doc.needs_director_approval && (item.approver_role || 'admin') !== 'admin';
+                          return (
+                            <div className={`wcl-output${canhBao ? ' is-warn' : ''}`} key={`${doc.template_id}-${docIndex}`}>
+                              <div className="wcl-output__top">
+                                <select
+                                  className="wcl-inline-select"
+                                  disabled={!checklistEditable}
+                                  value={doc.template_id || ''}
+                                  onChange={event => updateOutputDocument(index, docIndex, { template_id: event.target.value })}
+                                >
+                                  <option value="">Chọn loại tài liệu…</option>
+                                  {docTemplates.map(template => {
+                                    const daGan = phanBoTaiLieu.cua.has(template.id);
+                                    return (
+                                      <option key={template.id} value={template.id}>
+                                        {template.name} · {template.source_label}
+                                        {daGan ? ' · đã phân bổ' : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                {checklistEditable && (
+                                  <button
+                                    type="button"
+                                    className="wcl-prop__clear"
+                                    onClick={() => removeOutputDocument(index, docIndex)}
+                                    title="Bỏ loại tài liệu này"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                )}
+                              </div>
+                              {(() => {
+                                // §2: nguồn và yêu cầu bản chính KẾ THỪA từ loại
+                                // tài liệu mẫu — chỉ xem, không cho ghi đè. Cần
+                                // khác nguồn hoặc khác yêu cầu bản chính thì phải
+                                // tạo một loại khác, tránh một template mang hai
+                                // nghĩa rồi không ai biết bản nào là bản nào.
+                                const mau = docTemplates.find(t => t.id === doc.template_id);
+                                if (!mau) return null;
+                                const noiDung = phanBoTaiLieu.cua.get(doc.template_id) || [];
+                                return (
+                                  <div className="wcl-output__ro">
+                                    <span>Nguồn: <b>{mau.source_label}</b></span>
+                                    <span>Bản chính: <b>{mau.needs_original ? 'Có' : 'Không'}</b></span>
+                                    {noiDung.length > 1 && (
+                                      <span className="wcl-output__dung-chung" title={noiDung.join(' · ')}>
+                                        dùng ở {noiDung.length} Checklist
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                              <div className="wcl-output__opts">
+                                <label>
+                                  Tối thiểu
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    className="wcl-output__num"
+                                    disabled={!checklistEditable}
+                                    value={doc.min_count ?? 1}
+                                    onChange={event => updateOutputDocument(index, docIndex, {
+                                      min_count: Math.max(1, Number(event.target.value) || 1),
+                                    })}
+                                  />
+                                </label>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    disabled={!checklistEditable}
+                                    checked={doc.required_before_submit !== false}
+                                    onChange={event => updateOutputDocument(index, docIndex, {
+                                      required_before_submit: event.target.checked,
+                                    })}
+                                  />
+                                  Bắt buộc trước khi nộp
+                                </label>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    disabled={!checklistEditable}
+                                    checked={Boolean(doc.needs_director_approval)}
+                                    onChange={event => updateOutputDocument(index, docIndex, {
+                                      needs_director_approval: event.target.checked,
+                                    })}
+                                  />
+                                  Cần Giám đốc duyệt
+                                </label>
+                              </div>
+                              {canhBao && (
+                                <p className="wcl-output__warn" role="alert">
+                                  Cần Giám đốc duyệt nhưng người duyệt đang là “{
+                                    (APPROVER_ROLES.find(([code]) => code === item.approver_role) || [])[1] || item.approver_role
+                                  }”. Đổi người duyệt sang Giám đốc, nếu không lưu quy trình sẽ bị từ chối.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {checklistEditable && (
+                          <button type="button" className="wcl-prop__add" onClick={() => addOutputDocument(index)}>
+                            <Plus size={12} /> Thêm loại tài liệu
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="wcl-prop">
+                      <span className="wcl-prop__label"><FileCheck2 size={13} /> Tài liệu đầu ra</span>
+                      {checklistEditable ? (
+                        <button type="button" className="wcl-prop__add" onClick={() => addOutputDocument(index)}>
+                          <Plus size={12} /> Thêm tài liệu đầu ra
+                        </button>
+                      ) : (
+                        <span className="wcl-prop__none">Không yêu cầu</span>
+                      )}
+                    </div>
+                  )}
+
                   {/* Hàng: Gói khoán — đơn giá theo vai trò (Chính · Phụ) */}
                   {canViewCompensation && (
                     item.compensation?.is_payable ? (
@@ -2382,7 +2913,7 @@ export default function ContractWorkflowDesigner({
               <div className="workflow-inspector__section-title">
                 <div>
                   <span>Người thực hiện checklist trong Node</span>
-                  <strong>{selectedNode.data.assignments?.length || 0} người</strong>
+                  <strong>{selectedAssignmentsForDisplay.length} người</strong>
                 </div>
                 <button
                   type="button"
@@ -2400,12 +2931,12 @@ export default function ContractWorkflowDesigner({
                   <UserRoundCog size={24} />
                   <span>Chưa có nhân viên đang hoạt động trong database.</span>
                 </div>
-              ) : !(selectedNode.data.assignments || []).length ? (
+              ) : !selectedAssignmentsForDisplay.length ? (
                 <div className="workflow-inspector__empty compact">
                   <UserRoundCog size={24} />
                   <span>Node này chưa được phân công. Có thể kích hoạt trước và phân công sau.</span>
                 </div>
-              ) : (selectedNode.data.assignments || []).map((assignment, index) => {
+              ) : selectedAssignmentsForDisplay.map((assignment, index) => {
                 const payLines = canViewCompensation ? projectedPayLines(selectedNode, assignment) : [];
                 const projectedAmount = payLines.reduce((sum, line) => sum + line.amount, 0);
                 const emp = employees.find(item => item.id === assignment.employee_id);
@@ -2415,12 +2946,18 @@ export default function ContractWorkflowDesigner({
                 return (
                 <article className={`workflow-assignment-card${laChinh ? ' is-primary' : ''}`} key={`${assignment.employee_id}-${assignment.role_code}-${index}`}>
                   <header className="wa-head">
-                    <span className="wa-ava">{(name || '?').trim().charAt(0).toUpperCase()}</span>
+                    <AvatarImage
+                      className="wa-ava wa-ava--img"
+                      fallbackClassName="wa-ava"
+                      src={assignment.avatar_url || emp?.avatar_url}
+                      name={name}
+                      title={name}
+                    />
                     <div className="wa-who">
                       <strong title={name}>{name}</strong>
                       {dept && <small title={dept}>{dept}</small>}
                     </div>
-                    <button type="button" className="wa-x" disabled={!canEditSelectedAssignments} onClick={() => removeAssignment(index)} title="Bỏ phân công">
+                    <button type="button" className="wa-x" disabled={selectedHasRuntimeOnlyAssignments || !canEditSelectedAssignments} onClick={() => removeAssignment(index)} title="Bỏ phân công">
                       <X size={15} />
                     </button>
                   </header>
@@ -2430,7 +2967,7 @@ export default function ContractWorkflowDesigner({
                       <span>Nhân viên</span>
                       <select
                         className="form-control"
-                        disabled={!canEditSelectedAssignments}
+                        disabled={selectedHasRuntimeOnlyAssignments || !canEditSelectedAssignments}
                         value={assignment.employee_id || ''}
                         onChange={event => updateAssignment(index, { employee_id: event.target.value })}
                       >
@@ -2445,7 +2982,7 @@ export default function ContractWorkflowDesigner({
                       <span>Vai trò</span>
                       <select
                         className="form-control"
-                        disabled={!canEditSelectedAssignments}
+                        disabled={selectedHasRuntimeOnlyAssignments || !canEditSelectedAssignments}
                         value={assignment.role_code || 'MAIN'}
                         onChange={event => updateAssignment(index, { role_code: event.target.value })}
                       >
@@ -2457,7 +2994,7 @@ export default function ContractWorkflowDesigner({
                   <button
                     type="button"
                     className={`wa-primary-toggle${laChinh ? ' is-on' : ''}`}
-                    disabled={!canEditSelectedAssignments}
+                    disabled={selectedHasRuntimeOnlyAssignments || !canEditSelectedAssignments}
                     onClick={() => updateAssignment(index, { is_primary: !laChinh })}
                     title="Người chịu trách nhiệm chính của bước — mức khoán cao hơn tính theo vai trò này"
                   >
@@ -2528,6 +3065,101 @@ export default function ContractWorkflowDesigner({
               </div>
             </div>
           )}
+
+          {(canReviewChecklist || canReviewNode) && (
+            <section
+              className={`workflow-review-inbox${reviewInboxOpen ? ' is-open' : ''}${pendingReviewItems.length ? ' has-items' : ''}`}
+              aria-label="Thông báo chờ duyệt"
+            >
+              <button
+                type="button"
+                className="workflow-review-inbox__trigger"
+                aria-expanded={reviewInboxOpen}
+                disabled={pendingReviewItems.length === 0}
+                onClick={() => setReviewInboxOpen(value => !value)}
+              >
+                <span><CircleDashed size={14} /> Chờ duyệt</span>
+                <strong>{pendingReviewItems.length}</strong>
+                <ChevronDown size={14} />
+              </button>
+              {pendingReviewItems.length > 0 && reviewInboxOpen ? (
+                <div className="workflow-review-inbox__dropup">
+                  <div className="workflow-review-inbox__list">
+                    {pendingReviewItems.map(item => (
+                      item.checklistResultId ? (
+                        <article className="workflow-review-inbox__item" key={item.id}>
+                          <div className="workflow-review-inbox__item-heading">
+                            <span>{item.code}</span>
+                            <div>
+                              <strong>{item.label}</strong>
+                              <small>{item.typeLabel}</small>
+                            </div>
+                          </div>
+                          <div className="workflow-review-inbox__evidence">
+                            {item.evidenceFiles.length > 0 ? item.evidenceFiles.map((file, fileIndex) => (
+                              safeExternalUrl(file.url) || isPrivateObjectKey(file.url) ? (
+                                <a
+                                  key={`${file.url}-${fileIndex}`}
+                                  href={isPrivateObjectKey(file.url) ? '#' : safeExternalUrl(file.url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(event) => openEvidenceFile(event, file)}
+                                >
+                                  <FileCheck2 size={13} />
+                                  {file.name || `Minh chứng ${fileIndex + 1}`}
+                                  <ExternalLink size={11} />
+                                </a>
+                              ) : (
+                                <span key={`${file.name}-${fileIndex}`}>
+                                  <FileCheck2 size={13} /> {file.name || `Minh chứng ${fileIndex + 1}`}
+                                </span>
+                              )
+                            )) : <span>Không có tệp minh chứng</span>}
+                          </div>
+                          <div className="workflow-review-inbox__actions">
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              disabled={reviewingChecklistId === item.checklistResultId}
+                              onClick={() => reviewChecklistEvidence(item.checklistResultId, 'failed')}
+                            >
+                              <XCircle size={13} /> Từ chối
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={reviewingChecklistId === item.checklistResultId}
+                              onClick={() => reviewChecklistEvidence(item.checklistResultId, 'approved')}
+                            >
+                              <CheckCircle2 size={13} /> Duyệt đạt
+                            </button>
+                          </div>
+                        </article>
+                      ) : (
+                        <button
+                          type="button"
+                          key={item.id}
+                          onClick={() => {
+                            setSelectedNodeId(item.nodeId);
+                            setInspectorTab(item.tab);
+                            setReviewInboxOpen(false);
+                          }}
+                        >
+                          <span>{item.code}</span>
+                          <div>
+                            <strong>{item.label}</strong>
+                            <small>{item.typeLabel}</small>
+                          </div>
+                          <ChevronRight size={14} />
+                        </button>
+                      )
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {pendingReviewItems.length === 0 && <p>Không có yêu cầu mới</p>}
+            </section>
+          )}
           </>
           )}
         </aside>
@@ -2586,7 +3218,9 @@ export default function ContractWorkflowDesigner({
         closeOnOverlay={!activating}
         title={activationConfirmation?.phase === 'impact-warning'
           ? 'Cảnh báo tác động quy trình đang chạy'
-          : 'Xác nhận kích hoạt quy trình'}
+          : hasActiveRuntime
+            ? 'Xác nhận áp dụng bản sửa đổi'
+            : 'Xác nhận kích hoạt quy trình'}
         id="workflow-activation-modal"
         footer={(
           <>
@@ -2712,7 +3346,7 @@ export default function ContractWorkflowDesigner({
                 <strong>Hồ sơ đã đi vào khâu cơ quan nhà nước</strong>
               </div>
               <p>
-                Có {cancellationPreview.agency_node_count || 0} Node liên quan K06–K08 đã bắt đầu.
+                Có {cancellationPreview.agency_node_count || 0} Node liên quan K05–K06 đã bắt đầu.
                 Cần ghi rõ cách rút hồ sơ, nhận lại giấy tờ hoặc bàn giao người tiếp tục theo dõi.
               </p>
               <textarea
