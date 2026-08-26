@@ -99,6 +99,105 @@ class FinanceRepository:
         return start_bal + income_sum - expenditure_sum
 
     @staticmethod
+    def get_combined_fund_balances(db: Session, up_to_datetime: Optional[datetime] = None) -> dict:
+        tz_vn = timezone(timedelta(hours=7))
+        
+        q_snap = db.query(FundOpeningBalance)
+        if up_to_datetime:
+            q_snap = q_snap.filter(FundOpeningBalance.effective_date <= up_to_datetime)
+        snaps = q_snap.order_by(FundOpeningBalance.effective_date.desc(), FundOpeningBalance.id.desc()).all()
+        
+        latest_cash_snap = next((s for s in snaps if normalize_payment_method(s.payment_method) == PaymentMethod.CASH.value), None)
+        latest_bank_snap = next((s for s in snaps if normalize_payment_method(s.payment_method) == PaymentMethod.BANK_TRANSFER.value), None)
+        
+        if latest_cash_snap:
+            start_bal_cash = float(latest_cash_snap.opening_balance or 0)
+            st = latest_cash_snap.effective_date
+            start_date_cash = (st.astimezone(tz_vn) if st.tzinfo else st.replace(tzinfo=timezone.utc).astimezone(tz_vn)).date() if st else None
+        else:
+            start_bal_cash = FinanceRepository.get_setting_value(db, "initial_cash_balance", 0.0)
+            start_date_cash = None
+            
+        if latest_bank_snap:
+            start_bal_bank = float(latest_bank_snap.opening_balance or 0)
+            st = latest_bank_snap.effective_date
+            start_date_bank = (st.astimezone(tz_vn) if st.tzinfo else st.replace(tzinfo=timezone.utc).astimezone(tz_vn)).date() if st else None
+        else:
+            start_bal_bank = FinanceRepository.get_setting_value(db, "initial_bank_balance", 0.0)
+            start_date_bank = None
+
+        approved_cond = or_(
+            CashflowTransaction.status.is_(None),
+            CashflowTransaction.status.in_([
+                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán", ""
+            ])
+        )
+        
+        up_to_date = (up_to_datetime.astimezone(tz_vn).date() if up_to_datetime.tzinfo else up_to_datetime.replace(tzinfo=timezone.utc).astimezone(tz_vn).date()) if up_to_datetime else None
+
+        min_start_date = None
+        if start_date_cash and start_date_bank:
+            min_start_date = min(start_date_cash, start_date_bank)
+        elif start_date_cash:
+            min_start_date = start_date_cash
+        elif start_date_bank:
+            min_start_date = start_date_bank
+            
+        q_tx = db.query(
+            CashflowTransaction.payment_method,
+            CashflowTransaction.transaction_type,
+            CashflowTransaction.transaction_date,
+            func.sum(CashflowTransaction.amount)
+        ).filter(
+            CashflowTransaction.scope.in_([TransactionScope.COMPANY.value, "Công ty"]),
+            approved_cond
+        )
+        if min_start_date:
+            q_tx = q_tx.filter(CashflowTransaction.transaction_date > min_start_date)
+        if up_to_date:
+            q_tx = q_tx.filter(CashflowTransaction.transaction_date <= up_to_date)
+            
+        tx_rows = q_tx.group_by(
+            CashflowTransaction.payment_method,
+            CashflowTransaction.transaction_type,
+            CashflowTransaction.transaction_date
+        ).all()
+        
+        cash_income = 0.0
+        cash_expense = 0.0
+        bank_income = 0.0
+        bank_expense = 0.0
+        
+        for pm, tt, tx_date, amt in tx_rows:
+            canon_pm = normalize_payment_method(pm)
+            canon_tt = normalize_transaction_type(tt)
+            amount_val = float(amt or 0)
+            
+            if canon_pm == PaymentMethod.CASH.value:
+                if start_date_cash and tx_date and tx_date <= start_date_cash:
+                    continue
+                if canon_tt == TransactionType.INCOME.value or tt in ["Thu", "INCOME"]:
+                    cash_income += amount_val
+                elif canon_tt in [TransactionType.EXPENSE.value, TransactionType.ADVANCE.value] or tt in ["Chi", "EXPENSE", "Tạm ứng", "ADVANCE"]:
+                    cash_expense += amount_val
+            elif canon_pm == PaymentMethod.BANK_TRANSFER.value:
+                if start_date_bank and tx_date and tx_date <= start_date_bank:
+                    continue
+                if canon_tt == TransactionType.INCOME.value or tt in ["Thu", "INCOME"]:
+                    bank_income += amount_val
+                elif canon_tt in [TransactionType.EXPENSE.value, TransactionType.ADVANCE.value] or tt in ["Chi", "EXPENSE", "Tạm ứng", "ADVANCE"]:
+                    bank_expense += amount_val
+
+        bal_cash = start_bal_cash + cash_income - cash_expense
+        bal_bank = start_bal_bank + bank_income - bank_expense
+            
+        return {
+            "cash_balance": bal_cash,
+            "bank_balance": bal_bank,
+            "system_balance": bal_cash + bal_bank
+        }
+
+    @staticmethod
     def generate_voucher_id(type_val: str, db: Session, target_date: date = None) -> str:
         canon_type = normalize_transaction_type(type_val)
         prefix = "PT" if canon_type == TransactionType.INCOME.value else "PC"
@@ -213,26 +312,61 @@ class FinanceRepository:
 
     @staticmethod
     def get_cashflow_detail(db: Session, transaction_id: str) -> Dict:
-        t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
-        if not t:
+        row = (
+            db.query(CashflowTransaction, Contract, Customer, ServiceLine)
+            .outerjoin(Contract, CashflowTransaction.contract_id == Contract.id)
+            .outerjoin(Customer, Contract.customer_id == Customer.id)
+            .outerjoin(ServiceLine, CashflowTransaction.project_id == ServiceLine.id)
+            .filter(CashflowTransaction.id == transaction_id)
+            .first()
+        )
+        if not row:
             raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
         
+        t, c, cust, p = row
+        
         contract_info = None
-        if t.contract_id:
-            c = db.query(Contract).filter(Contract.id == t.contract_id).first()
-            if c:
-                cust = db.query(Customer).filter(Customer.id == c.customer_id).first()
-                contract_info = {
-                    "id": c.id,
-                    "service_type": c.service_type,
-                    "total_value": float(c.total_value or 0),
-                    "date_signed": str(c.date_signed) if c.date_signed else "",
-                    "customer_name": cust.full_name if cust else "",
-                    "customer_phone": cust.phone if cust else ""
+        if c:
+            contract_info = {
+                "id": c.id,
+                "service_type": c.service_type,
+                "total_value": float(c.total_value or 0),
+                "date_signed": str(c.date_signed) if c.date_signed else "",
+                "customer_name": cust.full_name if cust else "",
+                "customer_phone": cust.phone if cust else ""
+            }
+
+        # Batch load actors (creator & approver) in 1 query if present
+        actor_ids = {aid for aid in [t.created_by_user_id, t.approved_by_user_id] if aid}
+        actors_map = {}
+        if actor_ids:
+            actor_rows = (
+                db.query(User, Employee)
+                .outerjoin(Employee, Employee.user_id == User.id)
+                .filter(User.id.in_(actor_ids))
+                .all()
+            )
+            for u, emp in actor_rows:
+                actors_map[u.id] = {
+                    "user_id": u.id,
+                    "name": (emp.full_name if emp else None) or u.username,
+                    "role": emp.job_title if emp else None,
+                    "department": emp.department if emp else None,
                 }
 
+        empty_actor = {"user_id": None, "name": None, "role": None, "department": None}
+        creator_info = actors_map.get(t.created_by_user_id) if t.created_by_user_id else empty_actor
+        approver_info = actors_map.get(t.approved_by_user_id) if t.approved_by_user_id else empty_actor
+
         from src.finance.serializers import serialize_cashflow
-        data = serialize_cashflow(t, db)
+        data = serialize_cashflow(
+            t, db,
+            contract=c,
+            customer=cust,
+            project=p,
+            creator_info=creator_info,
+            approver_info=approver_info
+        )
         data["contract_info"] = contract_info
         data["transaction_date"] = str(t.transaction_date) if t.transaction_date else ""
         data["notes"] = t.notes or ""

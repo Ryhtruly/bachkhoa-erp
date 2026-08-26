@@ -42,18 +42,48 @@ export function resolveSignerEntries(entries = [], configuredSigners = {}) {
   });
 }
 
+let cachedSigners = null;
+let inFlightPromise = null;
+
+export function invalidateDocumentSignersCache() {
+  cachedSigners = null;
+  inFlightPromise = null;
+}
+
+export function setCachedDocumentSigners(data) {
+  cachedSigners = normalizeDocumentSigners(data);
+}
+
+export function getCachedDocumentSigners() {
+  return cachedSigners;
+}
+
 export function useDocumentSigners() {
-  const [signers, setSigners] = useState(DEFAULT_DOCUMENT_SIGNERS);
+  const [signers, setSigners] = useState(() => cachedSigners || DEFAULT_DOCUMENT_SIGNERS);
 
   useEffect(() => {
     let active = true;
-    apiFetch('/api/finance/document-signers')
-      .then(value => {
-        if (active) setSigners(normalizeDocumentSigners(value));
-      })
-      .catch(() => {
-        // Giữ giá trị mặc định cục bộ khi API chưa sẵn sàng; không chặn bản in.
-      });
+    if (cachedSigners) {
+      setSigners(cachedSigners);
+      return;
+    }
+
+    if (!inFlightPromise) {
+      inFlightPromise = apiFetch('/api/finance/document-signers')
+        .then(value => {
+          cachedSigners = normalizeDocumentSigners(value);
+          inFlightPromise = null;
+          return cachedSigners;
+        })
+        .catch(() => {
+          inFlightPromise = null;
+          return DEFAULT_DOCUMENT_SIGNERS;
+        });
+    }
+
+    inFlightPromise.then(result => {
+      if (active) setSigners(result);
+    });
 
     return () => { active = false; };
   }, []);

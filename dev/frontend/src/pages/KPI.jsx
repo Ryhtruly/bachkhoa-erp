@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Target, RefreshCw } from 'lucide-react';
+import { Target, RefreshCw, TrendingUp, Award } from 'lucide-react';
 import { DatePicker, Badge, DataTable } from '../components/ui';
 import { apiFetch } from '../lib/api';
 
@@ -209,10 +209,33 @@ export default function KPI() {
     return { totalEmps, avgOnTime, topPerformers, totalTasksDone };
   }, [rankedKpiList]);
 
+  const analytics = useMemo(() => {
+    if (!rankedKpiList.length) return null;
+    const activeEmps = rankedKpiList.filter(k => Number(k.total_completed || 0) > 0);
+    const goodOrAboveCount = activeEmps.filter(k => ['Xuất sắc', 'Tốt'].includes(k.performance)).length;
+    const goodOrAbovePercent = activeEmps.length > 0
+      ? Math.round((goodOrAboveCount / activeEmps.length) * 100)
+      : 0;
+    const perfectOnTimeCount = activeEmps.filter(k => Number(k.on_time_rate || 0) === 100).length;
+    const avgProcessTime = activeEmps.length > 0
+      ? (activeEmps.reduce((s, k) => s + Number(k.avg_time || 0), 0) / activeEmps.length).toFixed(1)
+      : '0.0';
+
+    const topScorers = rankedKpiList.slice(0, 5);
+
+    return {
+      activeEmpsCount: activeEmps.length,
+      goodOrAboveCount,
+      goodOrAbovePercent,
+      perfectOnTimeCount,
+      avgProcessTime,
+      topScorers
+    };
+  }, [rankedKpiList]);
+
   return (
-    <section className="tab-pane active kpi-page" id="tab-kpi">
-      <div className="card kpi-card">
-        <div className="kpi-header">
+    <section className="tab-pane active kpi-page card kpi-card" id="tab-kpi">
+      <div className="kpi-header">
           <div className="kpi-heading">
             <span className="kpi-header__eyebrow">Hiệu suất nhân sự</span>
             <h3>
@@ -290,10 +313,90 @@ export default function KPI() {
             loading={loading}
             rowKey="employee"
             emptyText={`Chưa có dữ liệu KPI cho kỳ ${month}`}
-            pageSize={15}
+            pageSize={10}
           />
         </div>
-      </div>
+
+        {analytics && analytics.topScorers.length > 0 && (
+          <div className="kpi-analytics-grid" aria-label="Phân tích hiệu suất nhân sự">
+            <div className="kpi-analytics-card">
+              <div className="kpi-analytics-card__head">
+                <span className="kpi-analytics-card__title">
+                  <TrendingUp size={15} /> Xếp hạng & Điểm KPI
+                </span>
+                <span className="kpi-analytics-card__subtitle">Thang điểm 100</span>
+              </div>
+              <div className="kpi-bars-list">
+                {analytics.topScorers.map((emp) => {
+                  const score = Number(emp.final_score || 0);
+                  const fillClass = score >= 90 ? 'is-excellent' : score >= 80 ? 'is-good' : score > 0 ? 'is-normal' : 'is-muted';
+                  return (
+                    <div key={emp.employee} className="kpi-bar-row">
+                      <div className="kpi-bar-row__info">
+                        <span className="kpi-bar-row__name">
+                          {emp.rank ? `#${emp.rank} ` : ''}{emp.employee}
+                        </span>
+                        <span className="kpi-bar-row__score">
+                          <strong>{score}</strong>/100 {emp.performance && emp.performance !== 'Chưa đánh giá' ? `• ${emp.performance}` : ''}
+                        </span>
+                      </div>
+                      <div className="kpi-bar-track">
+                        <div
+                          className={`kpi-bar-fill ${fillClass}`}
+                          style={{ width: `${Math.min(100, Math.max(score > 0 ? 6 : 0, score))}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="kpi-analytics-card">
+              <div className="kpi-analytics-card__head">
+                <span className="kpi-analytics-card__title">
+                  <Award size={15} /> Phân bổ hiệu suất & Tốc độ
+                </span>
+                <span className="kpi-analytics-card__subtitle">
+                  {month ? `Tháng ${Number(month.split('-')[1])}/${month.split('-')[0]}` : ''}
+                </span>
+              </div>
+              <div className="kpi-insights-list">
+                <div className="kpi-insight-metric">
+                  <span className="kpi-insight-metric__label">Đạt loại Tốt & Xuất sắc</span>
+                  <div className="kpi-insight-metric__val">
+                    {analytics.activeEmpsCount > 0 ? (
+                      <>
+                        <strong>{analytics.goodOrAboveCount}</strong> / {analytics.activeEmpsCount} nhân sự có phát sinh
+                        <span className="kpi-insight-badge">{analytics.goodOrAbovePercent}%</span>
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </div>
+                </div>
+                <div className="kpi-insight-metric">
+                  <span className="kpi-insight-metric__label">Đúng hạn tuyệt đối (100%)</span>
+                  <div className="kpi-insight-metric__val">
+                    {analytics.activeEmpsCount > 0 ? (
+                      <>
+                        <strong>{analytics.perfectOnTimeCount}</strong> / {analytics.activeEmpsCount} nhân sự có phát sinh
+                      </>
+                    ) : (
+                      '—'
+                    )}
+                  </div>
+                </div>
+                <div className="kpi-insight-metric">
+                  <span className="kpi-insight-metric__label">Thời gian xử lý trung bình</span>
+                  <div className="kpi-insight-metric__val">
+                    <strong>{analytics.avgProcessTime}</strong> ngày / nhiệm vụ
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
     </section>
   );
 }

@@ -39,22 +39,29 @@ def _actor_identity(db: Session, actor_id: str | None) -> dict[str, str | None]:
         "department": employee.department if employee else None,
     }
 
-def serialize_cashflow(t: CashflowTransaction, db: Session) -> dict:
+def serialize_cashflow(
+    t: CashflowTransaction,
+    db: Session | None = None,
+    contract: Contract | None = None,
+    customer: Customer | None = None,
+    project: ServiceLine | None = None,
+    creator_info: dict | None = None,
+    approver_info: dict | None = None,
+) -> dict:
     """Serialize 1 cashflow transaction, including labels."""
     contract_label = ""
     if t.contract_id:
-        c = db.query(Contract).filter(Contract.id == t.contract_id).first()
+        c = contract or (db.query(Contract).filter(Contract.id == t.contract_id).first() if db else None)
         if c:
             cust_name = ""
-            if c.customer_id:
-                cust = db.query(Customer).filter(Customer.id == c.customer_id).first()
-                if cust:
-                    cust_name = cust.full_name or ""
+            cust = customer or (db.query(Customer).filter(Customer.id == c.customer_id).first() if c.customer_id and db else None)
+            if cust:
+                cust_name = cust.full_name or ""
             contract_label = f"{c.id} — {cust_name}".strip(" —")
 
     project_label = ""
     if t.project_id:
-        p = db.query(ServiceLine).filter(ServiceLine.id == t.project_id).first()
+        p = project or (db.query(ServiceLine).filter(ServiceLine.id == t.project_id).first() if db else None)
         if p:
             project_label = f"{p.id} — {p.service_type or ''}".strip(" —")
 
@@ -68,8 +75,8 @@ def serialize_cashflow(t: CashflowTransaction, db: Session) -> dict:
     raw_partner = t.payer_payee_name or ""
     raw_date = t.transaction_date
     date_str = raw_date.strftime("%Y-%m-%d") if raw_date else (t.created_at.strftime("%Y-%m-%d") if t.created_at else "")
-    creator = _actor_identity(db, t.created_by_user_id)
-    approver = _actor_identity(db, t.approved_by_user_id)
+    creator = creator_info or (_actor_identity(db, t.created_by_user_id) if db else {"user_id": None, "name": None, "role": None, "department": None})
+    approver = approver_info or (_actor_identity(db, t.approved_by_user_id) if db else {"user_id": None, "name": None, "role": None, "department": None})
 
     return {
         "id": t.id,

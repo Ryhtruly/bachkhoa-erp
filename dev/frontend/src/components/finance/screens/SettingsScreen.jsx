@@ -11,7 +11,7 @@ import {
   CalendarDays, CalendarCheck2, Banknote, Check
 } from 'lucide-react';
 import './SettingsScreen.css';
-import { DEFAULT_DOCUMENT_SIGNERS, normalizeDocumentSigners } from '../print/documentSigners';
+import { DEFAULT_DOCUMENT_SIGNERS, normalizeDocumentSigners, setCachedDocumentSigners, getCachedDocumentSigners } from '../print/documentSigners';
 
 const EXPENSE_PRESETS = [1_000_000, 2_000_000, 5_000_000, 10_000_000];
 const ADVANCE_PRESETS = [2_000_000, 5_000_000, 10_000_000, 20_000_000];
@@ -50,7 +50,7 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
   });
   const [savingPayrollPolicy, setSavingPayrollPolicy] = useState(false);
 
-  const [documentSigners, setDocumentSigners] = useState(DEFAULT_DOCUMENT_SIGNERS);
+  const [documentSigners, setDocumentSigners] = useState(() => getCachedDocumentSigners() || DEFAULT_DOCUMENT_SIGNERS);
   const [savingDocumentSigners, setSavingDocumentSigners] = useState(false);
 
   const { addToast } = useToast();
@@ -68,39 +68,18 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
     });
   }, [history, filterMonth]);
 
-  const fetchSettings = useCallback(async () => {
-    try {
-      const d = await apiFetch(`${API}/api/finance/settings`);
-      setThresholds({
-        expense_approval_threshold: d.expense_approval_threshold ?? 2000000,
-        advance_admin_threshold: d.advance_admin_threshold ?? 5000000
-      });
-      setPayrollPolicy({
-        payroll_cycle_type: d.payroll_cycle_type || 'CALENDAR_MONTH',
-        payroll_cutoff_day: d.payroll_cutoff_day ?? 20,
-        payroll_payment_day: d.payroll_payment_day ?? 5
-      });
-    } catch (e) {
-      console.error('Lỗi lấy cấu hình tài chính', e);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
-
-  const fetchDocumentSigners = useCallback(async () => {
-    try {
-      const data = await apiFetch(`${API}/api/finance/document-signers`);
-      setDocumentSigners(normalizeDocumentSigners(data));
-    } catch (e) {
-      console.error('Lỗi lấy cấu hình người ký chứng từ', e);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDocumentSigners();
-  }, [fetchDocumentSigners]);
+  const applySettingsData = (d) => {
+    if (!d) return;
+    setThresholds({
+      expense_approval_threshold: d.expense_approval_threshold ?? 2000000,
+      advance_admin_threshold: d.advance_admin_threshold ?? 5000000
+    });
+    setPayrollPolicy({
+      payroll_cycle_type: d.payroll_cycle_type || 'CALENDAR_MONTH',
+      payroll_cutoff_day: d.payroll_cutoff_day ?? 20,
+      payroll_payment_day: d.payroll_payment_day ?? 5
+    });
+  };
 
   const handleSaveThresholds = async () => {
     setSavingThresholds(true);
@@ -149,7 +128,9 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalizeDocumentSigners(documentSigners))
       });
-      setDocumentSigners(normalizeDocumentSigners(saved));
+      const norm = normalizeDocumentSigners(saved);
+      setDocumentSigners(norm);
+      setCachedDocumentSigners(norm);
       addToast('Đã lưu cấu hình người ký chứng từ!', 'success');
     } catch (e) {
       addToast(e.message || 'Lỗi lưu cấu hình người ký chứng từ', 'error');
@@ -189,10 +170,11 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
     setLoadingHistory(true);
     try {
       const isoString = new Date(reconcileMoment).toISOString();
-      const [balRes, histRes, settingsRes] = await Promise.allSettled([
+      const [balRes, histRes, settingsRes, signersRes] = await Promise.allSettled([
         apiFetch(`${API}/api/finance/fund-balances/calculate?closing_date=${encodeURIComponent(isoString)}`),
         apiFetch(`${API}/api/finance/fund-balances/history`),
-        apiFetch(`${API}/api/finance/settings`)
+        apiFetch(`${API}/api/finance/settings`),
+        apiFetch(`${API}/api/finance/document-signers`)
       ]);
 
       if (balRes.status === 'fulfilled' && balRes.value) {
@@ -203,10 +185,12 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
         setHistory(histRes.value);
       }
       if (settingsRes.status === 'fulfilled' && settingsRes.value) {
-        setThresholds({
-          expense_approval_threshold: settingsRes.value.expense_approval_threshold ?? 2000000,
-          advance_admin_threshold: settingsRes.value.advance_admin_threshold ?? 5000000
-        });
+        applySettingsData(settingsRes.value);
+      }
+      if (signersRes.status === 'fulfilled' && signersRes.value) {
+        const norm = normalizeDocumentSigners(signersRes.value);
+        setDocumentSigners(norm);
+        setCachedDocumentSigners(norm);
       }
     } catch (err) {
       console.error('Lỗi tải dữ liệu tài chính', err);

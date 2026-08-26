@@ -102,4 +102,26 @@ describe('KPI Screen Ranking & Tie-breaking', () => {
 
     expect(screen.getByText(/Vuốt ngang để xem đầy đủ các chỉ số/i)).toBeInTheDocument();
   });
+
+  it('renders analytics grid with score progress bars and performance insights', async () => {
+    vi.spyOn(api, 'apiFetch').mockResolvedValue({
+      status: 'success',
+      data: [
+        { employee: 'Nguyễn Văn A', total_completed: 4, on_time_rate: 100, rejections: 0, avg_time: 0.2, final_score: 88, performance: 'Tốt' },
+        { employee: 'Hồ Thị Mỹ Hằng', total_completed: 2, on_time_rate: 100, rejections: 0, avg_time: 0, final_score: 84, performance: 'Tốt' },
+      ]
+    });
+
+    render(<KPI />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Bảng Điểm KPI Nhân Sự')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Xếp hạng & Điểm KPI')).toBeInTheDocument();
+    expect(screen.getByText('Phân bổ hiệu suất & Tốc độ')).toBeInTheDocument();
+    expect(screen.getByText('Đạt loại Tốt & Xuất sắc')).toBeInTheDocument();
+    expect(screen.getByText('Đúng hạn tuyệt đối (100%)')).toBeInTheDocument();
+    expect(screen.getByText('Thời gian xử lý trung bình')).toBeInTheDocument();
+  });
 });

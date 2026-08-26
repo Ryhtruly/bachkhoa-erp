@@ -1112,7 +1112,11 @@ body {
 }
 
 /* Khung làm việc lớn / Workspace container / Form tabs phải đứng yên, không nhảy lên khi hover */
+.tab-pane.card,
 .tab-pane .card,
+.kpi-card,
+.kpi-page,
+.kpi-analytics-card,
 .payroll-ledger,
 .fin-settings-card,
 .card--static,
@@ -1120,14 +1124,18 @@ body {
   transition: border-color var(--duration), box-shadow var(--duration);
 }
 
+.tab-pane.card:hover,
 .tab-pane .card:hover,
+.kpi-card:hover,
+.kpi-page:hover,
+.kpi-analytics-card:hover,
 .payroll-ledger:hover,
 .fin-settings-card:hover,
 .card--static:hover,
 .card--workspace:hover {
   transform: none !important;
-  border-color: var(--border-default);
-  box-shadow: var(--shadow-card);
+  border-color: var(--border-default) !important;
+  box-shadow: var(--shadow-card) !important;
 }
 
 /* ─── Workspace Cards & Full-Height Stretcher ─── */
@@ -1471,24 +1479,63 @@ label {
 }
 
 .stat-icon.purple {
-  background: #fff0eb;
-  color: var(--orange-500);
+  background: rgba(139, 92, 246, 0.14);
+  color: var(--purple-500, #8b5cf6);
 }
 
-/* Reused purple class to orange for ease */
+.stat-icon.orange {
+  background: rgba(235, 74, 35, 0.14);
+  color: var(--orange-500, #eb4a23);
+}
+
 .stat-icon.amber {
-  background: #fef3c7;
-  color: var(--amber-500);
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--amber-500, #f59e0b);
 }
 
 .stat-icon.red {
-  background: #fee2e2;
-  color: var(--red-500);
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--red-500, #ef4444);
 }
 
 .stat-icon.green {
-  background: #d1fae5;
-  color: var(--green-600);
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--green-600, #059669);
+}
+
+.stat-icon.blue {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--blue-500, #3b82f6);
+}
+
+[data-theme="dark"] .stat-icon.purple {
+  background: rgba(139, 92, 246, 0.16);
+  color: #a78bfa;
+}
+
+[data-theme="dark"] .stat-icon.orange {
+  background: rgba(235, 74, 35, 0.16);
+  color: #fb923c;
+}
+
+[data-theme="dark"] .stat-icon.amber {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .stat-icon.red {
+  background: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+}
+
+[data-theme="dark"] .stat-icon.green {
+  background: rgba(16, 185, 129, 0.16);
+  color: #34d399;
+}
+
+[data-theme="dark"] .stat-icon.blue {
+  background: rgba(59, 130, 246, 0.16);
+  color: #60a5fa;
 }
 
 .stat-info h3 {
@@ -1624,9 +1671,36 @@ label {
 }
 
 /* KPI — bảng quản trị gọn, ưu tiên dữ liệu hơn trang trí. */
-.kpi-card {
+.kpi-page.kpi-card {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--header-h) - var(--shell-gap) * 2 - 4px);
+  box-sizing: border-box;
   padding: 20px 24px;
   border-radius: var(--radius-md);
+}
+
+.kpi-table-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.kpi-table-shell .dt-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.kpi-table-shell .table-wrap {
+  flex: 1;
+  overflow-y: visible;
+}
+
+.kpi-table-shell .dt-pagination {
+  margin-top: auto;
 }
 
 .kpi-header {
@@ -1878,6 +1952,166 @@ label {
 .kpi-score--attention {
   background: rgba(234, 88, 12, 0.1);
   color: var(--orange-700);
+}
+
+/* ── KPI Analytics & Insights Grid (PA3) ── */
+.kpi-analytics-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.kpi-analytics-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-analytics-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.kpi-analytics-card__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.kpi-analytics-card__subtitle {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.kpi-bars-list {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  flex: 1;
+  justify-content: center;
+}
+
+.kpi-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kpi-bar-row__info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.kpi-bar-row__name {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.kpi-bar-row__score {
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+}
+
+.kpi-bar-row__score strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.kpi-bar-track {
+  height: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.kpi-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kpi-bar-fill.is-excellent {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.kpi-bar-fill.is-good {
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
+}
+
+.kpi-bar-fill.is-normal {
+  background: linear-gradient(90deg, #f97316, #ea580c);
+}
+
+.kpi-bar-fill.is-muted {
+  background: var(--border-default);
+}
+
+.kpi-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  justify-content: center;
+}
+
+.kpi-insight-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.kpi-insight-metric__label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.kpi-insight-metric__val {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.kpi-insight-metric__val strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.kpi-insight-badge {
+  display: inline-flex;
+  padding: 2px 7px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+@media (max-width: 900px) {
+  .kpi-analytics-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 700px) {
@@ -3814,16 +4048,6 @@ tbody tr:hover td.dt-sticky-right {
 .stat-trend__label {
   color: var(--text-tertiary);
   font-weight: 500;
-}
-
-.stat-icon.orange {
-  background: rgba(235, 74, 35, 0.1);
-  color: var(--orange-500);
-}
-
-.stat-icon.blue {
-  background: rgba(59, 130, 246, 0.1);
-  color: var(--blue-500);
 }
 
 /* ─── Card ─── */

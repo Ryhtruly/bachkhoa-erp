@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../lib/api';
+import { DatePicker } from '../components/ui';
 import './customerDirectory.css';
 
 const formatCurrency = (n) => (Number(n) || 0).toLocaleString('vi-VN') + '₫';
@@ -266,7 +267,15 @@ export default function CustomerDirectory({ isDirector = false }) {
                   ) : (
                     <>
                       <label>Số CCCD<input value={form.id_card_number} onChange={(e) => setForm({ ...form, id_card_number: e.target.value })} /></label>
-                      <label>Ngày cấp<input type="date" value={form.id_card_date || ''} onChange={(e) => setForm({ ...form, id_card_date: e.target.value })} /></label>
+                      <label>
+                        Ngày cấp
+                        <DatePicker
+                          className="date-picker--fill"
+                          value={form.id_card_date || ''}
+                          onChange={(val) => setForm({ ...form, id_card_date: val })}
+                          placeholder="Chọn ngày cấp"
+                        />
+                      </label>
                       <label>Nơi cấp<input value={form.id_card_place} onChange={(e) => setForm({ ...form, id_card_place: e.target.value })} /></label>
                     </>
                   )}

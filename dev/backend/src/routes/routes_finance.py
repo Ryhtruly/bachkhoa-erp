@@ -639,13 +639,12 @@ def calculate_system_balance(
 
     canon_pm = normalize_payment_method(payment_method) if (payment_method and payment_method not in ["all", "Tất cả", ""]) else None
     if not canon_pm:
-        bal_cash = FinanceRepository.get_running_balance(db, PaymentMethod.CASH.value, up_to_datetime=closing_moment)
-        bal_bank = FinanceRepository.get_running_balance(db, PaymentMethod.BANK_TRANSFER.value, up_to_datetime=closing_moment)
+        combined = FinanceRepository.get_combined_fund_balances(db, up_to_datetime=closing_moment)
         return {
             "status": "success",
-            "cash_balance": bal_cash,
-            "bank_balance": bal_bank,
-            "system_balance": bal_cash + bal_bank
+            "cash_balance": combined["cash_balance"],
+            "bank_balance": combined["bank_balance"],
+            "system_balance": combined["system_balance"]
         }
     else:
         bal = FinanceRepository.get_running_balance(db, canon_pm, up_to_datetime=closing_moment)

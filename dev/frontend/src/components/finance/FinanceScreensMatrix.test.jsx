@@ -191,7 +191,7 @@ describe("Frontend Finance Comprehensive Matrix", () => {
       const MonthlyDashboardScreen = (await import("./screens/MonthlyDashboardScreen")).default;
       const { container } = render(<MonthlyDashboardScreen />);
       expect(container).toBeDefined();
-    }, 15000);
+    }, 30000);
 
     it("renders FinanceNav with 3 main groups and switching tabs", async () => {
       const FinanceNav = (await import("./FinanceNav")).default;

@@ -69,4 +69,17 @@ describe('document signer configuration', () => {
       'Lê Văn Sáu',
     ]);
   });
+
+  it('manages memory cache and invalidation properly', async () => {
+    const { setCachedDocumentSigners, getCachedDocumentSigners, invalidateDocumentSignersCache } = await import('./documentSigners');
+    invalidateDocumentSignersCache();
+    expect(getCachedDocumentSigners()).toBeNull();
+
+    setCachedDocumentSigners({ director_name: 'Giám Đốc Mới', accountant_name: 'Kế Toán Mới' });
+    expect(getCachedDocumentSigners().director_name).toBe('Giám Đốc Mới');
+    expect(getCachedDocumentSigners().accountant_name).toBe('Kế Toán Mới');
+
+    invalidateDocumentSignersCache();
+    expect(getCachedDocumentSigners()).toBeNull();
+  });
 });
