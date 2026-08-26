@@ -42,9 +42,15 @@ def test_target_is_disposable(database_url):
     if driver == "sqlite":
         return not host
 
+    # "pg-test" là TÊN SERVICE của Postgres kiểm thử trong docker-compose.dev.yml,
+    # không phải tên miền công khai — container backend gọi nó qua mạng nội bộ của
+    # compose. Bản trước chỉ cho localhost, nên khi tách DB test thành service
+    # riêng (để nó không chết theo mỗi lần recreate backend) thì cả bộ test bị
+    # chặn. Vẫn fail-closed: danh sách host là allowlist tường minh, và tên
+    # database bắt buộc kết thúc bằng _test.
     return (
         driver == "postgresql"
-        and host in {"localhost", "127.0.0.1", "::1"}
+        and host in {"localhost", "127.0.0.1", "::1", "pg-test"}
         and database.endswith("_test")
     )
 
@@ -89,6 +95,23 @@ def init_test_db():
     import src.db.models
     Base.metadata.create_all(bind=engine)
     yield
+
+    # Chỉ dọn khi schema DO CHÍNH conftest dựng ra.
+    #
+    # Khi DB test được dựng từ dump schema live (xem
+    # dev/backend/scripts/dung_schema_test.py) thì có những bảng và khoá ngoại
+    # không nằm trong metadata — drop_all sẽ chết giữa chừng vì phụ thuộc, và
+    # lỗi teardown đó che mất kết quả thật của cả phiên chạy.
+    #
+    # Nhận biết bằng một bảng chỉ có trong dump, không có trong model.
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        dung_tu_dump = bool(
+            conn.execute(text("select to_regclass('public.dossier_document_slots')")).scalar()
+        )
+    if dung_tu_dump:
+        return
     Base.metadata.drop_all(bind=engine)
 
 
@@ -102,7 +125,9 @@ def client():
 def db():
     import src.db.models
     connection = engine.connect()
-    Base.metadata.create_all(bind=connection)
+    # Bảng đã được init_test_db dựng sẵn trên cùng engine. Gọi create_all lần nữa
+    # ở đây làm SQLAlchemy 2.x tự mở transaction, khiến connection.begin() bên
+    # dưới ném InvalidRequestError và mọi test chết ngay ở khâu setup.
     transaction = connection.begin()
     session = Session(bind=connection)
     app.dependency_overrides[get_db] = lambda: session
