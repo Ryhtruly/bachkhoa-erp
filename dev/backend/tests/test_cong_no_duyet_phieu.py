@@ -113,7 +113,7 @@ def test_thu_vuot_gia_tri_hop_dong_thi_con_lai_ve_0_khong_am():
 
 
 # ══════════════════════════════════════════════════════════════════
-# Phần 3 — Cổng công nợ ở node bàn giao (K08)
+# Phần 3 — Cổng công nợ ở node bàn giao (K06)
 # ══════════════════════════════════════════════════════════════════
 
 def cong_no_da_du(gia_tri_hd: float, cac_dot_da_duyet: list[float]) -> bool:

@@ -62,7 +62,7 @@ def test_tc02_node_xong_va_co_phap_ly_thi_da_ban_giao(db_session):
 
 
 def test_tc02b_node_xong_nhung_khong_co_phap_ly_thi_van_dang_chay(db_session):
-    """Không kèm pháp lý thì vẫn còn node Bàn giao K08 phải làm — chưa xong."""
+    """Không kèm pháp lý thì vẫn còn node Bàn giao K06 phải làm — chưa xong."""
     assert trang_thai(db_session, node_status="accepted", has_legal=False) == "Đang thực hiện"
 
 

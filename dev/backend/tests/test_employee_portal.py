@@ -10,8 +10,6 @@ from src.db.models import (
     ProjectTask,
     User,
 )
-
-
 def test_employee_portal_returns_live_profile_and_enforces_access(client, db, admin_headers):
     suffix = uuid.uuid4().hex[:8]
     owner = User(

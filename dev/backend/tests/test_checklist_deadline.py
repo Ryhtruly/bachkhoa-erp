@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 
 from src.employee_portal.service import checklist_submission_state
+from src.contracts.workflow_runtime import workflow_node_duration
 
 
 class ChecklistDeadlineTests(unittest.TestCase):
@@ -38,6 +39,15 @@ class ChecklistDeadlineTests(unittest.TestCase):
         self.assertEqual(status, "late_pending_approval")
         self.assertTrue(is_overdue)
         self.assertEqual(reason, "Khách giao tài liệu trễ")
+
+    def test_workflow_node_duration_supports_minutes(self):
+        duration = workflow_node_duration({
+            "duration_days": 1,
+            "duration_hours": 2,
+            "duration_minutes": 30,
+        })
+
+        self.assertEqual(duration, timedelta(days=1, hours=2, minutes=30))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+from unittest.mock import patch
+
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -33,6 +35,47 @@ class _Query:
         return list(self.records)
 
 
+# Tạo Hạng mục giờ dựng luôn sổ giấy tờ trong cùng transaction. Bài test này chỉ
+# soi việc CHỌN MẪU HỢP ĐỒNG — dựng sổ là mối quan tâm khác, có bộ test riêng.
+# Tắt hẳn ở đây thay vì nặn phiên giả trả lời được mọi truy vấn của nó.
+@pytest.fixture(autouse=True)
+def _bo_qua_dung_so_giay_to():
+    from src.dossiers import register
+
+    # Phiên giả không trả lời được truy vấn dò schema, mà cổng V2 lại chặn trước
+    # khi tạo Hạng mục. Nạp sẵn "đã có cột" để bài test này chạy đúng phần nó
+    # quan tâm — cổng V2 có bộ test riêng ở test_schema_gate_v2.py.
+    register.reset_schema_cache()
+    register._SCHEMA_CO_VERSION.update({"value": True, "waiver": True})
+    try:
+        with patch("src.contracts.services._materialize_so_giay_to", return_value=0):
+            yield
+    finally:
+        register.reset_schema_cache()
+
+
+class _FakeResult:
+    """Kết quả rỗng cho mọi truy vấn của phiên giả."""
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return []
+
+    def first(self):
+        return None
+
+    def fetchall(self):
+        return []
+
+    def scalar(self):
+        return None
+
+    def __iter__(self):
+        return iter(())
+
+
 class _FakeSession:
     def __init__(self, template):
         self.bind = None
@@ -51,6 +94,14 @@ class _FakeSession:
 
     def flush(self):
         pass
+
+    def execute(self, *args, **kwargs):
+        """Tạo Hạng mục giờ dựng luôn sổ giấy tờ trong cùng transaction, nên
+        phiên giả phải trả lời được truy vấn. Bài test này chỉ soi việc chọn mẫu
+        hợp đồng — trả rỗng là đủ, sổ ra 0 ô và đó vẫn là kết quả hợp lệ."""
+        self.executed = getattr(self, "executed", [])
+        self.executed.append(args[0] if args else None)
+        return _FakeResult()
 
     def commit(self):
         self.committed = True
@@ -74,6 +125,10 @@ def generate_payload():
             "date_signed": "2026-08-19",
             "due_date": "2026-08-31",
             "sales_source": "website",
+            # Chế độ chọn giấy là trường BẮT BUỘC của luồng tạo Hạng mục V2.
+            # Thiếu nó máy chủ trả 422 chứ không tự suy thành "dùng bộ mặc định".
+            "document_selection_mode": "DEFAULT",
+            "document_template_ids": None,
         }
         values.update(overrides)
         return SimpleNamespace(**values)
