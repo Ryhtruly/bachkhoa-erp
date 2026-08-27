@@ -70,6 +70,14 @@ class TaskClaimConflict(WorkflowValidationError):
     """The requested pool slot was claimed by another employee first."""
 
 
+class WorkflowActivationReadinessError(WorkflowValidationError):
+    """Activation cannot continue until readiness blockers/warnings are resolved."""
+
+    def __init__(self, readiness: dict[str, Any]):
+        self.readiness = readiness
+        super().__init__(str(readiness.get("message") or "Workflow chưa sẵn sàng kích hoạt"))
+
+
 def task_pool_departments(
     node_code: str | None,
     node_definition: dict[str, Any] | None = None,
@@ -1602,6 +1610,92 @@ def _apply_workflow_amendment(
     }
 
 
+def _collect_activation_readiness(
+    db: Session,
+    *,
+    service_line_id: str,
+    graph: dict[str, Any],
+) -> dict[str, Any]:
+    """Collect structured readiness blockers/warnings before any activation write."""
+    from src.dossiers.register import applicable_templates
+
+    nodes = (graph or {}).get("nodes") if isinstance(graph, dict) else {}
+    nodes = nodes if isinstance(nodes, dict) else {}
+    allocated_template_ids: set[str] = set()
+    warnings: list[dict[str, Any]] = []
+    for node_key, node in nodes.items():
+        node_data = node if isinstance(node, dict) else {}
+        checklist = node_data.get("checklist") if isinstance(node_data.get("checklist"), list) else []
+        has_piece_rate_mapping = False
+        for item in checklist:
+            if not isinstance(item, dict):
+                continue
+            compensation = item.get("compensation")
+            if isinstance(compensation, dict) and compensation.get("is_payable") and compensation.get("work_item_id"):
+                has_piece_rate_mapping = True
+            output_documents = item.get("output_documents")
+            if not isinstance(output_documents, list):
+                continue
+            for doc in output_documents:
+                if not isinstance(doc, dict):
+                    continue
+                template_id = str(doc.get("template_id") or "").strip()
+                if template_id:
+                    allocated_template_ids.add(template_id)
+
+        departments = task_pool_departments(node_data.get("task_code"), node_data)
+        is_survey_node = ("SURVEY" in departments) or (str(node_data.get("pool_department_code") or "").upper() == "SURVEY")
+        if is_survey_node and not has_piece_rate_mapping:
+            warnings.append({
+                "code": "MISSING_PIECE_RATE_MAPPING",
+                "node_key": str(node_key),
+                "node_name": str(node_data.get("name") or node_data.get("task_code") or node_key),
+            })
+
+    required_templates = [
+        template
+        for template in applicable_templates(db, service_line_id)
+        if bool(template.get("is_required"))
+    ]
+    blockers = []
+    for template in required_templates:
+        template_id = str(template.get("id") or "").strip()
+        if not template_id or template_id in allocated_template_ids:
+            continue
+        blockers.append({
+            "code": "MANDATORY_OUTPUT_UNALLOCATED",
+            "template_id": template_id,
+            "template_name": str(template.get("name") or template_id),
+        })
+
+    if blockers:
+        return {
+            "code": "ACTIVATION_READINESS_FAILED",
+            "message": "Thiếu phân bổ loại giấy tờ bắt buộc vào checklist của workflow.",
+            "blockers": blockers,
+            "warnings": warnings,
+            "requires_confirmation": False,
+        }
+    if warnings:
+        return {
+            "code": "ACTIVATION_CONFIRMATION_REQUIRED",
+            "message": (
+                "Một số bước chưa gắn khoán. Công việc tại các bước này sẽ không có tiền khoán "
+                "nếu tiếp tục kích hoạt."
+            ),
+            "blockers": [],
+            "warnings": warnings,
+            "requires_confirmation": True,
+        }
+    return {
+        "code": "ACTIVATION_READY",
+        "message": "",
+        "blockers": [],
+        "warnings": [],
+        "requires_confirmation": False,
+    }
+
+
 def activate_workflow(
     db: Session,
     *,
@@ -1610,8 +1704,19 @@ def activate_workflow(
     source_workflow_version_id: str | None,
     change_reason: str | None,
     actor_id: str,
+    confirm_warnings: bool = False,
 ) -> dict[str, Any]:
     """Lock a revision and materialize all runtime rows without committing."""
+    readiness = _collect_activation_readiness(
+        db,
+        service_line_id=service_line_id,
+        graph=graph,
+    )
+    if readiness["blockers"]:
+        raise WorkflowActivationReadinessError(readiness)
+    if readiness["requires_confirmation"] and not confirm_warnings:
+        raise WorkflowActivationReadinessError(readiness)
+
     revision = save_workflow_draft(
         db,
         service_line_id=service_line_id,
@@ -1634,13 +1739,15 @@ def activate_workflow(
         {"instance_id": revision["workflow_instance_id"]},
     ).mappings().one()
     if instance["active_revision_id"]:
-        return _apply_workflow_amendment(
+        result = _apply_workflow_amendment(
             db,
             instance=dict(instance),
             revision=revision,
             source_workflow_version_id=source_workflow_version_id,
             actor_id=actor_id,
         )
+        result["warnings"] = readiness["warnings"]
+        return result
 
     db.execute(
         text("""
@@ -1856,6 +1963,7 @@ def activate_workflow(
         "assignment_count": assignment_count,
         "compensation_assignment_count": compensation_assignment_count,
         "projected_compensation_amount": projected_compensation_amount,
+        "warnings": readiness["warnings"],
         **provisioned_records,
     }
 

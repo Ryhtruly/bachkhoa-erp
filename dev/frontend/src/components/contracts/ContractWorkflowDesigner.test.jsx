@@ -285,6 +285,91 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     expect(within(dialog).getByText('Lý do sửa quy trình', { exact: false })).toBeInTheDocument();
     expect(within(dialog).getByPlaceholderText('Nhập lý do sửa quy trình đang vận hành...')).toBeInTheDocument();
   });
+
+  it('lists every backend mandatory-allocation blocker when activation is rejected', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      detail: {
+        code: 'ACTIVATION_READINESS_FAILED',
+        message: 'Thiếu phân bổ loại giấy bắt buộc.',
+        blockers: [
+          { code: 'MANDATORY_OUTPUT_UNALLOCATED', template_id: 'TPL_SO_DO', template_name: 'Sổ đỏ gốc' },
+          { code: 'MANDATORY_OUTPUT_UNALLOCATED', template_id: 'TPL_CCCD', template_name: 'CCCD/CMND' },
+        ],
+        warnings: [],
+        requires_confirmation: false,
+      },
+    }), { status: 409 })));
+    vi.stubGlobal('fetch', fetchMock);
+    renderDesigner();
+
+    fireEvent.click(getToolbarAction('kích hoạt'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Xác nhận kích hoạt quy trình' })).getByRole('button', { name: /^kích hoạt$/i }));
+
+    const blockedDialog = await screen.findByRole('dialog', { name: 'Không thể kích hoạt quy trình' });
+    expect(within(blockedDialog).getByText(/Sổ đỏ gốc/)).toBeInTheDocument();
+    expect(within(blockedDialog).getByText(/CCCD\/CMND/)).toBeInTheDocument();
+    expect(goiToi(fetchMock, '/activate')).toHaveLength(1);
+  });
+
+  it('warning-only activation keeps inactive when director cancels second confirmation', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      detail: {
+        code: 'ACTIVATION_CONFIRMATION_REQUIRED',
+        message: 'Một số bước chưa gắn khoán.',
+        blockers: [],
+        warnings: [{ code: 'MISSING_PIECE_RATE_MAPPING', node_key: 'node-1', node_name: 'Nghiệm thu' }],
+        requires_confirmation: true,
+      },
+    }), { status: 409 })));
+    vi.stubGlobal('fetch', fetchMock);
+    renderDesigner();
+
+    fireEvent.click(getToolbarAction('kích hoạt'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Xác nhận kích hoạt quy trình' })).getByRole('button', { name: /^kích hoạt$/i }));
+
+    const warningDialog = await screen.findByRole('dialog', { name: 'Cảnh báo khoán chưa cấu hình' });
+    expect(within(warningDialog).getByText(/không nhận khoán/i)).toBeInTheDocument();
+    fireEvent.click(within(warningDialog).getByRole('button', { name: /^quay lại$/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Cảnh báo khoán chưa cấu hình' })).not.toBeInTheDocument());
+    expect(goiToi(fetchMock, '/activate')).toHaveLength(1);
+  });
+
+  it('warning-only activation proceeds on explicit second confirmation', async () => {
+    let activateCallCount = 0;
+    const fetchMock = vi.fn((url) => {
+      if (String(url).includes('/activate')) {
+        activateCallCount += 1;
+        if (activateCallCount === 1) {
+          return Promise.resolve(new Response(JSON.stringify({
+            detail: {
+              code: 'ACTIVATION_CONFIRMATION_REQUIRED',
+              message: 'Một số bước chưa gắn khoán.',
+              blockers: [],
+              warnings: [{ code: 'MISSING_PIECE_RATE_MAPPING', node_key: 'node-1', node_name: 'Nghiệm thu' }],
+              requires_confirmation: true,
+            },
+          }), { status: 409 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify({
+          amended: false, node_count: 1, assignment_count: 1, compensation_assignment_count: 0,
+        }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ data: { groups: [] } }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderDesigner();
+
+    fireEvent.click(getToolbarAction('kích hoạt'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Xác nhận kích hoạt quy trình' })).getByRole('button', { name: /^kích hoạt$/i }));
+
+    const warningDialog = await screen.findByRole('dialog', { name: 'Cảnh báo khoán chưa cấu hình' });
+    fireEvent.click(within(warningDialog).getByRole('button', { name: /^vẫn kích hoạt$/i }));
+
+    await waitFor(() => expect(goiToi(fetchMock, '/activate')).toHaveLength(2));
+    const secondRequest = goiToi(fetchMock, '/activate')[1][1];
+    const secondPayload = JSON.parse(secondRequest.body);
+    expect(secondPayload.confirm_warnings).toBe(true);
+  });
 });
 
 // ── Tài liệu đầu ra ───────────────────────────────────────────────────────────

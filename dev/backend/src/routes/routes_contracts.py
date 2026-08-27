@@ -25,6 +25,7 @@ from src.contracts import (
 )
 from src.contracts.workflow_runtime import (
     TaskClaimConflict,
+    WorkflowActivationReadinessError,
     WorkflowValidationError,
     activate_workflow,
     auto_finalize_node_if_ready,
@@ -154,6 +155,7 @@ class WorkflowRevisionPayload(BaseModel):
     graph: dict
     source_workflow_version_id: str | None = None
     change_reason: str | None = Field(default=None, max_length=1000)
+    confirm_warnings: bool = False
 
 
 class WorkflowTemplateIn(BaseModel):
@@ -1376,6 +1378,7 @@ def activate_service_line_workflow(
             source_workflow_version_id=payload.source_workflow_version_id,
             change_reason=payload.change_reason,
             actor_id=user.id,
+            confirm_warnings=payload.confirm_warnings,
         )
         db.commit()
         invalidate_cache("bachkhoa:contract_workspace:*")
@@ -1384,6 +1387,9 @@ def activate_service_line_workflow(
         invalidate_cache("employee_daily_summary:*")
         publish_timeline_change("workflow_revision_activated", entity_id=service_line_id)
         return {"message": "Đã kích hoạt workflow", **result}
+    except WorkflowActivationReadinessError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=exc.readiness) from exc
     except WorkflowValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc

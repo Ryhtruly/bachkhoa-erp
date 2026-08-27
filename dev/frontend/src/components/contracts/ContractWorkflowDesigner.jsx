@@ -501,7 +501,16 @@ async function requestJson(url, options) {
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.detail || 'Không thể cập nhật workflow');
+  if (!response.ok) {
+    const detailMessage = typeof payload.detail === 'string'
+      ? payload.detail
+      : payload.detail?.message;
+    const error = new Error(detailMessage || payload.message || 'Không thể cập nhật workflow');
+    error.status = response.status;
+    error.detail = payload.detail;
+    error.payload = payload;
+    throw error;
+  }
   return payload;
 }
 
@@ -912,6 +921,8 @@ export default function ContractWorkflowDesigner({
   const [changeReason, setChangeReason] = useState(workflow?.change_reason || '');
   const [flowInstance, setFlowInstance] = useState(null);
   const [activationConfirmation, setActivationConfirmation] = useState(null);
+  const [activationBlockers, setActivationBlockers] = useState(null);
+  const [activationWarningConfirmation, setActivationWarningConfirmation] = useState(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancellationCode, setCancellationCode] = useState('CUSTOMER_REQUEST');
@@ -1720,6 +1731,63 @@ export default function ContractWorkflowDesigner({
     setActivationConfirmation({ amendmentReason, message, phase: 'initial' });
   };
 
+  const executeActivation = async (confirmWarnings = false, explicitAmendmentReason = null) => {
+    if (!serviceLine?.id || activating) return;
+    const amendmentReason = (explicitAmendmentReason ?? activationConfirmation?.amendmentReason ?? changeReason ?? '').trim();
+    if (hasActiveRuntime && !amendmentReason) {
+      addToast?.('Cần nhập lý do để áp dụng bản sửa đổi', 'error');
+      return;
+    }
+
+    setChangeReason(amendmentReason);
+    setActivating(true);
+    const payloadToSend = {
+      ...currentPayload(amendmentReason),
+      confirm_warnings: confirmWarnings,
+    };
+    try {
+      const result = await requestJson(`/api/contracts/workflow/${encodeURIComponent(serviceLine.id)}/activate`, {
+        method: 'POST',
+        body: JSON.stringify(payloadToSend),
+      });
+      addToast?.(
+        `${result.amended ? 'Đã áp dụng bản sửa đổi' : 'Đã kích hoạt'}: ${result.node_count} Node mới, `
+          + `${result.assignment_count} phân công và `
+          + `${result.compensation_assignment_count || 0} khoản khoán dự kiến`,
+        'success'
+      );
+      setEditMode(false);
+      setChangeReason('');
+      setActivationConfirmation(null);
+      setActivationBlockers(null);
+      setActivationWarningConfirmation(null);
+      setSavedFingerprint(getGraphFingerprint(payloadToSend.graph));
+      await onPersisted?.();
+    } catch (error) {
+      if (error.status === 409 && error.detail) {
+        const detail = error.detail;
+        if (detail.blockers && detail.blockers.length > 0) {
+          setActivationConfirmation(null);
+          setActivationWarningConfirmation(null);
+          setActivationBlockers(detail);
+          return;
+        }
+        if (detail.requires_confirmation && detail.warnings && detail.warnings.length > 0) {
+          setActivationConfirmation(null);
+          setActivationBlockers(null);
+          setActivationWarningConfirmation({
+            ...detail,
+            amendmentReason,
+          });
+          return;
+        }
+      }
+      addToast?.(error.message, 'error');
+    } finally {
+      setActivating(false);
+    }
+  };
+
   const confirmWorkflowActivation = async () => {
     if (!activationConfirmation || !serviceLine?.id || activating) return;
     const amendmentReason = (activationConfirmation.amendmentReason || '').trim();
@@ -1752,30 +1820,7 @@ export default function ContractWorkflowDesigner({
         return;
       }
     }
-    setChangeReason(amendmentReason);
-    setActivating(true);
-    const payloadToSend = currentPayload(amendmentReason);
-    try {
-      const result = await requestJson(`/api/contracts/workflow/${encodeURIComponent(serviceLine.id)}/activate`, {
-        method: 'POST',
-        body: JSON.stringify(payloadToSend),
-      });
-      addToast?.(
-        `${result.amended ? 'Đã áp dụng bản sửa đổi' : 'Đã kích hoạt'}: ${result.node_count} Node mới, `
-          + `${result.assignment_count} phân công và `
-          + `${result.compensation_assignment_count || 0} khoản khoán dự kiến`,
-        'success'
-      );
-      setEditMode(false);
-      setChangeReason('');
-      setActivationConfirmation(null);
-      setSavedFingerprint(getGraphFingerprint(payloadToSend.graph));
-      await onPersisted?.();
-    } catch (error) {
-      addToast?.(error.message, 'error');
-    } finally {
-      setActivating(false);
-    }
+    await executeActivation(false, amendmentReason);
   };
 
   const addAssignment = () => {
@@ -3456,6 +3501,84 @@ title="Lưu quy trình hiện tại thành mẫu"
             />
           </label>
         )}
+      </Modal>
+
+      <Modal
+        open={Boolean(activationBlockers)}
+        onClose={() => setActivationBlockers(null)}
+        title="Không thể kích hoạt quy trình"
+        id="workflow-activation-blocked-modal"
+        footer={(
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setActivationBlockers(null)}
+          >
+            Đóng
+          </button>
+        )}
+      >
+        <div className="workflow-activation-blocked">
+          <p style={{ margin: 0, fontWeight: 600, color: '#ef4444' }}>
+            {activationBlockers?.message || 'Thiếu phân bổ loại giấy tờ bắt buộc vào checklist của workflow.'}
+          </p>
+          <p style={{ margin: '8px 0 12px', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+            Các loại giấy tờ bắt buộc sau đây chưa được gán vào bất kỳ bước nào trong quy trình:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {(activationBlockers?.blockers || []).map((item, index) => (
+              <li key={item.template_id || index} style={{ marginBottom: 4 }}>
+                <strong>{item.template_name || item.template_id}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(activationWarningConfirmation)}
+        onClose={() => { if (!activating) setActivationWarningConfirmation(null); }}
+        closeOnOverlay={!activating}
+        title="Cảnh báo khoán chưa cấu hình"
+        id="workflow-activation-warning-modal"
+        footer={(
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={activating}
+              onClick={() => setActivationWarningConfirmation(null)}
+            >
+              Quay lại
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary workflow-activation-warning-confirm"
+              disabled={activating}
+              onClick={() => executeActivation(true, activationWarningConfirmation?.amendmentReason)}
+            >
+              {activating ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}
+              Vẫn kích hoạt
+            </button>
+          </>
+        )}
+      >
+        <div className="workflow-activation-warning-dialog">
+          <p style={{ margin: 0, whiteSpace: 'pre-line' }}>
+            {activationWarningConfirmation?.message
+              || 'Một số bước chưa gắn khoán. Công việc tại các bước này sẽ không có tiền khoán nếu tiếp tục kích hoạt.'}
+          </p>
+          <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+            Nhân viên thực hiện các bước sau sẽ không nhận khoán:
+          </p>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20 }}>
+            {(activationWarningConfirmation?.warnings || []).map((item, index) => (
+              <li key={item.node_key || index} style={{ marginBottom: 4 }}>
+                {item.node_name || item.node_key}
+              </li>
+            ))}
+          </ul>
+        </div>
       </Modal>
 
       <Modal
