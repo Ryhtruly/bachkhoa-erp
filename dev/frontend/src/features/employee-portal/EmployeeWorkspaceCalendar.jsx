@@ -17,6 +17,9 @@ import LegalDossierNodePanel from '../legal-dossier/LegalDossierNodePanel'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import HandoverPanel from '../handover/HandoverPanel'
 
+const requiresGovSubmission = (task) => task?.requires_gov_submission === true
+const isHandoverTask = (task) => task?.is_handover === true || task?.node_code === 'K06'
+
 const CHECKLIST_STATUS = Object.freeze({
   NOT_STARTED: 'pending',
   PENDING_APPROVAL: 'pending_approval',
@@ -652,21 +655,27 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
             trả null khi không có hồ sơ; Handover được truyền hideIfNotHandover để im
             lặng thay vì hiện box đỏ). Không chặn theo cờ graph vì cờ có thể lệch với
             hồ sơ/loại bước thực tế. */}
-        <LegalDossierNodePanel taskNodeId={task.id} addToast={addToast} onChanged={onRefresh} />
+        {requiresGovSubmission(task) && (
+          <LegalDossierNodePanel taskNodeId={task.id} addToast={addToast} onChanged={onRefresh} />
+        )}
         {/* Số biên nhận cơ quan — điền tại chỗ, lưu thẳng sang tab Pháp Lý.
             Tự ẩn nếu Node không gắn hồ sơ nộp cơ quan. */}
-        <SubmissionReceiptPanel taskNodeId={task.id} addToast={addToast} onChanged={onRefresh} />
-        <HandoverPanel
-          taskNodeId={task.id}
-          addToast={addToast}
-          onChanged={onRefresh}
-          onRefresh={onRefresh}
-          isDirector={isDirector}
-          checklist={task.checklist || []}
-          deadlineAt={task.deadline_at}
-          hideIfNotHandover
-        />
-        {!(task.is_handover || task.node_code === 'K06') && (task.checklist?.length || 0) > 0 ? (
+        {requiresGovSubmission(task) && (
+          <SubmissionReceiptPanel taskNodeId={task.id} addToast={addToast} onChanged={onRefresh} />
+        )}
+        {isHandoverTask(task) && (
+          <HandoverPanel
+            taskNodeId={task.id}
+            addToast={addToast}
+            onChanged={onRefresh}
+            onRefresh={onRefresh}
+            isDirector={isDirector}
+            checklist={task.checklist || []}
+            deadlineAt={task.deadline_at}
+            hideIfNotHandover
+          />
+        )}
+        {!isHandoverTask(task) && (task.checklist?.length || 0) > 0 ? (
           <ul className="employee-workspace-checklist">
             {task.checklist.map(item => <ChecklistEvidenceItem
               key={item.id || item.key}
@@ -677,7 +686,7 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
               onSubmitted={onRefresh}
             />)}
           </ul>
-        ) : !(task.is_handover || task.node_code === 'K06') ? (
+        ) : !isHandoverTask(task) ? (
           <p className="employee-workspace-panel__empty">Không có checklist cho công việc này</p>
         ) : null}
         <button

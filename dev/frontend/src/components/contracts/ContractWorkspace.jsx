@@ -17,7 +17,7 @@ import {
   WORKFLOW_REVISION_STATUS_LABELS,
   workflowLabel,
 } from './workflowLabels';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, getAccessToken } from '../../lib/api';
 import { requestNavigationPermission } from '../../lib/unsavedChangesGuard';
 import PriorityBonusModal from './PriorityBonusModal';
 import { Sparkles } from 'lucide-react';

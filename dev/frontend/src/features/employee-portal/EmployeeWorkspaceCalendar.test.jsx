@@ -5,6 +5,15 @@ vi.mock('../../lib/api', () => ({
   apiFetch: vi.fn(async () => ({})),
   getAccessToken: vi.fn(() => 'token'),
 }))
+vi.mock('../legal-dossier/LegalDossierNodePanel', () => ({
+  default: () => <div data-testid="legal-dossier-panel" />,
+}))
+vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({
+  default: () => <div data-testid="submission-receipt-panel" />,
+}))
+vi.mock('../handover/HandoverPanel', () => ({
+  default: () => <div data-testid="handover-panel" />,
+}))
 
 vi.mock('@fullcalendar/react', () => ({
   default: (props) => <div
@@ -13,10 +22,21 @@ vi.mock('@fullcalendar/react', () => ({
     data-event-count={props.events.length}
     data-first-group-size={props.events[0]?.extendedProps.tasks?.length}
     data-first-duration-minutes={(props.events[0]?.end - props.events[0]?.start) / 60_000}
-  />,
+  >
+    {props.events.map((event) => (
+      <div key={event.id} data-testid={`event-${event.id}`}>
+        {props.eventContent({
+          event: {
+            backgroundColor: event.backgroundColor,
+            extendedProps: event.extendedProps,
+          },
+        })}
+      </div>
+    ))}
+  </div>,
 }))
 
-import EmployeeWorkspaceCalendar, { NodeActionBar } from './EmployeeWorkspaceCalendar'
+import EmployeeWorkspaceCalendar, { NodeActionBar, EmployeeNodeModal } from './EmployeeWorkspaceCalendar'
 import { apiFetch } from '../../lib/api'
 import { ToastProvider } from '../../contexts/ToastContext'
 
@@ -203,4 +223,63 @@ describe('EmployeeWorkspaceCalendar', () => {
     fireEvent.click(screen.getByRole('button', { name: /Nhận việc chính/i }))
     expect(onClaim).toHaveBeenCalledWith('pool-k02', 'MAIN')
   })
+
+  it('drawing task mounts none of legal/submission/handover panels', () => {
+    render(
+      <ToastProvider>
+        <EmployeeNodeModal
+          task={{
+            id: 't-draw', node_code: 'K02', name: 'Đo vẽ', status: 'in_progress',
+            requires_gov_submission: false, is_handover: false, checklist: []
+          }}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+    expect(screen.queryByTestId('legal-dossier-panel')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('submission-receipt-panel')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('handover-panel')).not.toBeInTheDocument()
+  })
+
+  it('gov-submission task mounts legal and submission panels only', () => {
+    render(
+      <ToastProvider>
+        <EmployeeNodeModal
+          task={{
+            id: 't-gov', node_code: 'K04', name: 'Nộp cơ quan', status: 'in_progress',
+            requires_gov_submission: true, is_handover: false, checklist: []
+          }}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+    expect(screen.getByTestId('legal-dossier-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('submission-receipt-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('handover-panel')).not.toBeInTheDocument()
+  })
+
+  it('handover task mounts handover panel only', () => {
+    render(
+      <ToastProvider>
+        <EmployeeNodeModal
+          task={{
+            id: 't-handover', node_code: 'K06', name: 'Bàn giao', status: 'in_progress',
+            requires_gov_submission: false, is_handover: true, checklist: []
+          }}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+    expect(screen.getByTestId('handover-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('legal-dossier-panel')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('submission-receipt-panel')).not.toBeInTheDocument()
+  })
 })
+
+const taskBase = {
+  started_at: '2026-08-12T08:00:00Z',
+  deadline_at: '2026-08-12T12:00:00Z',
+}

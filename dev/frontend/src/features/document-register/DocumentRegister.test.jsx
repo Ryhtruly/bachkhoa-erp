@@ -40,7 +40,7 @@ describe('DocumentRegister K01', () => {
         unclassified: 1,
       }
       if (url.includes('/k01-status')) return {
-        data: { can_submit: true, unclassified: 1, required_missing: [], blockers: [] },
+        data: { can_submit: false, unclassified: 1, required_missing: ['CCCD'], blockers: [] },
       }
       throw new Error(`Unexpected ${url}`)
     })
@@ -51,6 +51,8 @@ describe('DocumentRegister K01', () => {
     expect(screen.getByText('anh-zalo.jpg')).toBeInTheDocument()
     expect(screen.getByText(/1 tệp chưa phân loại.*có thể thuộc Hạng mục khác/)).toBeInTheDocument()
     expect(screen.queryByText(/Không thể nộp K01/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Hồ sơ còn thiếu tài liệu bắt buộc/)).toBeInTheDocument()
+    expect(screen.getByText(/Bạn vẫn có thể nộp nghiệm thu sau khi xác nhận thiếu tài liệu/)).toBeInTheDocument()
   })
 
   it('gán một tệp nguồn vào ô giấy và tải lại trạng thái', async () => {
