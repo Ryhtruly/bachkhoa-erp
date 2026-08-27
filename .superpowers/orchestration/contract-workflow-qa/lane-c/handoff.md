@@ -2,7 +2,7 @@
 
 **State:** review
 **Base Commit:** e35e34c
-**Final Commit SHA:** dc4c0bbd7fd2cbb66d0f4036a2aac2626377cfaa
+**Final Commit SHA:** [TO_BE_UPDATED_ON_COMMIT]
 
 ## Changed Files
 - dev/frontend/src/features/employee-portal/EmployeeWorkspace.jsx
@@ -10,30 +10,31 @@
 - dev/frontend/src/components/AvatarImage.jsx
 - dev/frontend/src/components/AvatarImage.test.jsx
 - dev/frontend/src/lib/privateStorage.js
+- dev/frontend/src/lib/privateStorage.test.js
 
 ## Impact / Call-Site Evidence
-- EmployeeWorkspace: Updates the ChainPoolCard and AssistPoolCard component renderings so that they show a message (cannot_claim_reason) instead of the claim button if can_claim is false. Extends isBlocked and blockedReason computation before invoking PoolItemDetailModal, which combines per-item eligibility lock and the global WIP guard lock properly. Preserves backend 422 because we didn't touch the error handling logic in the dashboard.
-- privateStorage.js: Upgraded isPrivateObjectKey and fetchPrivateObjectBlob to use extractPrivateKey, capable of parsing legacy full MinIO URLs correctly, falling back to authenticated endpoints.
-- AvatarImage.jsx: Implements extracting privateKey instead of exact matches, causing it to prefer the internal privateSrc and ignore safeSrc representing the direct MinIO endpoint.
+- **EmployeeWorkspace**: Updates the ChainPoolCard and AssistPoolCard component renderings so that they show a message (cannot_claim_reason) instead of the claim button if can_claim is false. Extends isBlocked and blockedReason computation before invoking PoolItemDetailModal, which combines per-item eligibility lock and the global WIP guard lock properly. Preserves backend 422 because error handling in dashboard is unchanged.
+- **privateStorage.js**: extractPrivateKey uses rigorous URL parsing instead of substring matching. Preserves direct relative keys beginning vatars/ or contracts/. Path-style legacy storage URLs (e.g. http://localhost:9000/<bucket>/avatars/... or .../<bucket>/contracts/...) require at least 1 path segment before the prefix and normalize to the decoded key. Public URLs whose path begins /avatars/... or /contracts/... (e.g. https://cdn.example.test/avatars/e-1.png) remain non-private (
+ull).
+- **AvatarImage.jsx**: Extracts privateKey via extractPrivateKey and prefers privateSrc only when a genuine private key exists; normal public CDN URLs retain direct safeSrc without making fetch requests.
+- **Call Sites (rg / grep)**:
+  - dev/frontend/src/components/AvatarImage.jsx (uses extractPrivateKey, etchPrivateObjectBlob)
+  - dev/frontend/src/components/contracts/ContractWorkflowDesigner.jsx (uses isPrivateObjectKey, openPrivateObject)
+  - dev/frontend/src/features/employee-portal/EmployeeWorkspaceCalendar.jsx (uses isPrivateObjectKey, openPrivateObject)
 
 ## Verification Commands & Counts
-- Command: npm run test src/features/employee-portal/EmployeePortalDashboard.test.jsx
-  - Red -> Green. Passes: 18 tests.
-- Command: npm run test src/components/AvatarImage.test.jsx
-  - Red -> Green. Passes: 7 tests.
-- Command: npm run test src/lib/avatar.test.js
-  - Green -> Green. Passes: 1 test.
-- Command: npm run test (Entire Frontend test suite)
-  - Passes: 293 tests across 69 files (0 failed, 0 flaky).
+- Command: 
+pm run test src/lib/avatar.test.js src/lib/privateStorage.test.js src/components/AvatarImage.test.jsx src/features/employee-portal/EmployeePortalDashboard.test.jsx
+  - Passes: 32 tests across 4 files.
+- Command: 
+pm run test (Entire Frontend test suite)
+  - Passes: 299 tests across 70 files (0 failed, 0 flaky).
 
-## Proof (No :9000 / invalid claim request)
-- Tests added in AvatarImage.test.jsx use src="http://localhost:9000/.../avatars/.../old.png". The fetchMock verifies the app accesses /api/employee-portal/file?object_key=... instead of initiating a direct MinIO fetch! Test specifically asserts img.src.not.toContain('localhost:9000').
-- Tests added in EmployeePortalDashboard.test.jsx verify that when can_claim: false is present, there is NO "Nhận trọn" or "Nhận làm phụ" button mounted, preventing users from firing invalid requests. The PoolItemDetailModal has its button explicitly disabled.
+## Proof (No :9000 / invalid claim request / direct CDN intact)
+- Tests in AvatarImage.test.jsx assert that src="https://cdn.example.test/avatars/e-1.png" renders direct img with no etch called.
+- Tests in AvatarImage.test.jsx assert src="http://localhost:9000/bachkhoa-erp-local/avatars/emp-1/old.png" resolves through /api/employee-portal/file?object_key=avatars%2Femp-1%2Fold.png with img.src never containing localhost:9000.
+- Tests in privateStorage.test.js verify path-style bucket URLs, encoded characters, public CDN URLs, direct keys, and non-HTTP URLs.
+- Tests in EmployeePortalDashboard.test.jsx verify that can_claim: false or ctive_in_progress: 1 disables claim buttons and makes zero /claim API requests.
 
 ## Risks
-- Since extractPrivateKey strips the domain entirely when a known prefix like avatars/ or contracts/ matches anywhere inside the path, external CDN links mimicking this pattern (https://cdn.example.com/avatars/1.png) will be mistakenly treated as internal backend objects. If the business introduces legitimate external URLs that look exactly like the extracted patterns, they will break. However, this is tightly constrained to the known prefixes.
-
-## Follow-up Fix (Codex Review)
-- Fixed a BUG-005 gap where ctive_in_progress >= 1 wasn't triggering a claim lock if the global wip_locked was false.
-- Added chainClaimLocked check replacing wipLocked for claim entry points and ew-lock banner rendering.
-- Added explicit regression test proving ctive_in_progress: 1 correctly disables all claim buttons and makes zero /claim API requests.
+- None identified. URL parsing strictly validates HTTP/HTTPS protocols and segment hierarchy without hardcoding hosts or guessing environment domains.

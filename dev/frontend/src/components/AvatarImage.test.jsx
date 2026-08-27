@@ -60,6 +60,16 @@ describe('AvatarImage', () => {
     expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=An')
   })
 
+  it('keeps normal public CDN URLs starting with /avatars/... direct without fetching', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<AvatarImage src="https://cdn.example.test/avatars/e-1.png" name="An" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute('src', 'https://cdn.example.test/avatars/e-1.png')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('invalid private URL falls back without direct MinIO retry', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false })
     vi.stubGlobal('fetch', fetchMock)
