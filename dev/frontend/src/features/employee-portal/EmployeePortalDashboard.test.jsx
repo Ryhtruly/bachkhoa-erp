@@ -488,7 +488,7 @@ it('với thẻ Nhận trọn, nếu can_claim:false thì ẩn nút nhận, hi�
 
   // 2. Mở bảng chi tiết
   fireEvent.click(screen.getByRole('button', { name: 'Chi tiết' }))
-  
+
   // Bảng chi tiết cũng phải bị khoá và hiện lý do
   const popup = within(await screen.findByRole('dialog'))
   expect(popup.getByText('🔒 Bạn chưa có chứng chỉ đo đạc.')).toBeInTheDocument()
@@ -519,7 +519,7 @@ it('khóa nút Nhận trọn khi active_in_progress >= 1 dù chưa tới wip_lim
   const nutNhan = await screen.findByRole('button', { name: /Nhận trọn/ })
   expect(nutNhan).toBeDisabled()
   expect(screen.getByRole('status')).toHaveTextContent(/đang có một bước đang làm dở dang/)
-  
+
   // Nút trong chi tiết cũng phải bị khoá
   fireEvent.click(screen.getByRole('button', { name: 'Chi tiết' }))
   const popup = within(await screen.findByRole('dialog'))
@@ -531,4 +531,3 @@ it('khóa nút Nhận trọn khi active_in_progress >= 1 dù chưa tới wip_lim
   fireEvent.click(nutNhanTrong)
   expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/claim'), expect.anything())
 })
-

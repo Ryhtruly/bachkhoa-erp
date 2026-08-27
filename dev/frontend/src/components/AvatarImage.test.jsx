@@ -48,7 +48,7 @@ describe('AvatarImage', () => {
       '/api/employee-portal/file?object_key=avatars%2Femp-1%2Fold.png',
       expect.anything()
     )
-    
+
     // Proves we didn't try to load localhost:9000 as a direct image src first
     const img = screen.getByRole('img')
     expect(img.src).not.toContain('localhost:9000')
@@ -73,11 +73,11 @@ describe('AvatarImage', () => {
   it('invalid private URL falls back without direct MinIO retry', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false })
     vi.stubGlobal('fetch', fetchMock)
-    
+
     render(<AvatarImage src="http://localhost:9000/bucket/avatars/missing.png" name="Văn An" />)
-    
+
     await waitFor(() => expect(screen.getByLabelText(/dự phòng/)).toBeInTheDocument())
-    
+
     // Proves we didn't mount an img tag with the MinIO URL
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })

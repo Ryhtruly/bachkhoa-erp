@@ -356,7 +356,7 @@ export default function EmployeeWorkspace({
   const wipLimit = Number(restrictions.wip_limit || 3)
   const wipUsed = Number(restrictions.held_items || 0)
   const activeInProgress = Number(restrictions.active_in_progress || 0)
-  
+
   const wipLocked = Boolean(restrictions.wip_locked)
   const chainClaimLocked = wipLocked || activeInProgress >= 1
   const freeSlots = Math.max(0, wipLimit - wipUsed)
@@ -519,7 +519,7 @@ export default function EmployeeWorkspace({
         : 'Bước này đang được ưu tiên cho người đã đo K02.';
       const isBlocked = chainClaimLocked || itemBlocked;
       const finalReason = itemBlocked ? itemBlockedReason : claimBlockedReason;
-      
+
       return <PoolItemDetailModal
         taskNodeId={detailNodeId}
         onClose={() => setDetailNodeId(null)}
