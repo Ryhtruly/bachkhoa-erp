@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { avatarColorFor, avatarUrlFor, initialsOf } from '../lib/avatar'
-import { fetchPrivateObjectBlob, isPrivateObjectKey } from '../lib/privateStorage'
+import { extractPrivateKey, fetchPrivateObjectBlob } from '../lib/privateStorage'
 
 /** Render a safe avatar URL and degrade to deterministic initials on 404/load failure. */
 export default function AvatarImage({
@@ -14,7 +14,7 @@ export default function AvatarImage({
   fallback,
 }) {
   const safeSrc = avatarUrlFor(src)
-  const privateKey = isPrivateObjectKey(src) ? src : null
+  const privateKey = extractPrivateKey(src)
   const [privateSrc, setPrivateSrc] = useState(null)
   const [imageFailed, setImageFailed] = useState(false)
 
@@ -41,7 +41,7 @@ export default function AvatarImage({
     }
   }, [privateKey, safeSrc])
 
-  const resolvedSrc = safeSrc || privateSrc
+  const resolvedSrc = privateKey ? privateSrc : safeSrc
 
   if (resolvedSrc && !imageFailed) {
     return <img className={className} src={resolvedSrc} alt={name} title={title} style={style} onError={() => setImageFailed(true)} />

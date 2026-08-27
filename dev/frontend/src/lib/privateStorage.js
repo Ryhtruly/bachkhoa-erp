@@ -2,8 +2,18 @@ import { getAccessToken } from './api'
 
 const PRIVATE_OBJECT_PREFIXES = ['avatars/', 'contracts/']
 
+export function extractPrivateKey(value) {
+  if (typeof value !== 'string') return null
+  for (const prefix of PRIVATE_OBJECT_PREFIXES) {
+    if (value.startsWith(prefix)) return value
+    const idx = value.indexOf(`/${prefix}`)
+    if (idx !== -1) return value.slice(idx + 1)
+  }
+  return null
+}
+
 export function isPrivateObjectKey(value) {
-  return typeof value === 'string' && PRIVATE_OBJECT_PREFIXES.some(prefix => value.startsWith(prefix))
+  return extractPrivateKey(value) !== null
 }
 
 export function privateObjectEndpoint(objectKey) {
@@ -11,9 +21,10 @@ export function privateObjectEndpoint(objectKey) {
 }
 
 export async function fetchPrivateObjectBlob(objectKey) {
-  if (!isPrivateObjectKey(objectKey)) throw new Error('Đường dẫn tệp nội bộ không hợp lệ')
+  const extracted = extractPrivateKey(objectKey)
+  if (!extracted) throw new Error('Đường dẫn tệp nội bộ không hợp lệ')
   const token = getAccessToken()
-  const response = await fetch(privateObjectEndpoint(objectKey), {
+  const response = await fetch(privateObjectEndpoint(extracted), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!response.ok) throw new Error('Không thể mở tệp nội bộ')

@@ -35,4 +35,57 @@ describe('AvatarImage', () => {
       expect.objectContaining({ headers: { Authorization: 'Bearer avatar-token' } }),
     )
   })
+
+  it('extracts avatars/... from legacy full MinIO URL and uses authenticated backend', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob() })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:legacy-avatar')
+
+    render(<AvatarImage src="http://localhost:9000/bachkhoa-erp-local/avatars/emp-1/old.png" name="Văn An" />)
+
+    await waitFor(() => expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:legacy-avatar'))
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/employee-portal/file?object_key=avatars%2Femp-1%2Fold.png',
+      expect.anything()
+    )
+    
+    // Proves we didn't try to load localhost:9000 as a direct image src first
+    const img = screen.getByRole('img')
+    expect(img.src).not.toContain('localhost:9000')
+  })
+
+  it('keeps normal public URLs direct', () => {
+    render(<AvatarImage src="https://ui-avatars.com/api/?name=An" name="An" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=An')
+  })
+
+  it('invalid private URL falls back without direct MinIO retry', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false })
+    vi.stubGlobal('fetch', fetchMock)
+    
+    render(<AvatarImage src="http://localhost:9000/bucket/avatars/missing.png" name="Văn An" />)
+    
+    await waitFor(() => expect(screen.getByLabelText(/dự phòng/)).toBeInTheDocument())
+    
+    // Proves we didn't mount an img tag with the MinIO URL
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('revokes replaced object URLs when src changes', async () => {
+    const revokeMock = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const createMock = vi.spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:first')
+      .mockReturnValueOnce('blob:second')
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob() })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { rerender } = render(<AvatarImage src="avatars/emp-1.png" name="An" />)
+    await waitFor(() => expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:first'))
+
+    rerender(<AvatarImage src="avatars/emp-2.png" name="An" />)
+    await waitFor(() => expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:second'))
+
+    expect(revokeMock).toHaveBeenCalledWith('blob:first')
+  })
 })

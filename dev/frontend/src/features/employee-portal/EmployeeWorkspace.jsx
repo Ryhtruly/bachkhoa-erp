@@ -194,15 +194,19 @@ function ChainPoolCard({ item, departmentLabel, onClaim, onDetail, claiming, blo
       <button type="button" className="ew-btn ew-btn--ghost" onClick={() => onDetail(item.id)}>
         Chi tiết
       </button>
-      <button
-        type="button"
-        className="ew-btn ew-btn--primary"
-        disabled={blocked || claiming}
-        title={blocked ? blockedReason : undefined}
-        onClick={() => onClaim(item.id, role)}
-      >
-        {claiming ? 'Đang nhận…' : <><Rocket size={14} /> Nhận trọn</>}
-      </button>
+      {item.can_claim === false ? (
+        <p className="ew-card__note" role="note">{item.cannot_claim_reason}</p>
+      ) : (
+        <button
+          type="button"
+          className="ew-btn ew-btn--primary"
+          disabled={blocked || claiming}
+          title={blocked ? blockedReason : undefined}
+          onClick={() => onClaim(item.id, role)}
+        >
+          {claiming ? 'Đang nhận…' : <><Rocket size={14} /> Nhận trọn</>}
+        </button>
+      )}
     </div>
   </article>
 }
@@ -234,14 +238,18 @@ function AssistPoolCard({ item, onClaim, claiming }) {
     </div>
 
     <div className="ew-card__actions">
-      <button
-        type="button"
-        className="ew-btn ew-btn--assist"
-        disabled={claiming}
-        onClick={() => onClaim(item.id, 'ASSISTANT')}
-      >
-        {claiming ? 'Đang nhận…' : <><Users size={14} /> Nhận làm phụ</>}
-      </button>
+      {item.can_claim === false ? (
+        <p className="ew-card__note" role="note">{item.cannot_claim_reason}</p>
+      ) : (
+        <button
+          type="button"
+          className="ew-btn ew-btn--assist"
+          disabled={claiming}
+          onClick={() => onClaim(item.id, 'ASSISTANT')}
+        >
+          {claiming ? 'Đang nhận…' : <><Users size={14} /> Nhận làm phụ</>}
+        </button>
+      )}
     </div>
   </article>
 }
@@ -497,19 +505,28 @@ export default function EmployeeWorkspace({
       </div>
     </section>
 
-    {detailNodeId && <PoolItemDetailModal
-      taskNodeId={detailNodeId}
-      onClose={() => setDetailNodeId(null)}
-      claiming={claimingKey.startsWith(`${detailNodeId}:`)}
-      blocked={wipLocked}
-      blockedReason={claimBlockedReason}
-      onClaim={() => {
-        const target = poolItems.find(entry => entry.id === detailNodeId)
-        const role = target?.available_roles?.find(code => code !== 'ASSISTANT') || 'MAIN'
-        setDetailNodeId(null)
-        onClaim(detailNodeId, role)
-      }}
-    />}
+    {detailNodeId && (() => {
+      const target = poolItems.find(entry => entry.id === detailNodeId)
+      const role = target?.available_roles?.find(code => code !== 'ASSISTANT') || 'MAIN'
+      const itemBlocked = target?.can_claim === false || target?.preference_locked;
+      const itemBlockedReason = target?.can_claim === false
+        ? target.cannot_claim_reason
+        : 'Bước này đang được ưu tiên cho người đã đo K02.';
+      const isBlocked = wipLocked || itemBlocked;
+      const finalReason = itemBlocked ? itemBlockedReason : claimBlockedReason;
+      
+      return <PoolItemDetailModal
+        taskNodeId={detailNodeId}
+        onClose={() => setDetailNodeId(null)}
+        claiming={claimingKey.startsWith(`${detailNodeId}:`)}
+        blocked={isBlocked}
+        blockedReason={finalReason}
+        onClaim={() => {
+          setDetailNodeId(null)
+          onClaim(detailNodeId, role)
+        }}
+      />
+    })()}
 
     {historyOpen && <CompletedItemsModal
       items={doneItems}

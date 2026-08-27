@@ -473,3 +473,36 @@ it('đồng đội cùng phòng thấy nút nhận làm hộ', async () => {
     )
   })
 })
+
+it('với thẻ Nhận trọn, nếu can_claim:false thì ẩn nút nhận, hiện lý do và không cho nhận qua bảng chi tiết', async () => {
+  mockApi({
+    poolItems: [{ ...POOL_CHAIN_ITEM, can_claim: false, cannot_claim_reason: 'Bạn chưa có chứng chỉ đo đạc.' }],
+    restrictions: { wip_locked: false },
+  })
+
+  render(<EmployeePortalDashboard />)
+
+  // 1. Thẻ Nhận trọn ở ngoài bể việc
+  expect(await screen.findByText('Bạn chưa có chứng chỉ đo đạc.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Nhận trọn$/ })).not.toBeInTheDocument()
+
+  // 2. Mở bảng chi tiết
+  fireEvent.click(screen.getByRole('button', { name: 'Chi tiết' }))
+  
+  // Bảng chi tiết cũng phải bị khoá và hiện lý do
+  const popup = within(await screen.findByRole('dialog'))
+  expect(popup.getByText('🔒 Bạn chưa có chứng chỉ đo đạc.')).toBeInTheDocument()
+  expect(popup.getByRole('button', { name: /Nhận trọn chuỗi/ })).toBeDisabled()
+})
+
+it('với thẻ Thợ phụ, nếu can_claim:false thì ẩn nút nhận và hiện lý do', async () => {
+  mockApi({
+    poolItems: [{ ...POOL_CHAIN_ITEM, can_claim: false, cannot_claim_reason: 'Bạn đang làm thợ chính cho hợp đồng này rồi.' }],
+  })
+
+  render(<EmployeePortalDashboard />)
+  fireEvent.click(await screen.findByRole('tab', { name: /Thợ phụ/ }))
+
+  expect(await screen.findByText('Bạn đang làm thợ chính cho hợp đồng này rồi.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Nhận làm phụ/ })).not.toBeInTheDocument()
+})
