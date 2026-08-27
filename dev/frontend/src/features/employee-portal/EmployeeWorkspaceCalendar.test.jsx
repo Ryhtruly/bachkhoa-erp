@@ -278,8 +278,3 @@ describe('EmployeeWorkspaceCalendar', () => {
     expect(screen.queryByTestId('submission-receipt-panel')).not.toBeInTheDocument()
   })
 })
-
-const taskBase = {
-  started_at: '2026-08-12T08:00:00Z',
-  deadline_at: '2026-08-12T12:00:00Z',
-}

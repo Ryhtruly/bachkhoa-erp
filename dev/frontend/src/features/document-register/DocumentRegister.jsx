@@ -480,7 +480,7 @@ export default function DocumentRegister({
 
     {inputOnly && k01Status && !k01Status.can_submit && (
       <p className="dr-k01-blocker" role="alert">
-        <Lock size={14} /> Hồ sơ còn thiếu tài liệu bắt buộc: {(k01Status.required_missing || []).length > 0
+        <AlertTriangle size={14} /> Hồ sơ còn thiếu tài liệu bắt buộc: {(k01Status.required_missing || []).length > 0
           ? `${k01Status.required_missing.join(' · ')}`
           : 'vui lòng kiểm tra lại danh mục giấy tờ'}
         . Bạn vẫn có thể nộp nghiệm thu sau khi xác nhận thiếu tài liệu.

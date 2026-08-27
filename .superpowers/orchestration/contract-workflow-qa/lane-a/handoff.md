@@ -18,6 +18,45 @@ All fixes are minimal and surgical; no unrelated changes made. All 19 focused re
 
 ---
 
+## Correction Review for commit `6a9ff896` (Lane A)
+
+### Scope Applied
+- `dev/frontend/src/features/document-register/DocumentRegister.jsx`
+  - In the `inputOnly && k01Status && !k01Status.can_submit` warning block, replaced the icon from `Lock` to `AlertTriangle` to match warning semantics where submission remains possible after explicit confirmation.
+  - No changes to other `Lock` usages, `ModalThieuTaiLieu`, CSS, or other files.
+- `dev/frontend/src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx`
+  - Removed unused trailing constant:
+    - `const taskBase = { started_at: '2026-08-12T08:00:00Z', deadline_at: '2026-08-12T12:00:00Z' }`
+
+### Upstream Impact (GitNexus + fallback evidence)
+- Attempted required upstream analysis first:
+  - `node .gitnexus/run.cjs impact "DocumentRegister" --direction upstream --repo bachkhoa-erp`
+  - Result: unresolved in this worktree (`MODULE_NOT_FOUND` for `.gitnexus/run.cjs`).
+- Fallback `rg` call-site evidence captured:
+  - `DocumentRegister` call sites:
+    - `src/pages/Contracts.jsx:522`
+    - `src/pages/LegalSubmissions.jsx:539`
+    - `src/pages/Tasks.jsx:475`
+    - `src/components/contracts/ContractWorkflowDesigner.jsx:2469`
+    - `src/features/employee-portal/EmployeeItemWorkspace.jsx:160`
+    - plus document-register test suites (`DocumentRegister.test.jsx`, `deXuatTrongSo.test.jsx`, `phanBoTheoBuoc.test.jsx`)
+  - Specific warning block selector:
+    - `src/features/document-register/DocumentRegister.jsx:482` (`.dr-k01-blocker`)
+    - `src/features/document-register/documentRegister.css:100` (existing class style, unchanged)
+  - Unused symbol evidence:
+    - `src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx:282` (`const taskBase =`)
+
+### Correction Test Evidence
+```bash
+npm test -- src/features/document-register/DocumentRegister.test.jsx src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx
+```
+
+Result:
+- Test Files: 2 passed
+- Tests: 18 passed
+
+---
+
 ## RED → GREEN Test Evidence
 
 ### Test Run Configuration
