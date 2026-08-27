@@ -11,7 +11,11 @@ PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = os.getenv("PG_PORT", "5432")
 PG_DATABASE = os.getenv("PG_DATABASE", "bachkhoa_erp")
 
-DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+if os.getenv("TESTING") or os.getenv("PYTEST_CURRENT_TEST"):
+    DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL")
+
 if not DATABASE_URL:
     DATABASE_URL = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
 
