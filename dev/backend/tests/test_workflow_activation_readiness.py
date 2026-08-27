@@ -354,8 +354,8 @@ class WorkflowActivationReadinessTests(unittest.TestCase):
             )
 
     def test_parent_process_sys_modules_isolation(self):
-        """Parent pytest/unittest process must not have stubbed third-party modules."""
-        forbidden_modules = [
+        """Parent process sys.modules state must be preserved with identical presence and object identity."""
+        tracked_modules = [
             "sqlalchemy",
             "sqlalchemy.dialects",
             "sqlalchemy.dialects.postgresql",
@@ -366,13 +366,21 @@ class WorkflowActivationReadinessTests(unittest.TestCase):
             "redis",
             "redis.asyncio",
             "dotenv",
+            "src",
+            "src.contracts",
             "src.contracts.workflow_runtime",
         ]
-        for mod in forbidden_modules:
-            self.assertNotIn(
-                mod,
-                sys.modules,
-                f"Module '{mod}' was unexpectedly found in parent process sys.modules",
+        sentinel = object()
+        before_state = {mod: sys.modules.get(mod, sentinel) for mod in tracked_modules}
+
+        self._run_child_scenario("test_collect_activation_readiness_ready_when_clean")
+
+        for mod in tracked_modules:
+            after_state = sys.modules.get(mod, sentinel)
+            self.assertIs(
+                after_state,
+                before_state[mod],
+                f"Parent process sys.modules entry for '{mod}' was altered during child scenario execution",
             )
 
     def test_unallocated_mandatory_checklist_blocks_atomically(self):

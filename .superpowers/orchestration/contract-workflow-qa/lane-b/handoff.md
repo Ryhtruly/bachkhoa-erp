@@ -5,6 +5,7 @@
 - **Base Commit**: `e35e34c9f2c04531a3bbf9de12960f959b5c4bbd`
 - **Branch**: `fix/contract-qa-opencode`
 - **Worktree**: `T:\github\bachkhoa-erp\.worktrees\qa-opencode`
+- **Follow-up Commit**: `050e996173cb2a795b0283539b0e57fec612af67`
 - **Scope**:
   - BUG-002: Atomic rejection of workflow activation when mandatory checklist document types (`is_required=True`) are not allocated to workflow nodes.
   - BUG-003: Piece-rate mapping warnings for survey nodes without blocking activation; explicit structured two-step confirmation required in frontend before proceeding with unpaid steps.
@@ -31,7 +32,7 @@
 ### Test Files
 1. `dev/backend/tests/test_workflow_activation_readiness.py`
    - Dedicated pure isolated unit test module executing all dependency stubbing and domain checks in isolated child subprocesses.
-   - Protects parent `pytest`/`unittest` collection from `sys.modules` pollution (zero fake `sqlalchemy`, `fastapi`, `pydantic`, or `src` stubs in parent process).
+   - Protects parent `pytest`/`unittest` collection from `sys.modules` pollution by executing scenarios in isolated child subprocesses and verifying that tracked module states in the parent process retain their exact presence and object identity before and after child execution (allowing pre-existing legitimate imports from parent test runners).
    - Verifies atomicity, blocker reporting, piece-rate warning separation, second confirmation pass, mixed request handling, clean activation, and parent-process module isolation.
 2. `dev/frontend/src/components/contracts/ContractWorkflowDesigner.test.jsx`
    - Regression tests for mandatory allocation blocker dialog, warning-only cancellation keeping workflow inactive, and explicit second confirmation activating with `confirm_warnings: true`.
@@ -98,7 +99,7 @@ Ran 8 tests in 2.854s
 OK
 ```
 Tests Covered:
-1. `test_parent_process_sys_modules_isolation`: Asserts parent process `sys.modules` contains no stubbed `sqlalchemy`, `fastapi`, `pydantic`, `redis`, `dotenv`, or fake `src` modules during import or execution.
+1. `test_parent_process_sys_modules_isolation`: Snapshots parent process `sys.modules` state for tracked modules (using a unique sentinel for absent entries), executes a child scenario, and asserts all tracked entries retain identical presence and object identity without mutating parent `sys.modules` (allowing legitimate pre-existing imports from parent runner).
 2. `test_unallocated_mandatory_checklist_blocks_atomically`: Asserts `save_workflow_draft` and `db.execute` are NEVER called when mandatory documents are unallocated; raises `WorkflowActivationReadinessError` with 409 detail.
 3. `test_fully_allocated_activation_continues_existing_success_path`: Verifies clean graph passes readiness check and activates smoothly.
 4. `test_missing_piece_rate_only_warns_and_requires_explicit_confirmation`: Verifies missing piece-rate on survey node raises `requires_confirmation: True` without modifying draft or DB.
