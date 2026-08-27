@@ -2,7 +2,7 @@
 
 **State:** review
 **Base Commit:** e35e34c
-**Final Commit SHA:** [TO_BE_UPDATED_ON_COMMIT]
+**Final Commit SHA:** 2fdf04c6004d8972864415489ab5d1e4de944ff8
 
 ## Changed Files
 - dev/frontend/src/features/employee-portal/EmployeeWorkspace.jsx
