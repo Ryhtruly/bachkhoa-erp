@@ -1,4 +1,4 @@
-﻿# Lane B Handoff — Contract Workflow QA (Tasks 4 & 5: BUG-002 & BUG-003)
+# Lane B Handoff — Contract Workflow QA (Tasks 4 & 5: BUG-002 & BUG-003)
 
 ## 1. Overview & Status
 - **State**: `review`
@@ -30,7 +30,9 @@
 
 ### Test Files
 1. `dev/backend/tests/test_workflow_activation_readiness.py`
-   - Dedicated pure isolated unit test module verifying atomicity, blocker reporting, piece-rate warning separation, second confirmation pass, and mixed request handling.
+   - Dedicated pure isolated unit test module executing all dependency stubbing and domain checks in isolated child subprocesses.
+   - Protects parent `pytest`/`unittest` collection from `sys.modules` pollution (zero fake `sqlalchemy`, `fastapi`, `pydantic`, or `src` stubs in parent process).
+   - Verifies atomicity, blocker reporting, piece-rate warning separation, second confirmation pass, mixed request handling, clean activation, and parent-process module isolation.
 2. `dev/frontend/src/components/contracts/ContractWorkflowDesigner.test.jsx`
    - Regression tests for mandatory allocation blocker dialog, warning-only cancellation keeping workflow inactive, and explicit second confirmation activating with `confirm_warnings: true`.
 
@@ -82,27 +84,28 @@ Status: up-to-date
 
 ## 4. Test Execution & RED / GREEN Evidence
 
-### Backend Unit Tests (Pure Isolated)
+### Backend Unit Tests (Pure Isolated Child Harness)
 Command:
 ```powershell
 python -m unittest dev/backend/tests/test_workflow_activation_readiness.py
 ```
 Output:
 ```
-.......
+........
 ----------------------------------------------------------------------
-Ran 7 tests in 0.020s
+Ran 8 tests in 2.854s
 
 OK
 ```
 Tests Covered:
-1. `test_unallocated_mandatory_checklist_blocks_atomically`: Asserts `save_workflow_draft` and `db.execute` are NEVER called when mandatory documents are unallocated; raises `WorkflowActivationReadinessError` with 409 detail.
-2. `test_fully_allocated_activation_continues_existing_success_path`: Verifies clean graph passes readiness check and activates smoothly.
-3. `test_missing_piece_rate_only_warns_and_requires_explicit_confirmation`: Verifies missing piece-rate on survey node raises `requires_confirmation: True` without modifying draft or DB.
-4. `test_warning_confirmation_allows_activation`: Verifies `confirm_warnings=True` successfully activates and returns warnings array.
-5. `test_mixed_invalid_request_has_no_partial_writes`: Verifies when both blockers and warnings exist, blockers take precedence and block write atomically.
-6. `test_collect_activation_readiness_detects_blockers_and_warnings`: Verifies correct categorization of required vs optional templates and piece rate flags.
-7. `test_collect_activation_readiness_ready_when_clean`: Verifies clean readiness returns `ACTIVATION_READY`.
+1. `test_parent_process_sys_modules_isolation`: Asserts parent process `sys.modules` contains no stubbed `sqlalchemy`, `fastapi`, `pydantic`, `redis`, `dotenv`, or fake `src` modules during import or execution.
+2. `test_unallocated_mandatory_checklist_blocks_atomically`: Asserts `save_workflow_draft` and `db.execute` are NEVER called when mandatory documents are unallocated; raises `WorkflowActivationReadinessError` with 409 detail.
+3. `test_fully_allocated_activation_continues_existing_success_path`: Verifies clean graph passes readiness check and activates smoothly.
+4. `test_missing_piece_rate_only_warns_and_requires_explicit_confirmation`: Verifies missing piece-rate on survey node raises `requires_confirmation: True` without modifying draft or DB.
+5. `test_warning_confirmation_allows_activation`: Verifies `confirm_warnings=True` successfully activates and returns warnings array.
+6. `test_mixed_invalid_request_has_no_partial_writes`: Verifies when both blockers and warnings exist, blockers take precedence and block write atomically.
+7. `test_collect_activation_readiness_detects_blockers_and_warnings`: Verifies correct categorization of required vs optional templates and piece rate flags.
+8. `test_collect_activation_readiness_ready_when_clean`: Verifies clean readiness returns `ACTIVATION_READY`.
 
 ### Frontend Vitest Tests (Isolated & Component Suite)
 Command:
