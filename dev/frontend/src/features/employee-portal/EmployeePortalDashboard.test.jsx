@@ -142,7 +142,7 @@ const mockApi = ({
         items: poolItems,
         help_items: helpItems,
         restrictions: {
-          active_in_progress: 1,
+          active_in_progress: 0,
           held_items: 2,
           wip_limit: 3,
           wip_locked: false,
@@ -506,3 +506,29 @@ it('với thẻ Thợ phụ, nếu can_claim:false thì ẩn nút nhận và hi�
   expect(await screen.findByText('Bạn đang làm thợ chính cho hợp đồng này rồi.')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Nhận làm phụ/ })).not.toBeInTheDocument()
 })
+
+it('khóa nút Nhận trọn khi active_in_progress >= 1 dù chưa tới wip_limit', async () => {
+  mockApi({
+    poolItems: [{ ...POOL_CHAIN_ITEM, can_claim: true }],
+    restrictions: { active_in_progress: 1, held_items: 1, wip_limit: 3, wip_locked: false },
+  })
+
+  render(<EmployeePortalDashboard />)
+
+  // Nút ngoài thẻ phải bị khoá
+  const nutNhan = await screen.findByRole('button', { name: /Nhận trọn/ })
+  expect(nutNhan).toBeDisabled()
+  expect(screen.getByRole('status')).toHaveTextContent(/đang có một bước đang làm dở dang/)
+  
+  // Nút trong chi tiết cũng phải bị khoá
+  fireEvent.click(screen.getByRole('button', { name: 'Chi tiết' }))
+  const popup = within(await screen.findByRole('dialog'))
+  const nutNhanTrong = popup.getByRole('button', { name: /Nhận trọn chuỗi/ })
+  expect(nutNhanTrong).toBeDisabled()
+
+  // Quan trọng: Thử bấm và apiFetch KHÔNG ĐƯỢC gọi
+  fireEvent.click(nutNhan)
+  fireEvent.click(nutNhanTrong)
+  expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining('/claim'), expect.anything())
+})
+

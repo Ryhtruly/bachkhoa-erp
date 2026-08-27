@@ -32,3 +32,8 @@
 
 ## Risks
 - Since extractPrivateKey strips the domain entirely when a known prefix like avatars/ or contracts/ matches anywhere inside the path, external CDN links mimicking this pattern (https://cdn.example.com/avatars/1.png) will be mistakenly treated as internal backend objects. If the business introduces legitimate external URLs that look exactly like the extracted patterns, they will break. However, this is tightly constrained to the known prefixes.
+
+## Follow-up Fix (Codex Review)
+- Fixed a BUG-005 gap where ctive_in_progress >= 1 wasn't triggering a claim lock if the global wip_locked was false.
+- Added chainClaimLocked check replacing wipLocked for claim entry points and ew-lock banner rendering.
+- Added explicit regression test proving ctive_in_progress: 1 correctly disables all claim buttons and makes zero /claim API requests.

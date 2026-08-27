@@ -355,12 +355,17 @@ export default function EmployeeWorkspace({
 
   const wipLimit = Number(restrictions.wip_limit || 3)
   const wipUsed = Number(restrictions.held_items || 0)
+  const activeInProgress = Number(restrictions.active_in_progress || 0)
+  
   const wipLocked = Boolean(restrictions.wip_locked)
+  const chainClaimLocked = wipLocked || activeInProgress >= 1
   const freeSlots = Math.max(0, wipLimit - wipUsed)
 
-  const claimBlockedReason = wipLocked
-    ? `Bạn đang giữ tối đa ${wipLimit} hạng mục dở dang. Hãy hoàn thành nghiệm thu một hạng mục để nhận thêm việc mới.`
-    : ''
+  const claimBlockedReason = activeInProgress >= 1
+    ? 'Bạn đang có một bước đang làm dở dang. Hãy hoàn thành hoặc nhường lại trước khi nhận chuỗi mới.'
+    : wipLocked
+      ? `Bạn đang giữ tối đa ${wipLimit} hạng mục dở dang. Hãy hoàn thành nghiệm thu một hạng mục để nhận thêm việc mới.`
+      : ''
 
   const visibleItems = byGroup[activeTab] || []
 
@@ -460,7 +465,7 @@ export default function EmployeeWorkspace({
         </div>
       </div>
 
-      {wipLocked && activeTab === 'CHAIN' && <div className="ew-lock" role="status">
+      {chainClaimLocked && activeTab === 'CHAIN' && <div className="ew-lock" role="status">
         🔒 {claimBlockedReason}
       </div>}
 
@@ -490,7 +495,7 @@ export default function EmployeeWorkspace({
             onClaim={onClaim}
             onDetail={setDetailNodeId}
             claiming={claimingKey === `${item.id}:${role}`}
-            blocked={wipLocked || item.preference_locked}
+            blocked={chainClaimLocked || item.preference_locked}
             blockedReason={item.preference_locked
               ? 'Bước này đang được ưu tiên cho người đã đo K02.'
               : claimBlockedReason}
@@ -512,7 +517,7 @@ export default function EmployeeWorkspace({
       const itemBlockedReason = target?.can_claim === false
         ? target.cannot_claim_reason
         : 'Bước này đang được ưu tiên cho người đã đo K02.';
-      const isBlocked = wipLocked || itemBlocked;
+      const isBlocked = chainClaimLocked || itemBlocked;
       const finalReason = itemBlocked ? itemBlockedReason : claimBlockedReason;
       
       return <PoolItemDetailModal
