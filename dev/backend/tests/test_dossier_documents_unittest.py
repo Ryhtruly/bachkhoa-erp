@@ -44,7 +44,7 @@ class DuongDanLuuTruTests(unittest.TestCase):
             filename="don-09dk.pdf",
         ).object_key
         self.assertEqual(
-            key, "contracts/001_BK-2026/dossier-documents/7f3a9c21/don-09dk.pdf"
+            key, "contracts/001_BK-2026/dossier-documents/7f3a9c21/document-7f3a9c21.pdf"
         )
 
     def test_van_nam_duoi_prefix_contracts_de_chay_duoc_tren_r2(self):
@@ -56,6 +56,9 @@ class DuongDanLuuTruTests(unittest.TestCase):
             filename="bien-nhan.jpg",
         ).object_key
         self.assertEqual(_require_prefix(key, GENERIC_OBJECT_PREFIXES), key)
+
+    def test_accepts_generic_browser_mime_for_supported_extension(self):
+        documents._validate_upload('tai-lieu.docx', 'application/octet-stream', b'PK-office')
 
     def test_ten_tep_co_dau_va_ky_tu_la_bi_chuan_hoa(self):
         key = DossierFileReference.build(
@@ -110,6 +113,28 @@ class DieuKienKichHoatTheoBuocTests(unittest.TestCase):
         self.assertEqual(result["stage"], "soan-ho-so")
         self.assertIn("dossier_file_url", result["editable_fields"])
         self.assertNotIn("receipt_code", result["editable_fields"])
+
+
+class VongDoiObjectAppendOnlyTests(unittest.TestCase):
+    def test_go_tai_lieu_chi_doi_trang_thai_va_giu_dong_tai_lieu(self):
+        db = MagicMock()
+        db.execute.side_effect = [
+            _row({
+                "id": "DOC-1", "dossier_id": "DOS-1", "object_key": "contracts/HD-1/dossier-documents/DOC-1/a.pdf",
+                "file_name": "a.pdf", "stage": "soan-ho-so", "doc_status": "DANG_DUNG",
+            }),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+        ]
+
+        result = documents.delete_document(db, "DOC-1", actor_id="USER-1")
+
+        self.assertEqual(result["doc_status"], "DA_GO")
+        sql = " ".join(str(call.args[0]).lower() for call in db.execute.call_args_list)
+        self.assertIn("update public.dossier_documents", sql)
+        self.assertIn("update public.dossier_document_links", sql)
+        self.assertNotIn("delete from public.dossier_documents", sql)
 
 
 class ChanNopSaiNganTests(unittest.TestCase):
@@ -201,7 +226,7 @@ class KhoNguonHopDongTests(unittest.TestCase):
         ).object_key
         self.assertEqual(
             key,
-            "contracts/001_BK-2026/source-documents/7f3a9c21b4d54e0f/scan.pdf",
+            "contracts/001_BK-2026/source-documents/7f3a9c21b4d54e0f/document-7f3a9c21b4d54e0f.pdf",
         )
 
     def test_moi_tep_mot_thu_muc_rieng_du_cung_ten(self):

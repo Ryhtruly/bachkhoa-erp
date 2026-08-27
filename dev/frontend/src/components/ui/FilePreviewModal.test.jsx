@@ -30,6 +30,26 @@ it('dựng nội dung Word ngay trong hộp xem tài liệu', async () => {
   expect(screen.queryByText(/không hỗ trợ xem trực tiếp/i)).not.toBeInTheDocument()
 })
 
+it('dùng blob đã tải sẵn để dựng Word, không fetch lại blob URL', async () => {
+  const blob = new Blob(['x'], { type: DOCX_MIME })
+  global.fetch = vi.fn(() => Promise.reject(new Error('không được đọc lại blob URL')))
+
+  render(
+    <FilePreviewModal
+      open
+      fileName="HopDong.docx"
+      mimeType={DOCX_MIME}
+      url="blob:abc"
+      blob={blob}
+      onClose={() => {}}
+    />,
+  )
+
+  await waitFor(() => expect(renderAsync).toHaveBeenCalledTimes(1))
+  expect(renderAsync.mock.calls[0][0]).toBe(blob)
+  expect(global.fetch).not.toHaveBeenCalled()
+})
+
 // Tệp Word hỏng thì rơi về thông báo kèm nút tải xuống, tuyệt đối không để lại
 // một ô trắng không giải thích gì.
 it('Word hỏng thì nói rõ và vẫn cho tải xuống', async () => {

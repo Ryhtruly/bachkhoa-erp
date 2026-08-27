@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import re
 from typing import Mapping
+from uuid import uuid4
 
 
 def _safe_segment(value: object) -> str:
@@ -12,6 +13,21 @@ def _safe_segment(value: object) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", str(value))
     cleaned = re.sub(r"\.{2,}", ".", cleaned)
     return cleaned.strip("._")
+
+
+def _file_extension(filename: str) -> str:
+    """Keep only a harmless extension; never put the uploaded basename in a key."""
+    basename = str(filename or "").replace(chr(92), "/").rsplit("/", 1)[-1]
+    if "." not in basename or basename.endswith("."):
+        return ""
+    extension = re.sub(r"[^A-Za-z0-9]", "", basename.rsplit(".", 1)[-1])
+    return f".{extension.lower()}" if extension else ""
+
+
+def _neutral_filename(filename: str, *, stable_id: object | None = None) -> str:
+    """Create a non-PII leaf while retaining the extension for display/tooling."""
+    token = _safe_segment(stable_id) if stable_id else uuid4().hex
+    return f"document-{token}{_file_extension(filename)}"
 
 
 @dataclass(frozen=True)
@@ -30,7 +46,7 @@ class FileReference:
             contract_id=_safe_segment(task_node["contract_id"]),
             service_line_id=_safe_segment(task_node["service_line_id"]),
             task_node_id=_safe_segment(task_node["id"]),
-            filename=_safe_segment(filename) or "evidence",
+            filename=_neutral_filename(filename).replace("document-", "evidence-", 1),
         )
 
     @property
@@ -85,7 +101,7 @@ STAGE_BY_NODE_CODE = {
 class ContractFileReference:
     """Tài liệu NGUỒN của Hợp đồng — khoá theo document_id, không theo loại giấy.
 
-        contracts/001_BK-2026/source-documents/{document_id}/{safe_filename}
+        contracts/001_BK-2026/source-documents/{document_id}/{neutral_filename}
 
     Vì sao không đặt theo tên loại giấy: phân loại là việc của K01 và có thể đổi
     (nhân viên xếp nhầm, hoặc Giám đốc đổi tên mục trong mẫu). Nếu đường dẫn mang
@@ -109,7 +125,7 @@ class ContractFileReference:
         return cls(
             contract_id=_safe_segment(contract_id),
             document_id=_safe_segment(document_id),
-            filename=_safe_segment(filename) or "tai-lieu",
+            filename=_neutral_filename(filename, stable_id=document_id),
         )
 
     @property
@@ -124,7 +140,7 @@ class ContractFileReference:
 class DossierFileReference:
     """Tài liệu hồ sơ — khoá theo document_id, không theo giai đoạn hay loại giấy.
 
-        contracts/003_BK-2026/dossier-documents/{document_id}/{safe_filename}
+        contracts/003_BK-2026/dossier-documents/{document_id}/{neutral_filename}
 
     Trước đây khoá là ``.../service-lines/{sl}/dossier/{stage}/{filename}``. Ba
     vấn đề: giai đoạn, hạng mục và loại giấy đều là metadata CÓ THỂ ĐỔI, nên nhét
@@ -148,7 +164,7 @@ class DossierFileReference:
         return cls(
             contract_id=_safe_segment(contract_id),
             document_id=_safe_segment(document_id),
-            filename=_safe_segment(filename) or "tai-lieu",
+            filename=_neutral_filename(filename, stable_id=document_id),
         )
 
     @property

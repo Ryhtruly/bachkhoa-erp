@@ -1,0 +1,114 @@
+- generic [ref=e118]:
+  - banner [ref=e119]:
+    - generic [ref=e124]:
+      - generic [ref=e125]:
+        - generic [ref=e126]: BÁCH KH
+        - generic [ref=e130]: A
+      - generic [ref=e132]: ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG
+    - generic [ref=e133]:
+      - button "Làm mới" [ref=e134] [cursor=pointer]
+      - generic [ref=e140]:
+        - button "🌙" [ref=e141] [cursor=pointer]
+        - button "Thông báo việc cần xử lý" [ref=e144] [cursor=pointer]
+      - button "Ảnh đại diện dự phòng của admin admin" [ref=e150] [cursor=pointer]:
+        - generic "Ảnh đại diện dự phòng của admin" [ref=e151]: AD
+        - generic [ref=e152]: admin
+  - generic [ref=e155]:
+    - complementary "Điều hướng chính" [ref=e156]:
+      - generic [ref=e157]:
+        - generic [ref=e158]: Điều hướng
+        - button "Thu gọn thanh điều hướng" [expanded] [ref=e159] [cursor=pointer]
+      - navigation "Các phân hệ" [ref=e163]:
+        - button "Tổng Quan" [ref=e164] [cursor=pointer]
+        - button "CRM Bán Hàng" [ref=e171] [cursor=pointer]
+        - button "Khách Hàng" [ref=e175] [cursor=pointer]
+        - button "Hồ Sơ Đo Vẽ" [ref=e182] [cursor=pointer]
+        - button "Hồ Sơ Pháp Lý" [ref=e186] [cursor=pointer]
+        - button "Hợp Đồng" [ref=e192] [cursor=pointer]
+        - button "Quản Lý Timeline" [ref=e197] [cursor=pointer]
+        - button "Hàng Chờ Duyệt" [ref=e200] [cursor=pointer]
+        - button "Mẫu Giấy Tờ" [ref=e205] [cursor=pointer]
+        - button "Thu Chi Sổ Quỹ" [ref=e211] [cursor=pointer]
+        - button "KPI Nhân Sự" [ref=e216] [cursor=pointer]
+        - button "Nhân Sự & Đào Tạo" [ref=e219] [cursor=pointer]
+        - generic [ref=e223]: Hệ thống
+        - button "Cấu Hình" [ref=e224] [cursor=pointer]
+    - main [ref=e229]:
+      - generic [ref=e230]:
+        - generic [ref=e232]:
+          - heading "Chào buổi chiều, admin! 👋" [level=2] [ref=e233]
+          - paragraph [ref=e234]: Dưới đây là bức tranh tài chính và tiến độ công việc tổng quan của công ty. Mọi thứ đang trong tầm kiểm soát!
+        - generic [ref=e236]:
+          - paragraph [ref=e241]: Tổng hồ sơ
+          - paragraph [ref=e247]: Đang xử lý
+          - paragraph [ref=e253]: Hồ sơ quá hạn
+          - paragraph [ref=e259]: Thực thu
+        - generic [ref=e261]:
+          - generic [ref=e262]:
+            - text: Giá trị HĐ
+            - heading "—" [level=4] [ref=e263]
+          - generic [ref=e264]:
+            - text: Đã thu
+            - heading "—" [level=4] [ref=e265]
+          - generic [ref=e266]:
+            - text: Công nợ
+            - heading "—" [level=4] [ref=e267]
+        - generic [ref=e268]:
+          - generic [ref=e269]:
+            - heading "Doanh thu & Công nợ theo tháng" [level=3] [ref=e270]
+            - paragraph [ref=e271]: "* So sánh chênh lệch giữa tổng giá trị hợp đồng (Doanh thu) và số tiền chưa thu được (Công nợ)"
+            - generic [ref=e274]:
+              - list [ref=e276]:
+                - listitem [ref=e277]:
+                  - img "Công nợ legend icon" [ref=e278]
+                  - text: Công nợ
+                - listitem [ref=e280]:
+                  - img "Doanh thu legend icon" [ref=e281]
+                  - text: Doanh thu
+              - application [ref=e283]
+          - generic [ref=e287]:
+            - generic [ref=e288]:
+              - heading "Doanh thu theo dịch vụ" [level=3] [ref=e289]
+              - combobox [ref=e290]:
+                - 'option "Sắp xếp: Giá trị" [selected]'
+                - 'option "Sắp xếp: Danh mục"'
+            - paragraph [ref=e291]: "* Biểu đồ thể hiện tổng doanh thu mang lại từ từng mảng dịch vụ"
+            - application [ref=e295]
+          - generic [ref=e299]:
+            - generic [ref=e300]:
+              - heading "Tỉ lệ trạng thái Hồ sơ" [level=3] [ref=e301]
+              - combobox [ref=e302]:
+                - 'option "Sắp xếp: Giá trị" [selected]'
+                - 'option "Sắp xếp: Danh mục"'
+            - paragraph [ref=e303]: "* Phân bố các hồ sơ theo tiến độ làm việc hiện tại"
+            - application [ref=e308]
+          - generic [ref=e309]:
+            - generic [ref=e310]:
+              - heading "Cơ cấu chi phí hoạt động" [level=3] [ref=e311]
+              - combobox [ref=e312]:
+                - 'option "Sắp xếp: Giá trị" [selected]'
+                - 'option "Sắp xếp: Danh mục"'
+            - paragraph [ref=e313]: "* Các mảng tiêu hao nhiều dòng tiền nhất (Chi phí)"
+            - application [ref=e318]
+          - generic [ref=e319]:
+            - heading "Top 5 Khách nợ nhiều nhất" [level=3] [ref=e321]
+            - paragraph [ref=e322]: "* Những khách hàng có tổng dư nợ cao nhất hiện tại"
+            - application [ref=e326]
+        - generic [ref=e330]:
+          - generic [ref=e331]:
+            - heading "Hồ sơ mới tiếp nhận" [level=3] [ref=e332]
+            - button "Xem tất cả" [ref=e336] [cursor=pointer]
+          - table [ref=e338]:
+            - rowgroup [ref=e339]:
+              - row [ref=e340]:
+                - columnheader "Mã hồ sơ" [ref=e341]
+                - columnheader "Khách hàng" [ref=e342]
+                - columnheader "Dịch vụ" [ref=e343]
+                - columnheader "Khu vực" [ref=e344]
+                - columnheader "Phụ trách" [ref=e345]
+                - columnheader "Hạn trả" [ref=e346]
+                - columnheader "Trạng thái" [ref=e347]
+            - rowgroup [ref=e348]:
+              - row [ref=e349]:
+                - cell "Đang tải dữ liệu..." [ref=e350]
+  - button "Mở trợ lý nội bộ" [ref=e351]

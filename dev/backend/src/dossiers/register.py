@@ -1052,7 +1052,7 @@ def upload_source_document(
 
     from src.dossiers.documents import _validate_upload
     from src.files.references import ContractFileReference
-    from src.services.storage_service import delete_file, ensure_bucket, upload_file
+    from src.services.storage_service import ensure_bucket, upload_file
 
     _validate_upload(file_name, content_type, data)
     _contract_or_404(db, contract_id)
@@ -1095,11 +1095,7 @@ def upload_source_document(
                 actor_id=actor_id,
             )
     except Exception:
-        # Ghi DB hỏng mà file đã lên kho thì thành object mồ côi không ai trỏ tới.
-        try:
-            delete_file(reference.object_key)
-        except Exception:
-            pass
+        # Không xoá object sau upload; mọi vòng đời tài liệu được ghi ở DB/audit.
         raise
 
     return {
@@ -1483,7 +1479,7 @@ def attach_scan(
     """
     from src.dossiers.documents import _validate_upload
     from src.files.references import DossierFileReference
-    from src.services.storage_service import delete_file, ensure_bucket, upload_file
+    from src.services.storage_service import ensure_bucket, upload_file
 
     _validate_upload(file_name, content_type, data)
 
@@ -1554,10 +1550,7 @@ def attach_scan(
                 },
             )
         except Exception:
-            try:
-                delete_file(reference.object_key)
-            except Exception:
-                pass
+            # Object immutable: không xoá để chữa lỗi transaction DB.
             raise
         result = {
             "id": document_id,

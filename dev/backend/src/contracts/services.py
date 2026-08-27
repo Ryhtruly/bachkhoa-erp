@@ -1,4 +1,5 @@
 import logging
+import io
 import uuid
 import re
 from datetime import datetime, timezone
@@ -22,8 +23,15 @@ from src.db.models import (
     User,
 )
 from src.services import telegram_service
+from src.services.storage_service import (
+    CONTRACT_TEMPLATE_CONTENT_TYPE,
+    get_contract_template,
+    upload_contract_document,
+)
+from src.core import doc_generator
 from src.core.audit import log_action
 from src.contracts.read_model import sync_contract_read_model_after_write
+from src.files.references import DossierFileReference
 
 
 CONTRACT_CODE_PATTERN = re.compile(r"^(?P<sequence>\d+)/BK-\d{4}$")
@@ -555,6 +563,15 @@ class ContractService:
         tax_id = (getattr(payload, "tax_id", None) or "").strip() or None
         cccd = (getattr(payload, "id_card_number", None) or "").strip() or None
 
+        address_location = {
+            'detail': (getattr(payload, 'address_detail', None) or '').strip(),
+            'province_code': (getattr(payload, 'province_code', None) or '').strip(),
+            'province_name': (getattr(payload, 'province_name', None) or '').strip(),
+            'ward_code': (getattr(payload, 'ward_code', None) or '').strip(),
+            'ward_name': (getattr(payload, 'ward_name', None) or '').strip(),
+        }
+        address_location = {key: value for key, value in address_location.items() if value}
+
         customer = None
         cid = (getattr(payload, "customer_id", None) or "").strip()
         if cid:
@@ -589,6 +606,8 @@ class ContractService:
                 representative_role=(getattr(payload, "representative_role", None) or "").strip() or None,
                 source_channel="contract_form",
             )
+            if address_location:
+                customer.source_reference = {'contract_address': address_location}
             db.add(customer)
             db.flush()
             return customer
@@ -606,6 +625,10 @@ class ContractService:
         _fill_empty("representative_name", (getattr(payload, "representative_name", None) or "").strip() or None)
         _fill_empty("representative_role", (getattr(payload, "representative_role", None) or "").strip() or None)
         _fill_empty("address", address)
+        if address_location:
+            source_reference = dict(getattr(customer, 'source_reference', None) or {})
+            source_reference.setdefault('contract_address', address_location)
+            customer.source_reference = source_reference
         db.flush()
         return customer
 
@@ -652,6 +675,42 @@ class ContractService:
             )
             db.add(new_hd)
 
+            document_snapshot, _, _ = build_contract_document_snapshot({
+                'contract_id': contract_id,
+                'customer_name': cust_name,
+                'customer_phone': phone,
+                'phone': phone,
+                'customer_address': address,
+                'address': address,
+                'service_type': service_type,
+                'contract_value': contract_val,
+                'total_amount': contract_val,
+                'date_signed': date_signed_str,
+                'due_date': getattr(payload, 'due_date', '') or '',
+                'sales_source': getattr(payload, 'sales_source', '') or '',
+                'customer_email': getattr(payload, 'email', None) or getattr(payload, 'customer_email', '') or '',
+            })
+            template_bytes = get_contract_template(template.template_storage_key)
+            document_bytes = doc_generator.render_contract_document(
+                document_snapshot,
+                CONTRACT_DOCUMENT_TEMPLATE_VERSION,
+                template_bytes=template_bytes,
+            )
+            document_id = str(uuid.uuid4())
+            output_storage_key = DossierFileReference.build(
+                contract_id=contract_id,
+                document_id=document_id,
+                # The user-facing filename may contain the customer's name;
+                # object keys must not. Keep the display filename in DB, but use
+                # a neutral immutable leaf in private storage.
+                filename=f"contract-{document_id}.docx",
+            ).object_key
+            upload_contract_document(
+                io.BytesIO(document_bytes),
+                output_storage_key,
+                metadata={'contract_id': contract_id, 'template_id': str(template.id)},
+            )
+
             # Xác thực actor TRƯỚC khi tạo Hạng mục: materialize sổ giấy tờ ghi
             # audit ngay trong lời gọi đó, cần biết ai là người thao tác.
             actor_exists = db.query(User.id).filter(User.id == actor_id).first() if actor_id else None
@@ -673,6 +732,29 @@ class ContractService:
                 priority_reason=getattr(payload, "priority_reason", None),
                 priority_set_by=actor_id,
             )
+
+            # ContractGeneratedDocument is retained as the generation/audit
+            # record, while dossier_documents is the single file registry used
+            # by the document rules. The object is uploaded exactly once and
+            # this row only records that same object key.
+            db.execute(
+                text("""
+                    insert into public.dossier_documents
+                        (id, dossier_id, service_line_id, contract_id, scope, stage,
+                         object_key, file_name, content_type, size_bytes, uploaded_by)
+                    values (:id, null, null, :contract_id, 'CONTRACT', 'soan-ho-so',
+                            :object_key, :file_name, :content_type, :size_bytes, :uploaded_by)
+                """),
+                {
+                    "id": document_id,
+                    "contract_id": contract_id,
+                    "object_key": output_storage_key,
+                    "file_name": document_filename,
+                    "content_type": CONTRACT_TEMPLATE_CONTENT_TYPE,
+                    "size_bytes": len(document_bytes),
+                    "uploaded_by": actor_id_val,
+                },
+            )
             
             rec = Receivable(
                 id=str(uuid.uuid4()),
@@ -683,12 +765,14 @@ class ContractService:
             db.add(rec)
             
             db.add(ContractGeneratedDocument(
+                id=document_id,
                 contract_id=contract_id,
                 template_id=template.id,
                 status="generated",
                 output_file_link=document_route,
                 output_file_name=document_filename,
-                render_data_snapshot={},
+                output_storage_key=output_storage_key,
+                render_data_snapshot=document_snapshot,
                 generated_by=actor_id_val,
                 generated_at=datetime.now(timezone.utc),
             ))

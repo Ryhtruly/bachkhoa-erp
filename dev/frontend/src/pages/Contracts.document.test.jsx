@@ -2,12 +2,13 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { addToast, apiFetch, fetchProtectedDocumentBlob, requestDocxSaveHandle, writeBlobToFileHandle } = vi.hoisted(() => ({
+const { addToast, apiFetch, fetchProtectedDocumentBlob, requestDocxSaveHandle, writeBlobToFileHandle, contractSourceDocuments } = vi.hoisted(() => ({
   addToast: vi.fn(),
   apiFetch: vi.fn(),
   fetchProtectedDocumentBlob: vi.fn(),
   requestDocxSaveHandle: vi.fn(),
   writeBlobToFileHandle: vi.fn(),
+  contractSourceDocuments: { value: [] },
 }));
 
 vi.mock('../contexts/ToastContext', () => ({ useToast: () => ({ addToast }) }));
@@ -29,6 +30,7 @@ vi.mock('../features/contracts/ContractComposer', () => ({
       customer_name: 'Lê Thị Kiểm Thử',
       contract_value: 18500000,
       contract_template_id: 'do-dac-v1',
+      source_documents: contractSourceDocuments.value,
     })}>
       Lưu hợp đồng
     </button>
@@ -62,6 +64,7 @@ const TAI_LIEU = { download_url: '/api/contracts/2004/BK-2026/document' };
 describe('Contracts document actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    contractSourceDocuments.value = [];
     window.open = vi.fn();
     apiFetch.mockImplementation(async (url) => {
       if (url === '/api/contracts/templates') {
@@ -128,5 +131,38 @@ describe('Contracts document actions', () => {
 
     expect(screen.getByTestId('contract-document-viewer')).toHaveTextContent('/api/contracts/2004/BK-2026/document');
     expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('uploads every non-empty source file and does not send empty files to the API', async () => {
+    contractSourceDocuments.value = [
+      new File(['so do'], 'so-do.pdf', { type: 'application/pdf' }),
+      new File([], 'HopDong_006_BK-2026_Le_quang_Tri.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      new File(['cccd'], 'cccd.jpg', { type: 'image/jpeg' }),
+    ];
+    requestDocxSaveHandle.mockResolvedValue({ reason: 'SaveLocationUnsupported' });
+    const sourceUploadBodies = [];
+    apiFetch.mockImplementation(async (url, options = {}) => {
+      if (url === '/api/contracts/templates') {
+        return [{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }];
+      }
+      const duLieuNap = NAP_DU_LIEU(url);
+      if (duLieuNap) return duLieuNap;
+      if (String(url).includes('/source-documents')) {
+        sourceUploadBodies.push(options.body.get('file'));
+        return { status: 'success' };
+      }
+      return TAI_LIEU;
+    });
+
+    render(<Contracts />);
+    const openButtons = await screen.findAllByTitle('Soạn hợp đồng mới');
+    fireEvent.click(openButtons[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Lưu hợp đồng' }));
+
+    await waitFor(() => expect(sourceUploadBodies).toHaveLength(2));
+    expect(sourceUploadBodies.map(file => file.name)).toEqual(['so-do.pdf', 'cccd.jpg']);
+    expect(addToast).toHaveBeenCalledWith(expect.stringContaining('1 tệp'), 'error');
   });
 });

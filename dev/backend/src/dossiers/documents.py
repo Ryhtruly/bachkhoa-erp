@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.files.references import DOSSIER_STAGES, STAGE_BY_NODE_CODE, DossierFileReference
-from src.services.storage_service import delete_file, ensure_bucket, get_file, upload_file
+from src.services.storage_service import ensure_bucket, get_file, upload_file
 
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
 
@@ -31,6 +31,9 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.ms-excel",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/octet-stream",
+    "binary/octet-stream",
+    "image/jpg",
 }
 ALLOWED_EXTENSIONS = {
     ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".heic",
@@ -297,11 +300,9 @@ def create_document(
             },
         )
     except Exception:
-        # Ghi DB hỏng mà file đã nằm trên storage thì thành rác không ai trỏ tới.
-        try:
-            delete_file(reference.object_key)
-        except Exception:
-            pass
+        # Object storage là append-only theo luật tài liệu: không xoá object để
+        # chữa một transaction DB lỗi. Việc dọn trạng thái phải đi qua DB/audit,
+        # còn object vẫn giữ nguyên để không mất dấu scan đã nhận.
         raise
 
     return {
@@ -328,17 +329,31 @@ def read_document(db: Session, document_id: str) -> tuple[dict, bytes]:
 def delete_document(db: Session, document_id: str, *, actor_id: str) -> dict[str, Any]:
     row = db.execute(
         text("""
-            select id, dossier_id, object_key, file_name, stage
+            select id, dossier_id, object_key, file_name, stage, doc_status
             from public.dossier_documents where id = :id
         """),
         {"id": document_id},
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy tệp.")
+    if row["doc_status"] == "DA_GO":
+        raise HTTPException(status_code=404, detail="Tệp đã được gỡ khỏi hồ sơ.")
 
     db.execute(
-        text("delete from public.dossier_documents where id = :id"),
+        text("""
+            update public.dossier_documents
+            set doc_status = 'DA_GO'
+            where id = :id and doc_status <> 'DA_GO'
+        """),
         {"id": document_id},
+    )
+    db.execute(
+        text("""
+            update public.dossier_document_links
+            set link_status = 'DA_GO', unlinked_by = :actor, unlinked_at = now()
+            where document_id = :id and link_status = 'DANG_DUNG'
+        """),
+        {"id": document_id, "actor": actor_id},
     )
     db.execute(
         text("""
@@ -352,13 +367,8 @@ def delete_document(db: Session, document_id: str, *, actor_id: str) -> dict[str
             "a": actor_id,
         },
     )
-    # Xoá object sau khi DB đã chốt: còn dòng mà mất file thì người dùng bấm vào
-    # gặp lỗi, còn file mà mất dòng thì chỉ tốn dung lượng.
-    try:
-        delete_file(row["object_key"])
-    except Exception:
-        pass
-    return {"id": document_id, "deleted": True}
+    # Không bao giờ xoá object: đây chỉ là một chuyển trạng thái DB có audit.
+    return {"id": document_id, "deleted": True, "doc_status": "DA_GO"}
 
 
 # ── Tài liệu đầu ra theo Checklist ───────────────────────────────────────────
@@ -863,11 +873,8 @@ def submit_output_document(
             {"id": checklist_result_id, "evidence": json.dumps(evidence, ensure_ascii=False)},
         )
     except Exception:
-        # Ghi DB hỏng mà tệp đã lên kho thì thành object mồ côi không ai trỏ tới.
-        try:
-            delete_file(reference.object_key)
-        except Exception:
-            pass
+        # Không xoá object sau khi upload; object immutable và mọi vòng đời nằm
+        # trong trạng thái/liên kết DB.
         raise
 
     return {

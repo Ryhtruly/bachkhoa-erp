@@ -2,7 +2,7 @@ import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import ContractComposer from './ContractComposer'
+import ContractComposer, { hydrateExistingCustomerAddress } from './ContractComposer'
 import { apiFetch } from '../../lib/api'
 
 vi.mock('../../lib/api', () => ({
@@ -36,6 +36,23 @@ describe('ContractComposer', () => {
     { id: 'tpl-cccd', name: 'CCCD/CMND của chủ sử dụng đất', is_required: true },
     { id: 'tpl-honnhan', name: 'Giấy tờ hôn nhân', is_required: true },
   ]
+
+  it('tách địa chỉ khách cũ thành chi tiết, tỉnh và phường để chọn lại dropdown', () => {
+    expect(hydrateExistingCustomerAddress({
+      address: 'Số 12 Nguyễn Huệ, Phường Bến Nghé, TP. Hồ Chí Minh',
+      address_location: {
+        province_code: '79', province_name: 'TP. Hồ Chí Minh',
+        ward_code: '26734', ward_name: 'Phường Bến Nghé',
+        detail: 'Số 12 Nguyễn Huệ',
+      },
+    }, [{ code: '79', name: 'TP. Hồ Chí Minh' }])).toEqual({
+      detail: 'Số 12 Nguyễn Huệ',
+      provinceCode: '79',
+      provinceName: 'TP. Hồ Chí Minh',
+      wardCode: '26734',
+      wardName: 'Phường Bến Nghé',
+    })
+  })
 
   it('không tick sẵn chế độ nào — "quên chọn" phải nhìn thấy được', async () => {
     mockDanhMuc(LOAI_GIAY)

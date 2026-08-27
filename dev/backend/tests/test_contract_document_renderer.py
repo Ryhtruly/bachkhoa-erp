@@ -59,6 +59,73 @@ def _current_document_db(contract_template_id, template_rows):
 
 
 class ContractDocumentRendererTests(unittest.TestCase):
+    def test_legacy_storage_key_falls_back_to_current_render(self):
+        document = SimpleNamespace(
+            output_file_name='HopDong_008_BK-2026.docx',
+            output_storage_key='contracts/generated/008_BK-2026/legacy.docx',
+        )
+        contract = SimpleNamespace(id='008/BK-2026', contract_template_id=None)
+        current_rows = {
+            'Contract': contract,
+            'ContractGeneratedDocument': document,
+            'ContractTemplate': None,
+        }
+
+        class CurrentDataQuery:
+            def __init__(self, row): self.row = row
+            def filter(self, *_criteria): return self
+            def order_by(self, *_ordering): return self
+            def first(self): return self.row
+
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        original_builder = routes_contracts.build_current_contract_document_data
+        original_renderer = routes_contracts.doc_generator.render_contract_document
+        original_fallback_allowed = routes_contracts.doc_generator.repository_template_fallback_allowed
+        routes_contracts.build_current_contract_document_data = lambda _db, _id: ({'contract_id': _id}, document.output_file_name)
+        routes_contracts.doc_generator.render_contract_document = lambda *_args, **_kwargs: b'PK-rebuilt'
+        routes_contracts.doc_generator.repository_template_fallback_allowed = lambda: True
+        try:
+            response = routes_contracts.render_current_contract_document(db, '008/BK-2026')
+        finally:
+            routes_contracts.build_current_contract_document_data = original_builder
+            routes_contracts.doc_generator.render_contract_document = original_renderer
+            routes_contracts.doc_generator.repository_template_fallback_allowed = original_fallback_allowed
+
+        self.assertEqual(response.body, b'PK-rebuilt')
+
+    def test_document_route_serves_the_persisted_generated_object(self):
+        document = SimpleNamespace(
+            output_file_name='HopDong_2004_BK-2026_Lê_quang_Trí.docx',
+            output_storage_key='contracts/2004_BK-2026/dossier-documents/document-1/document.docx',
+        )
+        current_rows = {
+            'Contract': SimpleNamespace(id='2004/BK-2026'),
+            'ContractGeneratedDocument': document,
+        }
+
+        class CurrentDataQuery:
+            def __init__(self, row): self.row = row
+            def filter(self, *_criteria): return self
+            def order_by(self, *_ordering): return self
+            def first(self): return self.row
+
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        original_reader = getattr(routes_contracts, 'get_contract_document_file', None)
+        routes_contracts.get_contract_document_file = lambda _key: {'Body': io.BytesIO(b'PK-stored')}
+        try:
+            response = routes_contracts.get_contract_document('2004/BK-2026', db, None)
+        finally:
+            if original_reader is None:
+                del routes_contracts.get_contract_document_file
+            else:
+                routes_contracts.get_contract_document_file = original_reader
+
+        self.assertEqual(response.body, b'PK-stored')
+        self.assertEqual(
+            response.headers['content-disposition'],
+            "inline; filename*=UTF-8''HopDong_2004_BK-2026_L%C3%AA_quang_Tr%C3%AD.docx",
+        )
+
     def test_document_route_renders_current_persisted_data_not_snapshot(self):
         document = SimpleNamespace(
             output_file_name="HopDong_2004_BK-2026.docx",

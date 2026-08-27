@@ -44,11 +44,11 @@ def test_managed_storage_forces_bucket_creation_off_even_when_env_enables_it():
     assert config.create_buckets is False
 
 
-def test_local_minio_keeps_explicit_bucket_setup_defaults():
+def test_local_minio_defaults_to_a_private_shared_bucket():
     config = storage_service.get_object_storage_config({})
 
     assert config.create_buckets is True
-    assert config.allow_public_buckets is True
+    assert config.allow_public_buckets is False
 
 
 def test_s3_client_uses_the_parsed_object_storage_region(monkeypatch):
@@ -179,6 +179,18 @@ def test_generic_storage_rejects_private_domain_prefix_bypass(monkeypatch):
         storage_service.get_file("contract-templates/HOP_DONG/v1.docx")
 
 
+def test_generic_contract_storage_rejects_legacy_and_traversal_shapes(monkeypatch):
+    monkeypatch.setattr(storage_service, "_s3", object())
+
+    for object_key in (
+        "contracts/generated/HD-1/document.docx",
+        "contracts/HD-1/dossier-documents/../document.pdf",
+        "contracts/HD-1/unknown/document.pdf",
+    ):
+        with pytest.raises(ValueError, match="Contract object key"):
+            storage_service.get_file(object_key)
+
+
 def test_generic_reader_allows_only_an_explicit_matching_legacy_wiki_key(monkeypatch):
     reads = []
 
@@ -287,7 +299,7 @@ def test_one_bucket_routes_finance_and_templates_by_prefix(monkeypatch):
     importlib.reload(storage_service)
 
 
-def test_local_minio_keeps_public_generic_objects_separate_from_private_domains(monkeypatch):
+def test_local_minio_uses_one_bucket_for_all_storage_domains(monkeypatch):
     with monkeypatch.context() as environment:
         environment.delenv("OBJECT_STORAGE_ENDPOINT", raising=False)
         environment.delenv("OBJECT_STORAGE_BUCKET", raising=False)
@@ -297,8 +309,9 @@ def test_local_minio_keeps_public_generic_objects_separate_from_private_domains(
         configured = importlib.reload(storage_service)
 
         assert configured.BUCKET == "wiki-files"
-        assert configured.FINANCE_BUCKET == "finance-files"
-        assert configured.CONTRACT_TEMPLATE_BUCKET == "contract-template-files"
-        assert len({configured.BUCKET, configured.FINANCE_BUCKET, configured.CONTRACT_TEMPLATE_BUCKET}) == 3
+    assert configured.FINANCE_BUCKET == configured.BUCKET
+    assert configured.CONTRACT_TEMPLATE_BUCKET == configured.BUCKET
+    assert configured.CONTRACT_DOCUMENT_BUCKET == configured.BUCKET
+    assert len({configured.BUCKET, configured.FINANCE_BUCKET, configured.CONTRACT_TEMPLATE_BUCKET, configured.CONTRACT_DOCUMENT_BUCKET}) == 1
 
     importlib.reload(storage_service)

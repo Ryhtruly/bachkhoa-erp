@@ -55,9 +55,10 @@ services:
     environment:
       REDIS_URL: redis://redis-contracts:6379/0
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_BUCKET: wiki-files
-      MINIO_FINANCE_BUCKET: finance-files
+      MINIO_BUCKET: bachkhoa-erp-files
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-bachkhoa-erp-files}
+      OBJECT_STORAGE_ALLOW_PUBLIC_BUCKETS: "false"
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

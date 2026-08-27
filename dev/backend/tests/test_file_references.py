@@ -10,9 +10,11 @@ def test_evidence_key_is_scoped_to_its_contract_service_line_and_node():
         "bien ban.pdf",
     )
 
-    assert reference.object_key == (
-        "contracts/001_BK-2026/service-lines/line-4/nodes/node-7/bien_ban.pdf"
+    assert reference.object_key.startswith(
+        "contracts/001_BK-2026/service-lines/line-4/nodes/node-7/evidence-"
     )
+    assert reference.object_key.endswith(".pdf")
+    assert len(reference.filename) == len("evidence-") + 32 + len(".pdf")
 
 
 @pytest.mark.parametrize(
@@ -54,5 +56,7 @@ def test_route_allocates_an_immutable_key_for_each_evidence_upload():
     second = evidence_file_reference(_DbWithTaskOwnership(), "node-7", "evidence.pdf")
 
     assert first.object_key != second.object_key
-    assert first.object_key.endswith("-evidence.pdf")
-    assert second.object_key.endswith("-evidence.pdf")
+    assert first.object_key.endswith(".pdf")
+    assert second.object_key.endswith(".pdf")
+    assert first.filename.startswith("evidence-")
+    assert second.filename.startswith("evidence-")

@@ -25,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.files.references import DossierFileReference, STAGE_BY_NODE_CODE
-from src.services.storage_service import delete_file, ensure_bucket, upload_file
+from src.services.storage_service import ensure_bucket, upload_file
 
 SOURCES = ("KHACH_HANG", "CONG_TY", "CO_QUAN")
 
@@ -315,10 +315,8 @@ def add_file(
             },
         )
     except Exception:
-        try:
-            delete_file(reference.object_key)
-        except Exception:
-            pass
+        # Không xoá object đã nhận; trạng thái đề xuất/đời tài liệu là nguồn sự
+        # thật để xử lý lỗi DB, còn kho object là append-only.
         raise
 
     return {"request_id": request_id, "document_id": document_id, "file_name": file_name}

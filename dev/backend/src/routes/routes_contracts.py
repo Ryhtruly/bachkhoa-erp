@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import quote
@@ -41,7 +42,7 @@ from src.core.redis_utils import (
     get_cached_json, set_cached_json, redis_distributed_lock,
     invalidate_cache, invalidate_money_caches,
 )
-from src.services.storage_service import get_contract_template
+from src.services.storage_service import get_contract_template, get_contract_document_file
 
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
 
@@ -55,8 +56,37 @@ router = APIRouter(tags=["03. Contracts & Workflows"])
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
+logger = logging.getLogger(__name__)
+
+
 def render_current_contract_document(db: Session, contract_id: str) -> Response:
     """Render a DOCX from the current persisted contract data without storing a file."""
+    generated_document = (
+        db.query(ContractGeneratedDocument)
+        .filter(ContractGeneratedDocument.contract_id == contract_id)
+        .order_by(ContractGeneratedDocument.generated_at.desc())
+        .first()
+    )
+    output_storage_key = getattr(generated_document, 'output_storage_key', None)
+    if output_storage_key and output_storage_key.startswith('contracts/generated/'):
+        output_storage_key = None
+    if output_storage_key:
+        try:
+            stored = get_contract_document_file(output_storage_key)
+            content = stored['Body'].read()
+        except Exception as exc:
+            logger.error('Không thể đọc tài liệu hợp đồng %s từ storage: %s', contract_id, exc, exc_info=True)
+            raise HTTPException(
+                status_code=503,
+                detail='Tài liệu hợp đồng đã lưu nhưng hiện không đọc được từ kho lưu trữ.',
+            ) from exc
+        filename = getattr(generated_document, 'output_file_name', None) or f'HopDong_{contract_id.replace(chr(47), chr(95))}.docx'
+        return Response(
+            content=content,
+            media_type=DOCX_MEDIA_TYPE,
+            headers={'Content-Disposition': f"inline; filename*=UTF-8''{quote(filename)}"},
+        )
+
     document_data, filename = build_current_contract_document_data(db, contract_id)
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if contract.contract_template_id is not None:
@@ -1732,6 +1762,7 @@ def search_customers(
             select c.id, c.customer_type, c.full_name, c.phone, c.address,
                    c.tax_id, c.id_card_number, c.id_card_date, c.id_card_place,
                    c.email, c.zalo_phone, c.representative_name, c.representative_role,
+                   c.source_reference,
                    count(ct.id) as so_hop_dong
             from public.customers c
             left join public.contracts ct on ct.customer_id = c.id

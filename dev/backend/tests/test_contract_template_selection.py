@@ -233,15 +233,22 @@ def test_generate_contract_persists_selected_template(generate_payload):
     template = _published_template()
     db = _FakeSession(template)
 
-    result = ContractService.generate_and_save_contract(
-        db, generate_payload(contract_template_id=template.id)
-    )
+    with patch('src.contracts.services.get_contract_template', create=True, return_value=b'PK-template'), \
+         patch('src.contracts.services.doc_generator.render_contract_document', create=True, return_value=b'PK-generated'), \
+         patch('src.contracts.services.upload_contract_document', create=True, side_effect=lambda _file, key, **_kwargs: key):
+        result = ContractService.generate_and_save_contract(
+            db, generate_payload(contract_template_id=template.id)
+        )
 
     contract = next(record for record in db.added if isinstance(record, Contract))
     document = next(record for record in db.added if isinstance(record, ContractGeneratedDocument))
     assert result["id"] == contract.id
     assert contract.contract_template_id == template.id
     assert document.template_id == template.id
+    assert document.output_storage_key.startswith(
+        f'contracts/{contract.id.replace("/", "_")}/dossier-documents/{document.id}/'
+    )
+    assert "Nguyen_Van_A" not in document.output_storage_key
 
 
 def test_create_contract_persists_selected_template(generate_payload):

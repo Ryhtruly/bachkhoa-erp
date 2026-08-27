@@ -183,6 +183,7 @@ class ContractGeneratedDocument(Base):
     status = Column(String, nullable=False, default="draft")
     output_file_link = Column(Text, nullable=True)
     output_file_name = Column(Text, nullable=True)
+    output_storage_key = Column(Text, nullable=True)
     render_data_snapshot = Column(JSONB, nullable=False, default=dict)
     generated_by = Column(String, ForeignKey("users.id"), nullable=True)
     generated_at = Column(DateTime(timezone=True), nullable=True)

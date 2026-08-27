@@ -51,6 +51,11 @@ class ContractGenerateSchema(BaseModel):
     representative_name: Optional[str] = None    # doanh nghiệp
     representative_role: Optional[str] = None
     address: str
+    address_detail: Optional[str] = None
+    province_code: Optional[str] = None
+    province_name: Optional[str] = None
+    ward_code: Optional[str] = None
+    ward_name: Optional[str] = None
     contract_value: float
     date_signed: str
     due_date: str

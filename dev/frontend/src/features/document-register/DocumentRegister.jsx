@@ -289,7 +289,7 @@ export default function DocumentRegister({
       if (filePreviewUrlRef.current) URL.revokeObjectURL(filePreviewUrlRef.current)
       const url = URL.createObjectURL(blob)
       filePreviewUrlRef.current = url
-      setFilePreview({ fileName, mimeType: blob.type || document?.content_type || '', url })
+      setFilePreview({ fileName, mimeType: blob.type || document?.content_type || '', url, blob })
     } catch (openError) {
       addToast?.(openError.message || 'Không mở được tệp.', 'error')
     }
@@ -838,6 +838,7 @@ export default function DocumentRegister({
       fileName={filePreview?.fileName}
       mimeType={filePreview?.mimeType}
       url={filePreview?.url}
+      blob={filePreview?.blob}
       onClose={closeFilePreview}
     />
   </section>

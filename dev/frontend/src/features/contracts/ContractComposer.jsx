@@ -222,6 +222,39 @@ function spellCurrencyWords(n) {
 
 const parseNumericString = (v) => Number(String(v).replace(/\D/g, '')) || 0
 
+const normalizeAddressPart = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/gi, 'd')
+  .trim()
+  .toLowerCase()
+
+export function hydrateExistingCustomerAddress(customer, provinces = []) {
+  const location = customer?.address_location
+    || customer?.addressLocation
+    || customer?.source_reference?.contract_address
+    || {}
+  const rawAddress = String(customer?.address || '').trim()
+  const parts = rawAddress.split(',').map(part => part.trim()).filter(Boolean)
+  const explicitProvinceName = location.province_name || customer?.province_name || ''
+  const explicitProvinceCode = location.province_code || customer?.province_code || ''
+  const province = provinces.find(item => (
+    String(item.code) === String(explicitProvinceCode)
+    || normalizeAddressPart(item.name) === normalizeAddressPart(explicitProvinceName)
+    || normalizeAddressPart(item.name) === normalizeAddressPart(parts.at(-1))
+  ))
+  const provinceName = explicitProvinceName || province?.name || parts.at(-1) || ''
+  const provinceCode = String(explicitProvinceCode || province?.code || '')
+  const explicitWardName = location.ward_name || customer?.ward_name || ''
+  const wardName = explicitWardName || (province && parts.length > 2 ? parts.at(-2) : '')
+  const wardCode = String(location.ward_code || customer?.ward_code || '')
+  const detail = String(
+    location.detail || customer?.address_detail
+      || (province && parts.length > 2 ? parts.slice(0, -2).join(', ') : rawAddress),
+  ).trim()
+  return { detail, provinceCode, provinceName, wardCode, wardName }
+}
+
 // Gõ tắt theo cách người làm nghề vẫn nói: "5tr", "18.5tr", "500k", "1,2 tỷ".
 // Gõ đủ 18500000 vừa lâu vừa dễ thừa một số 0 mà mắt không bắt được.
 const UNIT_MULTIPLIERS = [
@@ -313,7 +346,7 @@ export default function ContractComposer({
     if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
     const url = URL.createObjectURL(file)
     sourcePreviewUrlRef.current = url
-    setSourcePreview({ fileName: file.name, mimeType: file.type, url })
+    setSourcePreview({ fileName: file.name, mimeType: file.type, url, blob: file })
   }, [])
 
   useEffect(() => () => {
@@ -417,6 +450,12 @@ export default function ContractComposer({
       .catch(() => {})
     return () => { cancelled = true }
   }, [geoBoundary.provinceCode])
+
+  useEffect(() => {
+    if (!geoBoundary.provinceCode || geoBoundary.wardCode || !geoBoundary.wardName) return
+    const ward = wards.find(item => normalizeAddressPart(item.name) === normalizeAddressPart(geoBoundary.wardName))
+    if (ward) setGeoBoundary(current => ({ ...current, wardCode: String(ward.code), wardName: ward.name }))
+  }, [geoBoundary.provinceCode, geoBoundary.wardCode, geoBoundary.wardName, wards])
 
   useEffect(() => {
     if (!open) return undefined
@@ -535,14 +574,16 @@ export default function ContractComposer({
   }, [open, identityInfo.tax_id, customerType, existingCustomerId])
 
   const handleSelectExistingCustomer = (customer) => {
+    const addressLocation = hydrateExistingCustomerAddress(customer, provinces)
     setExistingCustomerId(customer.id)
     setCustomerType(customer.customer_type || 'individual')
     setForm(cur => ({
       ...cur,
       customer_name: customer.full_name || '',
       phone: customer.phone || '',
-      detail: customer.address || cur.detail,
+      detail: addressLocation.detail || cur.detail,
     }))
+    setGeoBoundary(addressLocation)
     setIdentityInfo({
       tax_id: customer.tax_id || '', id_card_number: customer.id_card_number || '',
       id_card_date: customer.id_card_date || '', id_card_place: customer.id_card_place || '',
@@ -628,6 +669,11 @@ export default function ContractComposer({
       sales_source: form.sales_source.trim(),
       contract_value: numericValue,
       address: fullAddress,
+      address_detail: form.detail.trim(),
+      province_code: geoBoundary.provinceCode || null,
+      province_name: geoBoundary.provinceName || null,
+      ward_code: geoBoundary.wardCode || null,
+      ward_name: geoBoundary.wardName || null,
       date_signed: form.date_signed,
       due_date: form.due_date,
       source_documents: sourceFiles,
@@ -1141,6 +1187,7 @@ export default function ContractComposer({
         fileName={sourcePreview?.fileName}
         mimeType={sourcePreview?.mimeType}
         url={sourcePreview?.url}
+        blob={sourcePreview?.blob}
         onClose={closeSourcePreview}
       />
     </div>,

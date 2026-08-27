@@ -215,8 +215,8 @@ export default function Contracts({ isDirector = false }) {
     delete contractPayload.existing_contract_id;
 
     const uploadSourceDocuments = async (contractId, files) => {
-      const failedFiles = [];
-      for (const file of files) {
+      const failedFiles = files.filter(file => !file || file.size <= 0);
+      for (const file of files.filter(file => file && file.size > 0)) {
         try {
           const body = new FormData();
           body.append('file', file);

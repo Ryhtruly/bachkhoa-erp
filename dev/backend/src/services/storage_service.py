@@ -1,6 +1,7 @@
 import boto3
 import json
 import os
+import re
 from dataclasses import dataclass
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -29,11 +30,11 @@ def get_object_storage_config(environ: dict[str, str] | None = None) -> ObjectSt
         not using_managed_settings
         and values.get("OBJECT_STORAGE_CREATE_BUCKETS", "true").strip().lower() in _TRUE_VALUES
     )
-    # Managed stores are always application-private. Local MinIO may retain its
-    # explicit public generic bucket for development compatibility.
+    # Both managed storage and local MinIO are private. The frontend must use an
+    # authenticated backend endpoint instead of receiving an object URL.
     allow_public_buckets = (
         not using_managed_settings
-        and values.get("OBJECT_STORAGE_ALLOW_PUBLIC_BUCKETS", "true").strip().lower() in _TRUE_VALUES
+        and values.get("OBJECT_STORAGE_ALLOW_PUBLIC_BUCKETS", "false").strip().lower() in _TRUE_VALUES
     )
     return ObjectStorageConfig(
         endpoint=values.get("OBJECT_STORAGE_ENDPOINT") or values.get("MINIO_ENDPOINT", "http://localhost:9000"),
@@ -57,16 +58,15 @@ BUCKET = (
     if _storage_config.managed
     else os.getenv("MINIO_BUCKET", "wiki-files")
 )
-# Managed storage is one private bucket split by prefixes. Local MinIO keeps
-# its legacy public generic bucket, but finance receipts and contract templates
-# remain in separate private buckets and can never inherit that public policy.
-FINANCE_BUCKET = BUCKET if _storage_config.managed else os.getenv("MINIO_FINANCE_BUCKET", "finance-files")
-CONTRACT_TEMPLATE_BUCKET = (
-    BUCKET
-    if _storage_config.managed
-    else os.getenv("MINIO_CONTRACT_TEMPLATE_BUCKET", "contract-template-files")
-)
+# Every object store uses one private bucket. Isolation is by validated key prefix:
+# wiki/, finance/, contract-templates/, contracts/{hd}/..., and avatars/.
+FINANCE_BUCKET = BUCKET
+CONTRACT_TEMPLATE_BUCKET = BUCKET
 PUBLIC_URL = _storage_config.public_url
+# Generated contract DOCX files are dossier documents. The full key is validated
+# below so a caller cannot smuggle the legacy contracts/generated/ layout back in.
+CONTRACT_DOCUMENT_PREFIX = "contracts/"
+CONTRACT_DOCUMENT_BUCKET = BUCKET
 WIKI_PREFIX = "wiki/"
 FINANCE_PREFIX = "finance/"
 CONTRACT_TEMPLATE_PREFIX = "contract-templates/"
@@ -75,6 +75,24 @@ AVATAR_PREFIX = "avatars/"
 GENERIC_OBJECT_PREFIXES = (WIKI_PREFIX, WORKFLOW_EVIDENCE_PREFIX, AVATAR_PREFIX)
 FINANCE_OBJECT_PREFIXES = (FINANCE_PREFIX,)
 CONTRACT_TEMPLATE_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_SAFE_KEY_SEGMENT = r"[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?"
+CONTRACT_OBJECT_KEY_PATTERN = re.compile(
+    rf"^contracts/(?:"
+    rf"{_SAFE_KEY_SEGMENT}/source-documents/{_SAFE_KEY_SEGMENT}/{_SAFE_KEY_SEGMENT}|"
+    rf"{_SAFE_KEY_SEGMENT}/dossier-documents/{_SAFE_KEY_SEGMENT}/{_SAFE_KEY_SEGMENT}|"
+    rf"{_SAFE_KEY_SEGMENT}/service-lines/{_SAFE_KEY_SEGMENT}/nodes/"
+    rf"{_SAFE_KEY_SEGMENT}/{_SAFE_KEY_SEGMENT})$"
+)
+CONTRACT_DOSSIER_KEY_PATTERN = re.compile(
+    rf"^contracts/{_SAFE_KEY_SEGMENT}/dossier-documents/"
+    rf"{_SAFE_KEY_SEGMENT}/{_SAFE_KEY_SEGMENT}$"
+)
+
+
+def _require_contract_object_key(object_name: str) -> str:
+    if not CONTRACT_OBJECT_KEY_PATTERN.fullmatch(object_name):
+        raise ValueError("Contract object key has an invalid prefix or path shape")
+    return object_name
 
 
 def _require_prefix(object_name: str, prefixes: tuple[str, ...]) -> str:
@@ -110,24 +128,17 @@ def ensure_bucket():
 
 def ensure_finance_bucket():
     """Create the private finance bucket without granting a public policy."""
-    if not _storage_config.create_buckets:
-        return
-    client = _get_client()
-    try:
-        client.head_bucket(Bucket=FINANCE_BUCKET)
-    except Exception:
-        client.create_bucket(Bucket=FINANCE_BUCKET)
+    ensure_bucket()
 
 
 def ensure_contract_template_bucket():
     """Create the private contract-template bucket only for local development."""
-    if not _storage_config.create_buckets:
-        return
-    client = _get_client()
-    try:
-        client.head_bucket(Bucket=CONTRACT_TEMPLATE_BUCKET)
-    except Exception:
-        client.create_bucket(Bucket=CONTRACT_TEMPLATE_BUCKET)
+    ensure_bucket()
+
+def ensure_contract_document_bucket():
+    '''Create the private bucket for immutable generated contract DOCX files.'''
+    ensure_bucket()
+
 
 def set_bucket_public():
     if not _storage_config.allow_public_buckets:
@@ -149,6 +160,8 @@ def set_bucket_public():
 
 def upload_file(file_obj, object_name: str) -> str:
     object_name = _require_prefix(object_name, GENERIC_OBJECT_PREFIXES)
+    if object_name.startswith(WORKFLOW_EVIDENCE_PREFIX):
+        _require_contract_object_key(object_name)
     client = _get_client()
     client.upload_fileobj(file_obj, BUCKET, object_name)
     return object_name
@@ -184,6 +197,8 @@ def get_file(object_name: str, *, legacy_wiki_document_id: str | None = None) ->
     """
     if legacy_wiki_document_id is None:
         object_name = _require_prefix(object_name, GENERIC_OBJECT_PREFIXES)
+        if object_name.startswith(WORKFLOW_EVIDENCE_PREFIX):
+            _require_contract_object_key(object_name)
     else:
         object_name = object_name.lstrip("/")
         legacy_prefix = f"{legacy_wiki_document_id}_"
@@ -222,6 +237,31 @@ def get_contract_template(object_name: str) -> bytes:
     response = _get_client().get_object(Bucket=CONTRACT_TEMPLATE_BUCKET, Key=object_name)
     return response["Body"].read()
 
+def upload_contract_document(file_obj, object_name: str, *, metadata: dict[str, str] | None = None) -> str:
+    """Store one immutable generated contract DOCX as a dossier document."""
+    object_name = _require_prefix(object_name, (CONTRACT_DOCUMENT_PREFIX,))
+    if not CONTRACT_DOSSIER_KEY_PATTERN.fullmatch(object_name):
+        raise ValueError(
+            "Generated contract key must be contracts/{hd}/dossier-documents/{document_id}/{name}"
+        )
+    ensure_contract_document_bucket()
+    extra_args = {'ContentType': CONTRACT_TEMPLATE_CONTENT_TYPE}
+    if metadata:
+        extra_args['Metadata'] = {str(key): str(value) for key, value in metadata.items()}
+    _get_client().upload_fileobj(file_obj, CONTRACT_DOCUMENT_BUCKET, object_name, ExtraArgs=extra_args)
+    return object_name
+
+
+def get_contract_document_file(object_name: str) -> dict:
+    """Read a generated contract DOCX from the private dossier prefix."""
+    object_name = _require_prefix(object_name, (CONTRACT_DOCUMENT_PREFIX,))
+    if not CONTRACT_DOSSIER_KEY_PATTERN.fullmatch(object_name):
+        raise ValueError(
+            "Generated contract key must be contracts/{hd}/dossier-documents/{document_id}/{name}"
+        )
+    return _get_client().get_object(Bucket=CONTRACT_DOCUMENT_BUCKET, Key=object_name)
+
+
 def delete_finance_file(object_name: str):
     object_name = _require_prefix(object_name, FINANCE_OBJECT_PREFIXES)
     _get_client().delete_object(Bucket=FINANCE_BUCKET, Key=object_name)
@@ -247,11 +287,15 @@ def find_file_by_prefix(prefix: str) -> str | None:
 
 def delete_file(object_name: str):
     object_name = _require_prefix(object_name, GENERIC_OBJECT_PREFIXES)
+    if object_name.startswith(WORKFLOW_EVIDENCE_PREFIX):
+        _require_contract_object_key(object_name)
     client = _get_client()
     client.delete_object(Bucket=BUCKET, Key=object_name)
 
 def get_file_url(object_name: str) -> str:
-    if _storage_config.managed:
-        raise RuntimeError("Managed object storage is private; serve the object through an authenticated backend route.")
+    if _storage_config.managed or not _storage_config.allow_public_buckets:
+        raise RuntimeError("Object storage is private; serve the object through an authenticated backend route.")
     object_name = _require_prefix(object_name, GENERIC_OBJECT_PREFIXES)
+    if object_name.startswith(WORKFLOW_EVIDENCE_PREFIX):
+        _require_contract_object_key(object_name)
     return f"{PUBLIC_URL}/{BUCKET}/{object_name}"

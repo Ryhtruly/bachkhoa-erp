@@ -351,7 +351,7 @@ class KhoaLuuTruTests(unittest.TestCase):
         key = DossierFileReference.build(
             contract_id="003/BK-2026", document_id="7f3a9c21", filename="ban-ky-thuat.pdf",
         ).object_key
-        self.assertEqual(key, "contracts/003_BK-2026/dossier-documents/7f3a9c21/ban-ky-thuat.pdf")
+        self.assertEqual(key, "contracts/003_BK-2026/dossier-documents/7f3a9c21/document-7f3a9c21.pdf")
 
     def test_khoa_khong_chua_stage(self):
         from src.files.references import DossierFileReference
@@ -551,7 +551,7 @@ class MotFileMotObjectTests(unittest.TestCase):
         # URL tạm không được coi là nguồn dữ liệu — backend sinh lúc đọc.
         self.assertNotIn("http", evidence)
 
-    def test_ghi_db_hong_thi_xoa_object_khong_de_lai_rac(self):
+    def test_ghi_db_hong_thi_giu_object_de_audit(self):
         from src.dossiers import documents
 
         db = MagicMock()
@@ -567,16 +567,15 @@ class MotFileMotObjectTests(unittest.TestCase):
             _scalar(None),
             RuntimeError("DB chết giữa chừng"),
         ]
-        with patch.object(documents, "upload_file"), \
-             patch.object(documents, "ensure_bucket"), \
-             patch.object(documents, "delete_file") as delete:
+        with patch.object(documents, "upload_file") as upload, \
+             patch.object(documents, "ensure_bucket"):
             with self.assertRaises(RuntimeError):
                 documents.submit_output_document(
                     db, checklist_result_id="CR-1", template_id="TPL_X",
                     file_name="a.pdf", content_type="application/pdf",
                     data=b"%PDF", actor_id="u1",
                 )
-        self.assertEqual(delete.call_count, 1)
+        self.assertEqual(upload.call_count, 1)
 
 
 class K03DungLaiTaiLieuK02Tests(unittest.TestCase):

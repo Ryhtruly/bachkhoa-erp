@@ -17,7 +17,9 @@ The application writes object keys under these prefixes:
 wiki/<document-id>/<filename>
 finance/payment-receipts/<period>/<batch>/<receipt>
 contract-templates/<template-code>/v<version>.docx
-contracts/<contract-id>/service-lines/<service-line-id>/nodes/<task-node-id>/<filename>
+contracts/<contract-id>/source-documents/<document-id>/<filename>
+contracts/<contract-id>/dossier-documents/<document-id>/<filename>
+contracts/<contract-id>/service-lines/<service-line-id>/nodes/<node-id>/<filename>
 avatars/<employee-id>_<random>_<filename>
 ```
 

@@ -12,7 +12,7 @@ const PDF_EXTENSION = /\.pdf$/i
 const DOCX_EXTENSION = /\.docx$/i
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-export default function FilePreviewModal({ open, fileName = '', mimeType = '', url = '', onClose }) {
+export default function FilePreviewModal({ open, fileName = '', mimeType = '', url = '', blob = null, onClose }) {
   const normalizedType = String(mimeType || '').toLowerCase()
   const isImage = normalizedType.startsWith('image/') || IMAGE_EXTENSIONS.test(fileName)
   const isPdf = normalizedType === 'application/pdf' || PDF_EXTENSION.test(fileName)
@@ -30,19 +30,33 @@ export default function FilePreviewModal({ open, fileName = '', mimeType = '', u
     surface.innerHTML = ''
     setDocxState('loading')
 
-    // Cả hai nơi gọi đều truyền blob: URL (tệp vừa chọn trong form, hoặc tệp đã
-    // tải về kèm token), nên fetch thẳng được — không cần đính kèm xác thực.
-    fetch(url)
-      .then(response => response.blob())
-      .then(blob => (dangHieuLuc ? renderAsync(blob, surface, null, { inWrapper: true }) : undefined))
-      .then(() => { if (dangHieuLuc) setDocxState('ready') })
-      .catch(() => { if (dangHieuLuc) setDocxState('error') })
+    // Ưu tiên bytes đã tải ở caller. Với tài liệu private, fetch lại blob URL
+    // là một vòng đọc thừa và có thể làm renderer nhận blob rỗng sau khi URL bị
+    // thu hồi hoặc nhận body lỗi thay vì OOXML.
+    const renderDocument = async () => {
+      let documentBlob = blob
+      if (!documentBlob) {
+        const response = await fetch(url)
+        if (response.ok === false) throw new Error('Không tải được nội dung tài liệu Word.')
+        documentBlob = await response.blob()
+      }
+      if (!documentBlob || documentBlob.size <= 0) {
+        throw new Error('Tệp Word rỗng.')
+      }
+      if (!dangHieuLuc) return
+      await renderAsync(documentBlob, surface, null, { inWrapper: true, useBase64URL: true })
+      if (dangHieuLuc) setDocxState('ready')
+    }
+
+    renderDocument().catch(() => {
+      if (dangHieuLuc) setDocxState('error')
+    })
 
     return () => {
       dangHieuLuc = false
       surface.innerHTML = ''
     }
-  }, [open, isDocx, url])
+  }, [open, isDocx, url, blob])
 
   // Word hỏng hoặc lạ thì rơi về khối thông báo cũ — vẫn còn nút tải xuống,
   // không để người dùng đối diện một ô trắng không giải thích gì.

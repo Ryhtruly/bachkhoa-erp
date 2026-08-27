@@ -122,6 +122,12 @@ const OUTPUT_DOCUMENT_SOURCE_GROUPS = [
   },
 ];
 
+const HARD_COPY_CUSTOMER_DOCUMENT_NAME_KEYS = new Set([
+  'giay chung nhan quyen su dung dat so do so hong',
+  'so do goc',
+  'cccd cmnd cua chu su dung dat',
+]);
+
 const boDauTiengViet = value => String(value || '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -138,6 +144,15 @@ const outputDocumentSourceKey = template => {
   if (raw.includes('co quan') || raw.includes('co_quan') || raw.includes('nha nuoc')) return 'CO_QUAN';
   return 'KHAC';
 };
+
+const outputDocumentNameKey = value => boDauTiengViet(value)
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const isHardCopyCustomerDocument = template => (
+  outputDocumentSourceKey(template) !== 'KHACH_HANG'
+  || HARD_COPY_CUSTOMER_DOCUMENT_NAME_KEYS.has(outputDocumentNameKey(template?.name))
+);
 
 const formatMoney = value => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))}đ`;
 const formatDateTime = value => value
@@ -1986,6 +2001,7 @@ export default function ContractWorkflowDesigner({
     const buckets = new Map(OUTPUT_DOCUMENT_SOURCE_GROUPS.map(group => [group.key, []]));
     const khac = [];
     docTemplates.forEach(template => {
+      if (!isHardCopyCustomerDocument(template)) return;
       const key = outputDocumentSourceKey(template);
       if (buckets.has(key)) buckets.get(key).push(template);
       else khac.push(template);
@@ -3283,6 +3299,7 @@ title="Lưu quy trình hiện tại thành mẫu"
         title="Chọn tài liệu đầu ra"
         id="workflow-output-documents-modal"
         size="lg"
+        className='workflow-output-documents-modal'
         footer={(
           <button type="button" className="btn btn-primary" onClick={closeOutputDocumentModal}>
             Xong

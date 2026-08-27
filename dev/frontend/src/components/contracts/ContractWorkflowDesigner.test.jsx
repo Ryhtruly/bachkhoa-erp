@@ -297,12 +297,12 @@ const DOC_TEMPLATES = [
 
 // Panel checklist chỉ hiện khi đã chọn Node. Dùng targetNodeKey — đúng cơ chế
 // component cung cấp để mở sẵn một Node, thay vì giả lập cú bấm trên canvas.
-function renderWithDocs(serviceLineOptions = {}) {
+function renderWithDocs(serviceLineOptions = {}, docs = DOC_TEMPLATES) {
   return render(
     <ContractWorkflowDesigner
       serviceLine={makeServiceLine({ nodeReady: true, ...serviceLineOptions })}
       workItems={[workItem]}
-      documentTemplates={DOC_TEMPLATES}
+      documentTemplates={docs}
       capabilities={{
         amend_workflow: true,
         review_workflow_node: true,
@@ -365,6 +365,30 @@ describe('Cấu hình tài liệu đầu ra của checklist', () => {
     fireEvent.click(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Xong' }));
     expect(await screen.findByText('Sổ đỏ gốc')).toBeInTheDocument();
+  });
+
+  it('hiển thị đủ mọi loại giấy, gồm đúng hai giấy cứng khách hàng cung cấp, trong vùng cuộn chính', async () => {
+    const docs = [
+      ...DOC_TEMPLATES,
+      { id: 'TPL_CCCD', name: 'CCCD/CMND của chủ sử dụng đất', source_label: 'Khách hàng cung cấp', is_active: true },
+      { id: 'TPL_HON_NHAN', name: 'Giấy tờ hôn nhân', source_label: 'Khách hàng cung cấp', is_active: true },
+      { id: 'TPL_TOA_DO', name: 'Tọa độ GPS', source_label: 'Công ty soạn/lập', is_active: true },
+      { id: 'TPL_KET_QUA', name: 'Kết quả giải quyết hồ sơ', source_label: 'Cơ quan Nhà nước trả', is_active: true },
+    ];
+    renderWithDocs({}, docs);
+    await moPanelChecklist();
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+
+    const dialog = screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+    expect(dialog.querySelector('.wcl-output-modal__group--khach-hang .wcl-output-modal__group-count'))
+      .toHaveTextContent('2 loại');
+    expect(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('option', { name: /CCCD\/CMND/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('option', { name: /Giấy tờ hôn nhân/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('option', { name: /Tọa độ GPS/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('option', { name: /Kết quả giải quyết hồ sơ/ })).toBeInTheDocument();
+    expect(document.querySelector('.workflow-output-documents-modal .modal-body'))
+      .toBeInTheDocument();
   });
 
   it('bật Cần Giám đốc duyệt mà người duyệt khác admin thì cảnh báo rõ ràng', async () => {

@@ -439,9 +439,9 @@ class KhoaTrangThaiEndpointTests(unittest.TestCase):
 
 
 class DonObjectKhiDbLoiTests(unittest.TestCase):
-    """Transaction DB không dọn hộ MinIO/R2 — phải tự gọi delete_file."""
+    """Object đã nhận là immutable; lỗi DB không được xoá object."""
 
-    def test_db_loi_thi_xoa_object_dung_mot_lan(self):
+    def test_db_loi_thi_giu_object_de_audit(self):
         db = MagicMock()
         db.execute.side_effect = [
             _row(_request(status="draft")),
@@ -450,14 +450,12 @@ class DonObjectKhiDbLoiTests(unittest.TestCase):
         ]
         with patch.object(slot_requests, "upload_file"), \
              patch.object(slot_requests, "ensure_bucket"), \
-             patch.object(slot_requests, "delete_file") as delete, \
              patch("src.dossiers.documents._validate_upload"):
             with self.assertRaises(RuntimeError):
                 slot_requests.add_file(
                     db, request_id="REQ-1", file_name="a.jpg",
                     content_type="image/jpeg", data=b"x", actor_id="nv1",
                 )
-        self.assertEqual(delete.call_count, 1)
 
     def test_db_thanh_cong_thi_khong_xoa_object(self):
         db = MagicMock()
@@ -466,13 +464,11 @@ class DonObjectKhiDbLoiTests(unittest.TestCase):
         ]
         with patch.object(slot_requests, "upload_file"), \
              patch.object(slot_requests, "ensure_bucket"), \
-             patch.object(slot_requests, "delete_file") as delete, \
              patch("src.dossiers.documents._validate_upload"):
             slot_requests.add_file(
                 db, request_id="REQ-1", file_name="a.jpg",
                 content_type="image/jpeg", data=b"x", actor_id="nv1",
             )
-        self.assertEqual(delete.call_count, 0)
 
     def test_go_tep_khoi_de_xuat_KHONG_xoa_object(self):
         """Gỡ quan hệ thôi. Tệp đã tải là sự việc có thật, giữ theo lịch sử."""
@@ -484,11 +480,9 @@ class DonObjectKhiDbLoiTests(unittest.TestCase):
             MagicMock(),                                        # hạ doc_status
             MagicMock(),                                        # audit
         ]
-        with patch.object(slot_requests, "delete_file") as delete:
-            slot_requests.remove_file(
-                db, request_id="REQ-1", document_id="DOC-1", actor_id="nv1"
-            )
-        self.assertEqual(delete.call_count, 0)
+        slot_requests.remove_file(
+            db, request_id="REQ-1", document_id="DOC-1", actor_id="nv1"
+        )
         lenh = " ".join(str(c.args[0]).lower() for c in db.execute.call_args_list)
         self.assertIn("delete from public.document_slot_creation_request_documents", lenh)
         self.assertNotIn("delete from public.dossier_documents", lenh)
@@ -734,26 +728,24 @@ class GoTepKhoiDeXuatTests(unittest.TestCase):
             *([] if con_lien_ket else [MagicMock()]),      # hạ doc_status
             MagicMock(),                                   # audit
         ]
-        with patch.object(slot_requests, "delete_file") as delete:
-            slot_requests.remove_file(
-                db, request_id="REQ-1", document_id="DOC-1", actor_id="nv1"
-            )
-        return db, delete
+        slot_requests.remove_file(
+            db, request_id="REQ-1", document_id="DOC-1", actor_id="nv1"
+        )
+        return db
 
     def test_khong_con_lien_ket_nao_thi_ha_xuong_DA_GO(self):
-        db, delete = self._go(con_lien_ket=False)
+        db = self._go(con_lien_ket=False)
         lenh = " ".join(str(c.args[0]).lower() for c in db.execute.call_args_list)
         self.assertIn("set doc_status = 'da_go'", lenh)
         # Object KHÔNG bị xoá — giữ để tra lại.
-        self.assertEqual(delete.call_count, 0)
 
     def test_con_lien_ket_chinh_thuc_thi_giu_nguyen_DANG_DUNG(self):
-        db, _ = self._go(con_lien_ket=True)
+        db = self._go(con_lien_ket=True)
         lenh = " ".join(str(c.args[0]).lower() for c in db.execute.call_args_list)
         self.assertNotIn("set doc_status = 'da_go'", lenh)
 
     def test_luon_ghi_audit(self):
-        db, _ = self._go(con_lien_ket=False)
+        db = self._go(con_lien_ket=False)
         lenh = " ".join(str(c.args[0]).lower() for c in db.execute.call_args_list)
         self.assertIn("insert into public.audit_log", lenh)
 
