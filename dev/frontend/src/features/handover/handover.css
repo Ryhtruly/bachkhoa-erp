@@ -160,10 +160,9 @@
 .handover__inst-status { color: var(--text-tertiary); font-size: 0.74rem; text-align: right; }
 .handover__inst-status.is-waiting { color: #c2410c; font-weight: 600; }
 
-/* ── Hai việc, hai người ──────────────────────────────────────
-   Việc xong rồi chỉ cần AI làm và LÚC NÀO, nên thẻ rút còn hai dòng. */
-.handover__lanes { display: flex; flex-direction: column; gap: 8px; }
-.handover__lane {
+/* ── Hai khối nghiệp vụ: giao hồ sơ và thu đủ tiền ───────────── */
+.handover__cards { display: flex; flex-direction: column; gap: 8px; }
+.handover__card {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: start;
@@ -173,40 +172,77 @@
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
 }
-.handover__lane.is-done { background: #f0fdf4; border-color: #bbf7d0; }
-.handover__lane-mark { display: flex; color: var(--text-tertiary); }
-.handover__lane.is-done .handover__lane-mark { color: #16a34a; }
-.handover__lane strong { display: block; font-size: 0.87rem; font-weight: 700; line-height: 1.3; }
-.handover__lane.is-done strong { color: #14532d; }
-.handover__lane p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 0.79rem; line-height: 1.45; }
-.handover__lane.is-done p { color: #3f6212; }
-.handover__lane small { display: block; margin-top: 3px; font-size: 0.74rem; }
-.handover__lane-who { color: var(--text-tertiary); }
-.handover__lane-warn { color: #b45309; }
+.handover__card.is-done { background: #f0fdf4; border-color: #bbf7d0; }
+.handover__card-mark { display: flex; color: var(--text-tertiary); }
+.handover__card.is-done .handover__card-mark { color: #16a34a; }
+.handover__card-body { min-width: 0; }
+.handover__card strong { display: block; font-size: 0.87rem; font-weight: 700; line-height: 1.3; }
+.handover__card.is-done strong { color: #14532d; }
+.handover__card p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 0.79rem; line-height: 1.45; }
+.handover__card.is-done p { color: #3f6212; }
+.handover__card small { display: block; margin-top: 3px; font-size: 0.74rem; }
+.handover__card-who { color: var(--text-tertiary); }
+.handover__card-warn { color: #b45309; }
 /* Khung chi tiết chỉ rộng ~340px — ép nút đứng cùng hàng với chữ thì mỗi dòng
    còn một từ. Cho nút xuống hàng riêng. */
-.handover__lane .btn {
+.handover__card .btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  grid-column: 2;
   justify-self: start;
   margin-top: 8px;
 }
 
-.handover__verdict {
-  margin: 0;
-  padding: 9px 12px;
-  background: #fef2f2;
-  border-left: 3px solid #dc2626;
-  color: #991b1b;
-  font-size: 0.82rem;
+.handover__checklist {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
 }
-.handover__verdict.is-ok {
-  background: #f0fdf4;
-  border-left-color: #16a34a;
-  color: #166534;
+.handover__checklist-title {
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
+.handover__checklist-item {
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.handover__checklist-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.handover__checklist-row span { font-size: 0.82rem; font-weight: 700; line-height: 1.4; }
+.handover__checklist-row em {
+  flex: none;
+  color: #9a3412;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 700;
+}
+.handover__checklist-submit { display: grid; gap: 8px; margin-top: 8px; }
+.handover__checklist-submit .receipt-input { min-width: 0; }
+
+.handover__footer {
+  position: sticky;
+  z-index: 2;
+  bottom: -1px;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 -2px -2px;
+  padding: 12px 2px 2px;
+  border-top: 1px solid var(--border-subtle);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.82), #fff 30%);
+}
+.handover__footer .btn { min-width: 190px; }
+.handover__footer .btn:disabled { cursor: not-allowed; opacity: 0.52; }
 
 /* ── Hộp thoại ────────────────────────────────────────────────── */
 .handover__form { display: flex; flex-direction: column; gap: 14px; }
@@ -298,8 +334,8 @@
 .handover__installments li { grid-template-columns: 78px 1fr 20px 62px; }
 
 /* Tên người lo việc — để ai đọc cũng biết phải hỏi ai, không phải đoán */
-.handover__lane strong { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.handover__lane strong em {
+.handover__card strong { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.handover__card strong em {
   font-style: normal;
   color: var(--text-tertiary);
   font-size: 0.76rem;
@@ -345,4 +381,63 @@
   color: #9a3412;
   font-size: 0.81rem;
   line-height: 1.5;
+}
+
+/* Trạng thái nghiệp vụ K06: tách rõ khóa nợ, đang làm, chờ nghiệm thu và
+   đã nghiệm thu nhưng chưa hoàn tất tài chính. */
+.handover__status {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.handover__status--debt_locked,
+.handover__status--debt_request_pending,
+.handover__status--work_accepted_awaiting_payment { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+.handover__status--pending_acceptance { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+.handover__status--in_progress { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.handover__status--completed { background: #f0fdf4; border-color: #86efac; color: #166534; }
+
+.handover__override-note,
+.handover__request-summary {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.handover__override-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+.handover__request-summary {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #78350f;
+}
+.handover__card.is-locked .handover__checklist-item { background: #f8fafc; opacity: 0.72; }
+.handover__footer { gap: 10px; }
+
+@media (max-width: 560px) {
+  .handover__money-head,
+  .handover__checklist-row { align-items: flex-start; flex-direction: column; }
+  .handover__package { align-items: stretch; flex-direction: column; }
+  .handover__package .btn,
+  .handover__footer .btn { width: 100%; }
+  .handover__footer { padding-top: 10px; }
+  .handover__footer { flex-direction: column-reverse; }
 }

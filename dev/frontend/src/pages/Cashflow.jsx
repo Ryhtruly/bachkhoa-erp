@@ -19,6 +19,7 @@ export default function Cashflow({ landing, user, isDirector }) {
   const [globalMonth, setGlobalMonth] = useState(() => new Date().toISOString().slice(0, 7));
   // Phiếu cần mở khi bấm thông báo "chờ duyệt" ở chuông.
   const [focusVoucher, setFocusVoucher] = useState(null);
+  const [focusDebtContract, setFocusDebtContract] = useState('');
 
   useEffect(() => {
     const openVoucher = (e) => {
@@ -32,6 +33,17 @@ export default function Cashflow({ landing, user, isDirector }) {
     return () => window.removeEventListener('bachkhoa:open-cashflow-voucher', openVoucher);
   }, []);
 
+  useEffect(() => {
+    const openDebtCollection = (event) => {
+      const detail = event.detail || {};
+      if (detail.tab !== 'cashflow' || detail.subTab !== 'debt-collection') return;
+      setFocusDebtContract(detail.search || '');
+      setActiveMenu('debt-collection');
+    };
+    window.addEventListener('app:navigate', openDebtCollection);
+    return () => window.removeEventListener('app:navigate', openDebtCollection);
+  }, []);
+
   const renderContent = () => {
     switch (activeMenu) {
       case 'monthly-dashboard': return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
@@ -39,7 +51,7 @@ export default function Cashflow({ landing, user, isDirector }) {
       case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
-      case 'debt-collection': return <DebtCollection user={user} isDirector={isDirector} />;
+      case 'debt-collection': return <DebtCollection user={user} isDirector={isDirector} initialSearch={focusDebtContract} />;
       case 'receivables': return <ReceivablesScreen user={user} isDirector={isDirector} />;
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;

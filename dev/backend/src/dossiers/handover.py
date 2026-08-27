@@ -1,34 +1,27 @@
-"""Node BÀN GIAO (K08) — cổng tài chính cuối cùng trước khi giao kết quả cho khách.
+"""Node BÀN GIAO (K06) — cổng tài chính cuối cùng trước khi giao kết quả cho khách.
 
-Node này đặc biệt vì TIỀN, khác K06 đặc biệt vì THỜI GIAN. Nó chia làm hai làn
-chạy song song, hai người khác nhau lo:
-
-    Làn A · HIỆN VẬT   NV phụ trách   nhận kết quả · bàn giao · lấy chữ ký khách
-                                       ↳ xong thì MỞ KHOÁ node Lưu trữ
-                                         và GIẢI PHÓNG tiền khoán ngay
-
-    Làn B · TIỀN       Kế toán         ghi nhận từng đợt thu · đối chiếu công nợ
-                                       ↳ xong thì ĐÓNG được node
+Node này đặc biệt vì TIỀN, khác K06 đặc biệt vì THỜI GIAN. Hai khối nghiệp vụ
+được theo dõi song song: nhân viên phụ trách giao hồ sơ, còn kế toán theo dõi
+thu đủ tiền hợp đồng.
 
 Ba nguyên tắc rút từ thực tế công ty:
 
-1. **Không chặn bàn giao khi còn nợ.** Có ca khách thiếu vài trăm nghìn mà hồ sơ
-   phải giao gấp. Chặn cứng thì nhân viên tìm đường lách, còn tệ hơn. Thay vào đó
-   hỏi xác nhận, cho giao, nhưng quy trình **treo ở "chưa hoàn thành"** cho tới khi
-   thu đủ rồi **tự đóng**. Không ai phải ra quyết định miễn trừ cho từng ca.
+1. **Chặn bàn giao khi còn nợ**, trừ khi Giám đốc đã duyệt ngoại lệ có lý do.
+   Cả giao diện lẫn API đều kiểm tra cùng một cờ để không thể vượt cổng bằng
+   DevTools hoặc gọi thẳng endpoint.
 
-2. **Tiền khoán bám vào làn A, không bám vào công nợ.** Nhân viên làm xong phần
+2. **Tiền khoán bám vào việc giao hồ sơ, không bám vào công nợ.** Nhân viên làm xong phần
    việc của họ rồi; khách chậm trả không phải lỗi của họ.
 
 3. **Mục "thu đủ công nợ" TÍNH SỐNG, không ai tick tay.** Để kế toán tự tick thì
-   cổng công nợ chỉ là hình thức. Nó đọc thẳng `receivables`, và chỉ đếm phiếu
+   cổng công nợ chỉ là hình thức. Nó đọc thẳng `cashflow_transactions`, và chỉ đếm phiếu
    thu ĐÃ ĐƯỢC DUYỆT — nên gõ một phiếu khống cũng không mở được cổng.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -88,12 +81,26 @@ def is_handover_node(node: dict) -> bool:
 # Công nợ — tính sống từ phiếu thu ĐÃ DUYỆT
 # ══════════════════════════════════════════════════════════════════
 
-def debt_summary(db: Session, contract_id: str | None, total_value: float | None) -> dict:
+def debt_summary(
+    db: Session,
+    contract_id: str | None,
+    total_value: float | None,
+    *,
+    task_node_id: str | None = None,
+) -> dict:
+    """Tính công nợ thật và cổng nghiệp vụ thành hai khái niệm độc lập.
+
+    ``is_settled`` chỉ được phép đúng khi tiền thực thu đã đủ. Phê duyệt ngoại lệ
+    chỉ làm ``gate_open`` đúng cho đúng Node K06 được duyệt; nó không xóa nợ và
+    không được dùng để chốt hợp đồng hoàn thành.
+    """
     total = float(total_value or 0)
     if not contract_id:
+        settled = total <= 0
         return {"contract_id": None, "total_value": total, "paid": 0.0,
-                "remaining": total, "percent": 0, "is_settled": total <= 0,
-                "pending_amount": 0.0}
+                "remaining": total, "percent": 0, "is_settled": settled,
+                "gate_open": settled, "has_override": False,
+                "override_reason": None, "pending_amount": 0.0}
 
     row = db.execute(
         text(f"""
@@ -114,17 +121,154 @@ def debt_summary(db: Session, contract_id: str | None, total_value: float | None
         {"c": contract_id}
     ).mappings().first()
 
+    request_override = None
+    if task_node_id:
+        request_override = db.execute(
+            text("""
+                select id, reason, promised_payment_date, reviewed_at, reviewed_by
+                from public.handover_debt_requests
+                where task_node_id = :n and status = 'approved'
+                order by reviewed_at desc
+                limit 1
+            """),
+            {"n": task_node_id},
+        ).mappings().first()
+
+    # Giữ cờ cũ để các hồ sơ đã được duyệt trước migration vẫn hoạt động. Mọi
+    # yêu cầu mới đều đi qua handover_debt_requests và khóa đúng theo task_node.
+    legacy_override = bool(c_ovr["completion_override"]) if c_ovr else False
+    has_override = bool(request_override) or legacy_override
+    override_reason = (
+        request_override["reason"] if request_override
+        else (c_ovr["completion_override_reason"] if c_ovr else None)
+    )
+    is_settled = remaining <= 0.009
+
     return {
         "contract_id": contract_id,
         "total_value": total,
         "paid": paid,
         "remaining": remaining,
         "percent": round(paid / total * 100) if total else 100,
-        "is_settled": remaining <= 0.009 or (bool(c_ovr["completion_override"]) if c_ovr else False),
-        "has_override": bool(c_ovr["completion_override"]) if c_ovr else False,
-        "override_reason": c_ovr["completion_override_reason"] if c_ovr else None,
+        "is_settled": is_settled,
+        "gate_open": is_settled or has_override,
+        "has_override": has_override,
+        "override_reason": override_reason,
         # Tiền nhân viên đã gõ nhưng sếp CHƯA duyệt — hiện riêng để khỏi tưởng đã thu.
         "pending_amount": float(row["pending_amount"] or 0),
+    }
+
+
+def _public_debt_commitment(request_id: str, commitment: object) -> dict | None:
+    """Chỉ xuất metadata an toàn; khóa MinIO luôn nằm phía server."""
+    if isinstance(commitment, str):
+        try:
+            commitment = json.loads(commitment)
+        except (TypeError, ValueError):
+            commitment = {}
+    if not isinstance(commitment, dict) or not commitment.get("object_key"):
+        return None
+    return {
+        "id": commitment.get("id") or f"debt-commitment-{request_id}",
+        "filename": commitment.get("filename") or "File cam kết",
+        "content_type": commitment.get("content_type") or "application/octet-stream",
+        "size": commitment.get("size"),
+        "url": f"/api/handover/debt-requests/{request_id}/commitment",
+    }
+
+
+def _current_debt_request(db: Session, task_node_id: str) -> dict | None:
+    row = db.execute(
+        text("""
+            select r.id, r.task_node_id, r.contract_id, r.requester_user_id,
+                   r.remaining_amount_snapshot, r.reason, r.promised_payment_date,
+                   r.commitment_file, r.status, r.reviewed_by, r.reviewed_at,
+                   r.review_note, r.created_at,
+                   req.full_name as requester_name,
+                   rev.full_name as reviewer_name
+            from public.handover_debt_requests r
+            left join public.users req_u on req_u.id = r.requester_user_id
+            left join public.employees req on req.user_id = req_u.id
+            left join public.users rev_u on rev_u.id = r.reviewed_by
+            left join public.employees rev on rev.user_id = rev_u.id
+            where r.task_node_id = :n
+            order by
+              case r.status when 'pending' then 0 when 'approved' then 1 else 2 end,
+              r.created_at desc
+            limit 1
+        """),
+        {"n": task_node_id},
+    ).mappings().first()
+    if not row:
+        return None
+    result = dict(row)
+    result["remaining_amount_snapshot"] = float(result["remaining_amount_snapshot"] or 0)
+    # Không trả object_key/sha256 của kho riêng ra trình duyệt. Frontend chỉ
+    # nhận URL có xác thực; endpoint tải sẽ kiểm tra lại người xin hoặc quyền
+    # duyệt Node trước khi đọc MinIO.
+    commitment = result.pop("commitment_file", None)
+    result["commitment_attachment"] = _public_debt_commitment(result["id"], commitment)
+    return result
+
+
+def ensure_handover_work_gate_open(db: Session, task_node_id: str) -> dict:
+    """Khóa mọi thao tác chuyên môn của K06 khi công nợ chưa được mở.
+
+    Hàm này được gọi ở API nộp checklist/minh chứng, không chỉ ở API nộp
+    nghiệm thu. Vì vậy người dùng không thể bỏ qua trạng thái khóa trên UI bằng
+    cách gọi thẳng endpoint upload.
+
+    Node thông thường không chịu cổng công nợ và được trả về ngay để giữ nguyên
+    toàn bộ luồng Đo vẽ/Pháp lý khác.
+    """
+    node = _node_or_404(db, task_node_id)
+    if not is_handover_node(node):
+        return {"is_handover": False, "gate_open": True, "is_settled": True}
+
+    debt = debt_summary(
+        db,
+        node.get("contract_id"),
+        node.get("total_value"),
+        task_node_id=task_node_id,
+    )
+    if debt["remaining"] > 0.009 and not debt["gate_open"]:
+        raise HTTPException(
+            status_code=423,
+            detail=(
+                "Hợp đồng còn công nợ. Hãy gửi Xin duyệt nợ và chờ Giám đốc "
+                "phê duyệt trước khi thực hiện checklist hoặc nộp minh chứng."
+            ),
+        )
+    return {"is_handover": True, **debt}
+
+
+def _checklist_submission_state(db: Session, task_node_id: str) -> dict:
+    row = db.execute(
+        text("""
+            select count(*) as total,
+                   count(*) filter (
+                     where status not in (
+                       'pending_approval', 'late_pending_approval',
+                       'approved', 'late_approved', 'not_applicable'
+                     )
+                   ) as blocking,
+                   count(*) filter (
+                     where status in ('approved', 'late_approved', 'not_applicable')
+                   ) as approved
+            from public.task_node_checklist_results
+            where task_node_id = :n
+        """),
+        {"n": task_node_id},
+    ).mappings().first()
+    total = int((row or {}).get("total") or 0)
+    blocking = int((row or {}).get("blocking") or 0)
+    approved = int((row or {}).get("approved") or 0)
+    return {
+        "total": total,
+        "blocking": blocking,
+        "approved": approved,
+        "ready_for_acceptance": total > 0 and blocking == 0,
+        "all_approved": total > 0 and approved == total,
     }
 
 
@@ -215,10 +359,18 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
 
     exec_data = node["execution_data"] or {}
     lane_a_data = exec_data.get("handover") or {}
-    debt = debt_summary(db, node["contract_id"], node["total_value"])
+    debt = debt_summary(
+        db, node["contract_id"], node["total_value"], task_node_id=task_node_id
+    )
+    debt_request = _current_debt_request(db, task_node_id)
+    checklist_state = _checklist_submission_state(db, task_node_id)
     gate = submission_gate(db, node)
 
-    is_lane_a_done = bool(lane_a_data.get("delivered_at"))
+    is_lane_a_done = bool(
+        checklist_state["all_approved"]
+        or lane_a_data.get("delivered_at")
+        or node["status"] == "accepted"
+    )
     is_node_closed = node["status"] in _NODE_FINISHED
 
     # Ai đang xem quyết định họ thấy nút nào.
@@ -243,16 +395,47 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
     dossier_deliverer_name = dossier_actors[0]["full_name"] if dossier_actors else None
     dossier_deliverer_user_ids = {r["user_id"] for r in dossier_actors if r["user_id"]}
 
+    is_dossier_actor = bool(user_id and user_id in dossier_deliverer_user_ids)
+    can_edit_checklist = bool(
+        is_dossier_actor
+        and node["status"] in ("in_progress", "rework_required")
+        and gate["is_open"]
+        and debt["gate_open"]
+        and not is_node_closed
+    )
+    request_status = debt_request.get("status") if debt_request else None
+    if node["status"] == "accepted":
+        business_status = "completed" if debt["is_settled"] else "work_accepted_awaiting_payment"
+    elif node["status"] == "submitted":
+        business_status = "pending_acceptance"
+    elif debt["remaining"] > 0.009 and not debt["gate_open"]:
+        business_status = "debt_request_pending" if request_status == "pending" else "debt_locked"
+    else:
+        business_status = "in_progress"
+
     return {
         "task_node_id": task_node_id,
         "node_code": node["node_code"],
         "node_status": node["status"],
+        "business_status": business_status,
         "is_finished": is_node_closed,
         "contract_id": node["contract_id"],
         "customer_name": node["customer_name"],
         "service_line_name": node["service_type"],
         "gate": gate,
         "debt": debt,
+        "debt_request": debt_request,
+        "checklist_state": checklist_state,
+        "can_request_debt": bool(
+            is_dossier_actor
+            and node["status"] in ("in_progress", "rework_required")
+            and debt["remaining"] > 0.009
+            and not debt["gate_open"]
+            and request_status != "pending"
+        ),
+        "can_submit_acceptance": bool(
+            can_edit_checklist and checklist_state["ready_for_acceptance"]
+        ),
         "installments": installments(db, node["contract_id"]),
         "lane_a": {
             "label": "Giao hồ sơ cho khách",
@@ -266,8 +449,7 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
             # Phải là người được phân công LO PHẦN HỒ SƠ. Kế toán cũng có tên
             # trong node này nhưng việc của họ là thu tiền — người mang hồ sơ
             # đến cho khách và lấy chữ ký là người khác.
-            "can_do": (not is_lane_a_done) and gate["is_open"] and (not is_node_closed)
-                      and is_assigned and (user_id in dossier_deliverer_user_ids),
+            "can_do": can_edit_checklist,
         },
         "lane_b": {
             "label": "Thu đủ tiền hợp đồng",
@@ -278,7 +460,7 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
             "actor": payment_collector_name,
         },
         # Node chỉ đóng được khi CẢ HAI làn xong.
-        "can_close": is_lane_a_done and debt["is_settled"] and not is_node_closed,
+        "can_close": False,
         "blocked_reason": _blocked_reason(gate, is_lane_a_done, debt),
     }
 
@@ -286,10 +468,12 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
 def _blocked_reason(gate: dict, is_lane_a_done: bool, debt: dict) -> str | None:
     if not gate["is_open"]:
         return gate["reason"]
+    if not debt.get("gate_open"):
+        return f"Còn thiếu {debt['remaining']:,.0f}₫ và chưa được Giám đốc duyệt ngoại lệ"
     if not is_lane_a_done:
-        return "Chưa giao hồ sơ cho khách"
+        return "Chưa được Giám đốc nghiệm thu việc giao hồ sơ"
     if not debt["is_settled"]:
-        return f"Còn thiếu {debt['remaining']:,.0f}₫ chưa thu"
+        return f"Đã nghiệm thu công việc nhưng còn thiếu {debt['remaining']:,.0f}₫"
     return None
 
 
@@ -332,14 +516,300 @@ def _split_handover_roles(db: Session, task_node_id: str) -> tuple[list, list]:
     return dossier_actors, finance_actors
 
 
+def create_debt_request(
+    db: Session,
+    task_node_id: str,
+    *,
+    actor_id: str,
+    reason: str,
+    promised_payment_date: date,
+    commitment_file: dict | None = None,
+) -> dict:
+    """Nhân viên xin mở khóa riêng cho một Node K06 đang còn công nợ."""
+    node = _node_or_404(db, task_node_id)
+    if not is_handover_node(node):
+        raise HTTPException(status_code=400, detail="Node này không phải bước bàn giao")
+    if node["status"] not in ("in_progress", "rework_required"):
+        raise HTTPException(status_code=409, detail="Node không ở trạng thái cho phép xin duyệt nợ")
+
+    dossier_actors, _ = _split_handover_roles(db, task_node_id)
+    if actor_id not in {r["user_id"] for r in dossier_actors if r["user_id"]}:
+        raise HTTPException(status_code=403, detail="Chỉ người phụ trách giao hồ sơ được xin duyệt nợ")
+
+    clean_reason = (reason or "").strip()
+    if len(clean_reason) < 5:
+        raise HTTPException(status_code=400, detail="Lý do xin duyệt nợ phải có ít nhất 5 ký tự")
+    if promised_payment_date < date.today():
+        raise HTTPException(status_code=400, detail="Ngày hẹn thanh toán không được ở trong quá khứ")
+
+    debt = debt_summary(
+        db, node["contract_id"], node["total_value"], task_node_id=task_node_id
+    )
+    if debt["is_settled"]:
+        raise HTTPException(status_code=409, detail="Hợp đồng đã thu đủ tiền, không cần xin duyệt nợ")
+    if debt["gate_open"]:
+        raise HTTPException(status_code=409, detail="Node này đã được mở khóa bàn giao")
+
+    existing = db.execute(
+        text("""
+            select id from public.handover_debt_requests
+            where task_node_id = :n and status = 'pending'
+            limit 1
+        """),
+        {"n": task_node_id},
+    ).scalar()
+    if existing:
+        raise HTTPException(status_code=409, detail="Yêu cầu xin duyệt nợ đang chờ Giám đốc xử lý")
+
+    request_id = db.execute(
+        text("""
+            insert into public.handover_debt_requests
+                (task_node_id, contract_id, requester_user_id,
+                 remaining_amount_snapshot, reason, promised_payment_date,
+                 commitment_file, status)
+            values
+                (:n, :c, :u, :remaining, :reason, :promised,
+                 cast(:file as jsonb), 'pending')
+            returning id
+        """),
+        {
+            "n": task_node_id,
+            "c": node["contract_id"],
+            "u": actor_id,
+            "remaining": debt["remaining"],
+            "reason": clean_reason,
+            "promised": promised_payment_date,
+            "file": json.dumps(commitment_file or {}, ensure_ascii=False),
+        },
+    ).scalar_one()
+    db.execute(
+        text("""
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values
+                (:n, 'HANDOVER_DEBT_REQUESTED', :s, :s, :u, cast(:p as jsonb))
+        """),
+        {
+            "n": task_node_id,
+            "s": node["status"],
+            "u": actor_id,
+            "p": json.dumps({
+                "request_id": request_id,
+                "remaining_amount_snapshot": debt["remaining"],
+                "promised_payment_date": promised_payment_date.isoformat(),
+            }, ensure_ascii=False),
+        },
+    )
+    db.execute(
+        text("""
+            insert into public.notifications (id, user_id, title, content, is_read, created_at)
+            select gen_random_uuid()::text, ur.user_id,
+                   'Yêu cầu duyệt nợ khi bàn giao',
+                   :content, false, now()
+            from public.user_roles ur
+            join public.roles r on r.id = ur.role_id
+            where r.role_name = 'admin'
+        """),
+        {"content": f"Hợp đồng {node['contract_id']} còn thiếu {debt['remaining']:,.0f}₫. Nhân viên xin bàn giao trước."},
+    )
+    return {
+        "id": request_id,
+        "task_node_id": task_node_id,
+        "status": "pending",
+        "remaining_amount_snapshot": debt["remaining"],
+        "reason": clean_reason,
+        "promised_payment_date": promised_payment_date,
+        "commitment_attachment": _public_debt_commitment(request_id, commitment_file),
+    }
+
+
+def review_debt_request(
+    db: Session,
+    request_id: str,
+    *,
+    decision: str,
+    review_note: str | None,
+    actor_id: str,
+) -> dict:
+    """Giám đốc duyệt/từ chối đúng yêu cầu của đúng Node, có audit bất biến."""
+    if decision not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="Quyết định phải là approved hoặc rejected")
+    row = db.execute(
+        text("""
+            select r.id, r.task_node_id, r.contract_id, r.requester_user_id,
+                   r.status, r.reason, r.promised_payment_date, n.status as node_status
+            from public.handover_debt_requests r
+            join public.task_nodes n on n.id = r.task_node_id
+            where r.id = :i
+            for update of r
+        """),
+        {"i": request_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu xin duyệt nợ")
+    if row["status"] != "pending":
+        raise HTTPException(status_code=409, detail="Yêu cầu này đã được xử lý")
+
+    note = (review_note or "").strip() or None
+    db.execute(
+        text("""
+            update public.handover_debt_requests
+            set status = :decision, reviewed_by = :actor, reviewed_at = now(),
+                review_note = :note, updated_at = now()
+            where id = :i
+        """),
+        {"decision": decision, "actor": actor_id, "note": note, "i": request_id},
+    )
+    event_type = "HANDOVER_DEBT_APPROVED" if decision == "approved" else "HANDOVER_DEBT_REJECTED"
+    db.execute(
+        text("""
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values (:n, :event, :s, :s, :actor, cast(:payload as jsonb))
+        """),
+        {
+            "n": row["task_node_id"],
+            "event": event_type,
+            "s": row["node_status"],
+            "actor": actor_id,
+            "payload": json.dumps({
+                "request_id": request_id,
+                "decision": decision,
+                "review_note": note,
+            }, ensure_ascii=False),
+        },
+    )
+    db.execute(
+        text("""
+            insert into public.notifications (id, user_id, title, content, is_read, created_at)
+            values (gen_random_uuid()::text, :u, :title, :content, false, now())
+        """),
+        {
+            "u": row["requester_user_id"],
+            "title": "Yêu cầu duyệt nợ đã được xử lý",
+            "content": (
+                f"Giám đốc đã duyệt cho bàn giao trước đối với hợp đồng {row['contract_id']}."
+                if decision == "approved"
+                else f"Giám đốc từ chối yêu cầu bàn giao trước đối với hợp đồng {row['contract_id']}."
+            ),
+        },
+    )
+    if decision == "approved":
+        # Nếu mọi checklist K06 đã được duyệt từ trước, quyết định ngoại lệ này
+        # chính là điều kiện cuối: đóng bước ngay, không bắt nhân viên nộp lại.
+        from src.contracts.workflow_runtime import auto_finalize_node_if_ready
+
+        auto_finalize_node_if_ready(
+            db,
+            task_node_id=row["task_node_id"],
+            actor_id=actor_id,
+        )
+    return {
+        "id": request_id,
+        "task_node_id": row["task_node_id"],
+        "contract_id": row["contract_id"],
+        "status": decision,
+        "review_note": note,
+    }
+
+
+def submit_handover_for_acceptance(
+    db: Session,
+    task_node_id: str,
+    *,
+    actor_id: str,
+    note: str | None,
+) -> dict:
+    """Nhân viên nộp toàn bộ K06 để Giám đốc nghiệm thu, không tự đóng Node."""
+    node = _node_or_404(db, task_node_id)
+    if not is_handover_node(node):
+        raise HTTPException(status_code=400, detail="Node này không phải bước bàn giao")
+    if node["status"] not in ("in_progress", "rework_required"):
+        raise HTTPException(status_code=409, detail="Node không ở trạng thái cho phép nộp nghiệm thu")
+
+    gate = submission_gate(db, node)
+    if not gate["is_open"]:
+        raise HTTPException(status_code=409, detail=gate["reason"])
+    dossier_actors, _ = _split_handover_roles(db, task_node_id)
+    if actor_id not in {r["user_id"] for r in dossier_actors if r["user_id"]}:
+        raise HTTPException(status_code=403, detail="Chỉ người phụ trách giao hồ sơ được nộp nghiệm thu")
+
+    debt = debt_summary(
+        db, node["contract_id"], node["total_value"], task_node_id=task_node_id
+    )
+    if debt["remaining"] > 0.009 and not debt["gate_open"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Hợp đồng còn nợ và Node chưa được Giám đốc duyệt bàn giao trước",
+        )
+    checklist_state = _checklist_submission_state(db, task_node_id)
+    if checklist_state["total"] == 0:
+        raise HTTPException(status_code=400, detail="Node bàn giao chưa có checklist nghiệm thu")
+    if not checklist_state["ready_for_acceptance"]:
+        raise HTTPException(status_code=400, detail="Phải nộp đủ toàn bộ checklist và minh chứng bắt buộc")
+
+    attempt_no = db.execute(
+        text("""
+            select coalesce(max(attempt_no), 0) + 1
+            from public.task_node_acceptances where task_node_id = :n
+        """),
+        {"n": task_node_id},
+    ).scalar_one()
+    acceptance_id = db.execute(
+        text("""
+            insert into public.task_node_acceptances
+                (task_node_id, attempt_no, status, submitted_by, submission_payload)
+            values (:n, :attempt, 'pending', :actor, cast(:payload as jsonb))
+            returning id
+        """),
+        {
+            "n": task_node_id,
+            "attempt": attempt_no,
+            "actor": actor_id,
+            "payload": json.dumps({"note": note, "handover": True}, ensure_ascii=False),
+        },
+    ).scalar_one()
+    exec_data = node.get("execution_data") or {}
+    exec_data["handover"] = {
+        **(exec_data.get("handover") or {}),
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "submitted_by": actor_id,
+        "remaining_at_submission": debt["remaining"],
+        "used_debt_override": bool(debt["remaining"] > 0.009),
+    }
+    db.execute(
+        text("""
+            update public.task_nodes
+            set status = 'submitted', submitted_at = now(), execution_data = cast(:data as jsonb),
+                updated_at = now()
+            where id = :n
+        """),
+        {"n": task_node_id, "data": json.dumps(exec_data, ensure_ascii=False)},
+    )
+    db.execute(
+        text("""
+            insert into public.task_node_events
+                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
+            values (:n, 'NODE_SUBMITTED', :from_status, 'submitted', :actor, cast(:payload as jsonb))
+        """),
+        {
+            "n": task_node_id,
+            "from_status": node["status"],
+            "actor": actor_id,
+            "payload": json.dumps({"acceptance_id": acceptance_id, "handover": True}, ensure_ascii=False),
+        },
+    )
+    return {
+        "task_node_id": task_node_id,
+        "acceptance_id": acceptance_id,
+        "status": "submitted",
+    }
+
+
 def mark_delivered(
     db: Session, task_node_id: str, *, acknowledged_debt: bool, note: str | None, actor_id: str
 ) -> dict:
-    """Xác nhận đã giao tài liệu cho khách.
-
-    Còn nợ vẫn giao được, nhưng nhân viên phải bấm xác nhận và việc đó được ghi
-    nhật ký — ai bấm, lúc nào, còn thiếu bao nhiêu.
-    """
+    """Endpoint tương thích cũ: chuyển thành nộp nghiệm thu, không tự đóng K06."""
     node = _node_or_404(db, task_node_id)
     if not is_handover_node(node):
         raise HTTPException(status_code=400, detail="Node này không phải bước bàn giao")
@@ -363,96 +833,33 @@ def mark_delivered(
             ),
         )
 
-    exec_data = node["execution_data"] or {}
-    if (exec_data.get("handover") or {}).get("delivered_at"):
-        raise HTTPException(status_code=409, detail="Đã ghi nhận bàn giao trước đó")
-
-    debt = debt_summary(db, node["contract_id"], node["total_value"])
-    if not debt["is_settled"] and not acknowledged_debt:
+    debt = debt_summary(
+        db, node["contract_id"], node["total_value"], task_node_id=task_node_id
+    )
+    # Không tin thuộc tính disabled hoặc acknowledged_debt do client gửi lên.
+    # Chỉ số dư thực tế hoặc phê duyệt ngoại lệ của Giám đốc mới mở được cổng.
+    if debt["remaining"] > 0.009 and not debt.get("gate_open", False):
         raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Còn thiếu {debt['remaining']:,.0f}₫. Phải xác nhận vẫn giao "
-                "tài liệu thì mới ghi nhận được."
-            ),
+            status_code=400,
+            detail=("Hồ sơ chưa đủ điều kiện bàn giao do còn nợ tiền và chưa có "
+                    "phê duyệt ngoại lệ của Giám đốc."),
         )
 
-    exec_data["handover"] = {
-        "delivered_at": datetime.now(timezone.utc).isoformat(),
-        "delivered_by": actor_id,
-        "acknowledged_debt": bool(acknowledged_debt and not debt["is_settled"]),
-        "remaining_at_delivery": debt["remaining"],
-        "note": note,
-    }
-    db.execute(
-        text("update public.task_nodes set execution_data = cast(:d as jsonb), "
-             "updated_at = now() where id = :i"),
-        {"d": json.dumps(exec_data, ensure_ascii=False), "i": task_node_id},
+    submission = submit_handover_for_acceptance(
+        db, task_node_id, actor_id=actor_id, note=note
     )
-
-    db.execute(
-        text("""
-            insert into public.task_node_events
-                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
-            values (:i, 'HANDOVER_DELIVERED', :s, :s, :a, cast(:p as jsonb))
-        """),
-        {"i": task_node_id, "s": node["status"], "a": actor_id,
-         "p": json.dumps({
-             "remaining_amount": debt["remaining"],
-             "is_delivery_acknowledged": bool(acknowledged_debt and not debt["is_settled"]),
-             "note": note,
-         }, ensure_ascii=False)},
-    )
-
-    # Xong làn A là mở khoá bước Lưu trữ ngay — việc nội bộ đó không liên quan
-    # gì tới tiền, không có lý do gì bắt nó chờ khách trả nợ.
-    unlocked = _unlock_next_node(db, node, actor_id)
-
     return {
-        "task_node_id": task_node_id,
-        "delivered": True,
-        "acknowledged_debt": exec_data["handover"]["acknowledged_debt"],
+        **submission,
+        "delivered": False,
+        "acknowledged_debt": bool(debt["remaining"] > 0.009),
         "remaining": debt["remaining"],
-        "unlocked_node_id": unlocked,
+        "node_finalized": False,
     }
 
 
-def _unlock_next_node(db: Session, node: dict, actor_id: str) -> str | None:
-    node_def = node.get("node_def") or {}
-    transitions = node_def.get("transitions") or {}
-    next_key = transitions.get("COMPLETED") or (
-        next(iter(transitions.values())) if len(transitions) == 1 else None
-    )
-    if not next_key:
-        return None
-
-    nxt = db.execute(
-        text("""
-            select id, status from public.task_nodes
-            where workflow_instance_id = :w and node_key = :k
-            for update
-        """),
-        {"w": node["workflow_instance_id"], "k": next_key},
-    ).mappings().first()
-    if not nxt or nxt["status"] != "pending":
-        return None
-
-    db.execute(
-        text("update public.task_nodes set status = 'ready', updated_at = now() where id = :i"),
-        {"i": nxt["id"]},
-    )
-    db.execute(
-        text("""
-            insert into public.task_node_events
-                (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
-            values (:i, 'NODE_UNLOCKED', 'pending', 'ready', :a, cast(:p as jsonb))
-        """),
-        {"i": nxt["id"], "a": actor_id,
-         "p": json.dumps({"unlocked_by_task_node_id": node["id"],
-                          "reason": "Handover complete"}, ensure_ascii=False)},
-    )
-    return nxt["id"]
-
+# ══════════════════════════════════════════════════════════════════
+# Làn B — ghi nhận đợt thu tiền
+# ══════════════════════════════════════════════════════════════════
 
 def record_payment(
     db: Session,
@@ -685,7 +1092,7 @@ tai_lieu_ban_giao = get_handover_deliverables
 # ══════════════════════════════════════════════════════════════════
 
 def outstanding_handovers(db: Session) -> list[dict]:
-    """Mọi hợp đồng còn nợ — danh sách việc đi đòi tiền của kế toán.
+    """Công nợ đang thu và lịch sử K06 đã được duyệt giao trước.
 
     Trước đây danh sách này bám theo BƯỚC bàn giao: chỉ hiện hồ sơ đang đứng đúng
     ở bước đó. Hợp đồng vừa ký chưa chạy tới bước bàn giao, hợp đồng đã đóng bước
@@ -693,14 +1100,23 @@ def outstanding_handovers(db: Session) -> list[dict]:
     giao nào — cả ba đều biến mất khỏi màn hình, trong khi tiền vẫn còn nợ. Kế
     toán mở đúng màn thu công nợ của mình mà không thấy khoản phải đòi.
 
-    Nay đi từ HỢP ĐỒNG: còn nợ thì còn nằm trong danh sách. Bước bàn giao (nếu
-    có) chỉ là thông tin kèm theo — đã giao hàng chưa, ai là người giao, hồ sơ
-    nộp cơ quan đã đóng chưa.
+    Nay đi từ HỢP ĐỒNG: còn nợ thì còn nằm trong danh sách. Nếu K06 từng được
+    Giám đốc duyệt giao trước khi thu đủ, card vẫn được giữ lại sau khi tất toán
+    để đổi từ cảnh báo đỏ sang xác nhận xanh thay vì biến mất không dấu vết.
     """
     rows = db.execute(
         text(f"""
             select c.id as contract_id,
                    cu.full_name as customer_name,
+                   c.completion_override,
+                   c.completion_override_reason,
+                   c.completion_override_at,
+                   c.completion_override_by,
+                   debt_approval.id as debt_request_id,
+                   debt_approval.reason as debt_request_reason,
+                   debt_approval.promised_payment_date,
+                   debt_approval.reviewed_at as debt_request_reviewed_at,
+                   debt_approval.reviewed_by as debt_request_reviewed_by,
                    coalesce(c.total_value, 0) as total_value,
                    coalesce(paid_tx.paid_amount, 0) as paid,
                    coalesce(pending_tx.pending_amount, 0) as pending,
@@ -727,6 +1143,17 @@ def outstanding_handovers(db: Session) -> list[dict]:
                   and t.status in ('Chờ duyệt', 'PENDING', 'pending')
                 group by t.contract_id
             ) pending_tx on pending_tx.contract_id = c.id
+            -- Phê duyệt giao trước là lịch sử nghiệp vụ của K06, KHÔNG phải
+            -- trạng thái đã thu đủ. Giữ record này để kế toán thấy cảnh báo đỏ
+            -- đến khi số dư thật bằng 0, sau đó card chuyển xanh.
+            left join lateral (
+                select r.id, r.reason, r.promised_payment_date,
+                       r.reviewed_at, r.reviewed_by
+                from public.handover_debt_requests r
+                where r.contract_id = c.id and r.status = 'approved'
+                order by r.reviewed_at desc nulls last, r.created_at desc
+                limit 1
+            ) debt_approval on true
             -- Bước bàn giao của hợp đồng, nếu quy trình có khai. Không có cũng
             -- không sao — hợp đồng vẫn hiện, vì tiền vẫn nợ.
             left join lateral (
@@ -753,7 +1180,11 @@ def outstanding_handovers(db: Session) -> list[dict]:
                 limit 1
             ) bg on true
             where coalesce(c.status, '') not in ('Đã huỷ', 'Đã hủy', 'cancelled')
-              and coalesce(c.total_value, 0) - coalesce(paid_tx.paid_amount, 0) > 0.009
+              and (
+                coalesce(c.total_value, 0) - coalesce(paid_tx.paid_amount, 0) > 0.009
+                or debt_approval.id is not null
+                or coalesce(c.completion_override, false)
+              )
             order by bg.delivered_at asc nulls last, c.created_at asc
         """)
     ).mappings().all()
@@ -833,6 +1264,10 @@ def outstanding_handovers(db: Session) -> list[dict]:
     handover_results = []
     for r in rows:
         remaining_amount = max(0.0, float(r["total_value"] or 0) - float(r["paid"] or 0))
+        is_financially_settled = remaining_amount <= 0.009
+        has_handover_debt_approval = bool(
+            r.get("debt_request_id") or r.get("completion_override")
+        )
         is_gate_open = r["dossier_status"] is None or r["dossier_status"] == "CLOSED"
         deliverer_name = node_assignee_map.get(r["task_node_id"])
         handover_results.append({
@@ -841,6 +1276,19 @@ def outstanding_handovers(db: Session) -> list[dict]:
             "paid": float(r["paid"] or 0),
             "pending": float(r["pending"] or 0),
             "remaining": remaining_amount,
+            "is_financially_settled": is_financially_settled,
+            "has_handover_debt_approval": has_handover_debt_approval,
+            "financial_status": (
+                "settled_after_handover_override"
+                if is_financially_settled and has_handover_debt_approval
+                else "settled" if is_financially_settled
+                else "outstanding_after_handover_override"
+                if has_handover_debt_approval
+                else "outstanding"
+            ),
+            "handover_debt_reason": (
+                r.get("debt_request_reason") or r.get("completion_override_reason")
+            ),
             "deliverer_name": deliverer_name,
             "is_delivered": bool(r.get("da_ban_giao") or r.get("delivered_at")),
             "can_deliver": False,

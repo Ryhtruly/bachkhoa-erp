@@ -13,3 +13,5 @@ export { Dropdown } from './Dropdown';
 export { Select } from './Select';
 export { SensitiveActionModal } from './SensitiveActionModal';
 export { default as ConfirmationModal } from './ConfirmationModal';
+export { default as CustomSelect } from './CustomSelect';
+export { default as FilePreviewModal } from './FilePreviewModal';

@@ -33,3 +33,7 @@ dev/backend/static/generated_contracts/
 .worktrees/
 CLAUDE.md
 AGENTS.md
+
+# Ảnh chụp và log do công cụ trình duyệt sinh ra khi kiểm chứng UI.
+# Không phải mã nguồn, và đầy lên rất nhanh (102 file chỉ sau vài lượt).
+.playwright-mcp/

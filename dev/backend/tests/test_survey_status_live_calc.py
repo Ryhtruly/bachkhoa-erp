@@ -62,7 +62,7 @@ def test_tc02_accepted_node_with_legal_returns_handed_over(db_session):
 
 
 def test_tc02b_accepted_node_without_legal_returns_in_progress(db_session):
-    """Không kèm pháp lý thì vẫn còn node Bàn giao K08 phải làm — chưa xong."""
+    """Không kèm pháp lý thì vẫn còn node Bàn giao phải làm — chưa xong."""
     assert compute_test_survey_status(db_session, node_status="accepted", has_legal=False) == "Đang thực hiện"
 
 

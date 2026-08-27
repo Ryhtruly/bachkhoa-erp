@@ -113,7 +113,7 @@ def test_overpayment_caps_remaining_at_zero():
 
 
 # ══════════════════════════════════════════════════════════════════
-# Phần 3 — Cổng công nợ ở node bàn giao (K08)
+# Phần 3 — Cổng công nợ ở node bàn giao (K06)
 # ══════════════════════════════════════════════════════════════════
 
 def is_receivable_fully_collected(contract_value: float, approved_installments: list[float]) -> bool:

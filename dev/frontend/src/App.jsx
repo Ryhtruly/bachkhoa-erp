@@ -22,6 +22,8 @@ const HumanResources = lazy(() => import('./pages/HumanResources'));
 const ContractTimeline = lazy(() => import('./pages/ContractTimeline'));
 const EmployeePortalDashboard = lazy(() => import('./features/employee-portal/EmployeePortalDashboard'));
 const MyPayroll = lazy(() => import('./features/employee-portal/MyPayroll'));
+const ApprovalQueue = lazy(() => import('./features/approvals/ApprovalQueue'));
+const DocumentTemplateSettings = lazy(() => import('./features/document-register/DocumentTemplateSettings'));
 
 const SIDEBAR_COLLAPSED_KEY = 'bachkhoa_sidebar_collapsed';
 const NAVIGATION_TARGET_PERMISSIONS = {
@@ -233,6 +235,14 @@ function App() {
     };
   }, [sidebarOverlayOpen]);
 
+  useEffect(() => {
+    const navigateFromFeature = (event) => {
+      if (event.detail?.tab === 'cashflow') setActiveTab('cashflow');
+    };
+    window.addEventListener('app:navigate', navigateFromFeature);
+    return () => window.removeEventListener('app:navigate', navigateFromFeature);
+  }, []);
+
   if (window.location.pathname === '/set-password') {
     return (
       <SetPassword
@@ -282,6 +292,8 @@ function App() {
     { key: 'settings', Component: Settings, permission: 'settings', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'contracts', Component: Contracts, permission: 'contract', props: { user: profile, isDirector } },
     { key: 'timeline', Component: ContractTimeline, directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'approvals', Component: ApprovalQueue, directorOnly: true, props: {} },
+    { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
     { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'debt-collection', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
@@ -366,7 +378,7 @@ function App() {
             onToggleCollapsed={toggleSidebarCollapsed}
             onRequestClose={() => setSidebarOverlayOpen(false)}
           />
-          <main className={`main${effectiveTab === 'contracts' ? ' main--contract' : ''}${effectiveTab === 'timeline' ? ' main--timeline' : ''}${effectiveTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers'].includes(effectiveTab) ? ' main--list' : ''}`}>
+<main className={`main${effectiveTab === 'contracts' ? ' main--contract' : ''}${effectiveTab === 'timeline' ? ' main--timeline' : ''}${effectiveTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers', 'doc-templates'].includes(effectiveTab) ? ' main--list' : ''}${effectiveTab === 'employee-dashboard' ? ' main--employee' : ''}`}>
             {ActiveTabComponent && (
               <Suspense fallback={<div className="app-tab-loader" role="status">Đang tải phân hệ...</div>}>
                 <MemoizedActiveTabScreen

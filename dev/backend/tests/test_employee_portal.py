@@ -10,8 +10,6 @@ from src.db.models import (
     LeaveRecord,
     User,
 )
-
-
 def test_employee_portal_returns_live_profile_and_enforces_access(client, db, admin_headers):
     if db.bind.dialect.name != "postgresql":
         pytest.skip("Employee portal live task query requires PostgreSQL")

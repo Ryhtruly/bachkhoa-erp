@@ -14,7 +14,7 @@ from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_ca
 
 router = APIRouter(prefix="/api/payroll", tags=["06. Payroll Ledger"])
 
-# (Đã xoá DEFAULT_NODE_RATES — bảng giá ghi cứng theo mã node K01–K09. Đó là
+# (Đã xoá DEFAULT_NODE_RATES — bảng giá ghi cứng theo mã node K01–K07. Đó là
 #  nguồn tiền thứ ba song song với work_item_rates, tự đẻ tiền cho node không có
 #  khoán checklist, và sai hoàn toàn với quy trình tự do không dùng mã K0x.
 #  Tiền khoán nay chỉ có một nguồn: checklist × work_item_rates.)
@@ -438,6 +438,11 @@ def close_employee_period(
             where a.employee_id = :emp_id and n.status in ('accepted', 'completed')
         """), {"emp_id": payload.employee_id}).mappings().all()
 
+# Chốt lương chỉ DUYỆT các khoán đã sinh từ checklist khi nghiệm thu.
+        # KHÔNG tự đẻ tiền: node đã nghiệm thu nhưng không gắn công việc khoán nào
+        # thì không có khoán — đúng quy tắc "không checklist thì không sinh tiền".
+        # (Trước đây chỗ này tạo entitlement bằng bảng giá ghi cứng DEFAULT_NODE_RATES
+        #  theo mã K01–K07; quy trình tự do không có mã đó nên luôn trả mặc định sai.)
         approved_count = 0
         skipped_count = 0
         for node in completed_nodes:

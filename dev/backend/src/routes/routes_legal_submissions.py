@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/legal-submissions", tags=["Legal Submissions"])
 GOV_STATUSES = ["Đang chi nhánh", "Hoàn thành", "Rút hồ sơ", "Trả công văn"]
 
 _LIST_BASE_SQL = f"""
-    select s.id, s.task_node_id, s.service_line_id, s.contract_id, s.dossier_name,
+    select s.id, s.task_node_id, s.service_line_id, s.contract_id, s.dossier_id, s.dossier_name,
            s.case_description, s.assigned_employee_id, s.contact_phone, s.receipt_code,
            s.receipt_photo_url, s.dossier_file_url, s.linked_survey_folder_url,
            s.payment_status, s.legacy_gov_status as gov_status,

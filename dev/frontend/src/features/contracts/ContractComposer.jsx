@@ -1,9 +1,75 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, FileUp, X } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import { laLoiChuaKichHoat, loiHienThi } from '../../lib/schemaV2'
 import DatePicker from '../../components/ui/DatePicker'
+import FilePreviewModal from '../../components/ui/FilePreviewModal'
 import './contractComposer.css'
+
+function CustomMultiSelect({ id, values = [], onToggle, options = [], placeholder, disabled }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const daChon = values.length
+  const nhan = daChon === 0
+    ? 'Không thu giấy nào từ khách'
+    : daChon === options.length
+      ? `Đủ bộ chuẩn · ${daChon} loại`
+      : `${daChon}/${options.length} loại giấy`
+
+  return (
+    <div className="custom-select-container" ref={ref}>
+      <button
+        id={id}
+        type="button"
+        className={`custom-select-trigger in ${open ? 'is-open' : ''}`}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span style={{ color: daChon ? 'var(--ink)' : 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {placeholder && !daChon ? placeholder : nhan}
+        </span>
+        <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="custom-select-menu is-multi" role="listbox" aria-multiselectable="true">
+          {options.map((opt) => {
+            const chon = values.includes(opt.id)
+            return (
+              <button
+                type="button"
+                key={opt.id}
+                role="option"
+                aria-selected={chon}
+                className={`custom-select-option ${chon ? 'is-selected' : ''}`}
+                onClick={() => onToggle(opt.id)}
+              >
+                {chon ? <Check size={14} className="check-icon" /> : <span className="check-placeholder" />}
+                <span>
+                  {opt.name}
+                  {opt.is_required && <em className="ctr-checklist__req"> · bắt buộc</em>}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 function CustomSelect({ id, value, onChange, options = [], placeholder, disabled, className, 'aria-label': ariaLabel }) {
   const [open, setOpen] = useState(false)
@@ -208,6 +274,10 @@ export default function ContractComposer({
   const [serviceCatalog, setServiceCatalog] = useState([])
   const [selectedPackageKey, setSelectedPackageKey] = useState('')
   const [selectedTaskTypeId, setSelectedTaskTypeId] = useState('')
+  const [loaiGiay, setLoaiGiay] = useState([])
+  const [loaiGiayChon, setLoaiGiayChon] = useState([])
+  const [cheDoGiay, setCheDoGiay] = useState('')
+  const [khoaV2, setKhoaV2] = useState('')
   // Priority (Director only)
   const [priority, setPriority] = useState('NORMAL')
   const [priorityReason, setPriorityReason] = useState('')
@@ -226,9 +296,51 @@ export default function ContractComposer({
   const [provinces, setProvinces] = useState([])
   const [wards, setWards] = useState([])
   const [missingFields, setMissingFields] = useState([])
+  const [sourceFiles, setSourceFiles] = useState([])
+  const [sourceFilesOpen, setSourceFilesOpen] = useState(true)
+  const [sourcePreview, setSourcePreview] = useState(null)
+  const [createdContractId, setCreatedContractId] = useState('')
   const bodyRef = useRef(null)
+  const sourcePreviewUrlRef = useRef('')
+
+  const closeSourcePreview = useCallback(() => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+    sourcePreviewUrlRef.current = ''
+    setSourcePreview(null)
+  }, [])
+
+  const previewSourceFile = useCallback((file) => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    sourcePreviewUrlRef.current = url
+    setSourcePreview({ fileName: file.name, mimeType: file.type, url })
+  }, [])
+
+  useEffect(() => () => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+  }, [])
 
   // Reset form when reopened
+  useEffect(() => {
+    if (!open) return undefined
+    let bo = false
+    apiFetch('/api/document-register/checklist-options')
+      .then((res) => {
+        if (bo) return
+        const ds = res?.data || []
+        setLoaiGiay(ds)
+        setLoaiGiayChon(ds.map(x => x.id))
+      })
+      .catch((loi) => {
+        if (bo) return
+        setLoaiGiay([]); setLoaiGiayChon([])
+        // Schema V2 chưa apply: khoá phần chọn giấy và nói bằng tiếng Việt.
+        // Phần còn lại của form vẫn dùng bình thường.
+        setKhoaV2(laLoiChuaKichHoat(loi) ? loiHienThi(loi) : '')
+      })
+    return () => { bo = true }
+  }, [open])
+
   useEffect(() => {
     if (!open) return
     setForm({
@@ -249,7 +361,11 @@ export default function ContractComposer({
       email: '', zalo_phone: '', representative_name: '', representative_role: '' })
     setNameSearchResults([])
     setTaxSearchResults([])
-  }, [open])
+    setSourceFiles([])
+    setSourceFilesOpen(true)
+    closeSourcePreview()
+    setCreatedContractId('')
+  }, [open, closeSourcePreview])
 
   // Load service package catalog
   useEffect(() => {
@@ -320,7 +436,8 @@ export default function ContractComposer({
     ['contract_value', form.contract_value],
     ['date_signed', form.date_signed],
     ['due_date', form.due_date],
-  ]), [form, geoBoundary, selectedTaskTypeId])
+    ...(loaiGiay.length && !khoaV2 ? [['cheDoGiay', cheDoGiay]] : []),
+  ]), [form, geoBoundary, selectedTaskTypeId, loaiGiay.length, khoaV2, cheDoGiay])
 
   const missingRequiredKeys = requiredFields.filter(([, v]) => !String(v || '').trim()).map(([k]) => k)
   const numericValue = parseNumericString(form.contract_value)
@@ -455,7 +572,7 @@ export default function ContractComposer({
     }
   }
 
-  const handleSubmit = useCallback((e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault()
     if (saving || templatesLoading) return
     if (missingRequiredKeys.length) {
@@ -483,13 +600,19 @@ export default function ContractComposer({
       return
     }
     const fullAddress = [form.detail.trim(), geoBoundary.wardName, geoBoundary.provinceName].filter(Boolean).join(', ')
-    onSubmit?.({
+    const result = await onSubmit?.({
       contract_id: code,
       customer_name: form.customer_name.trim(),
       phone: form.phone.trim(),
       service_type: form.service_type,
       contract_template_id: form.contract_template_id,
       task_type_id: selectedTaskTypeId,
+      ...(cheDoGiay ? {
+        document_selection_mode:
+          cheDoGiay === 'MAC_DINH' ? 'DEFAULT'
+            : cheDoGiay === 'THU_CONG' ? 'CUSTOM' : 'NONE',
+        ...(cheDoGiay === 'THU_CONG' ? { document_template_ids: loaiGiayChon } : {}),
+      } : {}),
       priority: isDirector ? priority : 'NORMAL',
       priority_reason: (isDirector && priority !== 'NORMAL') ? priorityReason.trim() : null,
       customer_type: customerType,
@@ -507,8 +630,12 @@ export default function ContractComposer({
       address: fullAddress,
       date_signed: form.date_signed,
       due_date: form.due_date,
+      source_documents: sourceFiles,
+      existing_contract_id: createdContractId || null,
     })
-  }, [saving, templatesLoading, missingRequiredKeys, form, geoBoundary, code, numericValue, selectedTaskTypeId, priority, priorityReason, isDirector, customerType, existingCustomerId, identityInfo, onSubmit])
+    if (result?.contract_id) setCreatedContractId(result.contract_id)
+    if (Array.isArray(result?.failed_files)) setSourceFiles(result.failed_files)
+  }, [saving, templatesLoading, missingRequiredKeys, form, geoBoundary, code, numericValue, selectedTaskTypeId, loaiGiay, loaiGiayChon, cheDoGiay, priority, priorityReason, isDirector, customerType, existingCustomerId, identityInfo, sourceFiles, createdContractId, onSubmit])
 
   if (!open) return null
 
@@ -651,6 +778,82 @@ export default function ContractComposer({
           </section>
 
           <section className="sec">
+            <div className="sec-hd"><h2>Hồ sơ khách gửi</h2><i /></div>
+            <label className="ctr-source-upload" htmlFor="contract-source-documents">
+              <FileUp size={19} />
+              <span>
+                <strong>Tài liệu khách gửi</strong>
+                <small>Chọn ảnh, PDF hoặc tệp Office nhận từ Zalo; K01 sẽ phân loại sau.</small>
+              </span>
+              <input
+                id="contract-source-documents"
+                aria-label="Tài liệu khách gửi"
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx"
+                onChange={event => {
+                  const picked = Array.from(event.target.files || [])
+                  setSourceFiles(current => {
+                    const known = new Set(current.map(file => `${file.name}:${file.size}:${file.lastModified}`))
+                    return [...current, ...picked.filter(file => !known.has(`${file.name}:${file.size}:${file.lastModified}`))]
+                  })
+                  setSourceFilesOpen(true)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+            {sourceFiles.length > 0 && (
+              <div className="ctr-source-files">
+                <button
+                  type="button"
+                  className="ctr-source-files__toggle"
+                  aria-label={`${sourceFiles.length} tài liệu đã chọn`}
+                  aria-expanded={sourceFilesOpen}
+                  aria-controls="contract-source-file-list"
+                  onClick={() => setSourceFilesOpen(current => !current)}
+                >
+                  <span>
+                    <strong>{sourceFiles.length} tài liệu đã chọn</strong>
+                    <small>{sourceFiles.length} tệp chờ tải lên sau khi lưu hợp đồng</small>
+                  </span>
+                  <ChevronDown className={sourceFilesOpen ? 'is-open' : ''} size={17} aria-hidden="true" />
+                </button>
+                {sourceFilesOpen && (
+                  <ul id="contract-source-file-list" className="ctr-source-files__list">
+                    {sourceFiles.map((file, index) => (
+                      <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                        <FileUp size={16} aria-hidden="true" />
+                        <span className="ctr-source-files__meta">
+                          <button
+                            type="button"
+                            className="ctr-source-files__preview"
+                            title={file.name}
+                            aria-label={`Xem ${file.name}`}
+                            onClick={() => previewSourceFile(file)}
+                          >{file.name}</button>
+                          <small>
+                            {file.size < 1024 * 1024
+                              ? `${Math.max(1, Math.ceil(file.size / 1024))} KB`
+                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+                          </small>
+                        </span>
+                        <button
+                          type="button"
+                          className="ctr-source-files__remove"
+                          aria-label={`Bỏ ${file.name}`}
+                          onClick={() => setSourceFiles(current => current.filter((_, position) => position !== index))}
+                        >
+                          <X size={15} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="sec">
             <div className="sec-hd"><h2>Địa chỉ bất động sản</h2><i /></div>
             <div className="row c3">
               <div>
@@ -736,6 +939,68 @@ export default function ContractComposer({
                 />
               </div>
             </div>
+            {khoaV2 && (
+              <div className="row c1">
+                <p className="ctr-v2-locked" role="status">{khoaV2}</p>
+              </div>
+            )}
+            {!khoaV2 && loaiGiay.length > 0 && (
+              <div className="row c1">
+                <div>
+                  <label>
+                    Giấy tờ cần thu của khách<u>*</u>
+                    <span className="ctr-badge-v2" title="Sổ giấy tờ chốt riêng cho Hạng mục này">
+                      Sổ theo Hạng mục
+                    </span>
+                  </label>
+
+                  {/* Ba chế độ tách bạch. Không có lựa chọn nào được tick sẵn:
+                      người soạn phải nói rõ ý định, để "quên chọn" không bao giờ
+                      bị hiểu thành "dùng bộ mặc định". */}
+                  <div className="ctr-che-do" role="radiogroup" aria-label="Chế độ chọn giấy tờ">
+                    {[
+                      ['MAC_DINH', 'Dùng bộ mặc định', `${loaiGiay.filter(x => x.is_default !== false).length} loại theo gói và hạng mục`],
+                      ['THU_CONG', 'Chọn thủ công', 'Tự tick từng loại giấy'],
+                      ['KHONG_CAN', 'Không yêu cầu giấy tờ', 'Hạng mục này không thu giấy nào của khách'],
+                    ].map(([ma, nhan, mo_ta]) => (
+                      <button
+                        type="button"
+                        key={ma}
+                        role="radio"
+                        aria-checked={cheDoGiay === ma}
+                        className={`ctr-che-do__o${cheDoGiay === ma ? ' is-active' : ''}`}
+                        onClick={() => {
+                          setCheDoGiay(ma)
+                          if (ma === 'THU_CONG' && loaiGiayChon.length === 0) {
+                            setLoaiGiayChon(loaiGiay.filter(x => x.is_default !== false).map(x => x.id))
+                          }
+                        }}
+                      >
+                        <strong>{nhan}</strong>
+                        <span>{mo_ta}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {cheDoGiay === 'THU_CONG' && (
+                    <CustomMultiSelect
+                      id="dv-giay"
+                      options={loaiGiay}
+                      values={loaiGiayChon}
+                      onToggle={(id) => setLoaiGiayChon(cur => (
+                        cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
+                      ))}
+                    />
+                  )}
+
+                  <p className="ctr-checklist__hint">
+                    {cheDoGiay === 'KHONG_CAN'
+                      ? 'Hạng mục ra đời với sổ trống. Vẫn thêm được từng loại giấy sau.'
+                      : 'Bỏ loại giấy mà hạng mục này không cần — K01 sẽ không đòi nữa. Sau khi lập hợp đồng vẫn thêm/bỏ được.'}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="row c2">
               <div>
                 <label htmlFor="dv-sale">Sale / nguồn<u>*</u></label>
@@ -866,11 +1131,18 @@ export default function ContractComposer({
           </div>
           <button className="btn" type="button" disabled={saving} onClick={() => onClose?.()}>Huỷ</button>
           <button className="btn pri" type="submit" disabled={saving || templatesLoading}>
-            {saving ? 'Đang lưu…' : templatesLoading ? 'Đang tải mẫu…' : 'Lưu hợp đồng'}
+            {saving ? 'Đang lưu…' : templatesLoading ? 'Đang tải mẫu…' : createdContractId ? 'Tải lại tệp lỗi' : 'Lưu hợp đồng'}
           </button>
         </footer>
 
       </form>
+      <FilePreviewModal
+        open={Boolean(sourcePreview)}
+        fileName={sourcePreview?.fileName}
+        mimeType={sourcePreview?.mimeType}
+        url={sourcePreview?.url}
+        onClose={closeSourcePreview}
+      />
     </div>,
     document.body,
   )

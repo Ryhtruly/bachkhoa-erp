@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import {
   AlertTriangle, CheckCircle2, Clock3, Lock, PackageCheck, Plus,
   RefreshCw, Trash2, ArrowRightLeft, AlertCircle, ReceiptText
@@ -9,14 +9,14 @@ import ReceiptFileInput from '../components/finance/ReceiptFileInput'
 import ReceiptLinks from '../components/finance/ReceiptLinks'
 import { buildPaymentFormData } from '../components/finance/paymentReceipts'
 import { useToast } from '../contexts/ToastContext'
-import { apiFetch } from '../lib/api'
+import { apiFetch, getAccessToken } from '../lib/api'
 import './debtCollection.css'
 
 /**
  * Thu Công Nợ — màn hình làm việc của Kế toán & Giám đốc.
  *
- * Danh sách này tự sinh từ những hồ sơ đã giao cho khách mà chưa thu đủ tiền.
- * Thu đủ thì dòng đó tự biến mất. Không ai phải đánh dấu gì.
+ * Danh sách này tự sinh từ dữ liệu thu tiền thật. Hồ sơ K06 từng được duyệt
+ * giao trước giữ lại một card lịch sử: đỏ khi còn nợ, xanh khi kế toán đã thu đủ.
  */
 
 const formatMoney = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
@@ -39,8 +39,9 @@ const getDaysDiff = (v) => {
   return d > 0 ? d : 0
 }
 
-export default function DebtCollection({ user = null, isDirector = false }) {
-  const { addToast } = useToast()
+export default function DebtCollection({ user = null, isDirector = false, initialSearch = '' }) {
+  const toast = useToast()
+  const addToast = toast?.addToast || (() => {})
   const [currentUser, setCurrentUser] = useState(user || null)
   const [rows, setRows] = useState([])
   const [meta, setMeta] = useState({ total: 0, total_remaining: 0 })
@@ -48,6 +49,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [error, setError] = useState('')
   const [recordingRow, setRecordingRow] = useState(null)
   const [writingOffRow, setWritingOffRow] = useState(null)
+  const realtimeRefreshRef = useRef(null)
 
   useEffect(() => {
     if (!user) {
@@ -75,7 +77,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [form, setForm] = useState({ amount: '', payment_method: 'CASH', note: '' })
   const [receiptFiles, setReceiptFiles] = useState([])
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialSearch)
   const [filterDelivery, setFilterDelivery] = useState('All')
 
   const load = useCallback(async (showSpinner = true) => {
@@ -97,6 +99,60 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     const id = setInterval(() => load(false), 30000)
     return () => clearInterval(id)
   }, [load])
+
+  useEffect(() => {
+    let disposed = false
+    let abortController = null
+
+    const refreshFromRealtime = () => {
+      window.clearTimeout(realtimeRefreshRef.current)
+      realtimeRefreshRef.current = window.setTimeout(() => load(false), 150)
+    }
+    const subscribe = async () => {
+      while (!disposed) {
+        abortController = new AbortController()
+        try {
+          const token = getAccessToken?.()
+          if (!token) return
+          const response = await fetch('/api/contracts/timeline/events', {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+            cache: 'no-store',
+            signal: abortController.signal,
+          })
+          if (response.status === 401 || response.status === 403) return
+          if (!response.ok || !response.body) throw new Error('Mất kết nối cập nhật công nợ')
+
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          while (!disposed) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() || ''
+            if (blocks.some((block) => block.includes('event: timeline-change'))) {
+              refreshFromRealtime()
+            }
+          }
+        } catch (streamError) {
+          if (disposed || streamError?.name === 'AbortError') return
+        }
+        if (!disposed) await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      }
+    }
+
+    subscribe()
+    return () => {
+      disposed = true
+      window.clearTimeout(realtimeRefreshRef.current)
+      abortController?.abort()
+    }
+  }, [load])
+
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch)
+  }, [initialSearch])
 
   const filteredRows = useMemo(() => {
     return rows.filter(r => {
@@ -233,7 +289,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         <div>
           <span className="debt__eyebrow">Kế toán & Giám đốc</span>
           <h2>Thu công nợ & Xử lý nợ tồn</h2>
-          <p>Mọi hợp đồng chưa thu đủ tiền, kể cả khi hồ sơ chưa tới bước bàn giao. Ghi nhận thu tiền, hoặc Giám đốc duyệt xóa nợ / chuyển nợ.</p>
+          <p>Đỏ là hồ sơ đã được giao trước nhưng còn nợ; xanh chỉ xuất hiện sau khi phiếu thu được duyệt và số dư thực tế bằng 0.</p>
         </div>
         <div className="debt__head-actions">
           <span className="debt__sync-note">Tự cập nhật mỗi 30 giây</span>
@@ -280,6 +336,12 @@ export default function DebtCollection({ user = null, isDirector = false }) {
             <p>Cần theo dõi tiến độ hồ sơ</p>
           </div>
         </div>
+        {Number(meta.settled_after_override || 0) > 0 && (
+          <div className="debt__total debt__total--settled">
+            <span>Đã tất toán sau ngoại lệ</span>
+            <strong>{meta.settled_after_override}</strong>
+          </div>
+        )}
       </div>
 
       <div className="debt__filter-wrap">
@@ -330,8 +392,20 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         <ul className="debt__list">
           {filteredRows.map((r) => {
             const daysOverdue = getDaysDiff(r.delivered_at)
+            const hasDebtApproval = Boolean(
+              r.has_handover_debt_approval || r.completion_override
+            )
+            const isSettledAfterOverride = Boolean(
+              hasDebtApproval && (r.is_financially_settled || Number(r.remaining || 0) <= 0.009)
+            )
+            const isOverrideAlert = Boolean(
+              hasDebtApproval && !isSettledAfterOverride && Number(r.remaining || 0) > 0.009
+            )
             return (
-              <li key={r.contract_id} className="debt__card">
+              <li
+                key={r.contract_id}
+                className={`debt__card${isOverrideAlert ? ' is-override-alert' : ''}${isSettledAfterOverride ? ' is-settled-after-override' : ''}`}
+              >
                 <div className="debt__card-layout">
                   {/* Cột trái: Thông tin hợp đồng, công nợ, cảnh báo & thao tác */}
                   <div className="debt__card-left">
@@ -341,7 +415,13 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                         <strong className="debt__customer">{r.customer_name || 'Chưa có tên khách'}</strong>
                         <span className="debt__service">{r.service_type}</span>
                       </div>
-                      {r.is_delivered ? (
+                      {isSettledAfterOverride ? (
+                        <span className="debt__age is-settled-badge">Đã thu đủ tiền hợp đồng</span>
+                      ) : isOverrideAlert ? (
+                        <span className="debt__age is-override-badge">
+                          {r.is_delivered ? 'Đã giao sổ (Sếp duyệt nợ)' : 'Đã duyệt giao khi còn nợ'}
+                        </span>
+                      ) : r.is_delivered ? (
                         <span className={`debt__age${daysOverdue >= 7 ? ' is-late' : ''}`}>
                           {daysOverdue === 0 ? 'Giao hôm nay' : `Đã giao ${daysOverdue} ngày`}
                         </span>
@@ -373,6 +453,23 @@ export default function DebtCollection({ user = null, isDirector = false }) {
 
                     {r.blocked_reason && (
                       <p className="debt__blocked"><Lock size={13} /> {r.blocked_reason}</p>
+                    )}
+
+                    {isOverrideAlert && (
+                      <div className="debt__alert-override" role="alert">
+                        <strong><AlertTriangle size={15} /> Giám đốc đã duyệt giao hồ sơ khi còn công nợ</strong>
+                        <p>
+                          Lý do: <span>{r.handover_debt_reason || r.completion_override_reason || 'Chưa ghi lý do'}</span>
+                          {r.deliverer_name ? ` · Người giao: ${r.deliverer_name}` : ''}
+                        </p>
+                      </div>
+                    )}
+
+                    {isSettledAfterOverride && (
+                      <div className="debt__settled-confirmation" role="status">
+                        <strong><CheckCircle2 size={15} /> Đã thu đủ tiền hợp đồng</strong>
+                        <p>K06 đã được nghiệm thu và công nợ thực tế đã về 0 sau khi phiếu thu được duyệt.</p>
+                      </div>
                     )}
 
                     {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao */}

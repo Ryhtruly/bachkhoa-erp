@@ -18,6 +18,7 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import AvatarImage from '../components/AvatarImage';
 import { isDossierLocked } from '../lib/dossierStatus';
+import DocumentRegister from '../features/document-register/DocumentRegister';
 import './surveyRecords.css';
 
 const API = '';
@@ -468,6 +469,14 @@ export default function Tasks() {
                 </Field>
               </div>
             </section>
+
+            {/* Sổ giấy tờ dùng chung với bên Pháp lý — hạng mục có cả hai khối
+                thì mỗi bên đều thấy giấy của bên kia (tài liệu chuyển giao). */}
+            <DocumentRegister
+              contractId={detailData?.contract_id}
+              serviceLineId={detailData?.service_line_id}
+              addToast={addToast}
+            />
 
             <div className="survey-detail__footer">
               {isDossierLocked(detailData, editForm.status) ? (

@@ -42,9 +42,15 @@ def test_target_is_disposable(database_url):
     if driver == "sqlite":
         return not host
 
+    # "pg-test" là TÊN SERVICE của Postgres kiểm thử trong docker-compose.dev.yml,
+    # không phải tên miền công khai — container backend gọi nó qua mạng nội bộ của
+    # compose. Bản trước chỉ cho localhost, nên khi tách DB test thành service
+    # riêng (để nó không chết theo mỗi lần recreate backend) thì cả bộ test bị
+    # chặn. Vẫn fail-closed: danh sách host là allowlist tường minh, và tên
+    # database bắt buộc kết thúc bằng _test.
     return (
         driver == "postgresql"
-        and host in {"localhost", "127.0.0.1", "::1"}
+        and host in {"localhost", "127.0.0.1", "::1", "pg-test"}
         and database.endswith("_test")
     )
 
@@ -80,10 +86,19 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
-
 @compiles(JSONB, "sqlite")
 def _compile_jsonb_sqlite(type_, compiler, **kw):
     return "JSON"
+
+from sqlalchemy.dialects.sqlite.base import SQLiteDDLCompiler
+
+_orig_get_col_default = SQLiteDDLCompiler.get_column_default_string
+def _sqlite_get_column_default_string(self, column):
+    if column.server_default and hasattr(getattr(column.server_default, "arg", None), "sequence"):
+        return None
+    return _orig_get_col_default(self, column)
+
+SQLiteDDLCompiler.get_column_default_string = _sqlite_get_column_default_string
 
 from src.index import app
 from src.db.database import engine, Base, get_db
@@ -94,8 +109,91 @@ from src.core.auth import hash_password, create_access_token
 @pytest.fixture(scope="session", autouse=True)
 def init_test_db():
     import src.db.models
+    from sqlalchemy import text
     Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS document_template_applicabilities (
+                    id VARCHAR PRIMARY KEY,
+                    template_id VARCHAR,
+                    applicability_type VARCHAR,
+                    service_package_id VARCHAR,
+                    task_type_id VARCHAR,
+                    is_default BOOLEAN DEFAULT 1
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS document_checklist_templates (
+                    id VARCHAR PRIMARY KEY,
+                    name VARCHAR,
+                    source VARCHAR,
+                    is_required BOOLEAN DEFAULT 0,
+                    needs_original BOOLEAN DEFAULT 0,
+                    default_quantity INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    note TEXT,
+                    is_active BOOLEAN DEFAULT 1
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dossier_document_slots (
+                    id VARCHAR PRIMARY KEY,
+                    contract_id VARCHAR,
+                    service_line_id VARCHAR,
+                    template_id VARCHAR,
+                    name VARCHAR,
+                    source VARCHAR,
+                    is_required BOOLEAN DEFAULT 0,
+                    needs_original BOOLEAN DEFAULT 0,
+                    min_count INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    note TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dossier_documents (
+                    id VARCHAR PRIMARY KEY,
+                    contract_id VARCHAR,
+                    file_name VARCHAR,
+                    file_path VARCHAR,
+                    doc_status VARCHAR DEFAULT 'DANG_DUNG',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dossier_document_links (
+                    id VARCHAR PRIMARY KEY,
+                    slot_id VARCHAR,
+                    document_id VARCHAR,
+                    link_status VARCHAR DEFAULT 'DANG_DUNG',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            try:
+                conn.execute(text("ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'"))
+            except Exception:
+                pass
     yield
+
+    # Chỉ dọn khi schema DO CHÍNH conftest dựng ra.
+    with engine.connect() as conn:
+        if conn.dialect.name == "sqlite":
+            return
+        dung_tu_dump = bool(
+            conn.execute(text("select to_regclass('public.dossier_document_slots')")).scalar()
+        )
+    if dung_tu_dump:
+        return
     Base.metadata.drop_all(bind=engine)
 
 
@@ -108,8 +206,26 @@ def client():
 @pytest.fixture(scope="function", autouse=True)
 def db():
     import src.db.models
+    from sqlalchemy import text
     connection = engine.connect()
     Base.metadata.create_all(bind=connection)
+    if connection.dialect.name == "sqlite":
+        try:
+            with connection.begin():
+                try:
+                    connection.execute(text("ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'"))
+                except Exception:
+                    pass
+        except Exception:
+            pass
     if connection.in_transaction():
         connection.commit()
     transaction = connection.begin()

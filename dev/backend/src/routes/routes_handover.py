@@ -1,4 +1,4 @@
-"""Node bàn giao (K08) — cổng công nợ, 2 làn Pháp lý / Kế toán."""
+"""Node bàn giao (K06) — cổng công nợ, 2 làn Pháp lý / Kế toán."""
 
 import io
 import json
@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 from urllib.parse import quote, unquote
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -54,6 +55,15 @@ class DeliverSchema(BaseModel):
     on_behalf_reason: Optional[str] = None
 
 
+class DebtRequestReviewSchema(BaseModel):
+    decision: str
+    review_note: Optional[str] = None
+
+
+class HandoverAcceptanceSchema(BaseModel):
+    note: Optional[str] = None
+
+
 @router.get("/outstanding")
 def list_outstanding(
     db: Session = Depends(get_db),
@@ -66,10 +76,18 @@ def list_outstanding(
         return cached
 
     rows = HO.outstanding_handovers(db)
+    outstanding_rows = [r for r in rows if not r.get("is_financially_settled")]
     result = {
         "status": "success",
         "data": rows,
-        "meta": {"total": len(rows), "total_remaining": sum(r["remaining"] for r in rows)},
+        "meta": {
+            "total": len(outstanding_rows),
+            "total_remaining": sum(r["remaining"] for r in outstanding_rows),
+            "settled_after_override": sum(
+                1 for r in rows
+                if r.get("financial_status") == "settled_after_handover_override"
+            ),
+        },
     }
     set_cached_json(cache_key, result, ttl_seconds=60)
     return result
@@ -82,6 +100,168 @@ def get_handover_state(
     user: User = Depends(require_permission("task_node", "read")),
 ):
     return {"status": "success", "data": HO.get_state(db, task_node_id, user_id=user.id)}
+
+
+@router.post("/{task_node_id}/debt-requests")
+async def request_debt_override(
+    task_node_id: str,
+    reason: str = Form(...),
+    promised_payment_date: date = Form(...),
+    commitment_file: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("checklist", "update")),
+):
+    """Nhân viên xin Giám đốc mở khóa riêng Node K06 khi còn công nợ."""
+    metadata = None
+    uploaded_key = None
+    try:
+        if commitment_file and commitment_file.filename:
+            raw = await commitment_file.read(MAX_RECEIPT_BYTES + 1)
+            try:
+                validated = validate_receipt(
+                    commitment_file.filename, commitment_file.content_type, raw
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            metadata = build_receipt_metadata(
+                task_node_id, f"debt-request-{uuid.uuid4().hex}", validated
+            )
+            metadata["kind"] = "handover_debt_commitment"
+            ensure_finance_bucket()
+            upload_finance_file(
+                io.BytesIO(validated.data),
+                metadata["object_key"],
+                content_type=validated.content_type,
+                metadata={"sha256": validated.sha256, "kind": metadata["kind"]},
+            )
+            uploaded_key = metadata["object_key"]
+
+        result = HO.create_debt_request(
+            db,
+            task_node_id,
+            actor_id=user.id,
+            reason=reason,
+            promised_payment_date=promised_payment_date,
+            commitment_file=metadata,
+        )
+        db.commit()
+        invalidate_cache("bachkhoa:handover:*")
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        publish_timeline_change("handover_debt_requested", entity_id=task_node_id)
+        return {"status": "success", "data": result}
+    except Exception:
+        db.rollback()
+        if uploaded_key:
+            try:
+                delete_finance_file(uploaded_key)
+            except Exception:
+                logger.exception("Không thể hoàn tác file cam kết %s", uploaded_key)
+        raise
+
+
+@router.post("/debt-requests/{request_id}/review")
+def review_debt_override(
+    request_id: str,
+    payload: DebtRequestReviewSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    result = HO.review_debt_request(
+        db,
+        request_id,
+        decision=payload.decision,
+        review_note=payload.review_note,
+        actor_id=user.id,
+    )
+    db.commit()
+    invalidate_cache("bachkhoa:handover:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    publish_timeline_change("handover_debt_reviewed", entity_id=result["task_node_id"])
+    return {"status": "success", "data": result}
+
+
+@router.get("/debt-requests/{request_id}/commitment")
+def view_debt_commitment(
+    request_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mở file cam kết riêng cho người gửi hoặc Giám đốc có quyền duyệt Node."""
+    row = db.execute(
+        text("""
+            select requester_user_id, commitment_file
+            from public.handover_debt_requests
+            where id = :request_id
+        """),
+        {"request_id": request_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu xin duyệt nợ")
+
+    is_requester = str(row["requester_user_id"] or "") == str(user.id)
+    can_review = check_user_permission(db, user, "task_node", "approve")
+    if not is_requester and not can_review:
+        raise HTTPException(status_code=403, detail="Không có quyền xem file cam kết này")
+
+    attachment = row["commitment_file"] or {}
+    if isinstance(attachment, str):
+        try:
+            attachment = json.loads(attachment)
+        except (TypeError, ValueError):
+            attachment = {}
+    if not isinstance(attachment, dict) or not attachment.get("object_key"):
+        raise HTTPException(status_code=404, detail="Yêu cầu này không có file cam kết")
+
+    try:
+        stored = get_finance_file(attachment["object_key"])
+    except Exception as exc:
+        logger.warning("Unable to read handover debt commitment %s: %s", request_id, exc)
+        raise HTTPException(
+            status_code=404,
+            detail="File cam kết không tồn tại trên kho lưu trữ",
+        ) from exc
+
+    body = stored["Body"]
+
+    def iter_body():
+        try:
+            yield from body.iter_chunks(chunk_size=64 * 1024)
+        finally:
+            body.close()
+
+    filename = str(attachment.get("filename") or "cam-ket")
+    content_type = str(
+        attachment.get("content_type")
+        or stored.get("ContentType")
+        or "application/octet-stream"
+    )
+    disposition = "attachment" if content_type == "application/pdf" else "inline"
+    return StreamingResponse(
+        iter_body(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/{task_node_id}/submit-acceptance")
+def submit_handover_acceptance(
+    task_node_id: str,
+    payload: HandoverAcceptanceSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("checklist", "update")),
+):
+    result = HO.submit_handover_for_acceptance(
+        db, task_node_id, actor_id=user.id, note=payload.note
+    )
+    db.commit()
+    invalidate_cache("bachkhoa:handover:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    publish_timeline_change("node_submitted", entity_id=task_node_id)
+    return {"status": "success", "data": result}
 
 
 @router.get("/payment-receipts/{receipt_id}")
@@ -180,10 +360,16 @@ def download_handover_package(
             with open(safe_path, "rb") as f:
                 return f.read()
 
-        for base_url in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
-            prefix = f"{base_url.rstrip(chr(47))}/{MINIO_BUCKET}/" if base_url else None
-            if prefix and url.startswith(prefix):
-                return get_file(unquote(url[len(prefix):].split("?")[0]))
+        # Tệp trong kho tài liệu của chính hệ thống. Chỉ nhận đúng địa chỉ kho đã
+        # cấu hình — tải hộ một URL bất kỳ người dùng dán vào là mở đường cho máy
+        # chủ đi gọi tới nơi không nên gọi. Lấy bằng khoá đối tượng chứ không qua
+        # HTTP: địa chỉ lưu trong CSDL là địa chỉ cho trình duyệt (localhost:9000),
+        # máy chủ chạy trong container gọi vào đó không tới được.
+        for goc in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
+            tien_to = f"{goc.rstrip(chr(47))}/{MINIO_BUCKET}/" if goc else None
+            if tien_to and url.startswith(tien_to):
+                # get_file trả response S3 (dict); zipfile cần bytes.
+                return get_file(unquote(url[len(tien_to):].split("?")[0]))["Body"].read()
         return None
 
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:

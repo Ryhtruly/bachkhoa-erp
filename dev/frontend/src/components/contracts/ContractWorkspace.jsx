@@ -183,11 +183,60 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
     // các lần sau hoặc chuyển qua lại tab đều mở tức thì 0ms.
     const isFirstTime = !workspaceMemoryCache.has(contextKey);
     loadWorkspace(isFirstTime);
-    const pollId = setInterval(() => loadWorkspace(false), 5000);
+
+    let streamAbort = null;
+    let reconnectTimer = null;
+    let refreshTimer = null;
+    const refreshFromRealtime = () => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => loadWorkspace(false), 120);
+    };
+    const subscribe = async () => {
+      if (cancelled) return;
+      const token = getAccessToken();
+      if (!token) return;
+      streamAbort = new AbortController();
+      try {
+        const response = await fetch('/api/contracts/timeline/events', {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+          cache: 'no-store',
+          signal: streamAbort.signal,
+        });
+        if (response.status === 401 || response.status === 403 || !response.body) return;
+        if (!response.ok) throw new Error('Không kết nối được luồng cập nhật Hợp đồng');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() || '';
+          if (blocks.some(block => block.includes('event: timeline-change'))) {
+            refreshFromRealtime();
+          }
+        }
+      } catch (streamError) {
+        if (cancelled || streamError?.name === 'AbortError') return;
+      }
+      if (!cancelled) reconnectTimer = window.setTimeout(subscribe, 1500);
+    };
+    subscribe();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadWorkspace(false);
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
 
     return () => {
       cancelled = true;
-      clearInterval(pollId);
+      streamAbort?.abort();
+      window.clearTimeout(reconnectTimer);
+      window.clearTimeout(refreshTimer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
     };
   }, [contractId, contextKey, tab, refreshKey, targetServiceLineId]);
 
@@ -298,6 +347,7 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
                 </aside>
                 <ContractWorkflowDesigner
                   serviceLine={selectedServiceLine}
+                  contractId={getContractId(workspace.contract)}
                   catalog={workspace.workflow_catalog}
                   templates={workspace.workflow_templates}
                   employees={workspace.assignment_options}

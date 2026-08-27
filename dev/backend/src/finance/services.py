@@ -4,6 +4,7 @@ from datetime import datetime, date, timezone, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from typing import Optional
 from types import SimpleNamespace
 
@@ -874,6 +875,68 @@ class FinanceService:
             ))
 
     @staticmethod
+    def _finalize_contract_after_full_payment(db: Session, contract_id: str) -> bool:
+        """Chốt trạng thái tài chính sau khi phiếu thu làm số dư về 0.
+
+        Nghiệm thu chuyên môn có thể xảy ra trước nếu Giám đốc duyệt ngoại lệ,
+        nhưng workflow/hợp đồng chỉ được đánh dấu hoàn thành khi không còn nợ.
+        """
+        balance = db.execute(
+            text("""
+                select coalesce(c.total_value, 0) as total_value,
+                       coalesce(sum(t.amount) filter (
+                           where t.transaction_type in ('Thu', 'INCOME')
+                             and t.status in ('Hoàn thành', 'Đã duyệt', 'COMPLETED', 'approved')
+                       ), 0) as paid
+                from public.contracts c
+                left join public.cashflow_transactions t on t.contract_id = c.id
+                where c.id = :contract_id
+                group by c.id, c.total_value
+            """),
+            {"contract_id": contract_id},
+        ).mappings().first()
+        if not balance:
+            return False
+        if float(balance["total_value"] or 0) - float(balance["paid"] or 0) > 0.009:
+            return False
+
+        db.execute(
+            text("""
+                update public.workflow_instances wi
+                set status = 'completed', completed_at = coalesce(completed_at, now()),
+                    updated_at = now()
+                where wi.status = 'running'
+                  and exists (
+                    select 1 from public.service_lines sl
+                    where sl.id = wi.service_line_id and sl.contract_id = :contract_id
+                  )
+                  and not exists (
+                    select 1 from public.task_nodes n
+                    where n.workflow_instance_id = wi.id
+                      and n.status not in ('accepted', 'skipped', 'cancelled')
+                  )
+            """),
+            {"contract_id": contract_id},
+        )
+        db.execute(
+            text("""
+                update public.contracts c
+                set status = 'completed', completion_override = false,
+                    updated_at = now()
+                where c.id = :contract_id
+                  and not exists (
+                    select 1
+                    from public.workflow_instances wi
+                    join public.service_lines sl on sl.id = wi.service_line_id
+                    where sl.contract_id = c.id
+                      and wi.status not in ('completed', 'cancelled')
+                  )
+            """),
+            {"contract_id": contract_id},
+        )
+        return True
+
+    @staticmethod
     def approve_cashflow(db: Session, transaction_id: str, actor_id: str) -> dict:
         """Giám đốc duyệt phiếu. ĐÂY là lúc công nợ mới thực sự được ghi nhận."""
         try:
@@ -904,6 +967,19 @@ class FinanceService:
                     FinanceService._sync_receivables(db, t.contract_id, float(t.amount))
                 elif (normalize_transaction_type(t.transaction_type) == TransactionType.EXPENSE.value) and any(k in cat_desc for k in ["hoàn", "refund", "trả lại"]):
                     FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
+
+                # Flush trước để câu SUM phía dưới nhìn thấy phiếu vừa duyệt.
+                db.flush()
+                # Khi phiếu này thu đủ nợ, K06 đã đủ checklist được đóng ngay.
+                # Sau đó mới xét hoàn thành Hợp đồng để không chốt trước workflow.
+                from src.contracts.workflow_runtime import auto_finalize_contract_handover_nodes
+
+                auto_finalize_contract_handover_nodes(
+                    db,
+                    contract_id=t.contract_id,
+                    actor_id=actor_id,
+                )
+                FinanceService._finalize_contract_after_full_payment(db, t.contract_id)
 
             log_action(
                 db=db,

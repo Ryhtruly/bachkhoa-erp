@@ -26,6 +26,16 @@ class ContractGenerateSchema(BaseModel):
     # tồn tại ở cả gói Đo Vẽ lẫn Pháp Lý), nối bằng tên là chọn nhầm.
     task_type_id: Optional[str] = None
     # Độ ưu tiên hồ sơ (Q5) — chỉ giám đốc đặt HIGH/URGENT, kèm lý do.
+    # Bộ giấy của Hạng mục, khai TƯỜNG MINH bằng chế độ.
+    #
+    # Không dùng "thiếu field" để biểu diễn mặc định: như thế thì frontend lỗi,
+    # client cũ, hay một field quên gửi đều trông giống hệt "người dùng chọn bộ
+    # mặc định" — và Hạng mục ra đời với bộ giấy chẳng ai quyết định.
+    #   DEFAULT -> server tự lấy applicability is_default = true
+    #   CUSTOM  -> phải kèm document_template_ids, tối thiểu một mã
+    #   NONE    -> danh sách rỗng hoặc vắng; Hạng mục không thu giấy nào
+    document_selection_mode: Optional[str] = None
+    document_template_ids: Optional[list[str]] = None
     priority: Optional[str] = "NORMAL"
     priority_reason: Optional[str] = None
     # Định danh khách — 2 loại (anh Huy nhấn 18/08):

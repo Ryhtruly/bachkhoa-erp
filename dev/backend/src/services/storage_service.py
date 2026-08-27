@@ -169,20 +169,19 @@ def upload_finance_file(
     client.upload_fileobj(file_obj, FINANCE_BUCKET, object_name, ExtraArgs=extra_args)
     return object_name
 
-def get_file(object_name: str) -> bytes:
-    """Đọc tệp trong kho tài liệu chính. Dùng khoá đối tượng, không qua HTTP —
-    địa chỉ lưu trong CSDL là địa chỉ dành cho trình duyệt, máy chủ gọi vào đó
-    không tới được."""
-    return _get_client().get_object(Bucket=BUCKET, Key=object_name)["Body"].read()
-
-
 def get_finance_file(object_name: str) -> dict:
     object_name = _require_prefix(object_name, FINANCE_OBJECT_PREFIXES)
     return _get_client().get_object(Bucket=FINANCE_BUCKET, Key=object_name)
 
 
 def get_file(object_name: str, *, legacy_wiki_document_id: str | None = None) -> dict:
-    """Read a private object from the sole configured bucket."""
+    """Đọc một object riêng tư từ bucket đang cấu hình.
+
+    Trả về response của S3 (dict) — người gọi lấy nội dung bằng ["Body"].read().
+    Trước đây module có HAI hàm cùng tên: một bản trả bytes và không kiểm prefix,
+    một bản trả dict và có kiểm. Python lấy bản sau, nên bản trả bytes là code
+    chết — và mọi chỗ gọi tưởng mình nhận bytes đều đang nhận dict.
+    """
     if legacy_wiki_document_id is None:
         object_name = _require_prefix(object_name, GENERIC_OBJECT_PREFIXES)
     else:

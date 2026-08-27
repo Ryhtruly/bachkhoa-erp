@@ -79,3 +79,7 @@ def notification_event_stream() -> Iterator[str]:
     """Authenticated realtime invalidations for notification summaries."""
     yield from _redis_event_stream("notifications-changed")
 
+
+def employee_task_event_stream() -> Iterator[str]:
+    """Authenticated invalidations for the employee task pool and workspace."""
+    yield from _redis_event_stream("employee-task-change")

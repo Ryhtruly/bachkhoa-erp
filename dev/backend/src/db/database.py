@@ -24,6 +24,7 @@ if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         connect_args={"check_same_thread": False},
+        execution_options={"schema_translate_map": {"public": None}},
     )
 else:
     engine = create_engine(

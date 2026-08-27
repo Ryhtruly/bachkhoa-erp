@@ -17,10 +17,19 @@ _SSE_HEADERS = {
     "Connection": "keep-alive",
 }
 
-_MANAGER_NODE_REVIEW_QUERY = text(
-    """
+# Số phiếu xin bỏ giấy đang chờ của chính Hạng mục đó. Không đưa con số này lên
+# chuông thì Giám đốc mở lượt nghiệm thu ra mà không biết mình sắp cho qua một
+# hồ sơ thiếu giấy — và phiếu xin miễn thành cửa sau bỏ giấy im lặng.
+_DEM_PHIEU_MIEN = """
+           (select count(*)
+              from public.document_slot_change_requests r
+             where r.kind = 'WAIVE' and r.status = 'pending'
+               and r.service_line_id = sl.id) as so_phieu_mien"""
+
+_MANAGER_NODE_REVIEW_TMPL = """
     select a.id as ref_id, n.id as task_node_id, n.node_key, wn.name as node_name,
-           c.id as contract_id, sl.id as service_line_id, a.submitted_at as created_at
+           c.id as contract_id, sl.id as service_line_id, a.submitted_at as created_at,
+__DEM_PHIEU_MIEN__
     from public.task_node_acceptances a
     join public.task_nodes n on n.id = a.task_node_id
     join public.workflow_nodes wn on wn.code = n.node_code
@@ -31,7 +40,16 @@ _MANAGER_NODE_REVIEW_QUERY = text(
     order by a.submitted_at asc
     limit 50
     """
-)
+
+
+def _truy_van_nghiem_thu(db):
+    """Chọn biến thể theo schema: DB chưa có cột service_line_id thì đếm ra 0
+    chứ không làm vỡ cả chuông thông báo."""
+    from src.dossiers.register import co_so_giay_theo_hang_muc
+
+    dem = _DEM_PHIEU_MIEN if co_so_giay_theo_hang_muc(db) else "           0 as so_phieu_mien"
+    return text(_MANAGER_NODE_REVIEW_TMPL.replace("__DEM_PHIEU_MIEN__", dem))
+
 
 _MANAGER_CHECKLIST_REVIEW_QUERY = text(
     """
@@ -156,10 +174,15 @@ def get_notifications_summary(
     items = []
 
     if check_user_permission(db, user, "contract", "update"):
-        for row in db.execute(_MANAGER_NODE_REVIEW_QUERY).mappings().all():
+        for row in db.execute(_truy_van_nghiem_thu(db)).mappings().all():
+            so_mien = int(row["so_phieu_mien"] or 0)
             items.append({
                 "type": "node_review",
-                "label": f"Node {row['node_key'].upper()} — {row['node_name']} chờ duyệt nghiệm thu",
+                "label": (
+                    f"Node {row['node_key'].upper()} — {row['node_name']} chờ duyệt nghiệm thu"
+                    + (f" · nhân viên xin bỏ {so_mien} loại giấy" if so_mien else "")
+                ),
+                "waiver_pending_count": so_mien,
                 "contract_id": row["contract_id"],
                 "service_line_id": row["service_line_id"],
                 "node_key": row["node_key"],
