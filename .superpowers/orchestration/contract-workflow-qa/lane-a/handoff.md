@@ -1,7 +1,7 @@
 # Lane A Handoff: BUG-001, BUG-004, BUG-007 Fixes
 
-**State:** ready for review  
-**Base:** e35e34c9f2c04531a3bbf9de12960f959b5c4bbd  
+**State:** ready for review
+**Base:** e35e34c9f2c04531a3bbf9de12960f959b5c4bbd
 **Branch:** fix/contract-qa-copilot
 
 ---
@@ -63,23 +63,17 @@ Result:
 - Test files: `src/components/contracts/ContractWorkspace.test.jsx`, `src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx`, `src/features/document-register/DocumentRegister.test.jsx`
 - Environment: `npm test` from `dev/frontend/`
 
-### RED (Base e35e34c, no fixes, no new tests)
+### RED (Base e35e34c, pre-fix state)
 
-```
-npm test -- src/components/contracts/ContractWorkspace.test.jsx \
-  src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx \
-  src/features/document-register/DocumentRegister.test.jsx
-```
-
-**Result:** 1 test file failed (new ContractWorkspace test doesn't exist; old calendar/document tests pass)
-
-**BUG-001 RED Evidence:**
-- New test `ContractWorkspace realtime subscription > subscribes without throwing, uses access token, and aborts on unmount` failed with:
+- **Pre-Fix Code State:** In base `e35e34c9`, `ContractWorkspace.jsx` referenced `getAccessToken()` at line 196 during timeline subscription setup, but `getAccessToken` was not imported from `../../lib/api` (only `apiFetch` was imported).
+- **Pre-Fix Test State:** The test file `src/components/contracts/ContractWorkspace.test.jsx` was newly authored during this task and did not exist in base commit `e35e34c9`. Pre-existing calendar and document register test suites were present.
+- **Focused Test Command:**
+  ```bash
+  npm test -- src/components/contracts/ContractWorkspace.test.jsx \
+    src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx \
+    src/features/document-register/DocumentRegister.test.jsx
   ```
-  AssertionError: expected "vi.fn()" to be called at least once
-  ```
-- Reason: `getAccessToken` is not imported in base code; subscription cannot call it.
-- This proves the test catches the missing import.
+- **Execution & Evidence Note:** Running the newly authored regression test against the unfixed base code exercised the missing `getAccessToken` reference. Note that exact raw terminal stdout/stderr for that initial RED execution was not retained in session records; the code defect is confirmed via git history (`git show e35e34c9:dev/frontend/src/components/contracts/ContractWorkspace.jsx`), and resolved by adding the missing `getAccessToken` import.
 
 ### GREEN (With all fixes applied)
 
@@ -210,8 +204,8 @@ const isHandoverTask = (task) => task?.is_handover === true || task?.node_code =
 
 ## Commit Summary
 
-**Branch:** fix/contract-qa-copilot  
-**Files Changed:** 6 (3 production, 3 test)  
+**Branch:** fix/contract-qa-copilot
+**Files Changed:** 6 (3 production, 3 test)
 **Lines Added/Modified:** ~80 net new lines (guards, conditionals, assertions)
 
 ### Staged Files
