@@ -289,8 +289,10 @@ describe('ContractWorkflowDesigner workflow activation', () => {
 
 // ── Tài liệu đầu ra ───────────────────────────────────────────────────────────
 const DOC_TEMPLATES = [
+  { id: 'TPL_SO_DO', name: 'Sổ đỏ gốc', source_label: 'Khách hàng cung cấp', is_active: true },
   { id: 'TPL_BAN_KY_THUAT_GOC', name: 'Bản kỹ thuật gốc', source_label: 'Công ty soạn/lập', is_active: true },
   { id: 'TPL_ANH_HIEN_TRANG', name: 'Ảnh hiện trạng', source_label: 'Công ty soạn/lập', is_active: true },
+  { id: 'TPL_BIEN_NHAN', name: 'Biên nhận hồ sơ', source_label: 'Cơ quan Nhà nước trả', is_active: true },
 ];
 
 // Panel checklist chỉ hiện khi đã chọn Node. Dùng targetNodeKey — đúng cơ chế
@@ -301,7 +303,13 @@ function renderWithDocs(serviceLineOptions = {}) {
       serviceLine={makeServiceLine({ nodeReady: true, ...serviceLineOptions })}
       workItems={[workItem]}
       documentTemplates={DOC_TEMPLATES}
-      capabilities={{ amend_workflow: true, review_workflow_node: true, review_workflow_checklist: true }}
+      capabilities={{
+        amend_workflow: true,
+        review_workflow_node: true,
+        review_workflow_checklist: true,
+        view_workflow_compensation: true,
+        manage_workflow_compensation: true,
+      }}
       addToast={vi.fn()}
       targetNodeKey="node-1"
       targetType="checklist_review"
@@ -317,46 +325,75 @@ async function moPanelChecklist() {
 describe('Cấu hình tài liệu đầu ra của checklist', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-  it('checklist chưa cấu hình thì chỉ hiện nút thêm, không có ô nào', async () => {
+  it('checklist chưa cấu hình tài liệu đầu ra thì chỉ hiện nút thêm gọn gàng', async () => {
     renderWithDocs();
     expect(await moPanelChecklist()).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: '' })).not.toBeNull();
+    expect(screen.queryByText('Tài liệu chưa chọn')).not.toBeInTheDocument();
     expect(screen.queryByText('Tối thiểu')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Bỏ yêu cầu minh chứng')).not.toBeInTheDocument();
   });
 
-  it('thêm rồi xoá một loại tài liệu đầu ra', async () => {
+  it('chọn rồi xoá một loại tài liệu đầu ra bằng modal giữa màn hình', async () => {
+    renderWithDocs();
+    await moPanelChecklist();
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+    expect(screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Bản kỹ thuật gốc/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xong' }));
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Số lượng Bản kỹ thuật gốc/)).toHaveValue(1);
+    expect(screen.getByLabelText(/Bắt buộc trước khi nộp/)).toBeChecked();
+    expect(screen.getByLabelText(/Cần Giám đốc duyệt/)).not.toBeChecked();
+
+    fireEvent.click(screen.getByTitle('Bỏ Bản kỹ thuật gốc'));
+    await waitFor(() => expect(screen.queryByTitle('Bỏ Bản kỹ thuật gốc')).not.toBeInTheDocument());
+    // Xoá hết thì quay lại đúng trạng thái ban đầu.
+    expect(screen.getByRole('button', { name: /Thêm tài liệu đầu ra/ })).toBeInTheDocument();
+  });
+
+  it('modal chọn tài liệu đầu ra chia rõ ba nguồn giấy tờ', async () => {
     renderWithDocs();
     await moPanelChecklist();
     fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
 
-    expect(await screen.findByText('Tối thiểu')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Bản kỹ thuật gốc/ })).toBeInTheDocument();
-    expect(screen.getByLabelText(/Bắt buộc trước khi nộp/)).toBeChecked();
-    expect(screen.getByLabelText(/Cần Giám đốc duyệt/)).not.toBeChecked();
+    const dialog = screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+    expect(within(dialog).getByRole('heading', { name: /Khách hàng cung cấp/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: /Công ty soạn\/lập/ })).toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { name: /Cơ quan nhà nước trả/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTitle('Bỏ loại tài liệu này'));
-    await waitFor(() => expect(screen.queryByText('Tối thiểu')).not.toBeInTheDocument());
-    // Xoá hết thì quay lại đúng trạng thái ban đầu.
-    expect(screen.getByRole('button', { name: /Thêm tài liệu đầu ra/ })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Xong' }));
+    expect(await screen.findByText('Sổ đỏ gốc')).toBeInTheDocument();
   });
 
   it('bật Cần Giám đốc duyệt mà người duyệt khác admin thì cảnh báo rõ ràng', async () => {
     renderWithDocs();
     await moPanelChecklist();
-    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Người duyệt: Giám đốc/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Kế toán/ }));
 
-    // Đổi người duyệt sang một vai không phải Giám đốc.
-    const approverSelect = screen.getAllByRole('combobox')
-      .find(select => Array.from(select.options).some(option => option.value === 'admin')
-        && select.value === 'admin');
-    const vaiKhac = Array.from(approverSelect.options).map(o => o.value).find(v => v !== 'admin');
-    fireEvent.change(approverSelect, { target: { value: vaiKhac } });
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Bản kỹ thuật gốc/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Xong' }));
 
     fireEvent.click(screen.getByLabelText(/Cần Giám đốc duyệt/));
 
     const canhBao = await screen.findByRole('alert');
     expect(canhBao).toHaveTextContent(/Cần Giám đốc duyệt nhưng người duyệt đang là/);
     expect(canhBao).toHaveTextContent(/lưu quy trình sẽ bị từ chối/);
+  });
+
+  it('hiển thị gói khoán bằng dropdown cùng ngôn ngữ chip', async () => {
+    renderWithDocs();
+    await moPanelChecklist();
+
+    expect(screen.getByRole('button', { name: /Gói khoán: Nghiệm thu hồ sơ/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Gói khoán: Nghiệm thu hồ sơ/ }));
+
+    const option = screen.getByRole('option', { name: /Nghiệm thu hồ sơ/ });
+    expect(option).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText(/Chính:/)).toHaveTextContent('150.000đ');
   });
 });
 

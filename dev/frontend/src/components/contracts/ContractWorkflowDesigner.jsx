@@ -104,6 +104,41 @@ const CANCELLATION_OPTIONS = [
 
 const EMPTY_CATALOG = [];
 
+const OUTPUT_DOCUMENT_SOURCE_GROUPS = [
+  {
+    key: 'KHACH_HANG',
+    label: 'Khách hàng cung cấp',
+    hint: 'Giấy khách gửi ban đầu hoặc bổ sung sau.',
+  },
+  {
+    key: 'CONG_TY',
+    label: 'Công ty soạn/lập',
+    hint: 'Bản vẽ, biểu mẫu, sản phẩm kỹ thuật do công ty tạo.',
+  },
+  {
+    key: 'CO_QUAN',
+    label: 'Cơ quan nhà nước trả',
+    hint: 'Biên nhận, giấy hẹn, kết quả từ cơ quan.',
+  },
+];
+
+const boDauTiengViet = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .replace(/Đ/g, 'D')
+  .toLowerCase();
+
+const outputDocumentSourceKey = template => {
+  const raw = boDauTiengViet(
+    template?.source || template?.source_code || template?.source_key || template?.source_label || ''
+  );
+  if (raw.includes('khach')) return 'KHACH_HANG';
+  if (raw.includes('cong ty') || raw.includes('cong_ty') || raw.includes('cong')) return 'CONG_TY';
+  if (raw.includes('co quan') || raw.includes('co_quan') || raw.includes('nha nuoc')) return 'CO_QUAN';
+  return 'KHAC';
+};
+
 const formatMoney = value => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))}đ`;
 const formatDateTime = value => value
   ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
@@ -841,6 +876,8 @@ export default function ContractWorkflowDesigner({
   }, [inspectorCollapsed]);
   // Kéo-thả sắp xếp checklist trong Node.
   const [dragChecklistIndex, setDragChecklistIndex] = useState(null);
+  const [openChecklistPicker, setOpenChecklistPicker] = useState(null);
+  const [outputDocumentModalIndex, setOutputDocumentModalIndex] = useState(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState(workflow?.template?.id || '');
   const [workflowLabels, setWorkflowLabels] = useState(parsed.labels);
   const [saving, setSaving] = useState(false);
@@ -1387,6 +1424,40 @@ export default function ContractWorkflowDesigner({
     const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
     setOutputDocuments(index, current.filter((_, i) => i !== docIndex));
   }, [selectedNode, setOutputDocuments]);
+
+  const toggleChecklistPicker = useCallback((key) => {
+    setOpenChecklistPicker(current => (current === key ? null : key));
+  }, []);
+
+  const closeChecklistPicker = useCallback(() => {
+    setOpenChecklistPicker(null);
+  }, []);
+
+  const openOutputDocumentModal = useCallback((index) => {
+    ensureDocTemplates();
+    closeChecklistPicker();
+    setOutputDocumentModalIndex(index);
+  }, [closeChecklistPicker, ensureDocTemplates]);
+
+  const closeOutputDocumentModal = useCallback(() => {
+    setOutputDocumentModalIndex(null);
+  }, []);
+
+  const toggleOutputDocument = useCallback((index, templateId) => {
+    ensureDocTemplates();
+    const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
+    if (!templateId) return;
+    if (current.some(doc => doc.template_id === templateId)) {
+      setOutputDocuments(index, current.filter(doc => doc.template_id !== templateId));
+      return;
+    }
+    setOutputDocuments(index, [...current, {
+      template_id: templateId,
+      min_count: 1,
+      required_before_submit: true,
+      needs_director_approval: false,
+    }]);
+  }, [ensureDocTemplates, selectedNode, setOutputDocuments]);
 
   const updateChecklistItem = useCallback((index, patch) => {
     if (!selectedNode) return;
@@ -1942,6 +2013,35 @@ export default function ContractWorkflowDesigner({
   useEffect(() => {
     if (pendingReviewItems.length === 0) setReviewInboxOpen(false);
   }, [pendingReviewItems.length]);
+
+  const outputDocumentModalItem = outputDocumentModalIndex !== null
+    ? selectedNode?.data.checklist?.[outputDocumentModalIndex]
+    : null;
+  const outputDocumentModalSelected = useMemo(
+    () => new Set(outputDocumentModalItem?.output_documents?.map(doc => doc.template_id) || []),
+    [outputDocumentModalItem],
+  );
+  const outputDocumentGroups = useMemo(() => {
+    const buckets = new Map(OUTPUT_DOCUMENT_SOURCE_GROUPS.map(group => [group.key, []]));
+    const khac = [];
+    docTemplates.forEach(template => {
+      const key = outputDocumentSourceKey(template);
+      if (buckets.has(key)) buckets.get(key).push(template);
+      else khac.push(template);
+    });
+    const groups = OUTPUT_DOCUMENT_SOURCE_GROUPS
+      .map(group => ({ ...group, items: buckets.get(group.key) || [] }))
+      .filter(group => group.items.length > 0);
+    if (khac.length) {
+      groups.push({
+        key: 'KHAC',
+        label: 'Khác',
+        hint: 'Mẫu chưa khai rõ nguồn, cần kiểm tra lại cấu hình.',
+        items: khac,
+      });
+    }
+    return groups;
+  }, [docTemplates]);
 
   return (
     <div className="workflow-designer">
@@ -2609,11 +2709,6 @@ export default function ContractWorkflowDesigner({
                             value={item.evidence_description || ''}
                             onChange={event => updateChecklistItem(index, { evidence_description: event.target.value })}
                           />
-                          {checklistEditable && (
-                            <button type="button" className="wcl-prop__clear" onClick={() => updateChecklistItem(index, { require_evidence: false })} title="Bỏ yêu cầu minh chứng">
-                              <X size={13} />
-                            </button>
-                          )}
                         </div>
                       </div>
                       {safeExternalUrl(item.drive_folder_url || item.runtime?.evidence_data?.drive_folder_url) && (
@@ -2667,14 +2762,43 @@ export default function ContractWorkflowDesigner({
                   <div className="wcl-prop">
                     <span className="wcl-prop__label"><UserRound size={13} /> Duyệt</span>
                     <div className="wcl-prop__field">
-                      <select
-                        className="wcl-inline-select"
-                        disabled={!checklistEditable}
-                        value={item.approver_role || 'admin'}
-                        onChange={event => updateChecklistItem(index, { approver_role: event.target.value })}
-                      >
-                        {APPROVER_ROLES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-                      </select>
+                      <div className="wcl-picker wcl-picker--full">
+                        <button
+                          type="button"
+                          className={`wcl-picker__trigger${openChecklistPicker === `approver-${index}` ? ' is-open' : ''}`}
+                          disabled={!checklistEditable}
+                          aria-haspopup="listbox"
+                          aria-expanded={openChecklistPicker === `approver-${index}`}
+                          aria-label={`Người duyệt: ${(APPROVER_ROLES.find(([code]) => code === (item.approver_role || 'admin')) || [null, item.approver_role || 'Giám đốc'])[1]}`}
+                          onClick={() => toggleChecklistPicker(`approver-${index}`)}
+                        >
+                          <span className="wcl-chip wcl-chip--person">
+                            <UserRound size={13} />
+                            {(APPROVER_ROLES.find(([code]) => code === (item.approver_role || 'admin')) || [null, item.approver_role || 'Giám đốc'])[1]}
+                          </span>
+                          <ChevronDown size={14} />
+                        </button>
+                        {openChecklistPicker === `approver-${index}` && (
+                          <div className="wcl-picker__menu" role="listbox">
+                            {APPROVER_ROLES.map(([code, label]) => (
+                              <button
+                                type="button"
+                                key={code}
+                                role="option"
+                                aria-selected={code === (item.approver_role || 'admin')}
+                                className={`wcl-picker__option${code === (item.approver_role || 'admin') ? ' is-selected' : ''}`}
+                                onClick={() => {
+                                  updateChecklistItem(index, { approver_role: code });
+                                  closeChecklistPicker();
+                                }}
+                              >
+                                {code === (item.approver_role || 'admin') && <Check size={13} />}
+                                <span>{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -2685,75 +2809,58 @@ export default function ContractWorkflowDesigner({
                   {(item.output_documents || []).length > 0 ? (
                     <div className="wcl-prop wcl-prop--output">
                       <span className="wcl-prop__label"><FileCheck2 size={13} /> Tài liệu đầu ra</span>
-                      <div className="wcl-output-list">
+                      <div className="wcl-output-panel">
+                        <div className="wcl-output-panel__scroll">
                         {(item.output_documents || []).map((doc, docIndex) => {
                           const canhBao = doc.needs_director_approval && (item.approver_role || 'admin') !== 'admin';
+                          const mau = docTemplates.find(t => t.id === doc.template_id);
+                          const tenTaiLieu = mau?.name || 'Tài liệu chưa rõ';
+                          const noiDung = phanBoTaiLieu.cua.get(doc.template_id) || [];
                           return (
-                            <div className={`wcl-output${canhBao ? ' is-warn' : ''}`} key={`${doc.template_id}-${docIndex}`}>
-                              <div className="wcl-output__top">
-                                <select
-                                  className="wcl-inline-select"
-                                  disabled={!checklistEditable}
-                                  value={doc.template_id || ''}
-                                  onChange={event => updateOutputDocument(index, docIndex, { template_id: event.target.value })}
-                                >
-                                  <option value="">Chọn loại tài liệu…</option>
-                                  {docTemplates.map(template => {
-                                    const daGan = phanBoTaiLieu.cua.has(template.id);
-                                    return (
-                                      <option key={template.id} value={template.id}>
-                                        {template.name} · {template.source_label}
-                                        {daGan ? ' · đã phân bổ' : ''}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
+                            <div className={`wcl-output-row${canhBao ? ' is-warn' : ''}`} key={`${doc.template_id}-${docIndex}`}>
+                              <div className="wcl-output-row__top">
+                                <span className="wcl-chip wcl-chip--doc">
+                                  <FileCheck2 size={12} />
+                                  {tenTaiLieu}
+                                  {checklistEditable && (
+                                    <button
+                                      type="button"
+                                      className="wcl-chip__x"
+                                      onClick={() => removeOutputDocument(index, docIndex)}
+                                      title={`Bỏ ${tenTaiLieu}`}
+                                      aria-label={`Bỏ ${tenTaiLieu}`}
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  )}
+                                </span>
                                 {checklistEditable && (
-                                  <button
-                                    type="button"
-                                    className="wcl-prop__clear"
-                                    onClick={() => removeOutputDocument(index, docIndex)}
-                                    title="Bỏ loại tài liệu này"
-                                  >
-                                    <X size={13} />
-                                  </button>
+                                  <label className="wcl-output-row__count">
+                                    SL
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="wcl-output__num"
+                                      disabled={!checklistEditable}
+                                      aria-label={`Số lượng ${tenTaiLieu}`}
+                                      value={doc.min_count ?? 1}
+                                      onChange={event => updateOutputDocument(index, docIndex, {
+                                        min_count: Math.max(1, Number(event.target.value) || 1),
+                                      })}
+                                    />
+                                  </label>
                                 )}
                               </div>
-                              {(() => {
-                                // §2: nguồn và yêu cầu bản chính KẾ THỪA từ loại
-                                // tài liệu mẫu — chỉ xem, không cho ghi đè. Cần
-                                // khác nguồn hoặc khác yêu cầu bản chính thì phải
-                                // tạo một loại khác, tránh một template mang hai
-                                // nghĩa rồi không ai biết bản nào là bản nào.
-                                const mau = docTemplates.find(t => t.id === doc.template_id);
-                                if (!mau) return null;
-                                const noiDung = phanBoTaiLieu.cua.get(doc.template_id) || [];
-                                return (
-                                  <div className="wcl-output__ro">
-                                    <span>Nguồn: <b>{mau.source_label}</b></span>
-                                    <span>Bản chính: <b>{mau.needs_original ? 'Có' : 'Không'}</b></span>
-                                    {noiDung.length > 1 && (
-                                      <span className="wcl-output__dung-chung" title={noiDung.join(' · ')}>
-                                        dùng ở {noiDung.length} Checklist
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                              <div className="wcl-output__opts">
-                                <label>
-                                  Tối thiểu
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    className="wcl-output__num"
-                                    disabled={!checklistEditable}
-                                    value={doc.min_count ?? 1}
-                                    onChange={event => updateOutputDocument(index, docIndex, {
-                                      min_count: Math.max(1, Number(event.target.value) || 1),
-                                    })}
-                                  />
-                                </label>
+                              {mau && (
+                                <div className="wcl-output-row__meta">
+                                  <span>{mau.source_label}</span>
+                                  <span>{mau.needs_original ? 'Cần bản chính' : 'Bản sao được'}</span>
+                                  {noiDung.length > 1 && (
+                                    <span title={noiDung.join(' · ')}>dùng ở {noiDung.length} checklist</span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="wcl-output-row__opts">
                                 <label>
                                   <input
                                     type="checkbox"
@@ -2765,7 +2872,7 @@ export default function ContractWorkflowDesigner({
                                   />
                                   Bắt buộc trước khi nộp
                                 </label>
-                                <label>
+                                <label className="wcl-switch-line">
                                   <input
                                     type="checkbox"
                                     disabled={!checklistEditable}
@@ -2778,7 +2885,7 @@ export default function ContractWorkflowDesigner({
                                 </label>
                               </div>
                               {canhBao && (
-                                <p className="wcl-output__warn" role="alert">
+                                <p className="wcl-output-row__warn" role="alert">
                                   Cần Giám đốc duyệt nhưng người duyệt đang là “{
                                     (APPROVER_ROLES.find(([code]) => code === item.approver_role) || [])[1] || item.approver_role
                                   }”. Đổi người duyệt sang Giám đốc, nếu không lưu quy trình sẽ bị từ chối.
@@ -2787,10 +2894,17 @@ export default function ContractWorkflowDesigner({
                             </div>
                           );
                         })}
+                        </div>
                         {checklistEditable && (
-                          <button type="button" className="wcl-prop__add" onClick={() => addOutputDocument(index)}>
-                            <Plus size={12} /> Thêm loại tài liệu
-                          </button>
+                          <div className="wcl-output-add">
+                            <button
+                              type="button"
+                              className="wcl-output-add__button"
+                              onClick={() => openOutputDocumentModal(index)}
+                            >
+                              <Plus size={13} /> Thêm tài liệu đầu ra
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -2798,9 +2912,15 @@ export default function ContractWorkflowDesigner({
                     <div className="wcl-prop">
                       <span className="wcl-prop__label"><FileCheck2 size={13} /> Tài liệu đầu ra</span>
                       {checklistEditable ? (
-                        <button type="button" className="wcl-prop__add" onClick={() => addOutputDocument(index)}>
-                          <Plus size={12} /> Thêm tài liệu đầu ra
-                        </button>
+                        <div className="wcl-output-add">
+                          <button
+                            type="button"
+                            className="wcl-output-add__button"
+                            onClick={() => openOutputDocumentModal(index)}
+                          >
+                            <Plus size={12} /> Thêm tài liệu đầu ra
+                          </button>
+                        </div>
                       ) : (
                         <span className="wcl-prop__none">Không yêu cầu</span>
                       )}
@@ -2813,24 +2933,50 @@ export default function ContractWorkflowDesigner({
                       <div className="wcl-prop wcl-prop--pay">
                         <span className="wcl-prop__label"><Banknote size={13} /> Gói khoán</span>
                         <div className="wcl-prop__field">
-                          <select
-                            className="wcl-inline-select"
-                            disabled={!checklistEditable || !canManageCompensation}
-                            value={item.compensation.work_item_id || ''}
-                            onChange={event => updateChecklistItem(index, {
-                              compensation: {
-                                ...item.compensation,
-                                work_item_id: event.target.value,
-                                pay_key: event.target.value,
-                                pay_group_key: event.target.value,
-                              },
-                            })}
-                          >
-                            <option value="">Chọn công việc khoán</option>
-                            {workItems.map(workItem => (
-                              <option key={workItem.id} value={workItem.id}>{workItem.name}</option>
-                            ))}
-                          </select>
+                          <div className="wcl-picker wcl-picker--full">
+                            <button
+                              type="button"
+                              className={`wcl-picker__trigger${openChecklistPicker === `pay-${index}` ? ' is-open' : ''}`}
+                              disabled={!checklistEditable || !canManageCompensation}
+                              aria-haspopup="listbox"
+                              aria-expanded={openChecklistPicker === `pay-${index}`}
+                              aria-label={`Gói khoán: ${workItemById.get(item.compensation.work_item_id)?.name || 'Chưa chọn'}`}
+                              onClick={() => toggleChecklistPicker(`pay-${index}`)}
+                            >
+                              <span className="wcl-chip">
+                                <Banknote size={13} />
+                                {workItemById.get(item.compensation.work_item_id)?.name || 'Chưa chọn'}
+                              </span>
+                              <ChevronDown size={14} />
+                            </button>
+                            {openChecklistPicker === `pay-${index}` && (
+                              <div className="wcl-picker__menu wcl-picker__menu--up" role="listbox">
+                                {workItems.map(workItem => (
+                                  <button
+                                    type="button"
+                                    key={workItem.id}
+                                    role="option"
+                                    aria-selected={workItem.id === item.compensation.work_item_id}
+                                    className={`wcl-picker__option${workItem.id === item.compensation.work_item_id ? ' is-selected' : ''}`}
+                                    onClick={() => {
+                                      updateChecklistItem(index, {
+                                        compensation: {
+                                          ...item.compensation,
+                                          work_item_id: workItem.id,
+                                          pay_key: workItem.id,
+                                          pay_group_key: workItem.id,
+                                        },
+                                      });
+                                      closeChecklistPicker();
+                                    }}
+                                  >
+                                    {workItem.id === item.compensation.work_item_id && <Check size={13} />}
+                                    <span>{workItem.name}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                           {checklistEditable && canManageCompensation && (
                             <button type="button" className="wcl-prop__clear" onClick={() => updateChecklistItem(index, { compensation: { is_payable: false } })} title="Bỏ gói khoán">
                               <X size={13} />
@@ -3176,6 +3322,79 @@ export default function ContractWorkflowDesigner({
           {inspectorCollapsed ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}
         </button>
       </div>
+
+      <Modal
+        open={outputDocumentModalIndex !== null}
+        onClose={closeOutputDocumentModal}
+        title="Chọn tài liệu đầu ra"
+        id="workflow-output-documents-modal"
+        size="lg"
+        footer={(
+          <button type="button" className="btn btn-primary" onClick={closeOutputDocumentModal}>
+            Xong
+          </button>
+        )}
+      >
+        <div className="wcl-output-modal">
+          <p className="wcl-output-modal__hint">
+            Chọn các loại giấy tờ mà checklist này cần tạo ra. Có thể chọn nhiều loại, hệ thống sẽ tự đưa vào cấu trúc hồ sơ của Hạng mục sau khi nộp và duyệt.
+          </p>
+          {outputDocumentGroups.length > 0 ? (
+            <div className="wcl-output-modal__groups">
+              {outputDocumentGroups.map(group => (
+                <section
+                  key={group.key}
+                  className={`wcl-output-modal__group wcl-output-modal__group--${group.key.toLowerCase().replaceAll('_', '-')}`}
+                >
+                  <div className="wcl-output-modal__group-head">
+                    <div>
+                      <h3 className="wcl-output-modal__group-title">{group.label}</h3>
+                      <p className="wcl-output-modal__group-hint">{group.hint}</p>
+                    </div>
+                    <span className="wcl-output-modal__group-count">{group.items.length} loại</span>
+                  </div>
+                  <div
+                    className="wcl-output-modal__grid"
+                    role="listbox"
+                    aria-label={group.label}
+                    aria-multiselectable="true"
+                  >
+                    {group.items.map(template => {
+                      const selected = outputDocumentModalSelected.has(template.id);
+                      const usedElsewhere = phanBoTaiLieu.cua.has(template.id);
+                      return (
+                        <button
+                          type="button"
+                          key={template.id}
+                          role="option"
+                          aria-selected={selected}
+                          className={`wcl-output-modal__option${selected ? ' is-selected' : ''}`}
+                          onClick={() => {
+                            if (outputDocumentModalIndex === null) return;
+                            toggleOutputDocument(outputDocumentModalIndex, template.id);
+                          }}
+                        >
+                          <span className="wcl-output-modal__check" aria-hidden="true">
+                            {selected ? <Check size={14} /> : null}
+                          </span>
+                          <span className="wcl-output-modal__name">{template.name}</span>
+                          <span className="wcl-output-modal__source">{template.source_label || group.label}</span>
+                          <span className="wcl-output-modal__meta">
+                            {template.needs_original ? 'Cần bản chính' : 'Bản sao được'}
+                            {usedElsewhere ? ' · đã dùng ở checklist khác' : ''}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <p className="wcl-output-modal__empty">Chưa có mẫu tài liệu để chọn.</p>
+          )}
+        </div>
+      </Modal>
 
       {/* Rời khỏi màn khi còn thay đổi chưa lưu. "Lưu" ở đây chỉ LƯU TẠM —
           Áp dụng vào quy trình đang chạy là quyết định lớn, bắt buộc nhập lý do
