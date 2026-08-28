@@ -230,6 +230,7 @@ const normalizeAddressPart = value => String(value || '')
   .toLowerCase()
 
 export function hydrateExistingCustomerAddress(customer, provinces = []) {
+  const provinceOptions = Array.isArray(provinces) ? provinces : []
   const location = customer?.address_location
     || customer?.addressLocation
     || customer?.source_reference?.contract_address
@@ -238,7 +239,7 @@ export function hydrateExistingCustomerAddress(customer, provinces = []) {
   const parts = rawAddress.split(',').map(part => part.trim()).filter(Boolean)
   const explicitProvinceName = location.province_name || customer?.province_name || ''
   const explicitProvinceCode = location.province_code || customer?.province_code || ''
-  const province = provinces.find(item => (
+  const province = provinceOptions.find(item => (
     String(item.code) === String(explicitProvinceCode)
     || normalizeAddressPart(item.name) === normalizeAddressPart(explicitProvinceName)
     || normalizeAddressPart(item.name) === normalizeAddressPart(parts.at(-1))
@@ -246,11 +247,11 @@ export function hydrateExistingCustomerAddress(customer, provinces = []) {
   const provinceName = explicitProvinceName || province?.name || parts.at(-1) || ''
   const provinceCode = String(explicitProvinceCode || province?.code || '')
   const explicitWardName = location.ward_name || customer?.ward_name || ''
-  const wardName = explicitWardName || (province && parts.length > 2 ? parts.at(-2) : '')
+  const wardName = explicitWardName || (parts.length > 2 ? parts.at(-2) : '')
   const wardCode = String(location.ward_code || customer?.ward_code || '')
   const detail = String(
     location.detail || customer?.address_detail
-      || (province && parts.length > 2 ? parts.slice(0, -2).join(', ') : rawAddress),
+      || (parts.length > 2 ? parts.slice(0, -2).join(', ') : rawAddress),
   ).trim()
   return { detail, provinceCode, provinceName, wardCode, wardName }
 }
@@ -574,7 +575,9 @@ export default function ContractComposer({
   }, [open, identityInfo.tax_id, customerType, existingCustomerId])
 
   const handleSelectExistingCustomer = (customer) => {
-    const addressLocation = hydrateExistingCustomerAddress(customer, provinces)
+    const addressLocation = hydrateExistingCustomerAddress(customer, provinces) || {
+      detail: '', provinceCode: '', provinceName: '', wardCode: '', wardName: '',
+    }
     setExistingCustomerId(customer.id)
     setCustomerType(customer.customer_type || 'individual')
     setForm(cur => ({
