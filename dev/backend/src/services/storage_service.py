@@ -234,7 +234,26 @@ def upload_contract_template(file_obj, object_name: str) -> str:
 
 def get_contract_template(object_name: str) -> bytes:
     object_name = _require_prefix(object_name, (CONTRACT_TEMPLATE_PREFIX,))
-    response = _get_client().get_object(Bucket=CONTRACT_TEMPLATE_BUCKET, Key=object_name)
+    client = _get_client()
+    try:
+        response = client.get_object(Bucket=CONTRACT_TEMPLATE_BUCKET, Key=object_name)
+    except ClientError as error:
+        error_code = error.response.get("Error", {}).get("Code")
+        status_code = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        legacy_bucket = os.getenv(
+            "MINIO_CONTRACT_TEMPLATE_BUCKET",
+            "contract-template-files",
+        ).strip()
+        if (
+            _storage_config.managed
+            or (error_code not in {"NoSuchKey", "NotFound", "404"} and status_code != 404)
+            or not legacy_bucket
+            or legacy_bucket == CONTRACT_TEMPLATE_BUCKET
+        ):
+            raise
+        # Compatibility read for MinIO data created before local storage was
+        # consolidated. All new writes still target the shared private bucket.
+        response = client.get_object(Bucket=legacy_bucket, Key=object_name)
     return response["Body"].read()
 
 def upload_contract_document(file_obj, object_name: str, *, metadata: dict[str, str] | None = None) -> str:

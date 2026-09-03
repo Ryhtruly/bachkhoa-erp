@@ -59,8 +59,11 @@ class HandoverOverrideGateTests(unittest.TestCase):
                     self.db, "TN-K06", actor_id="USER-NV", note=None
                 )
 
-        self.assertEqual(caught.exception.status_code, 400)
-        self.assertIn("chưa được Giám đốc duyệt", caught.exception.detail)
+        # 423 Locked — cùng mã với ensure_handover_work_gate_open, vì cùng một
+        # nguyên nhân: hợp đồng còn nợ và chưa có duyệt ngoại lệ.
+        self.assertEqual(caught.exception.status_code, 423)
+        self.assertIn("5,000,000", caught.exception.detail)
+        self.assertIn("xin duyệt nợ", caught.exception.detail)
 
     def test_checklist_upload_is_locked_server_side_while_debt_request_is_missing(self):
         debt = {"remaining": 5_000_000, "is_settled": False, "gate_open": False}
@@ -204,6 +207,9 @@ class HandoverFinalizationTests(unittest.TestCase):
             "id": "TN-K06",
             "status": "in_progress",
             "is_handover": True,
+            # Cổng tạm dừng chạy trước cổng bàn giao. Bước này không tạm dừng,
+            # nên nó phải đi tiếp tới đúng câu chặn của K06.
+            "pause_reason_type": None,
         })
 
         with patch.object(workflow_runtime, "_require_node_assignment"):

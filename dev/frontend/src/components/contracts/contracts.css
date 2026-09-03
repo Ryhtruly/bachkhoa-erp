@@ -77,15 +77,17 @@
 .contract-add-button { display: grid; width: 38px; height: 38px; place-items: center; border: 0; border-radius: 99px; color: #fff; background: linear-gradient(135deg, var(--orange-400), var(--orange-600)); box-shadow: 0 7px 16px rgba(235, 74, 35, 0.25); cursor: pointer; }
 .contract-add-button:hover { transform: translateY(-1px); box-shadow: 0 9px 20px rgba(235, 74, 35, 0.32); }
 
+/* Khung này trước bị ghim cứng 56px cả ba chiều. Hàng lọc nâng cao bung ra cao
+   94px nên không có chỗ chứa, tràn xuống vẽ đè lên bảng — đó là cái "hỏng" khi
+   bấm nút Bộ lọc. Để min-height thôi: gập thì vẫn 56px, mở thì nở ra và đẩy
+   bảng xuống, đúng kiểu một hàng lọc mở rộng. */
 .contract-master-filters {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  height: 56px;
   min-height: 56px;
-  max-height: 56px;
   box-sizing: border-box;
-  padding: 0 14px;
+  padding: 8px 14px;
   background: var(--bg-deep);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -905,7 +907,7 @@
   /* Khai báo thẳng, không để mỗi nơi tự đoán một giá trị dự phòng: nút thu/mở
      neo theo đúng biến này, lệch một con số là nút rơi vào giữa khung chi tiết
      thay vì nằm trên đường ranh. */
-  --workflow-inspector-w: 360px;
+  --workflow-inspector-w: 404px;
   /* Thu khung chi tiết lại thì sơ đồ quy trình lấy hết chỗ trống. */
   grid-template-columns: minmax(560px, 1fr) var(--workflow-inspector-w);
   flex: 1; min-height: 0; height: auto; overflow: hidden;
@@ -2971,7 +2973,7 @@
   .contract-document-grid { grid-template-columns: 1fr; }
   .contract-workflow-layout { grid-template-columns: 190px minmax(0, 1fr); }
   .workflow-designer__body {
-    --workflow-inspector-w: 315px;
+    --workflow-inspector-w: 360px;
     grid-template-columns: minmax(430px, 1fr) var(--workflow-inspector-w);
   }
   .workflow-template-picker select { width: 200px; max-width: 200px; }
@@ -3391,10 +3393,20 @@
 .wcl-output-modal__meta {
   grid-area: meta;
   color: var(--text-tertiary);
-  font-size: 0.72rem;
-  font-weight: 650;
-  line-height: 1.25;
+  /* 0.72rem ~ 11.5px là chữ li ti, đọc mỏi mắt. Dòng này nay mang thông tin
+     quyết định — loại giấy đang nằm ở bước nào — nên phải đọc được. */
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
 }
+
+/* Vị trí của loại giấy, tô theo ràng buộc chứ không tô cho đẹp. */
+.wcl-output-modal__where { font-weight: 700; }
+/* Đang ở bước khác: chọn thêm ở đây là một loại giấy bị đòi ở hai bước. */
+.wcl-output-modal__where.is-taken { color: var(--orange-600, #c23816); }
+.wcl-output-modal__where.is-here { color: #15803d; }
+.wcl-output-modal__where.is-planned { color: var(--text-secondary, #475569); }
+.wcl-output-modal__where.is-free { color: var(--text-tertiary, #94a3b8); }
 
 .wcl-output-modal__empty {
   margin: 0;
@@ -3479,3 +3491,1301 @@
 }
 .wcl-output__ro b { color: var(--text-primary); font-weight: 700; }
 .wcl-output__dung-chung { color: var(--orange-600, #ea580c); font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Panel chi tiết Node — thanh tiền K06, người thực hiện, card checklist
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Tiến độ thu tiền, CHỈ Node K06. Xanh lá vì đây là tin tốt đang tiến tới đủ,
+   khác hẳn màu cam cấu hình ở phần dưới. */
+.wf-node-money { padding: 0 0 10px; }
+.wf-node-money__bar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 30px;
+  border: 1px solid color-mix(in srgb, var(--success-500, #22c55e) 45%, transparent);
+  border-radius: 8px;
+  background: var(--bg-muted, #f1f5f9);
+  overflow: hidden;
+}
+.wf-node-money__bar::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--wf-money-pct, 0%);
+  background: color-mix(in srgb, var(--success-500, #22c55e) 35%, transparent);
+}
+.wf-node-money__text {
+  position: relative;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--success-600, #059669);
+}
+
+/* Người thực hiện + lối tắt sang tab Phân công. */
+.wf-node-people {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+.wf-node-people__avatars { display: flex; }
+.wf-node-people__avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-card, #fff);
+  background: color-mix(in srgb, var(--orange-500) 22%, var(--bg-card));
+  color: var(--orange-600, #c23816);
+  font-size: 12px;
+  font-weight: 800;
+}
+/* Chồng lên nhau để một Node nhiều người vẫn gọn một dòng. */
+.wf-node-people__avatar + .wf-node-people__avatar { margin-left: -10px; }
+.wf-node-people__avatar.is-empty {
+  background: var(--bg-muted, #f1f5f9);
+  border-style: dashed;
+  border-color: var(--border-color, #cbd5e1);
+}
+.wf-node-people__detail {
+  margin-left: auto;
+  padding: 5px 14px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 7px;
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.wf-node-people__detail:hover { border-color: var(--orange-500); color: var(--orange-600, #c23816); }
+
+/* ── Card checklist ── */
+.wf-check-card {
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-card, #fff);
+}
+.wf-check-card + .wf-check-card { margin-top: 8px; }
+
+.wf-check-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #dbeafe;
+  border-bottom: 1px solid var(--border-color, #cbd5e1);
+}
+.wf-check-card__count {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid #93c5fd;
+  background: var(--bg-card, #fff);
+  font-size: 11px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+.wf-check-card__name {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wf-check-card__add {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid #86efac;
+  background: #dcfce7;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: #15803d;
+  cursor: pointer;
+}
+.wf-check-card__add:disabled { opacity: 0.55; cursor: default; }
+
+.wf-check-card__docs { display: flex; flex-direction: column; }
+.wf-check-card__empty {
+  margin: 0;
+  padding: 12px 10px;
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.wf-check-doc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.3));
+  font-size: 12px;
+}
+.wf-check-doc:last-child { border-bottom: 0; }
+.wf-check-doc__main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.wf-check-doc__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Chip lý do đứng TRƯỚC tên giấy: đó là thứ nhân viên phải đọc đầu tiên khi mở
+   ra xem vì sao bị trả lại. */
+.wf-check-doc__reason {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--danger-600, #dc2626);
+  cursor: help;
+}
+.wf-check-doc__open {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wf-check-doc__open:hover { color: var(--orange-600, #c23816); }
+
+.wf-check-doc__actions { flex: none; display: flex; gap: 4px; }
+.wf-check-doc__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wf-check-doc__actions .is-approve { color: var(--success-600, #059669); }
+.wf-check-doc__actions .is-approve:hover:not(:disabled) { border-color: var(--success-600, #059669); }
+.wf-check-doc__actions .is-reject { color: var(--danger-600, #dc2626); }
+.wf-check-doc__actions .is-reject:hover:not(:disabled) { border-color: var(--danger-600, #dc2626); }
+.wf-check-doc__actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.wf-check-doc__reject { flex: none; display: flex; align-items: center; gap: 4px; }
+.wf-check-doc__reject input {
+  width: 130px;
+  padding: 3px 7px;
+  border: 1px solid var(--danger-500, #ef4444);
+  font: inherit;
+  font-size: 11px;
+}
+.wf-check-doc__reject button {
+  padding: 3px 8px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wf-check-doc__reject button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Dòng đã quyết không còn nút — tránh bấm lại lần hai. */
+.wf-check-doc__verdict {
+  flex: none;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+}
+.wf-check-doc__verdict.is-approved { color: var(--success-600, #059669); }
+.wf-check-doc__verdict.is-rejected { color: var(--danger-600, #dc2626); }
+
+.wf-check-card__foot { border-top: 1px solid var(--border-color, #cbd5e1); }
+.wf-check-card__field {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.3));
+}
+.wf-check-card__field:last-child { border-bottom: 0; }
+.wf-check-card__field > span {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  padding: 7px 8px;
+  background: var(--np-label);
+  color: var(--np-label-ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+.wf-check-card__field select {
+  width: 100%;
+  padding: 5px 9px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+}
+.wf-check-card__pay {
+  padding: 5px 9px;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+/* ── Panel chi tiết Node — dựng theo mockup Claude Design ───────────────────
+   "Node Detail Mockup.dc.html". Màu, bề rộng, bo góc, giãn cách lấy nguyên số
+   đo trong mockup. Ghi đè có chủ ý lên .workflow-inspector__* để giữ nguyên
+   markup đang chạy; tách bằng .workflow-designer để không rò sang màn khác.
+
+   Một chỗ CỐ Ý lệch mockup: cam nhấn dùng --orange-500 (#eb4a23) của hệ thống
+   thay vì #E8562C của mockup. Hai màu gần như trùng mắt thường, nhưng mockup
+   dựng tách khỏi bảng màu ứng dụng — để panel một màu cam riêng thì nó lạc
+   khỏi phần còn lại của ERP. */
+.workflow-designer {
+  --np-label: #fceedd;
+  --np-label-ink: #c2680c;
+  --np-line: #f1e2cb;       /* kẻ ngang bảng cấu hình */
+  --np-card-line: #e5e0d8;  /* viền card, viền ô thời lượng */
+  --np-card-row: #efe9df;   /* kẻ ngang bên trong card */
+  --np-card-head: #eaf1fb;
+  --np-card-ink: #25467a;
+  --np-tab-idle: #fbefde;
+  --np-tab-idle-ink: #b96a2a;
+  --np-add-bg: #dcf3e3;
+  --np-add-ink: #1e8a4c;
+  --np-muted: #8b93a1;
+}
+[data-theme='dark'] .workflow-designer {
+  --np-label: #2a2118;
+  --np-label-ink: #e8b27c;
+  --np-line: #3d3428;
+  --np-card-line: #3a352d;
+  --np-card-row: #332e27;
+  --np-card-head: #16283a;
+  --np-card-ink: #7fc0e8;
+  --np-tab-idle: #2a2118;
+  --np-tab-idle-ink: #e8b27c;
+  --np-add-bg: #12301f;
+  --np-add-ink: #5cc98a;
+  --np-muted: #8b93a1;
+}
+
+/* Ba tab bằng nhau; chỉ tab đang mở là khối cam đặc. */
+.workflow-designer .workflow-inspector__tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--np-line);
+  background: var(--np-tab-idle);
+}
+.workflow-designer .workflow-inspector__tabs button {
+  padding: 9px 6px;
+  border: 0;
+  border-radius: 0;
+  background: var(--np-tab-idle);
+  color: var(--np-tab-idle-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.workflow-designer .workflow-inspector__tabs button:hover {
+  background: color-mix(in srgb, var(--orange-500) 12%, var(--np-tab-idle));
+  color: var(--np-tab-idle-ink);
+}
+.workflow-designer .workflow-inspector__tabs button.active {
+  background: var(--orange-500);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+/* ── Ba vùng: đỉnh cố định · giữa cuộn riêng · đáy cố định ──
+   Mockup là thẻ cao cố định nên chỉ cần max-height cho danh sách card. Panel
+   thật cao bằng màn hình, nên cùng ý đó viết bằng flex: chỉ danh sách card
+   cuộn, cấu hình ở trên và "Node bắt đầu" + "Chờ duyệt" ở dưới đứng yên. */
+.workflow-designer .workflow-inspector__content.wf-node-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+/* Vùng cấu hình NHƯỜNG chỗ trước khi checklist bị bóp. Trên màn thấp, bảng
+   cấu hình chiếm 250px khiến danh sách checklist chỉ còn ~77px — đúng thứ Giám
+   đốc đang làm việc lại là thứ bị co. Cho nó co và tự cuộn, còn checklist giữ
+   sàn đủ hai card. */
+.wf-node-panel__fixed {
+  flex: 0 1 auto;
+  min-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.wf-node-panel__foot {
+  flex: 0 0 auto;
+  padding: 8px 12px 10px;
+}
+.wf-node-panel__scroll {
+  display: flex;
+  /* basis 0, KHÔNG phải auto: auto lấy chiều cao nội dung (cả nghìn px khi
+     nhiều card) làm cơ sở chia, khiến vùng cấu hình bị co theo dù màn còn thừa
+     chỗ. basis 0 nghĩa là "lấy phần còn lại", đúng ý. */
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 150px;
+  padding: 0 13px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #d8d2c6 transparent;
+}
+.wf-node-panel__scroll::-webkit-scrollbar { width: 5px; }
+.wf-node-panel__scroll::-webkit-scrollbar-thumb { border-radius: 4px; background: #d8d2c6; }
+.wf-node-panel__scroll::-webkit-scrollbar-track { background: transparent; }
+.wf-node-panel__scroll > * { flex: 0 0 auto; margin: 0; }
+
+/* Cụm avatar. Mockup vẽ hai vòng nét đứt rỗng; nút [Chi tiết] không có trong
+   mockup nhưng vẫn giữ — đặc tả trước đó yêu cầu, và nó là lối tắt duy nhất
+   sang tab phân công ngay tại hàng người thực hiện. */
+.workflow-designer .wf-node-people { gap: 10px; padding: 6px 12px; }
+.workflow-designer .wf-node-people__avatar {
+  width: 32px;
+  height: 32px;
+  border: 1.5px dashed #cfd3da;
+  background: #f7f8fa;
+  color: var(--orange-600, #c23816);
+  font-size: 12px;
+  font-weight: 800;
+}
+.workflow-designer .wf-node-people__avatar + .wf-node-people__avatar { margin-left: -10px; }
+.workflow-designer .wf-node-people__detail {
+  padding: 5px 12px;
+  border: 1px solid var(--np-card-line);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* ── Bảng cấu hình ──
+   Hàng chia bằng border-bottom như mockup; nhãn 110px nền hổ phách. */
+.wf-node-grid {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--np-line);
+  border-radius: 0;
+}
+.wf-node-grid__row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  border-bottom: 0;
+}
+/* Mọi hàng cùng một chiều cao. Hàng cuối không kẻ đáy nên nếu để chiều cao tự
+   do nó lùn hơn 3px so với ba hàng trên. */
+.wf-node-grid__row,
+.wf-node-grid .workflow-pool-config__department,
+.wf-node-grid .workflow-pool-config__roles,
+.wf-node-grid .workflow-duration-editor__fields { min-height: 35px; }
+.wf-node-grid .workflow-pool-config,
+.wf-node-grid .workflow-duration-editor { display: contents; }
+.wf-node-grid .workflow-pool-config__heading,
+.wf-node-grid .workflow-duration-editor__heading,
+.wf-node-grid .workflow-pool-config__label,
+.wf-node-grid .custom-select-label { display: none; }
+
+.wf-node-grid .workflow-pool-config__department,
+.wf-node-grid .workflow-pool-config__roles,
+.wf-node-grid .workflow-duration-editor__fields {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+.wf-node-grid .workflow-pool-config__department::before { content: 'Phòng ban'; }
+.wf-node-grid .workflow-pool-config__roles::before { content: 'Vai trò'; }
+.wf-node-grid .workflow-duration-editor__fields::before { content: 'Thời lượng'; }
+
+.wf-node-grid__label,
+.wf-node-grid .workflow-pool-config__department::before,
+.wf-node-grid .workflow-pool-config__roles::before,
+.wf-node-grid .workflow-duration-editor__fields::before {
+  flex: none;
+  width: 110px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--np-line);
+  background: var(--np-label);
+  color: var(--np-label-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Hàng cuối bảng không kẻ đáy — dải checklist ngay dưới đã là ranh giới. */
+.wf-node-grid .workflow-duration-editor__fields::before { border-bottom: 0; }
+
+.wf-node-grid__value {
+  min-width: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--np-line);
+  background: #fff;
+  font-size: 14px;
+  color: var(--text-primary, #1a1a1a);
+}
+[data-theme='dark'] .workflow-designer .wf-node-grid__value { background: transparent; }
+.wf-node-grid__value--desc { padding: 8px 12px; font-size: 13px; }
+.wf-node-grid__value--desc > p {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.wf-node-grid__value textarea {
+  width: 100%;
+  height: 72px;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: 1.4;
+  resize: vertical;
+  outline: none;
+}
+.wf-node-grid__value p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--text-secondary); }
+
+/* Điều khiển trong ô: bỏ viền riêng, khung hàng đã là viền. */
+.wf-node-grid .custom-select-trigger,
+.wf-node-grid .wcl-picker__trigger,
+.wf-node-grid select {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.wf-node-grid .workflow-pool-config__department > *,
+.wf-node-grid .workflow-pool-config__roles > * {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--np-line);
+}
+/* Phải đứng SAU rule ngay trên: nhãn lồng cũng là con của hàng nên bị rule kia
+   bật lại display:flex — cùng độ đặc hiệu thì cái sau thắng. Rail bên trái đã
+   ghi "phòng ban" rồi, thêm "Phòng ban nhận việc" bên trong là nhắc hai lần và
+   bóp nát ô giá trị. */
+.wf-node-grid .workflow-pool-config__label,
+.wf-node-grid .custom-select-label { display: none; }
+
+/* Ngày · Giờ · Phút: ba ô CÓ viền bo, cách nhau 8px — đúng mockup. */
+.wf-node-grid .workflow-duration-editor__fields { gap: 8px; padding-right: 14px; }
+.wf-node-grid .workflow-duration-editor__fields::before { margin-right: 6px; }
+.wf-node-grid .workflow-duration-editor__fields > label {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  align-self: center;
+  height: 25px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--np-card-line);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3a3a3a;
+}
+[data-theme='dark'] .workflow-designer .wf-node-grid .workflow-duration-editor__fields > label { color: inherit; }
+.wf-node-grid .workflow-duration-editor__fields > label input {
+  width: 34px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: center;
+  font: inherit;
+}
+
+/* ── Dải "danh sách checklist" ──
+   Dính đỉnh vùng cuộn: cuộn qua mười card vẫn biết đang ở đâu. */
+.workflow-designer .wcl-section-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--orange-500);
+  color: #fff;
+}
+.workflow-designer .wcl-section-head__meta { flex: 1; min-width: 0; display: block; }
+.workflow-designer .wcl-section-head .wcl-section-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+.workflow-designer .wcl-section-head .wcl-section-title em {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+}
+.workflow-designer .wcl-section-head .wcl-section-dot { width: 6px; height: 6px; background: #fff; }
+/* Hạn xử lý đã có ở hàng "thời lượng" ngay trên. */
+.workflow-designer .wcl-section-head .wcl-section-deadline { display: none; }
+.workflow-designer .wcl-section-actions { flex: none; display: flex; flex-direction: row; gap: 8px; }
+.workflow-designer .wcl-section-head .wcl-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.workflow-designer .wcl-section-head .wcl-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.34); }
+.workflow-designer .wcl-section-head .wcl-btn:disabled { opacity: 0.5; }
+
+/* ── Card checklist ── */
+.workflow-designer .workflow-checklist-card {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--np-card-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.workflow-designer .wcl-top {
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--np-card-head);
+}
+/* Badge tròn cam đếm số GIẤY ĐẦU RA — khối lượng phải duyệt để mục này xong. */
+.workflow-designer .wcl-count {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--orange-500);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: grab;
+}
+.workflow-designer .wcl-count:active { cursor: grabbing; }
+.workflow-designer .wcl-name-inline {
+  padding: 2px 4px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--np-card-ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+.workflow-designer .wcl-x { color: var(--np-card-ink); }
+
+.workflow-designer .wcl-prop {
+  gap: 0;
+  min-height: 0;
+  padding: 0;
+  border-top: 1px solid var(--np-card-row);
+}
+.workflow-designer .wcl-prop__label {
+  flex: none;
+  align-self: stretch;
+  width: 110px;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--np-label);
+  color: var(--np-label-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.workflow-designer .wcl-prop__label > svg { display: none; }
+.workflow-designer .wcl-prop__field { padding: 8px 14px; font-size: 13px; }
+
+/* Vạch đậm tách danh sách giấy khỏi phần khoán — đúng mockup, và đúng nghĩa:
+   trên là thứ phải duyệt, dưới là tiền trả khi duyệt xong. */
+.workflow-designer .wcl-prop--pay { border-top: 2px solid #1a1a1a; }
+[data-theme='dark'] .workflow-designer .wcl-prop--pay { border-top-color: #cbd5e1; }
+.workflow-designer .wcl-prop--pay > .wcl-rate-readout {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--np-card-row);
+}
+.workflow-designer .wcl-prop--pay > .wcl-rate-readout::before {
+  content: 'Lương khoán';
+  flex: none;
+  align-self: stretch;
+  width: 110px;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--np-label);
+  color: var(--np-label-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.workflow-designer .wcl-prop .workflow-evidence-files { margin-left: 110px; }
+
+/* ── Card checklist trong thanh Chờ duyệt ──
+   Dùng chung ngôn ngữ với card ở tab node. */
+.wf-check-card { border-color: var(--np-card-line); border-radius: 10px; }
+.wf-check-card__head {
+  padding: 8px 14px;
+  border-bottom: 0;
+  background: var(--np-card-head);
+  color: var(--np-card-ink);
+}
+.wf-check-card__count {
+  width: 18px;
+  height: 18px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--orange-500);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.wf-check-card__name { text-align: left; font-size: 14px; color: var(--np-card-ink); }
+.wf-check-card__add {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--np-add-bg);
+  color: var(--np-add-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.wf-check-doc { padding: 8px 14px; border-top: 1px solid var(--np-card-row); border-bottom: 0; font-size: 13px; }
+.wf-check-doc__open { color: var(--np-muted); }
+.wf-check-card__foot { border-top: 2px solid #1a1a1a; }
+[data-theme='dark'] .wf-check-card__foot { border-top-color: #cbd5e1; }
+.wf-check-card__field {
+  grid-template-columns: 110px 1fr;
+  border-top: 1px solid var(--np-card-row);
+  border-bottom: 0;
+}
+.wf-check-card__foot > .wf-check-card__field:first-child { border-top: 0; }
+.wf-check-card__field > span {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--np-label);
+  color: var(--np-label-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.wf-check-card__field select,
+.wf-check-card__pay { padding: 8px 14px; font-size: 13px; }
+
+/* ── "Node bắt đầu": viên thuốc viền xanh, ngoài vùng cuộn ── */
+.workflow-designer .workflow-start-node-dashed-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 0;
+  border: 1.5px solid var(--np-add-ink);
+  border-radius: 24px;
+  background: transparent;
+  color: var(--np-add-ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+.workflow-designer .workflow-start-node-dashed-btn:disabled { opacity: 0.55; }
+
+/* ── Thanh "Chờ duyệt" ── */
+.workflow-designer .workflow-review-inbox {
+  border-radius: 0;
+  border-top: 1px solid var(--np-line);
+}
+.workflow-designer .workflow-review-inbox__trigger {
+  position: relative;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.workflow-designer .workflow-review-inbox__trigger span {
+  color: #7a7a7a;
+  font-size: 14px;
+  font-weight: 700;
+}
+/* Badge tròn cam đứng TRƯỚC chữ, không phải chấm nổi ở mép trên. */
+.workflow-designer .workflow-review-inbox__trigger strong {
+  position: static;
+  order: -1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--orange-500);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.workflow-designer .workflow-review-inbox > p { font-size: 12px; color: #a0a0a0; }
+.workflow-designer .workflow-review-inbox__trigger svg:last-child { color: var(--np-muted); }
+
+/* ── Card checklist: bám đúng bản vẽ ────────────────────────────────────────
+   Bản vẽ chỉ có ba phần: đầu card (tên · số giấy · thêm giấy) — danh sách giấy
+   — vạch đậm — công việc · lương khoán.
+
+   Các điều khiển bản vẽ không vẽ (kéo sắp xếp, bắt buộc/tuỳ chọn, xoá mục, và
+   các tuỳ chọn của từng tờ giấy) KHÔNG bị bỏ: chúng hiện khi trỏ vào hoặc khi
+   con trỏ đang ở trong card. Lúc nghỉ card sạch đúng bản vẽ, lúc sửa vẫn đủ. */
+.workflow-designer .wcl-top { flex-wrap: nowrap; }
+.workflow-designer .wcl-name-inline { flex: 1 1 auto; order: 1; width: auto; min-width: 0; }
+.workflow-designer .wcl-count { order: 0; }
+.workflow-designer .wcl-x { order: 7; }
+.workflow-designer .wcl-add-doc {
+  flex: none;
+  order: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--np-add-bg);
+  color: var(--np-add-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.workflow-designer .wcl-add-doc:disabled { opacity: 0.5; cursor: default; }
+.workflow-designer .wcl-add-doc:hover:not(:disabled) { background: color-mix(in srgb, var(--np-add-ink) 18%, var(--np-add-bg)); }
+/* Nghỉ thì chỉ một dấu cộng nhẹ; rê vào hoặc tab tới mới bung chữ. Chữ luôn nằm
+   trong DOM nên trình đọc màn hình vẫn đọc đúng tên nút. */
+.workflow-designer .wcl-add-doc > span {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.16s ease-out;
+}
+.workflow-designer .workflow-checklist-card:hover .wcl-add-doc > span,
+.workflow-designer .wcl-add-doc:focus-visible > span { max-width: 80px; }
+
+/* Nút xoá chỉ hiện khi cần. */
+.workflow-designer .wcl-x { opacity: 0; transition: opacity 0.12s ease-out; }
+.workflow-designer .workflow-checklist-card:hover .wcl-x,
+.workflow-designer .workflow-checklist-card:focus-within .wcl-x { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .workflow-designer .wcl-x,
+  .workflow-designer .wcl-add-doc > span { transition: none; }
+}
+
+/* Thứ tự hàng theo bản vẽ: giấy → vạch đậm → khoán → người duyệt.
+   Người duyệt không có trong bản vẽ nhưng là thiết lập thật, nên xuống cuối. */
+.workflow-designer .workflow-checklist-card > .wcl-top { order: 0; }
+.workflow-designer .workflow-checklist-card > .wcl-prop { order: 30; }
+.workflow-designer .workflow-checklist-card > .wcl-prop--output { order: 10; }
+.workflow-designer .workflow-checklist-card > .wcl-prop--pay { order: 20; }
+
+/* Danh sách giấy chiếm hết bề ngang — bản vẽ không có cột nhãn ở phần này. */
+.workflow-designer .wcl-prop--output { display: block; border-top: 0; }
+.workflow-designer .wcl-prop--output > .wcl-prop__label { display: none; }
+.workflow-designer .wcl-prop--output .wcl-output-panel,
+.workflow-designer .wcl-prop--output .wcl-output-panel__scroll {
+  max-height: none;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.workflow-designer .wcl-output-row {
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--np-card-row);
+  background: none;
+}
+.workflow-designer .wcl-output-row__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+}
+.workflow-designer .wcl-chip--doc {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-primary, #1a1a1a);
+  font-size: 13px;
+  font-weight: 400;
+}
+.workflow-designer .wcl-chip--doc > svg:first-child { display: none; }
+.workflow-designer .wcl-chip__x { margin-left: auto; color: var(--np-muted); }
+
+/* Hàng giấy không đổi chiều cao khi rê chuột — trước đây bung thêm ô Số lượng
+   và hai hộp tick nên danh sách nhấp nhô. */
+/* Cảnh báo chặn lưu quy trình thì KHÔNG bao giờ ẩn. */
+.workflow-designer .wcl-output-row__warn { display: block; margin: 0; padding: 0 14px 8px; }
+
+.workflow-designer .wcl-prop--output > .wcl-prop__none { padding: 10px 14px; font-size: 13px; }
+
+/* Mô tả: chữ đọc + cây bút nhỏ bên phải, bấm bút mới mở ô nhập. */
+.wf-node-grid__value--desc { display: flex; align-items: flex-start; gap: 8px; }
+.wf-node-grid__value--desc > p { flex: 1; min-width: 0; }
+.wf-node-grid__value--desc > textarea { flex: 1; }
+.wf-node-grid__edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--np-muted);
+  cursor: pointer;
+}
+.wf-node-grid__edit:hover { color: var(--orange-600, #c23816); }
+
+/* ── Sửa bốn chỗ sau khi dựng lại panel ─────────────────────────────────────
+   1) Dropdown bị cắt: vùng cấu hình có overflow-y để tự cuộn trên màn thấp,
+      mà overflow lại cắt luôn menu select đang mở (menu là position:absolute
+      nên mọi tổ tiên có overflow đều cắt). Khi có select đang mở thì thôi cắt.
+      Không bỏ hẳn overflow vì màn thấp vẫn cần cuộn. */
+.workflow-designer .wf-node-panel__fixed:has(.custom-select-container.is-open),
+.workflow-designer .wf-node-panel:has(.custom-select-container.is-open) {
+  overflow: visible;
+}
+
+/* 2) Vùng checklist phải ra một khối rõ ràng, không lẫn vào nền panel: nền
+      chìm hơn + kẻ hai bên, nối liền với dải cam ở trên. */
+.wf-node-panel__scroll {
+  border-left: 1px solid var(--np-card-line);
+  border-right: 1px solid var(--np-card-line);
+  border-bottom: 1px solid var(--np-card-line);
+  background: color-mix(in srgb, var(--np-label) 30%, #fff);
+}
+[data-theme='dark'] .workflow-designer .wf-node-panel__scroll {
+  background: color-mix(in srgb, var(--np-label) 40%, transparent);
+}
+.workflow-designer .workflow-checklist-card { background: var(--bg-card, #fff); }
+
+/* 3) Node bắt đầu: thấp lại và nằm sát thanh Chờ duyệt. */
+.wf-node-panel__foot { padding: 8px 12px 6px; }
+.workflow-designer .workflow-start-node-dashed-btn { padding: 6px 0; font-size: 14px; }
+
+/* 4) Thanh Chờ duyệt: khít hai mép, chỉ bo nhẹ hai góc trên. */
+.workflow-designer .workflow-review-inbox {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--np-line);
+  border-radius: 10px 10px 0 0;
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.06);
+}
+
+/* ── Dọn nốt sáu chỗ trong panel Node ───────────────────────────────────────
+   1) Ba hàng chân card (công việc · lương khoán · duyệt) cùng một chiều cao
+      thấp như các hàng cấu hình, và MỘT ô duy nhất: trigger đã là khung rồi
+      nên chip bên trong phải phẳng, không thành hai ô lồng nhau. */
+.workflow-designer .wcl-prop { min-height: 35px; }
+.workflow-designer .wcl-prop__field { padding: 0 10px; }
+.workflow-designer .wcl-prop .wcl-picker__trigger {
+  min-height: 27px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+.workflow-designer .wcl-prop .wcl-chip {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 12.5px;
+}
+.workflow-designer .wcl-prop .wcl-chip > svg { display: none; }
+.workflow-designer .wcl-prop--pay > .wcl-rate-readout { min-height: 35px; font-size: 12.5px; }
+.workflow-designer .wcl-prop__clear { flex: none; width: 22px; height: 22px; }
+
+/* 2) Dải cam và card đầu tiên không được dính nhau. */
+.wf-node-panel__scroll { padding-top: 10px; }
+
+/* 3) Khung avatar thấp và gọn lại. */
+.workflow-designer .wf-node-people { gap: 8px; padding: 5px 12px; }
+.workflow-designer .wf-node-people__avatar { width: 26px; height: 26px; font-size: 11px; }
+.workflow-designer .wf-node-people__avatar + .wf-node-people__avatar { margin-left: -8px; }
+
+/* 4) Đầu card chỉ còn dấu + và dấu ×, cả hai luôn hiện và nhỏ — tên checklist
+      lấy trọn phần còn lại, không còn hiệu ứng trượt chữ khi rê chuột. */
+.workflow-designer .wcl-add-doc {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+}
+.workflow-designer .wcl-x {
+  width: 24px;
+  height: 24px;
+  opacity: 1;
+  transition: none;
+}
+
+/* ── Chốt bố cục và màu panel Node ──────────────────────────────────────────
+   1) Chưa chọn Node thì khối rỗng phải NỞ hết chỗ, nếu không thanh Chờ duyệt
+      trôi lên giữa panel. Nó là thanh cố định đáy, không phải nội dung. */
+.workflow-designer .workflow-inspector__empty { flex: 1 1 auto; align-content: center; }
+
+/* 2) Nhân sự là một hàng của bảng: cùng nhãn, cùng chiều cao với các hàng khác. */
+.workflow-designer .wf-node-grid__row > .wf-node-people {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+}
+.workflow-designer .wf-node-people__avatars { display: flex; }
+.workflow-designer .wf-node-people__avatar {
+  width: 24px;
+  height: 24px;
+  border: 1.5px dashed #cfd3da;
+  background: #f7f8fa;
+  font-size: 10.5px;
+}
+.workflow-designer .wf-node-people__avatar:not(.is-empty) {
+  border-style: solid;
+  border-color: #fff;
+  background: color-mix(in srgb, var(--orange-500) 20%, #fff);
+  color: var(--orange-600, #c23816);
+}
+
+/* 3) Dropdown vai trò đang dùng teal trong khi cả panel là cam — đồng bộ về
+      bảng màu chung, giữ nguyên logic chọn nhiều. */
+.workflow-role-select .custom-select-option.is-selected {
+  background: color-mix(in srgb, var(--orange-500) 10%, var(--bg-card, #fff));
+  color: var(--orange-600, #c23816);
+}
+.workflow-role-select .custom-select-option.is-selected svg { color: var(--orange-500); }
+
+/* 4) Cam phẳng nguyên khối trông thô. Thêm chuyển sắc rất nhẹ theo chiều dọc và
+      một vệt sáng 1px ở mép trên để khối có độ dày, chữ giãn nhẹ cho cứng cáp. */
+.workflow-designer .workflow-inspector__tabs button.active,
+.workflow-designer .wcl-section-head {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--orange-500) 88%, #fff) 0%,
+    var(--orange-500) 55%,
+    color-mix(in srgb, var(--orange-500) 92%, #000) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+.workflow-designer .workflow-inspector__tabs button {
+  letter-spacing: 0.01em;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+.workflow-designer .workflow-inspector__tabs button:not(.active) {
+  background: color-mix(in srgb, var(--np-tab-idle) 92%, #fff);
+}
+.workflow-designer .wcl-section-head .wcl-section-title { letter-spacing: 0.01em; }
+.workflow-designer .wcl-section-head .wcl-btn {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(2px);
+}
+
+/* Tab đang mở và dải checklist dùng ĐÚNG dải màu của nút Kích hoạt — cùng một
+   sắc cam chéo, cùng quầng sáng, nên hai khối cam trong màn không còn mỗi chỗ
+   một kiểu. */
+.workflow-designer .workflow-inspector__tabs button.active,
+.workflow-designer .wcl-section-head {
+  background: linear-gradient(135deg, var(--orange-400), var(--orange-600));
+  box-shadow: var(--shadow-glow-orange);
+}
+
+/* ── Mép dọc của panel: MỘT nét duy nhất ────────────────────────────────────
+   Bản trước cạnh này là ba thứ chồng lên nhau, nên mỗi đoạn một sắc độ:
+     · viền trái của .workflow-inspector
+     · nét sáng inset — chỉ thấy ở đoạn nào con KHÔNG che, tức lúc ẩn lúc hiện
+     · viền trái riêng của vùng cuộn checklist
+     · mép trái cột nhãn tô đậm hơn bằng chuyển sắc ngang
+   Bốn thứ đó cắt cạnh thành từng khúc đậm nhạt khác nhau.
+
+   Cách chữa: gỡ hết ba thứ kia, rồi vẽ vạch mép bằng một lớp phủ đặt TRÊN mọi
+   con. Viền của panel nằm dưới các con nên đoạn nào con tô nền là đoạn đó đổi
+   sắc — lớp phủ thì không con nào chạm tới được. Chiều sâu do bóng hắt ra
+   ngoài panel đảm nhiệm, cũng không bị con nào che. */
+.workflow-designer .workflow-inspector {
+  /* Viền giữ chỗ để bề rộng nội dung không đổi, nhưng KHÔNG vẽ: nó nằm dưới
+     các con nên đoạn nào con tô nền đè lên là đoạn đó lệch sắc. */
+  border-left: 1px solid transparent;
+  box-shadow: -10px 0 26px -12px rgba(15, 23, 42, 0.16);
+}
+/* Vạch mép vẽ bằng lớp phủ nằm TRÊN mọi con: dải cam, cột nhãn hổ phách, vùng
+   checklist nền chìm — không thứ nào chạm được vào nó nữa, nên sắc độ đều tuyệt
+   đối từ đỉnh xuống đáy. */
+.workflow-designer .workflow-inspector::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 40;
+  width: 1px;
+  background: color-mix(in srgb, var(--orange-500) 18%, #d9d2c9);
+  pointer-events: none;
+}
+[data-theme='dark'] .workflow-designer .workflow-inspector::before {
+  background: color-mix(in srgb, var(--orange-500) 22%, #3d3428);
+}
+[data-theme='dark'] .workflow-designer .workflow-inspector {
+  box-shadow: -10px 0 26px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Cột nhãn phẳng lại — chuyển sắc ngang làm mép trái đậm hơn phần còn lại.
+   Giữ vạch ngăn bên PHẢI vì đó là đường kẻ trong bảng, không phải mép panel. */
+.wf-node-grid__label,
+.wf-node-grid .workflow-pool-config__department::before,
+.wf-node-grid .workflow-pool-config__roles::before,
+.wf-node-grid .workflow-duration-editor__fields::before,
+.workflow-designer .wcl-prop__label,
+.wf-check-card__field > span,
+.workflow-designer .wcl-prop--pay > .wcl-rate-readout::before {
+  background-image: none;
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--orange-500) 14%, var(--np-line));
+}
+
+/* Vùng checklist: bỏ viền hai bên — đó là nét thứ hai chạy sát mép panel. Nền
+   chìm và dải cam ở trên đã đủ khoanh vùng. */
+.wf-node-panel__scroll {
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--orange-500) 12%, var(--np-card-line));
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+/* Hàng giấy tờ đầu ra: tên · bắt buộc · bỏ — đúng một dòng, cao cố định. */
+.workflow-designer .wcl-output-row__req {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.workflow-designer .wcl-output-row__req input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--orange-500);
+}
+.workflow-designer .wcl-output-row__req:has(input:checked) { color: var(--orange-600, #c23816); }
+.workflow-designer .wcl-output-row .wcl-chip__x {
+  flex: none;
+  margin-left: 0;
+  width: 20px;
+  height: 20px;
+}
+
+/* Vệt chờ thay cho tên giấy khi danh mục chưa nạp xong — giữ đúng chỗ nên khi
+   tên thật về, dòng không nhảy. */
+.workflow-designer .wcl-chip__skeleton {
+  display: block;
+  width: 62%;
+  height: 11px;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+    var(--np-card-row) 0%,
+    color-mix(in srgb, var(--np-card-row) 45%, #fff) 50%,
+    var(--np-card-row) 100%);
+  background-size: 200% 100%;
+  animation: wcl-skeleton 1.1s ease-in-out infinite;
+}
+@keyframes wcl-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-designer .wcl-chip__skeleton { animation: none; }
+}
+
+/* ── K05a · K05b: khối hồ sơ nộp cơ quan (màn Giám đốc) ─────────────────────
+   Dùng lại đúng ngôn ngữ của bảng cấu hình: cột nhãn 110px nền hổ phách, hàng
+   35px, kẻ ngang mảnh. Đây là khối ĐỌC — mọi nút thao tác nằm ở LegalDossierActions
+   bên dưới và do máy chủ quyết định có hiện hay không. */
+.workflow-designer .wf-agency {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 10px;
+}
+
+/* Dải "đang tạm dừng": nền tối, chữ sáng — cố ý tương phản mạnh với cả panel.
+   Hồ sơ đứng bánh là thứ Giám đốc phải thấy trước mọi thứ khác. */
+.workflow-designer .wf-agency__paused {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  background: #1f2430;
+  color: #f4f6fb;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.workflow-designer .wf-agency__paused strong { flex: none; font-weight: 800; letter-spacing: 0.02em; }
+.workflow-designer .wf-agency__paused span { flex: 1; min-width: 0; }
+.workflow-designer .wf-agency__paused b {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.workflow-designer .wf-agency__paused svg { flex: none; }
+
+.workflow-designer .wf-agency__grid {
+  border: 1px solid var(--np-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.workflow-designer .wf-agency__row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  min-height: 35px;
+  border-top: 1px solid var(--np-line);
+}
+.workflow-designer .wf-agency__grid > .wf-agency__row:first-child { border-top: 0; }
+.workflow-designer .wf-agency__label {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--np-label);
+  color: var(--np-label-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.workflow-designer .wf-agency__value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.workflow-designer .wf-agency__value strong { font-weight: 700; }
+.workflow-designer .wf-agency__value em { font-style: normal; font-size: 11.5px; color: var(--np-muted); }
+.workflow-designer .wf-agency__empty { color: var(--np-muted); }
+.workflow-designer .wf-agency__overdue { color: var(--danger-600, #dc2626) !important; font-weight: 700; }
+.workflow-designer .wf-agency__due { color: var(--orange-600, #c23816) !important; font-weight: 700; }
+.workflow-designer .wf-agency__left { color: var(--np-add-ink) !important; }
+
+/* Điều kiện chặn: nói vì sao chưa bấm được, thay vì để Giám đốc đi tìm nút. */
+.workflow-designer .wf-agency__gate {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--orange-500) 7%, #fff);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.workflow-designer .wf-agency__gate svg { flex: none; margin-top: 1px; color: var(--orange-600, #c23816); }
+.workflow-designer .wf-agency__gate.is-overdue {
+  background: color-mix(in srgb, var(--danger-500, #ef4444) 8%, #fff);
+}
+.workflow-designer .wf-agency__gate.is-overdue svg { color: var(--danger-600, #dc2626); }
+
+/* Nhật ký chỉ K05b có, và gập lại — mở ra khi cần tra, không chiếm chỗ mặc định. */
+.workflow-designer .wf-agency__log { margin-top: 8px; font-size: 11.5px; }
+.workflow-designer .wf-agency__log summary {
+  padding: 5px 0;
+  color: var(--np-label-ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+.workflow-designer .wf-agency__log ul { margin: 0; padding: 0 0 0 2px; list-style: none; }
+.workflow-designer .wf-agency__log li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 0;
+  border-top: 1px solid var(--np-card-row);
+}
+.workflow-designer .wf-agency__log li > span { flex: none; color: var(--np-muted); }
+.workflow-designer .wf-agency__log li > strong { font-weight: 700; }
+.workflow-designer .wf-agency__log li > b {
+  padding: 0 5px;
+  border: 1px solid var(--np-line);
+  border-radius: 4px;
+  font-size: 10.5px;
+}
+.workflow-designer .wf-agency__log li > em { flex: 1 0 100%; font-style: normal; color: var(--text-secondary); }
+
+/* Xem trước khi bước chưa chạy: nói rõ sẽ có gì, thay vì để trống khiến Giám đốc
+   tưởng phần này chưa làm. */
+.workflow-designer .wf-agency__preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--np-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--np-label) 45%, #fff);
+}
+.workflow-designer .wf-agency__preview svg { flex: none; margin-top: 1px; color: var(--np-label-ink); }
+.workflow-designer .wf-agency__preview > div { display: grid; gap: 2px; min-width: 0; }
+.workflow-designer .wf-agency__preview strong { font-size: 12.5px; color: var(--np-label-ink); }
+.workflow-designer .wf-agency__preview span { font-size: 11.5px; line-height: 1.45; color: var(--text-secondary); }
+.workflow-designer .wf-agency__gate b { font-weight: 700; }
+
+/* Hộp xác nhận kích hoạt: hai nhóm cảnh báo, mỗi nhóm một tiêu đề riêng. */
+.workflow-activation-warning-dialog__head {
+  margin: 14px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.workflow-activation-warning-dialog__list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+.workflow-activation-warning-dialog__list li { margin-bottom: 4px; }

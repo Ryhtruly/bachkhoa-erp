@@ -187,7 +187,7 @@ def get_employee_ledger(
         left join contracts c on c.id = sl.contract_id
         left join customers cust on cust.id = c.customer_id
         left join workflow_nodes wn on wn.code = n.node_code
-        left join work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
+        left join active_work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
         where a.employee_id = :emp_id
         order by coalesce(n.completed_at, n.started_at, n.created_at) desc
     """)
@@ -434,7 +434,7 @@ def close_employee_period(
             from task_node_assignments a
             join task_nodes n on n.id = a.task_node_id
             join workflow_instances wi on wi.id = n.workflow_instance_id
-            left join work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
+            left join active_work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
             where a.employee_id = :emp_id and n.status in ('accepted', 'completed')
         """), {"emp_id": payload.employee_id}).mappings().all()
 
@@ -461,7 +461,7 @@ def close_employee_period(
                         continue  # Do not close tasks from other periods!
 
             exists = db.execute(text("""
-                select id from work_pay_entitlements
+                select id from active_work_pay_entitlements
                 where task_node_id = :node_id and employee_id = :emp_id
             """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id}).scalar()
 
@@ -470,6 +470,10 @@ def close_employee_period(
                     update work_pay_entitlements
                     set status = 'approved', approved_by = :actor_id, approved_at = now()
                     where task_node_id = :node_id and employee_id = :emp_id and status != 'approved'
+                      -- Suất đã chuyển sang người khác thì không duyệt nữa. Câu
+                      -- này ghi nên phải trỏ vào BẢNG, không trỏ view được — lọc
+                      -- ở đây là chỗ duy nhất chặn được.
+                      and not is_replaced
                 """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id, "actor_id": user.id})
                 approved_count += 1
             else:

@@ -493,7 +493,7 @@ class NguonChinhThucTests(unittest.TestCase):
 
     def test_mac_dinh_suy_tu_ma_buoc(self):
         for node_code, mong_doi in (("K02", "CONG_TY"), ("K03", "CONG_TY"),
-                                    ("K05", "CO_QUAN"), ("K01", "KHACH_HANG")):
+                                    ("K05b", "CO_QUAN"), ("K01", "KHACH_HANG")):
             db = MagicMock()
             db.execute.side_effect = [_scalar(node_code)]
             self.assertEqual(

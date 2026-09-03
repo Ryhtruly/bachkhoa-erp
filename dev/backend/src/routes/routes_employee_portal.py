@@ -17,6 +17,14 @@ from src.contracts.workflow_runtime import (
     WorkflowValidationError,
     cancel_node_help,
     claim_and_start_task,
+    claim_cluster,
+    is_workflow_instance_member,
+    node_document_review_summary,
+    node_pause_block,
+    prior_step_documents,
+    pause_node,
+    resume_node,
+    refresh_node_config,
     claim_node_help,
     mark_field_work_started,
     request_node_help,
@@ -39,6 +47,16 @@ class SubmitNodeIn(BaseModel):
 
 class ClaimNodeIn(BaseModel):
     role_code: str = "MAIN"
+
+
+class PauseNodeIn(BaseModel):
+    reason_type: str
+    note: str
+
+
+class ClaimClusterIn(BaseModel):
+    workflow_instance_id: str
+    cluster_code: str
 
 
 router = APIRouter(prefix="/api/employee-portal", tags=["Employee Portal"])
@@ -151,7 +169,12 @@ def get_task_pool(
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
-    return EmployeePortalService.get_task_pool(db, employee)
+    result = EmployeePortalService.get_task_pool(db, employee)
+    # Lượt dọn lười bên trong GHI dữ liệu (đóng lời nhờ quá hạn). Endpoint đọc
+    # mà không commit thì mọi thứ nó vừa dọn bị rollback khi phiên đóng — hết hạn
+    # không bao giờ được ghi, và lời nhờ chết nằm mãi trên bể việc.
+    db.commit()
+    return result
 
 
 @router.get("/task-pool/{task_node_id}/detail")
@@ -165,7 +188,9 @@ def get_task_pool_item_detail(
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
     try:
-        return EmployeePortalService.get_pool_item_detail(db, employee, task_node_id)
+        result = EmployeePortalService.get_pool_item_detail(db, employee, task_node_id)
+        db.commit()   # xem chú thích ở get_task_pool
+        return result
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -215,6 +240,104 @@ def stream_employee_task_events(
     )
 
 
+@router.post("/tasks/{task_node_id}/pause")
+def pause_task_node(
+    task_node_id: str,
+    payload: PauseNodeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Dừng đồng hồ của bước vì lý do không do nhân viên gây ra.
+
+    Chờ cơ quan ra thông báo thuế có thể mất ba tuần. Tính ba tuần đó vào KPI
+    người nộp hồ sơ là phạt họ vì một việc họ không điều khiển được.
+    """
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+    refresh_node_config(db)
+    try:
+        result = pause_node(
+            db,
+            task_node_id=task_node_id,
+            employee_id=employee.id,
+            reason_type=payload.reason_type,
+            note=payload.note,
+            actor_id=user.id,
+        )
+        db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        publish_timeline_change("NODE_PAUSED", entity_id=task_node_id)
+        return result
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/tasks/{task_node_id}/resume")
+def resume_task_node(
+    task_node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Chạy tiếp, và chốt quãng vừa chờ vào tổng thời gian không tính KPI."""
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+    try:
+        result = resume_node(
+            db, task_node_id=task_node_id, employee_id=employee.id, actor_id=user.id
+        )
+        db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        publish_timeline_change("NODE_RESUMED", entity_id=task_node_id)
+        return result
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/clusters/claim")
+def claim_task_cluster(
+    payload: ClaimClusterIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Nhận trọn một cụm bước của một hạng mục.
+
+    Khác đường nhận lẻ ở đúng một điểm quan trọng: KHÔNG bước nào bắt đầu chạy.
+    Cả cụm chỉ được gán, nhân viên bấm Bắt đầu ở bước đầu tiên sau đó — đó là chỗ
+    luật đơn nhiệm gác.
+    """
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+    refresh_node_config(db)
+    try:
+        result = claim_cluster(
+            db,
+            workflow_instance_id=payload.workflow_instance_id,
+            cluster_code=payload.cluster_code,
+            employee_id=employee.id,
+            actor_id=user.id,
+        )
+        db.commit()
+        invalidate_cache("task_pool:*")
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        for item in result["claimed"]:
+            publish_timeline_change("TASK_CLAIMED", entity_id=item["task_node_id"])
+        return result
+    except TaskClaimConflict as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/tasks/{task_node_id}/claim")
 def claim_task(
     task_node_id: str,
@@ -225,6 +348,10 @@ def claim_task(
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+    # Nạp cấu hình bước ở TẦNG ROUTE, không nạp trong hàm nghiệp vụ: cổng nhận
+    # việc chạy trong một chuỗi truy vấn có khoá, chen thêm một lượt đọc danh mục
+    # vào giữa là làm rối đúng chỗ cần đọc dễ nhất.
+    refresh_node_config(db)
     try:
         result = claim_and_start_task(
             db,
@@ -508,6 +635,7 @@ def start_task(
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
     try:
+        refresh_node_config(db)
         result = start_task_node(db, task_node_id=task_node_id, employee_id=employee.id, actor_id=user.id)
         db.commit()
         invalidate_cache("task_pool:*")
@@ -544,13 +672,58 @@ def start_field_work(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/tasks/{task_node_id}/prior-documents")
+def prior_documents(
+    task_node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Tủ hồ sơ: giấy chính thức của các bước đã hoàn thành, gom theo bước.
+
+    ── Phân quyền ──────────────────────────────────────────────────────────────
+    Tủ này chứa sổ đỏ, CCCD, bản vẽ ranh giới. Mở cho mọi tài khoản đã đăng nhập
+    là mời cả công ty vào lục hồ sơ khách của nhóm khác.
+
+    Người có phân công ở BẤT KỲ bước nào của Hạng mục đó xem được TOÀN BỘ — người
+    làm K04 cần giấy K01–K03 để làm việc, giấu bớt là chặn nhầm. Giám đốc/Admin
+    xem được. Còn lại 403.
+
+    403 chứ không phải danh sách rỗng: rỗng thì người ta tưởng hồ sơ chưa có giấy
+    nào, rồi đi hỏi vòng quanh.
+    """
+    node = db.execute(
+        text("select workflow_instance_id from public.task_nodes where id = :i"),
+        {"i": task_node_id},
+    ).mappings().first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy công việc.")
+
+    employee = _active_employee_for_user(db, user.id)
+    duoc_xem = is_workflow_instance_member(
+        db,
+        workflow_instance_id=node["workflow_instance_id"],
+        employee_id=employee.id if employee else None,
+    ) or check_user_permission(db, user, "contract", "read")
+    if not duoc_xem:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không thuộc nhóm thực hiện hạng mục này nên không xem được tủ hồ sơ.",
+        )
+
+    return {"status": "success", "data": prior_step_documents(db, task_node_id=task_node_id)}
+
+
 @router.get("/tasks/{task_node_id}/shortage")
 def node_shortage(
     task_node_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Thiếu gì trước khi bấm Nộp nghiệm thu — để Modal liệt kê đúng thứ máy chủ thấy.
+    """Vì sao chưa nộp nghiệm thu được — ĐỦ CẢ BA lý do, trong một lượt hỏi.
+
+    Trước đây chỉ trả "thiếu giấy". Nay còn hai cổng nữa: bước đang tạm dừng, và
+    còn tờ bị Giám đốc trả chưa sửa. Nút xám không nói lý do là bắt nhân viên đoán
+    rồi gọi điện hỏi — nên trả hết ở đây để giao diện bày thẳng cạnh nút.
 
     Cùng một hàm với chỗ ghi vết lúc nộp, nên Modal không bao giờ nói khác với
     cái được lưu lại.
@@ -560,7 +733,42 @@ def node_shortage(
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
-    return {"status": "success", "data": node_shortage_report(db, task_node_id)}
+
+    missing = node_shortage_report(db, task_node_id)
+    paused = node_pause_block(db, task_node_id=task_node_id)
+    review = node_document_review_summary(db, task_node_id=task_node_id)
+
+    # Xếp theo thứ tự nhân viên phải xử: đang tạm dừng thì mọi thứ khác vô nghĩa
+    # cho tới khi bấm Tiếp tục; tờ bị trả thì phải sửa trước khi lo giấy còn thiếu.
+    blockers = []
+    if paused:
+        blockers.append({"kind": "paused", "message": paused})
+    if review["rejected_count"]:
+        blockers.append({
+            "kind": "rejected_documents",
+            "message": (
+                f"Còn {review['rejected_count']} tờ bị Giám đốc trả lại chưa sửa. "
+                "Nộp tệp mới cho đúng những tờ đó rồi nộp lại."
+            ),
+        })
+    if missing:
+        blockers.append({
+            "kind": "missing_documents",
+            "message": f"Còn thiếu giấy tờ đầu ra ở {len(missing)} mục checklist.",
+        })
+
+    return {
+        "status": "success",
+        "data": missing,
+        "blockers": blockers,
+        "can_submit": not blockers,
+        "review_summary": {
+            "total": review["total"],
+            "approved_count": review["approved_count"],
+            "rejected_count": review["rejected_count"],
+            "pending_count": review["pending_count"],
+        },
+    }
 
 
 @router.post("/tasks/{task_node_id}/submit")

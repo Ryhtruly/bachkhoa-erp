@@ -3764,20 +3764,25 @@ tbody tr:hover td.dt-sticky-right {
   gap: 8px;
 }
 
-.filter-bar-modern__advanced-wrap {
-  overflow: hidden;
-  max-height: 0;
-  opacity: 0;
-  display: none;
-  transition: max-height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1), margin 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* Không transition được `display`, cũng không transition được `max-height` về
+   `none` — bản cũ khai cả hai nên hiệu ứng chưa từng chạy, chỉ nhảy một cái.
+   Thay bằng animation lúc xuất hiện: mờ dần + trượt nhẹ. Không đụng chiều cao
+   nên menu của ô chọn bên trong không bị cắt. */
+.filter-bar-modern__advanced-wrap { display: none; }
 
 .filter-bar-modern__advanced-wrap.expanded {
-  max-height: none;
-  overflow: visible;
-  opacity: 1;
-  margin-top: 8px;
   display: block;
+  margin-top: 8px;
+  animation: filter-advanced-in 0.18s ease-out;
+}
+
+@keyframes filter-advanced-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-bar-modern__advanced-wrap.expanded { animation: none; }
 }
 
 .filter-bar-modern__advanced {

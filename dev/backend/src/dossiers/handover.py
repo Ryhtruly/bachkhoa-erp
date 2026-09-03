@@ -516,6 +516,11 @@ def _split_handover_roles(db: Session, task_node_id: str) -> tuple[list, list]:
     return dossier_actors, finance_actors
 
 
+# Ít hơn chừng này thì lý do thường chỉ là "khách hẹn" — không đủ để Giám đốc
+# quyết, và sau này đọc lại cũng không hiểu chuyện gì đã xảy ra.
+MIN_DEBT_REASON_LENGTH = 10
+
+
 def create_debt_request(
     db: Session,
     task_node_id: str,
@@ -537,10 +542,26 @@ def create_debt_request(
         raise HTTPException(status_code=403, detail="Chỉ người phụ trách giao hồ sơ được xin duyệt nợ")
 
     clean_reason = (reason or "").strip()
-    if len(clean_reason) < 5:
-        raise HTTPException(status_code=400, detail="Lý do xin duyệt nợ phải có ít nhất 5 ký tự")
-    if promised_payment_date < date.today():
-        raise HTTPException(status_code=400, detail="Ngày hẹn thanh toán không được ở trong quá khứ")
+    if len(clean_reason) < MIN_DEBT_REASON_LENGTH:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Lý do xin duyệt nợ phải có ít nhất {MIN_DEBT_REASON_LENGTH} ký tự — "
+                   "ghi rõ khách hẹn trả thế nào để Giám đốc quyết được.",
+        )
+    if promised_payment_date <= date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="Ngày hẹn thanh toán phải sau hôm nay. Hẹn ngày đã qua thì không "
+                   "còn là lời hứa trả tiền.",
+        )
+    # Bắt buộc có bằng chứng: ảnh cam kết nợ, tin nhắn khách xác nhận, hoặc phiếu
+    # hẹn. Không có gì làm bằng thì lúc khách chối không còn chỗ nào đối chiếu.
+    if not commitment_file:
+        raise HTTPException(
+            status_code=422,
+            detail="Phải đính kèm cam kết nợ — ảnh giấy hẹn, tin nhắn hoặc email "
+                   "khách xác nhận ngày trả.",
+        )
 
     debt = debt_summary(
         db, node["contract_id"], node["total_value"], task_node_id=task_node_id
@@ -738,9 +759,20 @@ def submit_handover_for_acceptance(
         db, node["contract_id"], node["total_value"], task_node_id=task_node_id
     )
     if debt["remaining"] > 0.009 and not debt["gate_open"]:
+        # 423 Locked, không phải 400: yêu cầu không sai định dạng — cổng đang
+        # khoá vì công nợ. Dùng đúng mã mà `ensure_handover_work_gate_open` đã
+        # dùng cho CÙNG điều kiện này: một nguyên nhân thì một mã lỗi, để giao
+        # diện không phải đoán theo từng endpoint.
+        #
+        # Và phải nói RÕ còn thiếu bao nhiêu cùng lối đi tiếp, nếu không nhân
+        # viên đứng trước một nút xám không biết làm gì.
         raise HTTPException(
-            status_code=400,
-            detail="Hợp đồng còn nợ và Node chưa được Giám đốc duyệt bàn giao trước",
+            status_code=423,
+            detail=(
+                f"Hợp đồng còn nợ {debt['remaining']:,.0f}đ nên chưa nộp nghiệm thu "
+                "bàn giao được. Thu nốt tiền, hoặc gửi đơn xin duyệt nợ kèm cam kết "
+                "để Giám đốc mở khoá."
+            ),
         )
     checklist_state = _checklist_submission_state(db, task_node_id)
     if checklist_state["total"] == 0:

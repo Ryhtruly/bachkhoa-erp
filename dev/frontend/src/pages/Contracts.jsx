@@ -9,7 +9,8 @@ import ContractDocumentViewer from '../components/contracts/ContractDocumentView
 import '../components/contracts/contracts.css';
 
 import ContractWorkspace from '../components/contracts/ContractWorkspace';
-import DocumentRegister from '../features/document-register/DocumentRegister';
+import ContractFileActions from '../features/contracts/ContractFileActions';
+import DocumentCabinet from '../features/contracts/DocumentCabinet';
 
 const CONTRACT_GROUPS_PER_PAGE = 15;
 function getContractId(contract) {
@@ -502,29 +503,56 @@ export default function Contracts({ isDirector = false }) {
                   <header>
                     <div className="contract-detail-pane__document"><FileText size={20} /></div>
                     <div className="contract-detail-pane__header-info"><span>Hợp đồng đang chọn</span><h3>{getContractId(selectedContract)}</h3></div>
+                    {/* `status` ĐÃ là trạng thái quy trình, không phải trạng thái
+                        hợp đồng: _resolve_contract_progress_status trả thẳng
+                        "Chưa có quy trình" khi chưa có workflow nào. Badge dùng
+                        chung đã map sẵn chuỗi đó sang màu xám. */}
                     <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="contracts" />
                   </header>
                   <div className="contract-detail-pane__content">
                     <div className="contract-detail-field"><UserRound size={17} /><div><span>Khách hàng</span><strong>{selectedContract.customer_name || 'Chưa cập nhật'}</strong></div></div>
                     <div className="contract-detail-field"><CalendarDays size={17} /><div><span>Ngày ký</span><strong>{selectedContract.date_signed || 'Chưa cập nhật'}</strong></div></div>
                     <div className="contract-detail-field"><CircleDollarSign size={17} /><div><span>Giá trị hợp đồng</span><strong>{formatVND(selectedContract.total_value)}</strong></div></div>
-                    <div className="contract-detail-field"><Layers3 size={17} /><div><span>Hạng mục</span><strong>{selectedContract.service_lines?.map(line => line.name).filter(Boolean).join(', ') || 'Chưa cập nhật'}</strong></div></div>
-                    <div className="contract-paper-preview">
-                      <FileText size={42} />
-                      <strong>Tài liệu hợp đồng</strong>
-                      <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
-                      {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><FileText size={15} /> Mở tài liệu</button>}
-                    </div>
-
-                    {/* Giấy tờ khách hàng đưa lúc ký — thu ngay ở đây, cùng chỗ
-                        với thao tác tạo hợp đồng, thay vì đợi ai đó nhận việc.
-                        Một sổ dùng chung cho mọi hạng mục của hợp đồng. */}
-                    <DocumentRegister
+                    <div className="contract-detail-field"><Layers3 size={17} /><div><span>Gói &amp; Hạng mục</span>
+                      <strong className="contract-scope-value">
+                        {(selectedContract.service_lines || []).length === 0
+                          ? 'Chưa cập nhật'
+                          : (selectedContract.service_lines || []).map(line => (
+                            <span key={line.id || line.name} className="contract-scope-value">
+                              {line.service_package && (
+                                <span className="contract-scope-value__package">{line.service_package}</span>
+                              )}
+                              {line.name}
+                            </span>
+                          ))}
+                      </strong>
+                    </div></div>
+                    {/* Card "Tài liệu hợp đồng" cũ chiếm gần một phần ba sidebar
+                        chỉ để nói một câu; nút nét đứt "Giấy tờ khách hàng cung
+                        cấp" thì mở ra một sổ dài đẩy nút "Quy trình" khỏi khung
+                        nhìn. Thay cả hai bằng một hàng gọn và Tủ hồ sơ có chiều
+                        cao chặn cứng. */}
+                    <ContractFileActions
                       contractId={getContractId(selectedContract)}
+                      fileLink={selectedContract.file_link}
                       addToast={addToast}
-                      collapsible
-                      title="Giấy tờ khách hàng cung cấp"
-                      showSourceRepository
+                      onView={openContractDocument}
+                      onUploaded={(data) => {
+                        if (!data?.file_link) return;
+                        // Cập nhật ngay tại chỗ để hàng "hợp đồng mẫu" trỏ vào
+                        // bản mới, rồi nạp lại danh sách cho các màn khác khớp theo.
+                        setSelectedContract(current => (current ? { ...current, file_link: data.file_link } : current));
+                        fetchContracts(false);
+                      }}
+                    />
+
+                    {/* Tủ hồ sơ gắn theo đúng cặp Gói + Hạng mục, nên phải
+                        truyền danh sách Hạng mục xuống: thiếu nó thì không lấy
+                        được nhãn bước và sổ rơi về mô hình đời 1. */}
+                    <DocumentCabinet
+                      contractId={getContractId(selectedContract)}
+                      serviceLines={selectedContract.service_lines || []}
+                      addToast={addToast}
                     />
                   </div>
                   <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>

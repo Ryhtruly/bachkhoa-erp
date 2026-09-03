@@ -392,6 +392,118 @@ async def attach_slot_scan(
     return {"status": "success", "data": result}
 
 
+class ApplicabilityIn(BaseModel):
+    applicability_type: str
+    service_package_id: Optional[str] = None
+    task_type_id: Optional[str] = None
+    node_code: Optional[str] = None
+    is_default: bool = True
+
+
+class ApplicabilitiesIn(BaseModel):
+    items: list[ApplicabilityIn] = []
+
+
+@router.put("/templates/{template_id}/applicabilities")
+def set_template_applicabilities(
+    template_id: str,
+    payload: ApplicabilitiesIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "update")),
+):
+    """Khai trọn phạm vi cho một loại giấy VỪA TẠO: Gói · Hạng mục · Node.
+
+    Gửi lên là ảnh chụp trạng thái cuối — server thay toàn bộ phạm vi cũ trong
+    một giao dịch. Vì vậy chỉ dùng cho mẫu mới, khi chưa có bản ghi nào để đè.
+    Sửa một bản ghi của mẫu đã có thì dùng PUT .../applicabilities/{id}.
+    """
+    count = register.replace_applicabilities(
+        db,
+        template_id,
+        [scope.model_dump() for scope in payload.items],
+        actor_id=user.id,
+    )
+    db.commit()
+    return {"status": "success", "data": {"template_id": template_id, "count": count}}
+
+
+@router.post("/templates/{template_id}/applicabilities")
+def add_template_applicabilities(
+    template_id: str,
+    payload: ApplicabilitiesIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "update")),
+):
+    """Gán loại giấy ĐÃ CÓ vào phạm vi mới, giữ nguyên phạm vi cũ.
+
+    Khác PUT ở chỗ không xoá gì. Va vào phạm vi đã gán thì 409 nêu rõ, để Giám
+    đốc biết là phải sang đúng hạng mục đó bấm Sửa.
+    """
+    count = register.add_applicabilities(
+        db,
+        template_id,
+        [scope.model_dump() for scope in payload.items],
+        actor_id=user.id,
+    )
+    db.commit()
+    return {"status": "success", "data": {"template_id": template_id, "count": count}}
+
+
+class ApplicabilityNodeIn(BaseModel):
+    node_code: Optional[str] = None
+    is_default: bool = True
+
+
+@router.put("/templates/{template_id}/applicabilities/{applicability_id}")
+def set_applicability_node(
+    template_id: str,
+    applicability_id: str,
+    payload: ApplicabilityNodeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "update")),
+):
+    """Đổi bước của ĐÚNG MỘT bản ghi gán.
+
+    Mỗi bản ghi là một nhánh độc lập Gói → Hạng mục → Nhóm → Node → Loại giấy.
+    Sửa nhánh này phải để yên nhánh kia, kể cả khi cùng một loại giấy — nên ghi
+    theo id của dòng chứ không gửi lại cả cụm.
+    """
+    result = register.update_applicability(
+        db, template_id, applicability_id,
+        node_code=payload.node_code, is_default=payload.is_default,
+    )
+    db.commit()
+    return {"status": "success", "data": result}
+
+
+@router.delete("/templates/{template_id}/applicabilities/{applicability_id}")
+def delete_applicability(
+    template_id: str,
+    applicability_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "update")),
+):
+    """Gỡ một bản ghi gán — loại giấy thôi áp dụng cho nhánh đó, vẫn còn ở nhánh khác."""
+    result = register.remove_applicability(db, template_id, applicability_id)
+    db.commit()
+    return {"status": "success", "data": result}
+
+
+@router.get("/workflow-nodes")
+def list_workflow_nodes(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("contract", "read")),
+):
+    """Danh mục bước đang bật, để màn Mẫu Giấy Tờ dựng ô chọn Node."""
+    rows = db.execute(
+        text("""
+            select code, name, description from public.workflow_nodes
+            where coalesce(is_active, true) order by code
+        """)
+    ).mappings().all()
+    return {"status": "success", "data": [dict(row) for row in rows]}
+
+
 @router.post("/contracts/{contract_id:path}/source-documents")
 async def upload_source_document(
     contract_id: str,

@@ -14,7 +14,9 @@ class TaskPoolRuntimeRulesTests(unittest.TestCase):
     def test_maps_runtime_nodes_to_their_operating_department(self):
         self.assertEqual(task_pool_department_code("K02"), "SURVEY")
         self.assertEqual(task_pool_department_code("K03"), "SURVEY")
-        self.assertEqual(task_pool_department_code("K05"), "LEGAL")
+        self.assertEqual(task_pool_department_code("K05b"), "LEGAL")
+        # K05a là nộp NỘI NGHIỆP nên vẫn thuộc phòng Đo vẽ, không phải Pháp lý.
+        self.assertEqual(task_pool_department_code("K05a"), "SURVEY")
         self.assertEqual(task_pool_department_code("K06"), "LEGAL")
         self.assertEqual(task_pool_department_code("K01"), "SALES")
 
@@ -36,8 +38,9 @@ class TaskPoolRuntimeRulesTests(unittest.TestCase):
     def test_exposes_only_roles_that_can_be_claimed_from_the_pool(self):
         self.assertEqual(task_pool_roles("K02"), ("MAIN", "ASSISTANT"))
         self.assertEqual(task_pool_roles("K03"), ("MAIN",))
-        # Bước nộp cơ quan mang vai trò SUBMITTER; sau khi đánh số lại nó là K05.
-        self.assertEqual(task_pool_roles("K05"), ("SUBMITTER",))
+        # Cả hai bước nộp đều mang vai trò SUBMITTER, dù khác phòng.
+        self.assertEqual(task_pool_roles("K05a"), ("SUBMITTER",))
+        self.assertEqual(task_pool_roles("K05b"), ("SUBMITTER",))
         self.assertEqual(task_pool_roles("UNKNOWN"), ())
 
     def test_debt_override_opens_k08_operational_completion_without_marking_debt_settled(self):

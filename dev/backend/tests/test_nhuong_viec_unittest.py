@@ -29,6 +29,12 @@ def _scalar(value):
     return result
 
 
+def _all(rows):
+    result = MagicMock()
+    result.all.return_value = list(rows)
+    return result
+
+
 class NhoHoTroTests(unittest.TestCase):
     def test_ly_do_qua_ngan_thi_khong_nhuong_duoc(self):
         with self.assertRaises(WorkflowValidationError):
@@ -52,6 +58,9 @@ class NhoHoTroTests(unittest.TestCase):
         db = MagicMock()
         db.execute.side_effect = [
             _row({"id": "TN-1", "node_code": "K03", "status": "in_progress"}),
+            # Lượt dọn lười chạy trước khi kiểm trùng: không có lời nhờ nào quá
+            # hạn nên không đóng dòng nào, và dòng đang mở vẫn phải chặn.
+            _all([]),
             _first((1,)),
         ]
         with patch.object(workflow_runtime, "_require_node_assignment"):

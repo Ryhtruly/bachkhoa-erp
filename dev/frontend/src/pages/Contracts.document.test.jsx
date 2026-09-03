@@ -45,7 +45,7 @@ import Contracts from './Contracts';
 // Ba lời gọi nạp dữ liệu lúc trang mở đều đi qua apiFetch. Mock chung một giá
 // trị cho mọi URL sẽ nhét payload của "tạo tài liệu" vào chỗ config và danh sách
 // hợp đồng — trang không render nổi. Định tuyến theo URL, giống backend thật.
-const NAP_DU_LIEU = (url) => {
+const NAP_DU_LIEU = (url, options = {}) => {
   const duongDan = String(url);
   if (duongDan === '/api/config') return { personnel: [], services: [] };
   if (duongDan === '/api/catalog/service-packages') return { data: [] };
@@ -56,6 +56,13 @@ const NAP_DU_LIEU = (url) => {
       pagination: { page: 1, total_pages: 0, total_contracts: 1, total_groups: 1 },
     };
   }
+  // Tủ hồ sơ trong sidebar tự nạp sổ giấy tờ và kho nguyên bản. Không khai ở
+  // đây thì chúng rơi vào nhánh mặc định và bị đếm nhầm là lời gọi TẠO hợp
+  // đồng, làm thứ tự thao tác trong test sai lệch.
+  if (duongDan.startsWith('/api/document-register/register')) return { groups: [] };
+  // Chỉ chặn lệnh ĐỌC danh sách. Lệnh POST tải tệp lên có body — để nguyên cho
+  // test upload bên dưới đếm, nếu không nó không thấy tệp nào được gửi.
+  if (duongDan.includes('/source-documents') && !options.body) return { data: [], unclassified: 0 };
   return null; // không phải lời gọi nạp dữ liệu — để test tự quyết
 };
 
@@ -66,11 +73,11 @@ describe('Contracts document actions', () => {
     vi.clearAllMocks();
     contractSourceDocuments.value = [];
     window.open = vi.fn();
-    apiFetch.mockImplementation(async (url) => {
+    apiFetch.mockImplementation(async (url, options = {}) => {
       if (url === '/api/contracts/templates') {
         return [{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }];
       }
-      return NAP_DU_LIEU(url) ?? TAI_LIEU;
+      return NAP_DU_LIEU(url, options) ?? TAI_LIEU;
     });
     fetchProtectedDocumentBlob.mockResolvedValue(new Blob(['docx']));
     writeBlobToFileHandle.mockResolvedValue({ success: true, method: 'picker' });
@@ -96,11 +103,11 @@ describe('Contracts document actions', () => {
       order.push('picker');
       return { handle: { id: 'save-handle' } };
     });
-    apiFetch.mockImplementation(async (url) => {
+    apiFetch.mockImplementation(async (url, options = {}) => {
       if (url === '/api/contracts/templates') {
         return [{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }];
       }
-      const duLieuNap = NAP_DU_LIEU(url);
+      const duLieuNap = NAP_DU_LIEU(url, options);
       if (duLieuNap) return duLieuNap;
       order.push('create');
       return TAI_LIEU;
@@ -147,7 +154,7 @@ describe('Contracts document actions', () => {
       if (url === '/api/contracts/templates') {
         return [{ id: 'do-dac-v1', code: 'MAU_HOP_DONG_DO_DAC_BACH_KHOA', version: 1, name: 'Mẫu đo đạc' }];
       }
-      const duLieuNap = NAP_DU_LIEU(url);
+      const duLieuNap = NAP_DU_LIEU(url, options);
       if (duLieuNap) return duLieuNap;
       if (String(url).includes('/source-documents')) {
         sourceUploadBodies.push(options.body.get('file'));
