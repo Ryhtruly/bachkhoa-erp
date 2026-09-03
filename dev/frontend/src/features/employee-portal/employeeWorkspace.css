@@ -911,6 +911,201 @@
 }
 
 /* ==========================================================================
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ew-history__item {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.ew-history__item.is-open {
+  border-color: #10b981;
+}
+
+.ew-history__head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.ew-history__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ew-history__title strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+.ew-history__title span {
+  font-size: 11.5px;
+  color: var(--text-secondary, #64748b);
+}
+
+.ew-history__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.ew-history__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+
+.ew-history__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+}
+.ew-history__state.is-done {
+  color: #059669;
+}
+
+.ew-history__chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.ew-history__step {
+  min-width: 32px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #f1f5f9;
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid transparent;
+}
+.ew-history__step.is-done {
+  background: #ecfdf5;
+  color: #047857;
+}
+.ew-history__step.is-active {
+  background: #fff7ed;
+  color: #c2410c;
+}
+.ew-history__step.is-rework {
+  background: #fef3c7;
+  color: #b45309;
+}
+.ew-history__step.is-mine {
+  border-color: currentColor;
+}
+
+.ew-history__detail {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ew-history__node h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+.ew-history__code {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ew-history__checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ew-history__checklist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary, #64748b);
+}
+.ew-history__checklist li.is-done {
+  color: #047857;
+}
+.ew-history__checklist li.is-rework {
+  color: #b45309;
+}
+.ew-history__checklist li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ew-history__checklist li em {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.ew-history__empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+@media (max-width: 640px) {
+  .ew-history__head {
+    flex-direction: column;
+  }
+  .ew-history__meta {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .ew {
+    align-items: stretch;
+    min-width: 0;
+    width: 100%;
+  }
+  .ew-tabs {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
    Màn làm việc của MỘT bước, phía nhân viên — bốn tầng.
 
    Khung dựng như một bảng viền liền: các dải màu chạy hết chiều ngang cột, và
@@ -922,522 +1117,1379 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 20px 24px 32px;
-  max-width: 1560px;
-  margin: 0 auto;
+  padding: 24px 28px 32px;
+  max-width: 1360px;
+  margin: 16px auto;
   width: 100%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
 
-  /* Bảng màu lấy từ bản vẽ, neo vào token dự án khi có. */
-  --eiw-line: #cbd5e1;
-  --eiw-peach: #fce5cd;
-  --eiw-peach-ink: #7c4a03;
-  --eiw-task: #f6d4d0;
-  --eiw-task-ink: #8e3129;
-  --eiw-amber: #f0a830;
-  --eiw-amber-ink: #4a2f04;
-  --eiw-pass: #d9ead3;
-  --eiw-pass-ink: #2f5c22;
-  --eiw-stop: #c0271a;
-  --eiw-sky: #cfe2f3;
-  --eiw-sky-ink: #1e4670;
+  --eiw-line: #e2e8f0;
+  --eiw-amber-bg: #fffdf5;
+  --eiw-amber-border: #fde68a;
+  --eiw-amber-dark: #b45309;
+  --eiw-amber-text: #92400e;
+  --eiw-slate-card: #ffffff;
+  --eiw-slate-border: #e2e8f0;
+  --eiw-subtle-bg: #f8fafc;
+  --eiw-blue-primary: #2563eb;
+  --eiw-blue-hover: #1d4ed8;
+  --eiw-pass: #10b981;
+  --eiw-stop: #e11d48;
 }
 
-/* ── Tầng 1 ─────────────────────────────────────────────────────────────── */
+/* ── Header module ───────────────────────────────────────────────────────── */
+.eiw-module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0 20px;
+}
+.eiw-module-head__title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.eiw-module-head__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 9999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.eiw-module-head__title h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.eiw-module-head__tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  color: #64748b;
+  font-size: 13px;
+}
+.eiw-module-head__tools strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+.eiw-module-head__api {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 12px;
+  border-left: 1px solid #e2e8f0;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+}
+.eiw-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.eiw-icon-btn:hover {
+  color: #2563eb;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+}
 
+/* ── Top Bar: Back & Contract ID & Priority ──────────────────────────────── */
 .eiw-top {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
-  border: 1px solid var(--eiw-line);
-  background: #fff;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
 }
-
 .eiw-back {
   display: grid;
   place-items: center;
   width: 36px;
   height: 36px;
   flex: none;
-  border: 1px solid var(--eiw-line);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--text-secondary, #334155);
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #334155;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
-.eiw-back:hover { background: #f1f5f9; }
-
-.eiw-top__id { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.eiw-back:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.eiw-top__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
 .eiw-top__id span {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: .01em;
-  color: var(--text-secondary, #475569);
+  color: #64748b;
   text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 .eiw-top__id h1 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 800;
-  color: var(--text-primary, #0f172a);
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
 }
-
 .eiw-top__flag {
   margin-left: auto;
   flex: none;
-  padding: 9px 22px;
-  border: 1px solid var(--eiw-line);
-  font-size: 14px;
+  padding: 5px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary, #475569);
-  background: #fff;
+  color: #475569;
+  background: #ffffff;
 }
-.eiw-top__flag.is-high { border-color: var(--eiw-amber); color: var(--eiw-amber-ink); background: #fff7e8; }
-.eiw-top__flag.is-urgent { border-color: var(--eiw-stop); color: var(--eiw-stop); background: #fdecea; }
+.eiw-top__flag.is-high {
+  border-color: #fcd34d;
+  color: #b45309;
+  background: #fffbeb;
+}
+.eiw-top__flag.is-urgent {
+  border-color: #fecdd3;
+  color: #e11d48;
+  background: #fff1f2;
+}
 
+/* ── Dải quy trình (NodeChain / Stepper) ─────────────────────────────────── */
 .eiw-chain {
   display: flex;
-  align-items: stretch;
-  gap: 0;
-  padding: 14px 18px;
-  border: 1px solid var(--eiw-line);
-  border-top: none;
-  background: #fff;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
-.eiw-chain::-webkit-scrollbar { height: 8px; }
-.eiw-chain::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
-
-.eiw-chain__cell { display: flex; align-items: center; flex: 1 1 0; min-width: 148px; }
-
-.eiw-chain__arrow {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex: none;
-  margin: 0 -17px;
-  z-index: 1;
-  border: 1px solid var(--eiw-line);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--text-tertiary, #64748b);
+.eiw-chain__cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
 }
-
 .eiw-step {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 10px;
   flex: 1 1 auto;
-  min-height: 86px;
-  padding: 12px 26px;
-  border: 1px solid var(--eiw-line);
-  background: #f8fafc;
-  color: var(--text-tertiary, #94a3b8);
-  font-size: 18px;
-  font-weight: 700;
+  min-width: 0;
+  min-height: 58px;
+  padding: 8px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #475569;
   cursor: default;
+  transition: all 0.15s ease;
 }
-.eiw-step:not(:disabled) { cursor: pointer; }
-.eiw-step:not(:disabled):hover { border-color: var(--orange-400, #ff7a53); }
-.eiw-step.is-done { background: var(--eiw-pass); border-color: #a6c398; color: var(--eiw-pass-ink); }
-.eiw-step.is-open { background: #fff; color: var(--text-secondary, #475569); }
+.eiw-step:not(:disabled) {
+  cursor: pointer;
+}
+.eiw-step:not(:disabled):hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.eiw-step.is-done {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+.eiw-step.is-open {
+  background: #ffffff;
+  color: #475569;
+}
 .eiw-step.is-current {
-  background: #fff;
-  color: var(--text-primary, #0f172a);
-  border: 2px solid var(--orange-500, #eb4a23);
-  box-shadow: inset 0 0 0 3px #fff;
+  background: #ffffff;
+  border: 2px solid #10b981;
+  box-shadow: 0 1px 3px 0 rgba(16, 185, 129, 0.15);
 }
-.eiw-step.is-idle { opacity: .55; }
-.eiw-step__code { letter-spacing: .01em; }
-.eiw-step__tick { flex: none; }
+.eiw-step.is-idle {
+  opacity: 0.65;
+}
+.eiw-step__circle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+.eiw-step.is-current .eiw-step__circle {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+}
+.eiw-step.is-done .eiw-step__circle {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+}
+.eiw-step__info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.eiw-step__state {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+.eiw-step.is-current .eiw-step__state {
+  color: #047857;
+}
+.eiw-step.is-done .eiw-step__state {
+  color: #15803d;
+}
+.eiw-step__code-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.eiw-step__code {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.eiw-step__pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #10b981;
+  animation: eiw-pulse 1.4s ease-in-out infinite;
+  flex: none;
+}
+.eiw-step__name {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+  margin-left: auto;
+}
+.eiw-chain__arrow {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: #94a3b8;
+  padding: 0 2px;
+}
 
-/* ── Tầng 2–4: khung hai cột ────────────────────────────────────────────── */
+/* ── Node Banner (TÊN NODE HIỆN TẠI) ─────────────────────────────────────── */
+.eiw-node-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  background: #fffdf5;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+}
+.eiw-node-banner__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.eiw-node-banner__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #b45309;
+}
+.eiw-node-banner__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.eiw-node-banner__body span {
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.eiw-node-banner__body strong {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eiw-node-banner__code {
+  padding: 5px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+}
 
+/* ── 2-Column Responsive Layout ──────────────────────────────────────────── */
 .eiw-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: stretch;
-  border: 1px solid var(--eiw-line);
-  border-top: none;
-  background: #fff;
+  grid-template-columns: 5fr 7fr;
+  gap: 24px;
+  align-items: start;
+  border: none;
+  background: transparent;
 }
-
 .eiw-col {
   display: flex;
   flex-direction: column;
-  /* min-width: 0 để nội dung dài không nong cột ra ngoài lưới. */
+  gap: 18px;
   min-width: 0;
 }
-.eiw-col--left { border-right: 1px solid var(--eiw-line); }
+.eiw-col--left {
+  border: none;
+}
+.eiw-col--right {
+  min-height: 100%;
+}
 
+@media (max-width: 980px) {
+  .eiw-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── 1. Thẻ Thời gian còn lại (EiwTimingClock) ───────────────────────────── */
+.eiw-clock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  background: #fffdf5;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+}
+.eiw-clock__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.eiw-clock__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  background: #fef3c7;
+  color: #b45309;
+}
+.eiw-clock__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.eiw-clock__label {
+  padding: 0;
+  background: transparent;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.eiw-clock__value {
+  padding: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.eiw-clock__badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.eiw-clock__value em {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  font-style: normal;
+  color: #92400e;
+}
+
+/* ── 2. Thẻ Mô tả nhiệm vụ (EiwTaskDescription) ──────────────────────────── */
+.eiw-desc {
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: none;
+}
+.eiw-desc h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #475569;
+}
+.eiw-desc p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #475569;
+}
+.eiw-desc__assignee {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 14px;
+  margin-top: 6px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 12px;
+  color: #64748b;
+}
+.eiw-desc__assignee strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+.eiw-desc__assignee em {
+  font-style: normal;
+  color: #64748b;
+}
+
+/* ── 3. Thẻ Tủ hồ sơ đính kèm (EiwAttachmentsCard) ───────────────────────── */
+.eiw-attachments {
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.eiw-attachments__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.eiw-attachments__head > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.eiw-attachments__upload {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.eiw-attachments__upload:hover {
+  text-decoration: underline;
+  color: #1d4ed8;
+}
+.eiw-attachments__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eiw-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid #f1f5f9;
+  border-radius: 12px;
+  background: #f8fafc;
+  transition: all 0.15s ease;
+}
+.eiw-attachment:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.eiw-attachment__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.eiw-attachment__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+.eiw-attachment__icon.is-pdf { color: #2563eb; }
+.eiw-attachment__icon.is-archive { color: #10b981; }
+.eiw-attachment__icon.is-cad { color: #d97706; }
+.eiw-attachment__icon.is-file { color: #64748b; }
+.eiw-attachment__name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eiw-attachment:hover .eiw-attachment__name {
+  color: #1d4ed8;
+}
+.eiw-attachment__meta small {
+  font-size: 12px;
+  color: #94a3b8;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.eiw-attachment__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.eiw-attachment__open:hover:not(:disabled) {
+  border-color: #93c5fd;
+  color: #2563eb;
+  background: #eff6ff;
+}
+.eiw-attachments__cabinet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.eiw-attachments__cabinet:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+/* ── 4. Thẻ Chi phí & Khoán nhiệm vụ (EiwMoneyBreakdown) ──────────────────── */
+.eiw-money {
+  padding: 20px;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  background: rgba(254, 243, 199, 0.25);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+.eiw-money__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.eiw-money__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.eiw-money__currency-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+.eiw-money__head h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #1e293b;
+}
+.eiw-money__unit {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+}
+.eiw-money__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #475569;
+  border: none;
+}
+.eiw-money dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 400;
+}
+.eiw-money dt::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: #94a3b8;
+}
+.eiw-money dd {
+  padding: 0;
+  margin: 0;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.eiw-money__bonus-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+.eiw-money__divider {
+  border-top: 1px dashed #fcd34d;
+  margin: 4px 0;
+}
+.eiw-money__row.is-total {
+  align-items: flex-end;
+  padding-top: 2px;
+}
+.eiw-money__row.is-total dt {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.eiw-money__row.is-total dt::before {
+  display: none;
+}
+.eiw-money__row.is-total dt b {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+}
+.eiw-money__row.is-total dt small {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+.eiw-money__row.is-total dd {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.eiw-money__row.is-total dd span {
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 4px;
+  color: #475569;
+}
+
+/* ── CỘT PHẢI: Ô Nghiệp vụ & Danh mục Checklist đầu ra ───────────────────── */
 .eiw-band {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
-  padding: 13px 16px;
-  border: none;
-  border-bottom: 1px solid var(--eiw-line);
-  font-size: 15px;
-  font-weight: 700;
+  padding: 12px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
   text-align: center;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
 }
-
-.eiw-band--name { margin: 0; background: var(--eiw-peach); color: var(--eiw-peach-ink); }
-.eiw-band--task { background: var(--eiw-task); color: var(--eiw-task-ink); justify-content: space-between; }
-.eiw-band--cabinet,
+.eiw-band--name {
+  margin: 0;
+  background: #fffdf5;
+  border-color: #fde68a;
+  color: #b45309;
+}
+.eiw-band--task {
+  background: #fffdf5;
+  border-color: #fde68a;
+  color: #1e293b;
+  justify-content: space-between;
+}
 .eiw-band--slot {
-  background: var(--eiw-amber);
-  color: var(--eiw-amber-ink);
+  background: #fffdf5;
+  border: 1px solid #fde68a;
+  color: #b45309;
   cursor: pointer;
   justify-content: space-between;
 }
-.eiw-band--cabinet { justify-content: center; }
-.eiw-band--cabinet:hover,
-.eiw-band--slot:hover { filter: brightness(1.04); }
-.eiw-band--slot svg { transition: transform .18s var(--ease-out, ease); }
-.eiw-band--slot svg.is-open { transform: rotate(180deg); }
+.eiw-band--slot:hover {
+  background: #fef3c7;
+}
+.eiw-band--slot svg {
+  transition: transform 0.18s ease;
+}
+.eiw-band--slot svg.is-open {
+  transform: rotate(180deg);
+}
 
 .eiw-state {
-  padding: 5px 14px;
+  padding: 4px 12px;
   border: 1px solid currentColor;
-  border-radius: 999px;
-  background: #fff;
-  font-size: 13px;
+  border-radius: 9999px;
+  background: #ffffff;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--blue-500, #3b82f6);
+  color: #2563eb;
   white-space: nowrap;
 }
-.eiw-state.is-rework_required { color: var(--eiw-stop); }
-.eiw-state.is-submitted { color: var(--eiw-amber-ink); }
+.eiw-state.is-rework_required { color: #e11d48; border-color: #fecdd3; background: #fff1f2; }
+.eiw-state.is-submitted { color: #b45309; border-color: #fde68a; background: #fffdf5; }
 .eiw-state.is-accepted,
-.eiw-state.is-completed { color: var(--eiw-pass-ink); }
+.eiw-state.is-completed { color: #15803d; border-color: #bbf7d0; background: #f0fdf4; }
 
-.eiw-clock {
+.eiw-slot-header-card {
   display: flex;
   align-items: center;
-  gap: 0;
-  border-bottom: 1px solid var(--eiw-line);
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  background: #fffdf5;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
 }
-.eiw-clock__label {
-  flex: none;
-  padding: 12px 16px;
-  background: var(--eiw-task);
-  color: var(--eiw-task-ink);
-  font-size: 14px;
-  font-weight: 700;
+.eiw-slot-header-card__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
-.eiw-clock__value {
-  flex: 1;
-  padding: 12px 16px;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary, #0f172a);
-}
-.eiw-clock__value.is-overdue { color: var(--eiw-stop); }
-.eiw-clock__value.is-urgent { color: #b45309; }
-.eiw-clock__value.is-none { color: var(--text-tertiary, #94a3b8); font-weight: 600; }
-.eiw-clock__value.is-paused { color: var(--text-secondary, #475569); }
-.eiw-clock__value em {
+.eiw-slot-badge {
   display: inline-block;
-  margin-left: 10px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: #e2e8f0;
-  font-size: 13px;
-  font-style: normal;
-  font-weight: 600;
-  color: var(--text-secondary, #475569);
-}
-
-.eiw-desc {
-  /* KHÔNG flex:1 — cột phải cao bao nhiêu thì ô mô tả giãn theo bấy nhiêu, và
-     một mô tả ba dòng biến thành khối xám vài nghìn pixel. Cho nó một khoảng
-     đọc thoải mái rồi tự cuộn. */
-  flex: 0 1 auto;
-  min-height: 190px;
-  max-height: 380px;
-  padding: 18px;
-  border-bottom: 1px solid var(--eiw-line);
-  background: linear-gradient(180deg, #f1f5f9, #dfe5ec);
-  font-size: 15px;
-  line-height: 1.65;
-  color: var(--text-secondary, #334155);
-  overflow-y: auto;
-}
-
-.eiw-money { margin: 0; margin-top: auto; display: flex; flex-direction: column; }
-.eiw-money__row { display: flex; align-items: stretch; border-bottom: 1px solid var(--eiw-line); }
-.eiw-money__row:last-child { border-bottom: none; }
-.eiw-money dt {
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #d97706;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   flex: none;
-  width: 38%;
-  padding: 13px 16px;
-  background: var(--eiw-amber);
-  color: var(--eiw-amber-ink);
+}
+.eiw-slot-title {
   font-size: 14px;
   font-weight: 700;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.eiw-money dd {
-  flex: 1;
-  margin: 0;
-  padding: 13px 20px;
-  text-align: center;
-  font-size: 19px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary, #0f172a);
+.eiw-slot-count-badge {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex: none;
 }
-.eiw-money__row.is-total dt { background: var(--eiw-task); color: var(--eiw-task-ink); }
-.eiw-money__row.is-total dd { font-size: 21px; font-weight: 800; }
 
-/* ── Danh mục giấy đầu ra ───────────────────────────────────────────────── */
-
-/* Sổ giấy tờ nhúng ở đây bày HẾT loại giấy của hạng mục — đo thật là 58 loại,
-   cao 5292px, kéo cả trang lên 6011px và làm ô mô tả bên trái giãn thành một
-   khối xám rỗng dài bằng đấy.
-   Một danh mục tra cứu không được quyền quyết định chiều cao của cả màn làm
-   việc: chặn lại và cho cuộn trong chính nó. */
 .eiw-slotbody {
-  border-bottom: 1px solid var(--eiw-line);
-  padding: 4px 12px 12px;
-  max-height: 420px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 12px 16px;
+  max-height: 480px;
   overflow-y: auto;
+  min-width: 0;
 }
-.eiw-slotbody::-webkit-scrollbar { width: 10px; }
-.eiw-slotbody::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
+.eiw-slotbody::-webkit-scrollbar { width: 8px; }
+.eiw-slotbody::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
 
-.eiw-docs {
-  display: flex;
-  flex-direction: column;
-  /* min-height: 0 để vùng cuộn bên trong CO được. Thiếu dòng này thì con của
-     flex mặc định min-height:auto, overflow-y không kích hoạt, và danh sách nở
-     ra theo nội dung thay vì cuộn. */
-  min-height: 0;
-  flex: 1;
-  border-bottom: 1px solid var(--eiw-line);
-}
-
-.eiw-docs__head {
-  display: flex;
-  align-items: stretch;
-  flex: none;
-  border-bottom: 1px solid var(--eiw-line);
-  background: var(--eiw-sky);
-}
-.eiw-docs__count {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: none;
-  padding: 8px 12px;
-  border-right: 1px solid var(--eiw-line);
-  background: #fff;
-  line-height: 1.25;
-}
-.eiw-docs__count b { font-size: 15px; font-weight: 800; color: var(--text-primary, #0f172a); }
-.eiw-docs__count i { font-size: 12px; font-style: normal; color: var(--text-secondary, #475569); }
-.eiw-docs__head h3 {
-  flex: 1;
-  margin: 0;
+/* ── Cột tiêu đề Checklist ───────────────────────────────────────────────── */
+.eiw-checklist-col-titles {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 10px 14px;
-  font-size: 15px;
+  justify-content: space-between;
+  padding: 8px 4px 2px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--eiw-sky-ink);
-}
-.eiw-docs__add {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: 10px 16px;
-  border: none;
-  border-left: 1px solid var(--eiw-line);
-  background: var(--eiw-pass);
-  color: var(--eiw-pass-ink);
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.eiw-docs__add:hover { filter: brightness(1.04); }
-
-.eiw-docs__scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.eiw-docs__scroll::-webkit-scrollbar { width: 10px; }
-.eiw-docs__scroll::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
-
-.eiw-docs__empty { margin: 0; padding: 18px; font-size: 14px; color: var(--text-tertiary, #64748b); }
-
-.eiw-doc { border-bottom: 1px solid var(--eiw-line); }
-.eiw-doc:last-child { border-bottom: none; }
-.eiw-doc__row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
-.eiw-doc__name { flex: 1; font-size: 15px; font-weight: 600; color: var(--text-primary, #0f172a); }
-.eiw-doc__open {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex: none;
-  border: 1px solid var(--eiw-line);
-  background: #fff;
-  color: var(--text-secondary, #475569);
-  cursor: pointer;
-}
-.eiw-doc__open:disabled { opacity: .4; cursor: not-allowed; }
-.eiw-doc__open:not(:disabled):hover { border-color: var(--orange-400, #ff7a53); color: var(--orange-600, #c23816); }
-
-.eiw-doc.is-approved { background: var(--eiw-pass); }
-.eiw-doc.is-approved .eiw-doc__name { color: var(--eiw-pass-ink); }
-.eiw-doc.is-rejected { background: var(--eiw-task); }
-.eiw-doc.is-rejected .eiw-doc__name { color: var(--eiw-task-ink); }
-/* Chờ duyệt: gạch chéo nhạt. Để trắng thì tờ chưa ai đọc trông y hệt tờ đã qua,
-   và nhân viên tưởng mình đã xong. */
-.eiw-doc.is-pending {
-  background: repeating-linear-gradient(135deg,
-    transparent 0 7px, rgba(100, 116, 139, .1) 7px 14px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
 }
 
-.eiw-doc__reason {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  margin: 0;
-  border-top: 1px solid rgba(192, 39, 26, .35);
+/* ── Thẻ Checklist Item (NodeOutputList / ChecklistSection) ───────────────── */
+.eiw-checklist-item-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
 }
-.eiw-doc__reason b {
-  flex: none;
-  padding: 8px 14px;
-  background: var(--eiw-stop);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 700;
+.eiw-checklist-item-card:hover {
+  border-color: #cbd5e1;
 }
-.eiw-doc__reason span {
-  flex: 1;
-  padding: 8px 14px;
-  font-size: 14px;
-  color: var(--eiw-task-ink);
+.eiw-checklist-item-card.is-rejected {
+  border-color: #fecdd3;
+  background: #fffafa;
 }
-
-/* ── Thông báo của bước ─────────────────────────────────────────────────── */
-
-.eiw-alerts { display: flex; flex-direction: column; }
-.eiw-alert {
+.eiw-checklist-item-head {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin: 0;
-  padding: 13px 16px;
-  border-bottom: 1px solid var(--eiw-line);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.5;
-}
-.eiw-alert svg { flex: none; margin-top: 1px; }
-.eiw-alert.is-paused { background: #fff7e8; color: var(--eiw-amber-ink); }
-.eiw-alert.is-rejected_documents { background: #fdecea; color: var(--eiw-stop); }
-.eiw-alert.is-missing_documents { background: #f8fafc; color: var(--text-secondary, #475569); }
-
-/* ── Tầng 4 ─────────────────────────────────────────────────────────────── */
-
-.eiw-foot {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px;
-  border-top: 1px solid var(--eiw-line);
-  background: var(--eiw-task);
 }
-
-.eiw-btn {
-  padding: 11px 26px;
-  border: 1px solid var(--eiw-line);
-  background: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-secondary, #334155);
-  cursor: pointer;
-}
-.eiw-btn--ghost:hover { border-color: var(--orange-400, #ff7a53); color: var(--orange-600, #c23816); }
-
-.eiw-locked {
+.eiw-checklist-item-head__left {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 46px 24px;
-  border: 1px solid var(--eiw-line);
-  border-top: none;
-  background: #fff;
-  color: var(--text-secondary, #475569);
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
 }
-.eiw-locked h2 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-primary, #0f172a); }
-.eiw-locked p { margin: 0; font-size: 15px; }
-
-/* ── Tủ hồ sơ ───────────────────────────────────────────────────────────── */
-
-.eiw-drawer__msg {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 12px;
-  font-size: 15px;
-  color: var(--text-secondary, #475569);
-}
-.eiw-drawer__msg.is-error { color: var(--eiw-stop); }
-.eiw-drawer__list { display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto; }
-.eiw-drawer__group h4 {
-  margin: 0 0 6px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--eiw-line);
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--eiw-sky-ink);
-}
-.eiw-drawer__row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 2px;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 15px;
-  color: var(--text-primary, #0f172a);
-}
-.eiw-drawer__row button {
+.eiw-checklist-status-icon {
   display: grid;
   place-items: center;
   width: 32px;
   height: 32px;
-  margin-left: auto;
   flex: none;
-  border: 1px solid var(--eiw-line);
-  background: #fff;
-  color: var(--text-secondary, #475569);
-  cursor: pointer;
+  border-radius: 9999px;
 }
-.eiw-drawer__row button:hover { border-color: var(--orange-400, #ff7a53); }
-
-/* ── Ô nghiệp vụ: tạm dừng, công nợ ─────────────────────────────────────── */
-
-.eiw-band--paused {
-  background: var(--eiw-amber);
-  color: var(--eiw-amber-ink);
-  justify-content: space-between;
+.eiw-checklist-status-icon.is-valid {
+  background: #dcfce7;
+  color: #15803d;
 }
-.eiw-band--paused > span { display: flex; align-items: center; gap: 8px; }
-.eiw-band--paused button {
+.eiw-checklist-status-icon.is-rejected {
+  background: #ffe4e6;
+  color: #e11d48;
+}
+.eiw-checklist-status-icon.is-pending {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.eiw-checklist-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.eiw-checklist-item-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.eiw-checklist-item-title-row h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.eiw-checklist-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.eiw-checklist-badge.is-valid {
+  background: #dcfce7;
+  color: #15803d;
+}
+.eiw-checklist-badge.is-rejected {
+  background: #fef3c7;
+  color: #92400e;
+}
+.eiw-checklist-badge.is-pending {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.eiw-checklist-item-meta {
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+.eiw-checklist-item-meta span {
+  color: #64748b;
+}
+
+.eiw-checklist-item-head__right {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 16px;
-  border: 1px solid var(--eiw-amber-ink);
+  flex: none;
+}
+.eiw-checklist-docs-count {
+  padding: 4px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+.eiw-checklist-add-doc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.eiw-checklist-add-doc-btn:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.eiw-checklist-toggle-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.eiw-checklist-toggle-btn:hover {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+/* ── Danh sách giấy tờ con bên trong checklist item ───────────────────────── */
+.eiw-child-docs-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eiw-child-docs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+  padding: 0 2px;
+}
+.eiw-child-docs-head small {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+  color: #94a3b8;
+}
+.eiw-child-doc-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  transition: all 0.15s ease;
+}
+.eiw-child-doc-card:hover {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+.eiw-child-doc-card.is-rejected {
+  background: rgba(255, 241, 242, 0.4);
+  border-color: #fecdd3;
+}
+.eiw-child-doc-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.eiw-child-doc-icon-box {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  flex: none;
+}
+.eiw-child-doc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.eiw-child-doc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.eiw-child-doc-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eiw-child-doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.eiw-child-doc-filename-badge {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.eiw-child-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.eiw-child-doc-view-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.eiw-child-doc-view-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+.eiw-child-doc-upload-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.eiw-child-doc-upload-btn:hover {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #2563eb;
+}
+
+/* ── Hộp lý do từ chối (Rejection reason callout) ────────────────────────── */
+.eiw-rejection-callout {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #fecdd3;
+  border-radius: 12px;
+  background: rgba(255, 241, 242, 0.6);
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.5;
+}
+.eiw-rejection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.eiw-rejection-text {
+  color: #be123c;
+  font-weight: 500;
+}
+
+/* ── Chân trang & Nút hành động ─────────────────────────────────────────── */
+.eiw-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 24px;
+  margin-top: 16px;
+  border-top: 1px solid #f1f5f9;
+  background: transparent;
+  flex-wrap: wrap;
+}
+.eiw-foot__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.eiw-foot__status.is-warning {
+  color: #475569;
+}
+.eiw-foot__status.is-ready {
+  color: #047857;
+}
+.eiw-foot__pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  animation: eiw-pulse 1.4s ease-in-out infinite;
+  flex: none;
+}
+.eiw-foot__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.eiw-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: 12px;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px 0 rgba(37, 99, 235, 0.25);
+  transition: all 0.15s ease;
+}
+.eiw-submit-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+.eiw-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Backward-compatible fallbacks for tests ─────────────────────────────── */
+.eiw-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: none;
+}
+.eiw-docs__head {
+  display: none;
+}
+.eiw-docs__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.eiw-doc {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.eiw-doc__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.eiw-doc__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e293b;
+}
+.eiw-doc__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.eiw-doc__badge--approved { background: #dcfce7; color: #15803d; }
+.eiw-doc__badge--rejected { background: #ffe4e6; color: #e11d48; }
+.eiw-doc__badge--pending { background: #eff6ff; color: #2563eb; }
+.eiw-doc__badge--missing { background: #f1f5f9; color: #64748b; }
+.eiw-doc__open,
+.eiw-attachment__open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 12px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  transition: all 0.15s ease;
+}
+.eiw-doc__open:hover,
+.eiw-attachment__open:hover {
+  border-color: #93c5fd;
+  color: #2563eb;
+  background: #eff6ff;
+}
+.eiw-doc__open:disabled,
+.eiw-attachment__open:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.eiw-doc__reason {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 12px;
+}
+.eiw-doc__approved {
   background: #fff;
   font-size: 14px;
   font-weight: 700;
@@ -1618,16 +2670,41 @@
 
 @media (max-width: 900px) {
   .eiw { padding: 16px 12px 28px; }
-  /* .eiw-top là flex một hàng. Đặt width:100% cho nhãn ưu tiên mà KHÔNG cho
-     hàng xuống dòng thì nó không hạ xuống được, chỉ nong rộng cả hàng ra —
-     đúng nguyên nhân trang bị kéo ngang 46px ở khung 700px. */
   .eiw-top { flex-wrap: wrap; }
   .eiw-top__flag { margin-left: 0; width: 100%; text-align: center; }
   .eiw-grid { grid-template-columns: 1fr; }
   .eiw-picker { grid-template-columns: 1fr; }
   .eiw-picker__detail { border-right: none; border-bottom: 1px solid var(--eiw-line); }
   .eiw-col--left { border-right: none; border-bottom: 1px solid var(--eiw-line); }
-  .eiw-chain { min-height: 0; }
+  .eiw-chain { min-height: 0; overflow-x: auto; }
+  .eiw-step { min-height: 72px; padding: 10px 14px; }
+  .eiw-step__name { display: none; }
+  .eiw-desc { min-height: 120px; max-height: 260px; }
+  .eiw-slotbody { max-height: 340px; }
+  .eiw-money dt { width: 36%; padding: 11px 12px; font-size: 13px; }
+  .eiw-money dd { padding: 11px 14px; font-size: 16px; }
+}
+
+@media (max-width: 480px) {
+  .eiw { padding: 12px 8px 24px; }
+  .eiw-top { padding: 10px 12px; gap: 10px; }
+  .eiw-top__id h1 { font-size: 18px; }
+  .eiw-chain { padding: 10px 10px; gap: 0; }
+  .eiw-chain__arrow { width: 24px; height: 24px; margin: 0 -12px; }
+  .eiw-chain__arrow svg { width: 12px; height: 12px; }
+  .eiw-step { min-height: 64px; padding: 8px 10px; gap: 6px; border-width: 1px; }
+  .eiw-step__circle { width: 22px; height: 22px; font-size: 10px; }
+  .eiw-step__info { gap: 1px; }
+  .eiw-step__state { font-size: 8px; }
+  .eiw-step__code { font-size: 11px; }
+  .eiw-step__name { display: none; }
+  .eiw-desc { min-height: 100px; max-height: 200px; padding: 14px; font-size: 14px; }
+  .eiw-band { padding: 11px 12px; font-size: 13px; }
+  .eiw-slotbody { max-height: 280px; padding: 4px 8px 10px; }
+  .eiw-money dt { width: 34%; padding: 10px 10px; font-size: 12px; }
+  .eiw-money dd { padding: 10px 12px; font-size: 15px; }
+  .eiw-foot { padding: 12px 12px; flex-wrap: wrap; justify-content: center; }
+  .eiw-btn { padding: 9px 18px; font-size: 13px; }
 }
 
 /* ==========================================================================
@@ -1870,6 +2947,17 @@
 }
 .cod__req { background: rgba(239, 68, 68, 0.1); color: #b91c1c; }
 .cod__approval { background: rgba(245, 158, 11, 0.14); color: #b45309; }
+.cod__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+.cod__status--approved { color: #047857; }
+.cod__status--rejected { color: #b91c1c; }
+.cod__status--pending, .cod__status--missing { color: #64748b; }
 .cod__count { margin-left: auto; font-size: 11.5px; font-weight: 800; color: #64748b; }
 .cod__list > li.is-done .cod__count { color: #047857; }
 
@@ -1884,6 +2972,26 @@
 }
 .cod__reuse button:hover { text-decoration: underline; }
 .cod__empty { font-size: 11.5px; color: #94a3b8; }
+
+.cod__reason {
+  margin: 5px 0 0;
+  padding: 6px 8px;
+  border-left: 3px solid #ef4444;
+  background: #fff1f2;
+  color: #9f1239;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.cod__reason b { font-weight: 800; }
+.cod__approved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 5px 0 0;
+  color: #047857;
+  font-size: 11.5px;
+  font-weight: 700;
+}
 
 .cod__missing { margin: 8px 0 0; font-size: 11.5px; font-weight: 700; color: #b45309; }
 

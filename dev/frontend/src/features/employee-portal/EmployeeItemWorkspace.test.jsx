@@ -87,7 +87,7 @@ describe('Tầng 1 — hợp đồng và chuỗi bước', () => {
 describe('Tầng 2 — tên bước và đồng hồ', () => {
   it('hiện mã bước kèm tên và ô đếm ngược', () => {
     mount()
-    expect(screen.getByRole('heading', { name: 'K02: Khảo sát & đo hiện trường' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Node hiện tại' })).toHaveTextContent('K02 · Khảo sát & đo hiện trường')
     expect(screen.getByText('Thời gian còn lại')).toBeInTheDocument()
   })
 
@@ -110,7 +110,8 @@ describe('Tầng 3 — hai cột', () => {
   it('cột trái có mô tả, tủ hồ sơ và bảng tiền ba dòng', () => {
     mount()
     expect(screen.getByText(/Đo đạc thực địa/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Tủ hồ sơ/ })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Tủ hồ sơ đính kèm' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Mở tủ hồ sơ theo bước/ })).toBeInTheDocument()
     expect(screen.getByText('Khoán nhiệm vụ')).toBeInTheDocument()
     expect(screen.getByText('Tổng')).toBeInTheDocument()
   })
@@ -203,5 +204,139 @@ describe('Bước của người khác', () => {
 
     expect(screen.getByRole('heading', { name: /K03 · Chuẩn hoá/ })).toBeInTheDocument()
     expect(screen.queryByText('Khoán nhiệm vụ')).not.toBeInTheDocument()
+  })
+})
+
+describe('Trạng thái loading — locked state', () => {
+  it('task === null renders locked skeleton (no distinct loading prop needed)', () => {
+    mount({ tasks: [] })
+
+    expect(screen.getByRole('heading', { name: /K02/ })).toBeInTheDocument()
+    expect(screen.getByText(/Chưa tới lượt|chưa giao/)).toBeInTheDocument()
+    expect(screen.queryByText('Khoán nhiệm vụ')).not.toBeInTheDocument()
+  })
+
+  it('shows assignee name when node has one', () => {
+    mount({
+      tasks: [],
+      item: {
+        ...ITEM,
+        nodes: ITEM.nodes.map(n =>
+          n.id === 'n2' ? { ...n, assignee_name: 'Trần Văn B' } : n),
+      },
+    })
+
+    expect(screen.getByText(/Trần Văn B/)).toBeInTheDocument()
+  })
+
+  it('data-dependent sections do not render when task is absent', () => {
+    mount({ tasks: [] })
+
+    expect(screen.queryByText('Thời gian còn lại')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Đo đạc thực địa/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Tủ hồ sơ/ })).not.toBeInTheDocument()
+    expect(screen.queryByText('Nhờ hỗ trợ')).not.toBeInTheDocument()
+  })
+})
+
+describe('Mở tệp qua callback thật của cha (openDocument)', () => {
+  const fileBlob = new Blob(['png-bytes'], { type: 'image/png' })
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('bấm mở trên NodeOutputList fetch tệp đúng bước/tờ và mở FilePreviewModal', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(fileBlob),
+    })
+
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Mở T-BANVE/ }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/employee-portal/tasks/n2/documents/d1/file',
+        expect.anything(),
+      )
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/Xem tài liệu T-BANVE/)).toBeInTheDocument()
+    })
+  })
+
+  it('lỗi 403 từ openDocument hiện rõ trên màn, không im lặng', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ detail: 'Không đủ quyền' }),
+    })
+
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Mở T-BANVE/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/không có quyền/i)
+    })
+  })
+
+  it('401 từ openDocument phát tín hiệu hết phiên trước khi hiện lỗi', async () => {
+    const unauthorized = vi.fn()
+    window.addEventListener('bachkhoa:unauthorized', unauthorized)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ detail: 'Token hết hạn' }),
+    })
+
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Mở T-BANVE/ }))
+
+    await waitFor(() => expect(unauthorized).toHaveBeenCalledTimes(1))
+    window.removeEventListener('bachkhoa:unauthorized', unauthorized)
+  })
+
+  it('đóng FilePreviewModal thu hồi blob URL và xoá ref', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:employee-preview')
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(fileBlob),
+    })
+
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /Mở T-BANVE/ }))
+    await screen.findByText(/Xem tài liệu T-BANVE/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đóng' }))
+    expect(revoke).toHaveBeenCalledWith('blob:employee-preview')
+  })
+
+  it('mở Tủ hồ sơ và bấm một tờ trước đó qua callback thật cũng mở FilePreviewModal', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(fileBlob),
+    })
+    // Tủ hồ sơ nạp danh sách tên qua apiFetch; trả về một tên giấy mở được.
+    apiFetch.mockReset()
+    apiFetch.mockResolvedValue({
+      cabinet_by_node: [],
+      data: [{
+        node_code: 'K01',
+        node_name: 'Tiếp nhận',
+        documents: [{ document_id: 'prior1', name: 'Hợp đồng lưu trữ' }],
+      }],
+    })
+
+    render(
+      <EmployeeItemWorkspace item={ITEM} tasks={[TASK]} onBack={vi.fn()} onRefresh={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Mở tủ hồ sơ theo bước/ }))
+
+    const docBtn = await screen.findByRole('button', { name: /Mở Hợp đồng lưu trữ/ })
+    fireEvent.click(docBtn)
+
+    await waitFor(() => {
+      expect(screen.getByText(/Xem tài liệu Hợp đồng lưu trữ/)).toBeInTheDocument()
+    })
   })
 })

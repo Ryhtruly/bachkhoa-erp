@@ -303,6 +303,7 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
         taskNodeId={taskNodeId}
         checklistResultId={item.id}
         outputDocuments={outputDocuments}
+        reviewByTemplate={item.review_by_template}
         contractId={contractId}
         editable={canSubmit}
         addToast={addToast}
@@ -717,6 +718,7 @@ export default function EmployeeWorkspaceCalendar({
   claimingKey = '',
   onRefresh,
   isDirector = false,
+  hidePool = false,
 }) {
   // Bối cảnh Toast có thể vắng mặt (ví dụ trong test dựng component đơn lẻ),
   // nên không phá vỡ cả màn hình chỉ vì thiếu một hàm báo lỗi.
@@ -802,7 +804,7 @@ export default function EmployeeWorkspaceCalendar({
 
   return <div className="employee-workspace__main">
   <div className="employee-workspace-operations">
-    <TaskPoolPanel taskPool={taskPool} onClaim={onClaim} claimingKey={claimingKey} now={now} />
+    {!hidePool && <TaskPoolPanel taskPool={taskPool} onClaim={onClaim} claimingKey={claimingKey} now={now} />}
     <ActiveWorkStrip tasks={tasks} now={now} />
     {dailySummary && <section className="employee-daily-summary" aria-label="Thành tích hôm nay">
       <span><CheckCircle2 size={14} /> {dailySummary.submitted_count || 0} ca đã nộp</span>

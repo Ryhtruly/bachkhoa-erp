@@ -56,6 +56,12 @@ describe('Chọn khối theo CỜ CẤU HÌNH, không theo mã bước', () => {
     expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
   })
 
+  it('requires_gov_submission=true vẫn hiển thị bảng theo dõi cơ quan khi allow_gov_tracking=false', () => {
+    mount({ requires_gov_submission: true, allow_gov_tracking: false })
+
+    expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
+  })
+
   it('K06 có thanh công nợ và khối bàn giao', () => {
     mount({ node_code: 'K06', is_handover: true })
 
@@ -63,10 +69,20 @@ describe('Chọn khối theo CỜ CẤU HÌNH, không theo mã bước', () => {
     expect(screen.getByText(/1\.230\.000đ \/ 12\.300\.000đ/)).toBeInTheDocument()
   })
 
-  it('K01 mở kho giấy tờ khách gửi', () => {
+  it('K01 mở kho giấy tờ khách gửi và liên kết aria-controls với id của panel', () => {
     mount({ node_code: 'K01' })
-    expect(screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })).toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })
+    expect(toggle).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(toggle).toHaveAttribute('aria-controls', 'k01-customer-docs-panel')
+
+    const panel = document.getElementById('k01-customer-docs-panel')
+    expect(panel).toBeInTheDocument()
     expect(screen.getByTestId('kho-giay-khach')).toBeInTheDocument()
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById('k01-customer-docs-panel')).not.toBeInTheDocument()
   })
 })
 
@@ -113,5 +129,17 @@ describe('Thanh công nợ K06', () => {
   it('còn nợ thì nói rõ còn bao nhiêu', () => {
     mount({ node_code: 'K06', is_handover: true })
     expect(screen.getByText(/còn 11\.070\.000đ/)).toBeInTheDocument()
+  })
+
+  it('hợp đồng giá trị 0đ và đã thu 0đ hiển thị đã thu đủ (settled)', () => {
+    render(
+      <NodeBusinessSlot
+        task={task({ node_code: 'K06', is_handover: true })}
+        item={{ ...ITEM, contract_total_value: 0, contract_paid_amount: 0 }}
+      />,
+    )
+    expect(screen.getByText('đã thu đủ')).toBeInTheDocument()
+    expect(screen.getByText(/0đ \/ 0đ/)).toBeInTheDocument()
+    expect(screen.queryByText(/còn/)).not.toBeInTheDocument()
   })
 })

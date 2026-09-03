@@ -25,6 +25,11 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
         const tone = done ? 'done' : current ? 'current' : RUNNING.has(node.status) ? 'open' : 'idle'
         const canOpen = openable.has(node.id)
 
+        let statusLabel = 'CHƯA TỚI'
+        if (done) statusLabel = 'ĐÃ HOÀN THÀNH'
+        else if (current) statusLabel = 'ĐANG XỬ LÝ'
+        else if (RUNNING.has(node.status)) statusLabel = 'ĐANG MỞ'
+
         return (
           <div className="eiw-chain__cell" role="listitem" key={node.id}>
             <button
@@ -35,8 +40,19 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
               onClick={() => canOpen && onSelect?.(node.id)}
               title={canOpen ? node.name : `${node.name} — bước của người khác`}
             >
-              <span className="eiw-step__code">{node.node_code}</span>
-              {done && <Check size={16} className="eiw-step__tick" aria-hidden="true" />}
+              <div className="eiw-step__circle">
+                {done ? <Check size={14} className="eiw-step__tick" aria-hidden="true" /> : (index + 1)}
+              </div>
+              <div className="eiw-step__info">
+                <span className="eiw-step__state">{statusLabel}</span>
+                <div className="eiw-step__code-wrap">
+                  <span className="eiw-step__code">{node.node_code}</span>
+                  {current && !done && <span className="eiw-step__pulse" title="Đang trong tiến trình" />}
+                </div>
+              </div>
+              <div className="eiw-step__name">
+                {node.name}
+              </div>
             </button>
             {index < nodes.length - 1 && (
               <span className="eiw-chain__arrow" aria-hidden="true">

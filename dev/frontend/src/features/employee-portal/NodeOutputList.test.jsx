@@ -12,8 +12,6 @@ const TEMPLATES = new Map([
 const ITEM = {
   id: 'CR-1',
   name: 'Bộ hồ sơ kỹ thuật',
-  // Máy chủ gửi kèm tên loại giấy. Thiếu nó là màn nhân viên bày nguyên UUID —
-  // đúng lỗi đã thấy trên trình duyệt với dữ liệu thật.
   template_names: {
     'T-CCCD': 'CCCD chủ đất',
     'T-BANVE': 'Bản vẽ hiện trạng',
@@ -60,8 +58,6 @@ describe('Ba trạng thái của một tờ giấy', () => {
 
     expect(row).toHaveClass('is-rejected')
     expect(within(row).getByText('Nguyên nhân từ chối')).toBeInTheDocument()
-    // Lý do phải nằm cùng dòng giấy. Gom vào một hộp chung ở cuối là năm tờ bị
-    // trả với năm lý do, người ta phải tự ghép lý do nào của tờ nào.
     expect(within(row).getByText('Thiếu tọa độ mốc ranh số 4')).toBeInTheDocument()
   })
 
@@ -69,18 +65,69 @@ describe('Ba trạng thái của một tờ giấy', () => {
     mount()
     const cho = rowOf('Sơ đồ hiện trạng vị trí')
 
-    // Bản vẽ tay chỉ có xanh và hồng. Để tờ chờ duyệt trắng trơn thì nhân viên
-    // tưởng đã qua.
     expect(cho).toHaveClass('is-pending')
     expect(cho).not.toHaveClass('is-approved')
   })
 
-  it('loại giấy chưa ai nộp tệp thì không mở được', () => {
+  it('loại giấy chưa ai nộp tệp thì hiện_MISSING', () => {
     mount({
       checklistItem: { ...ITEM, review_by_template: {} },
     })
     const row = rowOf('CCCD chủ đất')
-    expect(within(row).getByRole('button', { name: /Mở CCCD chủ đất/ })).toBeDisabled()
+    expect(row).toHaveClass('is-missing')
+  })
+})
+
+describe('Trạng thái và nhãn', () => {
+  it('tờ đã duyệt hiển thị nhãn "Đã duyệt"', () => {
+    mount()
+    const row = rowOf('CCCD chủ đất')
+    expect(within(row).getByText('Đã duyệt')).toBeInTheDocument()
+  })
+
+  it('tờ bị từ chối hiển thị nhãn "Bị từ chối"', () => {
+    mount()
+    const row = rowOf('Bản vẽ hiện trạng')
+    expect(within(row).getByText('Bị từ chối')).toBeInTheDocument()
+  })
+
+  it('tờ chờ duyệt hiển thị nhãn "Chờ duyệt"', () => {
+    mount()
+    const row = rowOf('Sơ đồ hiện trạng vị trí')
+    expect(within(row).getByText('Chờ duyệt')).toBeInTheDocument()
+  })
+
+  it('tờ chưa nộp hiển thị nhãn "Chưa nộp"', () => {
+    mount({
+      checklistItem: { ...ITEM, review_by_template: {} },
+    })
+    const row = rowOf('CCCD chủ đất')
+    expect(within(row).getByText('Chưa nộp')).toBeInTheDocument()
+  })
+})
+
+describe('Bảo vệ tờ đã duyệt', () => {
+  it('nút mở tờ đã duyệt có title cảnh báo không thể thay thế', () => {
+    mount()
+    const row = rowOf('CCCD chủ đất')
+    const btn = within(row).getByRole('button', { name: /Mở CCCD chủ đất/ })
+    expect(btn).not.toBeDisabled()
+    expect(btn).toHaveAttribute('title', 'Đã duyệt — không thể thay thế')
+  })
+
+  it('hiện thông báo "Đã duyệt — không thể thay thế" dưới tờ đã duyệt', () => {
+    mount()
+    const row = rowOf('CCCD chủ đất')
+    expect(within(row).getByText(/Đã duyệt — không thể thay thế/)).toBeInTheDocument()
+  })
+
+  it('tờ đã duyệt VẪN CÓ THỂ mở (xem), chỉ không thay thế', () => {
+    const onOpenDocument = vi.fn()
+    mount({ onOpenDocument })
+    fireEvent.click(screen.getByRole('button', { name: /Mở CCCD chủ đất/ }))
+    expect(onOpenDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ template_id: 'T-CCCD', document_id: 'd1' }),
+    )
   })
 })
 
@@ -95,6 +142,26 @@ describe('Badge đếm ở đầu danh mục', () => {
     mount({ nodeStatus: 'in_progress' })
     expect(screen.getByText('3/3')).toBeInTheDocument()
     expect(screen.queryByText('0/3')).not.toBeInTheDocument()
+  })
+
+  it('bước đang làm có tờ bị từ chối thì badge hiện tổng đã tải', () => {
+    mount({ nodeStatus: 'in_progress' })
+    // Tất cả 3 tờ đều có document_id (approved, rejected, pending) → 3/3
+    expect(screen.getByText('3/3')).toBeInTheDocument()
+  })
+
+  it('bước có tờ chưa nộp thì đếm đúng số đã tải', () => {
+    mount({
+      nodeStatus: 'in_progress',
+      checklistItem: {
+        ...ITEM,
+        review_by_template: {
+          'T-CCCD': { document_id: 'd1', review_status: 'approved' },
+        },
+      },
+    })
+    // 1 trong 3 tờ có document_id → 1/3
+    expect(screen.getByText('1/3')).toBeInTheDocument()
   })
 })
 
@@ -122,6 +189,16 @@ describe('Mở tệp', () => {
     expect(onOpenDocument).toHaveBeenCalledWith(
       expect.objectContaining({ template_id: 'T-BANVE', document_id: 'd2' }),
     )
+  })
+
+  it('callback nhận document_id để cha có thể fetch tệp thật', () => {
+    const onOpenDocument = vi.fn()
+    mount({ onOpenDocument })
+
+    fireEvent.click(screen.getByRole('button', { name: /Mở Bản vẽ hiện trạng/ }))
+    const doc = onOpenDocument.mock.calls[0][0]
+    expect(doc.document_id).toBe('d2')
+    expect(doc).toHaveProperty('template_id', 'T-BANVE')
   })
 })
 
@@ -158,5 +235,21 @@ describe('Tên loại giấy', () => {
       />,
     )
     expect(screen.getByText('TPL-LA')).toBeInTheDocument()
+  })
+})
+
+describe('Tờ bị từ chối và nộp lại — lý do không cũ', () => {
+  it('tờ mới nộp lại sau khi bị trả hiện "Chờ duyệt", không hiện lý do cũ', () => {
+    mount({
+      checklistItem: {
+        ...ITEM,
+        review_by_template: {
+          'T-BANVE': { document_id: 'd2-new', review_status: 'pending_review' },
+        },
+      },
+    })
+    const row = rowOf('Bản vẽ hiện trạng')
+    expect(row).toHaveClass('is-pending')
+    expect(within(row).queryByText('Nguyên nhân từ chối')).not.toBeInTheDocument()
   })
 })

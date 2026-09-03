@@ -34,9 +34,10 @@ export default function NodeBusinessSlot({
   const [customerDocsOpen, setCustomerDocsOpen] = useState(true)
   const paused = Boolean(task.pause_reason_type)
 
-  const isHandover = Boolean(task.is_handover || task.node_code === 'K06')
+  const isHandover = Boolean(task.is_handover)
   const allowPause = Boolean(task.allow_pause)
   const allowGovTracking = Boolean(task.allow_gov_tracking)
+  const requiresGovSubmission = Boolean(task.requires_gov_submission)
 
   return (
     <>
@@ -64,9 +65,8 @@ export default function NodeBusinessSlot({
         )
       )}
 
-      {/* ── K05b: bảng theo dõi cơ quan. K05a KHÔNG có — nộp xong là hết việc
-             với cơ quan, bày nhật ký ở đó chỉ làm dài màn. ── */}
-      {allowGovTracking && (
+      {/* ── Bảng theo dõi cơ quan (chỉ bật khi cấu hình yêu cầu) ── */}
+      {(allowGovTracking || requiresGovSubmission) && (
         <div className="eiw-slotbody">
           <SubmissionReceiptPanel
             taskNodeId={task.id}
@@ -93,13 +93,14 @@ export default function NodeBusinessSlot({
             type="button"
             className="eiw-band eiw-band--slot"
             aria-expanded={customerDocsOpen}
+            aria-controls="k01-customer-docs-panel"
             onClick={() => setCustomerDocsOpen(value => !value)}
           >
             <span>Kho giấy tờ khách gửi</span>
             <ChevronDown size={16} className={customerDocsOpen ? 'is-open' : ''} />
           </button>
           {customerDocsOpen && (
-            <div className="eiw-slotbody">
+            <div id="k01-customer-docs-panel" className="eiw-slotbody">
               <DocumentRegister
                 contractId={item.contract_id}
                 serviceLineId={item.service_line_id}
@@ -126,8 +127,8 @@ export default function NodeBusinessSlot({
 function DebtBand({ item }) {
   const total = Number(item.contract_total_value || 0)
   const paid = Number(item.contract_paid_amount || 0)
-  const settled = total > 0 && total - paid <= 0.009
-  const percent = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0
+  const settled = (total > 0 && total - paid <= 0.009) || (total === 0 && paid === 0)
+  const percent = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : (settled ? 100 : 0)
 
   return (
     <div className={`eiw-debt${settled ? ' is-settled' : ''}`}>

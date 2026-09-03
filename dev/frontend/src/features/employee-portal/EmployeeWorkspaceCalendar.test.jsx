@@ -224,6 +224,19 @@ describe('EmployeeWorkspaceCalendar', () => {
     expect(onClaim).toHaveBeenCalledWith('pool-k02', 'MAIN')
   })
 
+  it('can hide the task pool when embedded beside the legacy dashboard pool', () => {
+    render(
+      <ToastProvider>
+        <EmployeeWorkspaceCalendar
+          taskPool={{ items: [{ id: 'pool-1', available_roles: ['MAIN'], name: 'Việc trùng' }] }}
+          hidePool
+        />
+      </ToastProvider>,
+    )
+
+    expect(screen.queryByRole('region', { name: 'Bể việc chờ nhận' })).not.toBeInTheDocument()
+  })
+
   it('drawing task mounts none of legal/submission/handover panels', () => {
     render(
       <ToastProvider>

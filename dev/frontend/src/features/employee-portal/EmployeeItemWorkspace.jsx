@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FolderOpen, Lock, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, getAccessToken } from '../../lib/api'
+import DocumentPreviewModal from './DocumentPreviewModal'
 import { ChecklistEvidenceItem, NodeActionBar } from './EmployeeWorkspaceCalendar'
+
 import NodeBusinessSlot from './NodeBusinessSlot'
 import NodeChain from './NodeChain'
 import NodeOutputList from './NodeOutputList'
@@ -12,6 +14,7 @@ import PriorDocumentsDrawer from './PriorDocumentsDrawer'
 import SlotRequestModal from './SlotRequestModal'
 import RollbackPickerModal from './RollbackPickerModal'
 import { countdown, effectiveDeadline, formatMoney } from './nodeWorkFormat'
+
 
 /**
  * Màn làm việc của MỘT bước, phía nhân viên. Bốn tầng, đọc từ trên xuống:
@@ -52,7 +55,23 @@ const PAUSE_LABEL = {
   INTERNAL: 'Chờ nội bộ',
 }
 
+const humanizeOpenError = (err) => {
+  const s = Number(err?.status)
+  if (s === 401) return 'Phiên đăng nhập đã hết hạn. Vui lòng tải lại trang.'
+  if (s === 403) return 'Bạn không có quyền xem tệp của bước này.'
+  if (s === 404) return 'Không tìm thấy tệp trên hệ thống lưu trữ.'
+  return err?.message || 'Không thể mở tệp.'
+}
+
+const dispatchUnauthorized = () => {
+  try {
+    window.dispatchEvent(new CustomEvent('bachkhoa:unauthorized'))
+  } catch {}
+}
+
+
 export default function EmployeeItemWorkspace({
+
   item,
   tasks = [],
   onBack,
@@ -68,9 +87,13 @@ export default function EmployeeItemWorkspace({
   const [pauseOpen, setPauseOpen] = useState(false)
   const [rollbackOpen, setRollbackOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState(null)
+  const [openError, setOpenError] = useState(null)
+  const objectUrlRef = useRef(null)
   // Mục checklist đang xin thêm loại giấy. Nhân viên chỉ ĐỀ XUẤT —
   // Giám đốc duyệt thì ô giấy mới được tạo.
   const [proposeFor, setProposeFor] = useState(null)
+
 
   const nodes = item.nodes || []
   const activeNodeId = pickedNodeId || item.current_task_node_id
@@ -163,10 +186,60 @@ export default function EmployeeItemWorkspace({
     }
   }, [addToast, onRefresh])
 
-  const openDocument = useCallback((doc) => {
-    // Link mở tệp xin theo từng tờ, đúng lúc bấm — xem PriorDocumentsDrawer.
-    addToast?.(`Đang mở “${doc.name || doc.template_id}”…`, 'success')
-  }, [addToast])
+  const closePreview = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
+    }
+    setPreview(null)
+  }, [])
+
+  const openDocument = useCallback(async (doc) => {
+    if (!doc) return
+    const docName = doc.name || doc.file_name || doc.fileName || doc.template_id || 'Tài liệu'
+    setOpenError(null)
+
+    if (task?.id && doc.document_id) {
+      try {
+        const token = getAccessToken()
+        const res = await fetch(
+          `/api/employee-portal/tasks/${encodeURIComponent(task.id)}/documents/${encodeURIComponent(doc.document_id)}/file`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        )
+        if (!res.ok) {
+          if (res.status === 401) dispatchUnauthorized()
+          const body = await res.json().catch(() => null)
+          const err = new Error(body?.detail || `HTTP ${res.status}`)
+          err.status = res.status
+          throw err
+        }
+        const blob = await res.blob()
+        if (blob.size === 0) {
+          throw new Error('Tệp rỗng.')
+        }
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+        const url = URL.createObjectURL(blob)
+        objectUrlRef.current = url
+        setPreview({ fileName: docName, mimeType: blob.type || '', url, blob, doc })
+        return
+      } catch (err) {
+        setOpenError(humanizeOpenError(err))
+        return
+      }
+    }
+
+    // Nếu chưa có document_id trên server (ví dụ: tài liệu mẫu, chưa nộp tệp):
+    // Vẫn mở DocumentPreviewModal để người dùng xem chi tiết thông tin tài liệu
+    setPreview({
+      fileName: docName,
+      mimeType: doc.mimeType || doc.fileType || 'application/acad',
+      url: doc.url || '',
+      blob: null,
+      doc,
+    })
+  }, [task?.id])
+
+
 
   const money = {
     base: Number(activeNode?.amount || 0),
@@ -219,9 +292,13 @@ export default function EmployeeItemWorkspace({
         <div className="eiw-grid">
           {/* ── CỘT TRÁI ────────────────────────────────────────────── */}
           <div className="eiw-col eiw-col--left">
-            <h2 className="eiw-band eiw-band--name">
-              {task.node_code}: {task.name}
-            </h2>
+            <section className="eiw-node-banner" aria-label="Node hiện tại">
+              <h2 className="eiw-band eiw-band--name">
+                {task.node_code} · {task.name}
+              </h2>
+            </section>
+
+
 
             <div className="eiw-clock">
               <span className="eiw-clock__label">Thời gian còn lại</span>
@@ -235,13 +312,18 @@ export default function EmployeeItemWorkspace({
               {task.description || 'Bước này chưa có mô tả công việc.'}
             </div>
 
-            <button
-              type="button"
-              className="eiw-band eiw-band--cabinet"
-              onClick={() => setCabinetOpen(true)}
-            >
-              <FolderOpen size={16} /> Tủ hồ sơ
-            </button>
+            <section className="eiw-card eiw-attachments-card" aria-label="Tủ hồ sơ đính kèm">
+              <button
+                type="button"
+                className="eiw-band eiw-band--cabinet"
+                aria-label="Mở tủ hồ sơ theo bước"
+                onClick={() => setCabinetOpen(true)}
+              >
+                <FolderOpen size={16} /> Mở tủ hồ sơ theo bước
+              </button>
+            </section>
+
+
 
             <dl className="eiw-money">
               <div className="eiw-money__row">
@@ -310,8 +392,14 @@ export default function EmployeeItemWorkspace({
 
             {/* ── Thông báo của riêng bước này ──
                 Đứng ngay trên nút, vì nó nói VÌ SAO nút chưa bấm được. */}
-            {(gate?.blockers?.length > 0 || paused) && (
+            {(gate?.blockers?.length > 0 || paused || openError) && (
               <div className="eiw-alerts" role="status">
+                {openError && (
+                  <p className="eiw-alert is-blocked" role="alert">
+                    <TriangleAlert size={16} />
+                    <span>{openError}</span>
+                  </p>
+                )}
                 {paused && (
                   <p className="eiw-alert is-paused">
                     <TriangleAlert size={16} />
@@ -331,6 +419,7 @@ export default function EmployeeItemWorkspace({
                   ))}
               </div>
             )}
+
           </div>
 
           {/* ── TẦNG 4 · Chân trang ─────────────────────────────────── */}
@@ -393,6 +482,20 @@ export default function EmployeeItemWorkspace({
         onClose={() => setRollbackOpen(false)}
         onSubmit={handleRollback}
       />
+
+      <DocumentPreviewModal
+        open={Boolean(preview)}
+        fileName={preview?.fileName || ''}
+        mimeType={preview?.mimeType || ''}
+        url={preview?.url || ''}
+        blob={preview?.blob || null}
+        doc={preview?.doc || null}
+        checklistItem={preview?.checklistItem || null}
+        nodeId={task?.node_code || 'K01'}
+        onClose={closePreview}
+      />
+
     </main>
   )
 }
+

@@ -4,6 +4,7 @@ import { BriefcaseBusiness, CheckCircle2, ChevronRight, Clock, Info, LifeBuoy, M
 import AvatarImage from '../../components/AvatarImage'
 import CompletedItemsModal from './CompletedItemsModal'
 import EmployeeItemWorkspace from './EmployeeItemWorkspace'
+import EmployeeWorkspaceCalendar from './EmployeeWorkspaceCalendar'
 import PoolItemDetailModal from './PoolItemDetailModal'
 
 const moneyLabel = (value) => `${new Intl.NumberFormat('vi-VN').format(Number(value || 0))}đ`
@@ -381,7 +382,11 @@ export default function EmployeeWorkspace({
       // Nhờ hỗ trợ dùng lại đúng hai handler của bàn làm việc, không dựng đường
       // gọi thứ hai cho cùng một việc.
       onRequestHelp={(task) => onYield(task.id, task.node_code, task.name)}
-      onCancelHelp={(requestId) => onCancelYield(requestId, '')}
+      onCancelHelp={(requestId, nodeCode, nodeName) => onCancelYield(
+        requestId,
+        nodeCode || openItem.current_node_code,
+        nodeName || openItem.current_node_name,
+      )}
       isDirector={isDirector}
     />
   }
@@ -403,6 +408,17 @@ export default function EmployeeWorkspace({
           : `Còn ${freeSlots} slot — nhận thêm ở Bể việc bên dưới`}
       </p>
     </div>
+
+    <EmployeeWorkspaceCalendar
+      tasks={tasks}
+      taskPool={taskPool}
+      dailySummary={dailySummary}
+      onClaim={onClaim}
+      claimingKey={claimingKey}
+      onRefresh={onRefresh}
+      isDirector={isDirector}
+      hidePool
+    />
 
     {/* ============ HẠNG MỤC ĐÃ NHẬN ============ */}
     <section className="ew-section" aria-label="Hạng mục bạn đã nhận">
@@ -452,12 +468,14 @@ export default function EmployeeWorkspace({
           <span className="ew-section__sub"> · {poolItems.length} việc có thể nhận</span>
         </h2>
 
-        <div className="ew-tabs" role="tablist">
+        <div className="ew-tabs" role="tablist" aria-label="Nhóm việc trong bể việc">
           {POOL_TABS.map(tab => (
             <button
               key={tab.id}
               type="button"
               role="tab"
+              id={`ew-tab-${tab.id.toLowerCase()}`}
+              aria-controls={`ew-pool-panel-${tab.id.toLowerCase()}`}
               aria-selected={activeTab === tab.id}
               className={`ew-tab ew-tab--${tab.id.toLowerCase()}${activeTab === tab.id ? ' is-active' : ''}`}
               onClick={() => setActiveTab(tab.id)}
@@ -473,7 +491,13 @@ export default function EmployeeWorkspace({
         🔒 {claimBlockedReason}
       </div>}
 
-      <div className="ew-pool">
+      <div
+        className="ew-pool"
+        role="tabpanel"
+        id={`ew-pool-panel-${activeTab.toLowerCase()}`}
+        aria-labelledby={`ew-tab-${activeTab.toLowerCase()}`}
+        tabIndex={0}
+      >
         {visibleItems.map((item) => {
           if (activeTab === 'HELP') {
             return <HelpPoolCard
