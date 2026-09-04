@@ -378,6 +378,10 @@ export default function EmployeeWorkspace({
       tasks={tasks}
       onBack={() => setOpenItemId(null)}
       onRefresh={onRefresh}
+      // Nhờ hỗ trợ dùng lại đúng hai handler của bàn làm việc, không dựng đường
+      // gọi thứ hai cho cùng một việc.
+      onRequestHelp={(task) => onYield(task.id, task.node_code, task.name)}
+      onCancelHelp={(requestId) => onCancelYield(requestId, '')}
       isDirector={isDirector}
     />
   }

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Response
+from fastapi import APIRouter, File, HTTPException, Depends, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, text
@@ -23,7 +23,9 @@ from src.contracts import (
     get_contract_read_model,
     query_contract_read_model
 )
+from src.finance.repository import priority_multiplier
 from src.contracts.workflow_runtime import (
+    NODES_SUBMITTED_TO_AGENCY,
     TaskClaimConflict,
     WorkflowActivationReadinessError,
     WorkflowValidationError,
@@ -33,6 +35,11 @@ from src.contracts.workflow_runtime import (
     cancel_workflow,
     replace_node_assignments,
     request_workflow_rollback,
+    ROLLBACK_RESET_STATUSES,
+    _rollback_affected_nodes,
+    flush_node_review_batch,
+    flush_stale_review_batches,
+    review_node_document,
     review_task_node_acceptance,
     review_workflow_rollback,
     save_workflow_draft,
@@ -945,10 +952,35 @@ def get_contract_workspace(
                            r.is_overdue, r.late_reason, r.submitted_at,
                            r.evidence_data, r.note,
                            r.is_payable, r.work_item_id, wi.code as work_item_code,
-                           wi.name as work_item_name, r.pay_group_key, r.pay_scope, r.pay_key
+                           wi.name as work_item_name, r.pay_group_key, r.pay_scope, r.pay_key,
+                           -- Phán quyết từng tờ, khoá theo loại giấy. Giao diện
+                           -- duyệt bày nút theo LOẠI giấy đầu ra, nên phải tra
+                           -- được bằng template_id chứ không bằng id tài liệu.
+                           coalesce(rv.review_by_template, '{}'::jsonb) as review_by_template
                     from public.task_node_checklist_results r
                     join public.task_nodes n on n.id = r.task_node_id
                     left join public.work_items wi on wi.id = r.work_item_id
+                    left join lateral (
+                      select jsonb_object_agg(t.template_id, jsonb_build_object(
+                               'document_id',      t.document_id,
+                               'review_status',    t.review_status,
+                               'rejection_reason', t.rejection_reason)) as review_by_template
+                      from (
+                        -- Nhiều bản cùng loại thì lấy bản MỚI NHẤT: bản mới là
+                        -- bản nhân viên vừa nộp lại sau khi bị trả, bày phán
+                        -- quyết của bản cũ là hiện lý do đã hết hiệu lực.
+                        select distinct on (s.template_id)
+                               s.template_id, l.document_id,
+                               l.review_status, l.rejection_reason
+                        from public.checklist_result_document_links l
+                        join public.dossier_documents d on d.id = l.document_id
+                        join public.dossier_document_slots s on s.id = d.slot_id
+                        where l.checklist_result_id = r.id
+                          and d.doc_status = 'DANG_DUNG'
+                          and s.template_id is not null
+                        order by s.template_id, d.uploaded_at desc, d.id desc
+                      ) t
+                    ) rv on true
                     where n.workflow_instance_id = :workflow_instance_id
                     order by r.created_at asc
                     """
@@ -999,7 +1031,7 @@ def get_contract_workspace(
         if workflow_row:
             agency_nodes = [
                 node for node in execution_nodes
-                if node["node_code"] in {"K05", "K06"}
+                if node["node_code"] in NODES_SUBMITTED_TO_AGENCY
                 and (
                     node["status"] in {"in_progress", "submitted", "accepted"}
                     or node["started_at"] is not None
@@ -1013,7 +1045,7 @@ def get_contract_workspace(
                     text("""
                         select count(*)::integer as entitlement_count,
                                coalesce(sum(amount), 0) as entitlement_amount
-                        from public.work_pay_entitlements
+                        from public.active_work_pay_entitlements
                         where workflow_instance_id = :workflow_instance_id
                           and status <> 'void'
                     """),
@@ -1182,6 +1214,22 @@ def get_contract_workspace(
             "service_location": contract.service_location,
             "service_area": _money_value(contract.service_area),
             "total_value": _money_value(contract.total_value),
+            # Số đã thu — bước K06 chỉ đóng được khi thu đủ tiền hợp đồng, nên
+            # panel Node phải bày tiến độ thu ngay tại chỗ. Dùng ĐÚNG phép tính
+            # của danh sách hợp đồng (chỉ giao dịch THU đã duyệt) để hai màn
+            # không bao giờ nói hai con số khác nhau.
+            "paid_amount": _money_value(
+                db.execute(
+                    text(f"""
+                        select coalesce(sum(t.amount), 0)
+                        from public.cashflow_transactions t
+                        where t.contract_id = :contract_id
+                          and t.status in ({_APPROVED_SQL})
+                          and t.transaction_type in ({_INCOME_SQL})
+                    """),
+                    {"contract_id": contract.id},
+                ).scalar()
+            ),
             "date_signed": _date_value(contract.date_signed),
             "file_link": contract.file_link,
             "document_type": contract.document_type,
@@ -1604,6 +1652,72 @@ def review_checklist_evidence(
     }
 
 
+class DocumentReviewPayload(BaseModel):
+    document_id: str
+    decision: str
+    reason: Optional[str] = None
+
+
+@router.post("/workflow/checklist-results/{checklist_result_id}/document-review")
+def review_checklist_document(
+    checklist_result_id: str,
+    payload: DocumentReviewPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    """Giám đốc duyệt hoặc từ chối MỘT tờ giấy trong một mục checklist.
+
+    Cố tình KHÔNG bắn thông báo và KHÔNG đụng trạng thái bước: duyệt 10 tờ mà bắn
+    10 tin là rác, và hạ bước ngay từ tờ đầu tiên là cắt ngang phiên duyệt còn dở.
+    Cả đợt gom lại thành một tin lúc chốt.
+    """
+    try:
+        result = review_node_document(
+            db,
+            checklist_result_id=checklist_result_id,
+            document_id=payload.document_id,
+            decision=payload.decision,
+            reason=payload.reason,
+            actor_id=user.id,
+        )
+        db.commit()
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        return result
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/workflow/nodes/{task_node_id}/review-batch")
+def flush_review_batch(
+    task_node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    """Chốt đợt duyệt: gom mọi phán quyết chưa chốt thành ĐÚNG MỘT thông báo.
+
+    Ba đường gọi vào đây, tin cậy giảm dần:
+      1. Giám đốc bấm [Chốt duyệt] — chắc chắn
+      2. Đóng Drawer — chỉ là cố gắng, mất mạng là mất
+      3. Chốt lười quá 15 phút — lưới an toàn, chạy ở cổng đọc
+
+    Không có gì để chốt thì trả ``flushed: false`` chứ không lỗi: đóng Drawer mà
+    không tick tờ nào là chuyện bình thường, và một tin rỗng còn tệ hơn không tin.
+    """
+    try:
+        result = flush_node_review_batch(db, task_node_id=task_node_id, actor_id=user.id)
+        db.commit()
+        if result:
+            invalidate_cache("bachkhoa:contract_workspace:*")
+            invalidate_cache("bachkhoa:notifications:summary:*")
+            invalidate_cache("task_pool:*")
+            publish_timeline_change("node_review_completed", entity_id=task_node_id)
+        return {"flushed": bool(result), **(result or {})}
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/workflow/acceptances/{acceptance_id}/review")
 def review_node_acceptance(
     acceptance_id: str,
@@ -1643,6 +1757,35 @@ class RollbackRequestPayload(BaseModel):
 class RollbackReviewPayload(BaseModel):
     decision: str
     review_note: Optional[str] = None
+
+
+@router.get("/workflow/nodes/{task_node_id}/rollback-preview")
+def preview_rollback_blast_radius(
+    task_node_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "read")),
+):
+    """Kéo bước này về sửa thì những bước nào bị ảnh hưởng.
+
+    Giao diện PHẢI hỏi câu này thay vì tự tô màu theo thứ tự trên sơ đồ. Quy
+    trình có nhánh thì đoán theo vị trí sẽ sai — người bấm gửi tưởng mình mở lại
+    ba bước, thực tế mở lại năm.
+    """
+    affected = _rollback_affected_nodes(db, target_task_node_id=task_node_id)
+    return {
+        "target_task_node_id": task_node_id,
+        "nodes": [
+            {
+                "task_node_id": node["id"],
+                "node_code": node["node_code"],
+                "status": node["status"],
+                # Bước đã huỷ hoặc chưa từng chạy thì không có gì để mở lại —
+                # tô nó thành "sẽ bị kéo về" là doạ người dùng bằng một con số sai.
+                "will_reset": node["status"] in ROLLBACK_RESET_STATUSES,
+            }
+            for node in affected
+        ],
+    }
 
 
 @router.post("/workflow/nodes/{task_node_id}/rollback-requests")
@@ -1795,6 +1938,52 @@ def get_next_contract_code(
     _: User = Depends(require_permission("contract", "create")),
 ):
     return {"contract_id": ContractService.get_next_contract_code(db)}
+
+
+@router.post("/{contract_id:path}/file")
+async def upload_contract_file(
+    contract_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "update")),
+):
+    """Thay file hợp đồng đã ký bằng bản .docx mới.
+
+    Đi qua đúng đường kho nguồn có sẵn (register.upload_source_document) chứ
+    không tự viết một đường upload thứ hai: nó đã kiểm định dạng, kiểm dung
+    lượng, sinh object key không mang dữ liệu cá nhân, và giữ luật một tệp một
+    object. Sau đó chỉ cập nhật thêm contracts.file_link để màn hợp đồng trỏ vào
+    bản mới. Bản cũ KHÔNG bị xoá — vẫn nằm trong kho nguồn để đối chiếu.
+    """
+    from src.dossiers import register as _register
+
+    ten = file.filename or "hop-dong.docx"
+    if not ten.lower().endswith(".docx"):
+        raise HTTPException(status_code=422, detail="Chỉ nhận file .docx")
+
+    data = await file.read()
+    try:
+        ket_qua = _register.upload_source_document(
+            db,
+            contract_id=contract_id,
+            file_name=ten,
+            content_type=file.content_type,
+            data=data,
+            actor_id=user.id,
+        )
+        duong_dan = ket_qua.get("object_key") or ket_qua.get("url")
+        db.execute(
+            text("update public.contracts set file_link = :link, updated_at = now()"
+                 " where id = :id"),
+            {"link": duong_dan, "id": contract_id},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    invalidate_cache("bachkhoa:contracts:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    return {"status": "success", "data": {"file_link": duong_dan, "file_name": ten}}
 
 
 @router.post("/generate")
@@ -1957,20 +2146,6 @@ def set_service_line_priority(
     return {"status": "success", "data": {"service_line_id": service_line_id, "priority": payload.priority}}
 
 
-def _priority_multiplier(db: Session, priority: str) -> float:
-    """Hệ số gợi ý đang hiệu lực cho một mức ưu tiên. NORMAL = 1 (không thưởng)."""
-    if priority not in ("HIGH", "URGENT"):
-        return 1.0
-    row = db.execute(
-        text("""
-            select multiplier from public.priority_multipliers
-            where priority = :p and status = 'published'
-              and current_date <@ daterange(effective_from, coalesce(effective_to,'infinity'::date), '[]')
-            order by effective_from desc limit 1
-        """),
-        {"p": priority},
-    ).scalar()
-    return float(row) if row is not None else 1.0
 
 
 @router.get("/{contract_id:path}/priority-bonus/preview")
@@ -1993,13 +2168,13 @@ def priority_bonus_preview(
         """),
         {"c": contract_id},
     ).scalar() or "NORMAL"
-    multiplier = _priority_multiplier(db, prio)
+    multiplier = priority_multiplier(db, prio)
 
     staff_piece_rates = db.execute(
         text("""
             select e.id as employee_id, e.full_name,
                    coalesce(sum(wpe.amount), 0) as piece_rate_total
-            from public.work_pay_entitlements wpe
+            from public.active_work_pay_entitlements wpe
             join public.workflow_instances wi on wi.id = wpe.workflow_instance_id
             join public.service_lines sl on sl.id = wi.service_line_id
             join public.employees e on e.id = wpe.employee_id
@@ -2072,7 +2247,7 @@ def apply_priority_bonus(
     ).scalar() or "NORMAL"
     if prio == "NORMAL":
         raise HTTPException(status_code=409, detail="Hợp đồng không có ưu tiên — không có thưởng")
-    multiplier = _priority_multiplier(db, prio)
+    multiplier = priority_multiplier(db, prio)
 
     rewarded_employee_ids = {
         r[0] for r in db.execute(

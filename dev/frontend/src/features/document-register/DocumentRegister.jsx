@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, BookmarkPlus, Check, ChevronDown, FileText, Link2, Lock, Paperclip, Plus, Send, Trash2, Unlink, Upload } from 'lucide-react'
 
 import FilePreviewModal from '../../components/ui/FilePreviewModal'
@@ -78,6 +78,42 @@ export const trangThaiGiay = (slot) => {
 }
 
 
+/**
+ * Một LOẠI GIẤY chỉ được một dòng trong màn làm việc của một bước.
+ *
+ * Trên hợp đồng thật, năm loại giấy khách cung cấp có tới hai ô: một ô phạm vi
+ * hợp đồng và một ô phạm vi hạng mục, do luật dựng sổ cũ kê cùng một tờ ở cả hai
+ * chỗ. Bày cả hai là nhân viên thấy "CCCD" hai lần, tải lên ô này thì ô kia vẫn
+ * báo thiếu.
+ *
+ * Giữ ô ĐANG CÓ TỆP; hoà thì giữ ô đầu theo thứ tự sổ trả về (hạng mục trước, hợp
+ * đồng sau). Không xoá gì dưới CSDL — đây chỉ là quy tắc hiển thị.
+ *
+ * Chỉ dùng cho màn theo bước. Sổ đầy đủ vẫn phải bày mọi ô: đó là cấu trúc TỔNG,
+ * và người dựng quy trình cần thấy đúng thứ đang có.
+ */
+function oneSlotPerTemplate(slots) {
+  const kept = new Map()
+  const result = []
+  for (const slot of slots) {
+    if (!slot.template_id) {
+      result.push(slot)
+      continue
+    }
+    const previous = kept.get(slot.template_id)
+    if (!previous) {
+      kept.set(slot.template_id, slot)
+      result.push(slot)
+      continue
+    }
+    if ((slot.file_count || 0) > (previous.file_count || 0)) {
+      kept.set(slot.template_id, slot)
+      result[result.indexOf(previous)] = slot
+    }
+  }
+  return result
+}
+
 export default function DocumentRegister({
   contractId,
   serviceLineId,
@@ -100,6 +136,14 @@ export default function DocumentRegister({
   // cấu trúc TỔNG dùng xuyên suốt, nhưng người đang làm K02 cần biết ngay dòng
   // nào là việc của mình và dòng nào chưa ai nhận.
   nodeKey = '',
+  // Mã bước theo MASTER DATA (K01, K05a…). Khác `nodeKey` ở chỗ nó không chỉ dán
+  // nhãn mà THU HẸP sổ về đúng bộ giấy bước này cần.
+  //
+  // Vì sao cần: sổ là danh mục ô giấy của cả Hạng mục, và trên hợp đồng thật nó
+  // dựng ra 58 ô trong khi master data chỉ khai 18. Nhúng nguyên sổ vào màn làm
+  // việc của một bước là bắt nhân viên K01 cuộn qua 54 dòng giấy không phải việc
+  // của mình để tìm mấy tờ khách vừa đưa.
+  nodeCode = '',
 }) {
   const [register, setRegister] = useState(null)
   const [meta, setMeta] = useState(null)
@@ -207,6 +251,29 @@ export default function DocumentRegister({
       setXinMienId('')
     }
   }, [serviceLineId, addToast, load])
+
+  // Bộ loại giấy master data khai cho ĐÚNG bước đang mở. `null` = không lọc.
+  const nodeTemplateIds = useMemo(() => {
+    if (!nodeCode) return null
+    const group = (register?.cabinet_by_node || []).find(item => item.node_code === nodeCode)
+    return new Set((group?.documents || []).map(item => item.template_id))
+  }, [register, nodeCode])
+
+  const groups = useMemo(() => {
+    const all = register?.groups || []
+    if (!nodeTemplateIds) return all
+    return all.map(group => ({
+      ...group,
+      // Ô phát sinh do chính nhân viên thêm thì giữ lại: nó không có template_id
+      // để đối chiếu master data, và lọc mất là họ không còn thấy thứ mình vừa
+      // đề xuất.
+      slots: oneSlotPerTemplate(
+        (group.slots || []).filter(
+          slot => slot.is_custom || nodeTemplateIds.has(slot.template_id),
+        ),
+      ),
+    }))
+  }, [register, nodeTemplateIds])
 
   if (!contractId) return null
 
@@ -395,9 +462,25 @@ export default function DocumentRegister({
   }
 
   const summary = register?.summary
-  const groups = register?.groups || []
+
   const customerSlots = groups.flatMap(group => group.slots || []).filter(slot => slot.source === 'KHACH_HANG')
   const structuredReadOnly = showSourceRepository && !inputOnly
+  // Bước rỗng phải nói ra ĐÚNG lý do rỗng. "Master data chưa khai" là việc của
+  // Giám đốc ở tab Mẫu giấy tờ; "sổ chưa dựng ô" là việc của hệ thống. Gộp làm
+  // một câu là đẩy người đọc đi hỏi nhầm người.
+  //
+  // Xét theo bộ mẫu chứ không theo số dòng còn lại: một ô phát sinh do nhân viên
+  // tự thêm vẫn hiện, và nó không chứng minh được bước này đã khai giấy.
+  const nodeNotice = (() => {
+    if (!nodeCode || !register) return ''
+    if (nodeTemplateIds && nodeTemplateIds.size === 0) {
+      return `Bước ${nodeCode} chưa được khai loại giấy nào trong tab Mẫu giấy tờ.`
+    }
+    if (groups.every(group => (group.slots || []).length === 0)) {
+      return `Sổ giấy tờ chưa dựng ô giấy nào cho bước ${nodeCode}.`
+    }
+    return ''
+  })()
 
   return <section className="dr" aria-label="Sổ giấy tờ hồ sơ">
     <header className="dr-head">
@@ -490,6 +573,8 @@ export default function DocumentRegister({
     {khoaV2 && (
       <p className="dr-v2-locked" role="status">{khoaV2}</p>
     )}
+
+    {nodeNotice && <p className="dr-loading" role="status">{nodeNotice}</p>}
 
     {groups.map(group => group.slots.length > 0 && (
       <div key={group.source} className={`dr-group is-${SOURCE_TONE[group.source]}`}>

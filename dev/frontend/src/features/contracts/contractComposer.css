@@ -807,3 +807,9 @@
   line-height: 1.5;
   color: var(--ink-3);
 }
+
+/* ==========================================================================
+   Sidebar hợp đồng — hàng "hợp đồng mẫu" và Tủ hồ sơ
+   Màu cam lấy ĐÚNG gradient của .btn-primary (nút "Quy trình") để cả sidebar
+   chỉ có một tông cam, không phải cam vàng riêng của bản vẽ.
+   ========================================================================== */

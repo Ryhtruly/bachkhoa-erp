@@ -383,6 +383,18 @@ if __name__ == "__main__":
     unittest.main()
 
 
+def _khong_quan_tam():
+    """Ô mock cho câu lệnh test không quan tâm nội dung.
+
+    KHÔNG dùng MagicMock trần: MagicMock().scalar() trả về một MagicMock, mà
+    MagicMock là truthy — cổng chặn gán đè lên tờ đã duyệt sẽ hiểu nhầm thành
+    "ô giấy này đã có tờ được duyệt" rồi ném 409 giữa một test không liên quan.
+    """
+    result = MagicMock()
+    result.scalar.return_value = None
+    return result
+
+
 def _mock_db_cho_validate(templates=("TPL_BAN_KY_THUAT_GOC",)):
     """db giả đủ cho validate_workflow_graph: danh mục node, phòng ban, mẫu giấy."""
     db = MagicMock()
@@ -510,7 +522,9 @@ class MotFileMotObjectTests(unittest.TestCase):
             _rows([{"id": "S-BKTG", "scope": "SERVICE_LINE", "name": "Bản kỹ thuật gốc"}]),
             # Hạng mục Đo vẽ không có hồ sơ pháp lý -> dossier_id là null.
             _scalar(None),
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
+            # Các câu ghi còn lại + cổng chặn gán đè: test này không xét nội dung,
+            # nhưng scalar() phải là None để cổng đó không ném 409 nhầm.
+            *[_khong_quan_tam() for _ in range(8)],
         ]
         with patch.object(documents, "upload_file") as upload, \
              patch.object(documents, "ensure_bucket"):
@@ -588,7 +602,10 @@ class K03DungLaiTaiLieuK02Tests(unittest.TestCase):
         db.execute.side_effect = [
             # Chốt chặn tài liệu thuộc đề xuất chưa duyệt: không dòng nào -> cho qua.
             _row(None),
-            MagicMock(),
+            # Khoá hàng mục checklist, cổng chặn gán đè, rồi câu chèn quan hệ.
+            # Đường DÙNG LẠI cũng phải qua cổng đó — chặn một đường mà bỏ đường
+            # kia thì vẫn thay được tệp đã duyệt, chỉ là bằng lối khác.
+            *[_khong_quan_tam() for _ in range(3)],
         ]
         with patch.object(documents, "upload_file") as upload:
             documents.reuse_document_for_checklist(

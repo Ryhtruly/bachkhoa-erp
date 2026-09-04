@@ -16,6 +16,26 @@ from src.finance.enums import (
     get_transaction_type_aliases, get_status_aliases, get_payment_method_aliases, get_scope_aliases
 )
 
+def priority_multiplier(db: Session, priority: str | None) -> float:
+    """Hệ số thưởng đang hiệu lực cho một mức ưu tiên. NORMAL = 1 (không thưởng).
+
+    Đặt ở tầng finance chứ không ở module route: màn nhân viên cũng cần con số này
+    để ước tính thưởng của bước, mà service không được import ngược lên routes.
+    """
+    if priority not in ("HIGH", "URGENT"):
+        return 1.0
+    row = db.execute(
+        text("""
+            select multiplier from public.priority_multipliers
+            where priority = :p and status = 'published'
+              and current_date <@ daterange(effective_from, coalesce(effective_to,'infinity'::date), '[]')
+            order by effective_from desc limit 1
+        """),
+        {"p": priority},
+    ).scalar()
+    return float(row) if row is not None else 1.0
+
+
 class FinanceRepository:
 
     @staticmethod
@@ -574,8 +594,8 @@ class FinanceRepository:
             ), piece as (
               select employee_id, count(*) as tasks_completed,
                      coalesce(sum(amount), 0) as piece_amount
-              from public.work_pay_entitlements, period
-              where status in ('eligible', 'approved', 'locked', 'paid')
+              from public.active_work_pay_entitlements, period
+              where status in ('eligible', 'approved', 'locked')
                 and earned_at >= period.start_date
                 and earned_at < period.end_date
               group by employee_id

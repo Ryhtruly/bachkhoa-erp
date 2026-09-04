@@ -156,7 +156,9 @@ class NhanTronChuoiDoVeTests(unittest.TestCase):
                 },
             }),
             _row(None),
-            _scalar_one(0),
+            # Luật đơn nhiệm giờ hỏi "đang vướng bước NÀO" chứ không đếm số —
+            # thông báo phải nói được tên bước và mã hợp đồng. None = rảnh tay.
+            _row(None),
             _scalar("ASSIGN-K01"),
             MagicMock(),
             MagicMock(),
@@ -268,10 +270,18 @@ class CascadeRollbackTests(unittest.TestCase):
             _rows([
                 {"id": "TN-K03", "node_code": "K03", "occurrence_no": 1, "status": "accepted"},
                 {"id": "TN-K04", "node_code": "K04", "occurrence_no": 1, "status": "in_progress"},
-                {"id": "TN-K05", "node_code": "K05", "occurrence_no": 1, "status": "pending"},
+                {"id": "TN-K05b", "node_code": "K05b", "occurrence_no": 1, "status": "pending"},
             ]),
             MagicMock(),   # update task_nodes
+            # Cấp hạn sửa bài MỚI cho từng bước bị kéo về — một câu mỗi bước.
+            # Dùng lại deadline_at cũ là bước vừa mở lại đã đỏ quá hạn.
+            MagicMock(),   # rework_deadline_at cho TN-K03
+            MagicMock(),   # rework_deadline_at cho TN-K04
             MagicMock(),   # reset checklist
+            # Hạ phán quyết TỪNG TỜ về chờ duyệt. Thiếu bước này thì bước bị kéo
+            # về sửa vẫn mang đủ giấy 'approved' của vòng trước, và cổng đóng
+            # bước cho qua ngay — bản vẽ sai đi thẳng qua vòng hai.
+            MagicMock(),   # reset phán quyết giấy
             MagicMock(),   # event TN-K03
             MagicMock(),   # event TN-K04
             MagicMock(),   # notifications
@@ -295,7 +305,7 @@ class CascadeRollbackTests(unittest.TestCase):
             result = workflow_runtime.cascade_rollback(
                 db, target_task_node_id="TN-K03", reason="Sai ranh bản vẽ", actor_id="USER-GD"
             )
-        self.assertNotIn("TN-K05", result["affected_node_ids"])
+        self.assertNotIn("TN-K05b", result["affected_node_ids"])
 
     def test_tinh_lai_han_cho_ca_chuoi_sau_khi_quay_lai(self):
         db = self._db_cho_cascade()

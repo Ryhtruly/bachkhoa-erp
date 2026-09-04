@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import ContractWorkflowDesigner, { WorkflowEdge } from './ContractWorkflowDesigner';
 import { neoTuyenVaoHandle } from './workflowEdgeRouting';
+import { clearApiCache } from '../../lib/api';
 
 const { duongDaVe } = vi.hoisted(() => ({ duongDaVe: [] }));
 
@@ -62,9 +63,11 @@ function makeServiceLine({
   // Bước chưa chạy (ready) thì checklist còn sửa được — trạng thái Giám đốc cấu
   // hình tài liệu đầu ra. Mặc định của harness là 'submitted', đã khoá.
   nodeReady = false,
+  taskCode = 'K01',
+  outputDocs = null,
 } = {}) {
   const node = {
-    task_code: 'K01',
+    task_code: taskCode,
     name: changedActiveNode ? 'Bản sửa Node' : 'Nghiệm thu',
     description,
     duration_days: durationDays,
@@ -75,6 +78,7 @@ function makeServiceLine({
     checklist: [{
       key: 'check-1',
       name: 'Biên bản nghiệm thu',
+      ...(outputDocs ? { output_documents: outputDocs } : {}),
       required: true,
       require_evidence: privateEvidence,
       compensation: { is_payable: true, work_item_id: workItem.id },
@@ -92,7 +96,7 @@ function makeServiceLine({
       graph: { start_node: 'node-1', nodes: { 'node-1': node }, ui: {} },
       active_graph: active ? { start_node: 'node-1', nodes: { 'node-1': activeNode }, ui: {} } : null,
       execution_nodes: active ? [{
-        id: 'task-1', node_key: 'node-1', node_code: 'K01', status: 'in_progress',
+        id: 'task-1', node_key: 'node-1', node_code: taskCode, status: 'in_progress',
         started_at: '2026-08-20T08:00:00.000Z',
         deadline_at: '2026-08-25T17:00:00.000Z',
         execution_data: { actual_duration_seconds: 90060 },
@@ -105,7 +109,7 @@ function makeServiceLine({
           evidence_data: { files: [{ name: 'bien-ban.pdf', url: 'contracts/2004/service-lines/line-1/nodes/task-1/bien-ban.pdf' }] },
         }] : [],
       }] : [{
-        id: 'task-1', node_key: 'node-1', node_code: 'K01',
+        id: 'task-1', node_key: 'node-1', node_code: taskCode,
         status: nodeReady ? 'ready' : 'submitted',
         ...(nodeReady ? {} : { pending_acceptance_id: 'acceptance-1' }),
       }],
@@ -113,10 +117,13 @@ function makeServiceLine({
   };
 }
 
-function renderDesigner(options) {
+function renderDesigner(options = {}) {
+  const { contractTotalValue, contractPaidAmount, ...lineOptions } = options;
   return render(
     <ContractWorkflowDesigner
-      serviceLine={makeServiceLine(options)}
+      serviceLine={makeServiceLine(lineOptions)}
+      contractTotalValue={contractTotalValue}
+      contractPaidAmount={contractPaidAmount}
       workItems={[workItem]}
       capabilities={{
         amend_workflow: true,
@@ -147,10 +154,16 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     expect(screen.getByRole('option', { name: '— Chọn kết quả —' })).toBeInTheDocument();
   });
 
-  it('keeps the node description in the detail editor but hides it from the compact card', () => {
+  it('mô tả để chế độ đọc, bấm cây bút mới mở ô nhập', () => {
     const description = 'Nội dung nghiệm thu chỉ xem trong bảng chi tiết';
     renderDesigner({ description });
 
+    // Lúc nghỉ là chữ, KHÔNG phải ô nhập — ô nhập luôn mở khiến hàng mô tả
+    // trông như đang sửa dở.
+    expect(screen.queryByDisplayValue(description)).not.toBeInTheDocument();
+    expect(screen.getByText(description)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sửa mô tả bước' }));
     expect(screen.getByDisplayValue(description)).toBeInTheDocument();
     expect(screen.queryByText(description, { selector: '.workflow-node > p' })).not.toBeInTheDocument();
   });
@@ -199,21 +212,17 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     expect(payload.graph.nodes['node-1'].claim_roles).toEqual(['MAIN', 'ASSISTANT']);
   });
 
-  it('renders a private workflow evidence object key as an actionable link', () => {
-    renderDesigner({ active: true, privateEvidence: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Checklist' }));
-
-    expect(screen.getByRole('link', { name: /bien-ban\.pdf/i })).toBeInTheDocument();
-  });
-
   it('duyệt nhanh minh chứng ngay trong hộp Chờ duyệt cố định', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 })));
     vi.stubGlobal('fetch', fetchMock);
     renderDesigner({ active: true, pendingChecklistReview: true });
 
     fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
-    expect(screen.getByRole('link', { name: /bien-ban\.pdf/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Duyệt đạt' }));
+    // Từ khi checklist gộp vào tab Node, chữ "Duyệt đạt" xuất hiện ở cả thẻ
+    // nghiệm thu Node lẫn hộp Chờ duyệt — phải chỉ đích danh cái trong hộp.
+    const hopChoDuyet = document.querySelector('.workflow-review-inbox');
+    expect(within(hopChoDuyet).getByRole('link', { name: /bien-ban\.pdf/i })).toBeInTheDocument();
+    fireEvent.click(within(hopChoDuyet).getByRole('button', { name: 'Duyệt đạt' }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       '/api/contracts/workflow/checklist/result-1/review',
@@ -404,7 +413,7 @@ function renderWithDocs(serviceLineOptions = {}, docs = DOC_TEMPLATES) {
 }
 
 async function moPanelChecklist() {
-  return screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ });
+  return screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ });
 }
 
 describe('Cấu hình tài liệu đầu ra của checklist', () => {
@@ -421,26 +430,28 @@ describe('Cấu hình tài liệu đầu ra của checklist', () => {
   it('chọn rồi xoá một loại tài liệu đầu ra bằng modal giữa màn hình', async () => {
     renderWithDocs();
     await moPanelChecklist();
-    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
     expect(screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: /Bản kỹ thuật gốc/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Xong' }));
 
     expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Số lượng Bản kỹ thuật gốc/)).toHaveValue(1);
-    expect(screen.getByLabelText(/Bắt buộc trước khi nộp/)).toBeChecked();
-    expect(screen.getByLabelText(/Cần Giám đốc duyệt/)).not.toBeChecked();
+    expect(screen.getByLabelText(/bắt buộc/)).toBeChecked();
+    // Một loại giấy gồm bao nhiêu file là do nhân viên nộp, nên KHÔNG còn ô Số
+    // lượng; mọi giấy đều phải qua Giám đốc nên cũng không còn ô bật/tắt việc đó.
+    expect(screen.queryByLabelText(/Số lượng/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Cần Giám đốc duyệt/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTitle('Bỏ Bản kỹ thuật gốc'));
     await waitFor(() => expect(screen.queryByTitle('Bỏ Bản kỹ thuật gốc')).not.toBeInTheDocument());
     // Xoá hết thì quay lại đúng trạng thái ban đầu.
-    expect(screen.getByRole('button', { name: /Thêm tài liệu đầu ra/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Thêm giấy tờ đầu ra/ })).toBeInTheDocument();
   });
 
   it('modal chọn tài liệu đầu ra chia rõ ba nguồn giấy tờ', async () => {
     renderWithDocs();
     await moPanelChecklist();
-    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
 
     const dialog = screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
     expect(within(dialog).getByRole('heading', { name: /Khách hàng cung cấp/ })).toBeInTheDocument();
@@ -462,7 +473,7 @@ describe('Cấu hình tài liệu đầu ra của checklist', () => {
     ];
     renderWithDocs({}, docs);
     await moPanelChecklist();
-    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
 
     const dialog = screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
     expect(dialog.querySelector('.wcl-output-modal__group--khach-hang .wcl-output-modal__group-count'))
@@ -476,17 +487,16 @@ describe('Cấu hình tài liệu đầu ra của checklist', () => {
       .toBeInTheDocument();
   });
 
-  it('bật Cần Giám đốc duyệt mà người duyệt khác admin thì cảnh báo rõ ràng', async () => {
-    renderWithDocs();
+  it('dữ liệu cũ còn cờ Cần Giám đốc duyệt mà người duyệt khác admin thì vẫn cảnh báo', async () => {
+    // Giao diện không còn bật/tắt cờ này, nhưng hồ sơ cũ vẫn mang nó và backend
+    // vẫn từ chối lưu — cảnh báo phải còn, nếu không Giám đốc lưu mới biết hỏng.
+    renderWithDocs({
+      outputDocs: [{ template_id: 'TPL_BAN_KY_THUAT_GOC', needs_director_approval: true }],
+    });
     await moPanelChecklist();
     fireEvent.click(screen.getByRole('button', { name: /Người duyệt: Giám đốc/ }));
-    fireEvent.click(screen.getByRole('option', { name: /Kế toán/ }));
-
-    fireEvent.click(await screen.findByRole('button', { name: /Thêm tài liệu đầu ra/ }));
-    fireEvent.click(screen.getByRole('option', { name: /Bản kỹ thuật gốc/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Xong' }));
-
-    fireEvent.click(screen.getByLabelText(/Cần Giám đốc duyệt/));
+    fireEvent.click(within(document.querySelector('.wcl-picker__menu'))
+      .getByRole('option', { name: /Kế toán/ }));
 
     const canhBao = await screen.findByRole('alert');
     expect(canhBao).toHaveTextContent(/Cần Giám đốc duyệt nhưng người duyệt đang là/);
@@ -591,5 +601,422 @@ describe('WorkflowEdge — nối dây từ tuyến đã lưu tới nét vẽ', (
     );
 
     expect(duongDaVe[0].labelY).toBe(0);
+  });
+});
+
+
+describe('Panel chi tiết Node — bố cục', () => {
+  afterEach(cleanup);
+
+  it('K06 hiện thanh tiền đã thu trên tổng hợp đồng', () => {
+    renderDesigner({ taskCode: 'K06', contractTotalValue: 12300000, contractPaidAmount: 1230000 });
+
+    expect(document.querySelector('.wf-node-money__text'))
+      .toHaveTextContent('1.230.000/12.300.000 VND');
+  });
+
+  it('Node không phải K06 thì KHÔNG có thanh tiền', () => {
+    // Một thanh luôn bằng 0 ở mọi bước chỉ làm nhiễu, và tệ hơn là gợi ý sai
+    // rằng bước đó có dính tiền.
+    renderDesigner({ taskCode: 'K01', contractTotalValue: 12300000, contractPaidAmount: 0 });
+
+    expect(document.querySelector('.wf-node-money')).not.toBeInTheDocument();
+  });
+
+  it('cấu hình nằm ở vùng cố định, checklist nằm ở vùng cuộn riêng', () => {
+    // Cả panel cuộn chung thì kéo tới checklist là mất luôn phòng ban / vai trò
+    // / thời lượng đang cần đối chiếu.
+    renderDesigner({ nodeReady: true });
+
+    const fixed = document.querySelector('.wf-node-panel__fixed');
+    const scroll = document.querySelector('.wf-node-panel__scroll');
+
+    expect(fixed).toContainElement(document.querySelector('.wf-node-grid'));
+    expect(scroll).toContainElement(document.querySelector('.workflow-checklist-card'));
+    expect(fixed).not.toContainElement(document.querySelector('.workflow-checklist-card'));
+
+    // Dải "danh sách checklist" phải nằm NGOÀI vùng cuộn: để bên trong thì kéo
+    // sắp xếp card là dải tiêu đề trôi theo thứ nó đang gắn nhãn.
+    expect(scroll).not.toContainElement(document.querySelector('.wcl-section-head'));
+  });
+
+  it('Nạp mẫu kéo theo đúng loại giấy Master Data đã gán cho bước', () => {
+    // Nạp mẫu mà checklist vẫn trắng giấy thì Giám đốc phải tự thêm lại từng
+    // tờ — đúng thứ Master Data đã khai sẵn ở màn Mẫu Giấy Tờ.
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const docs = [
+      {
+        id: 'TPL_SO_DO', name: 'Sổ đỏ gốc', source_label: 'Khách hàng cung cấp',
+        is_active: true, is_required: true, default_quantity: 2,
+        applicabilities: [{ node_code: 'K01' }],
+      },
+      {
+        id: 'TPL_BIEN_NHAN', name: 'Biên nhận hồ sơ', source_label: 'Cơ quan Nhà nước trả',
+        is_active: true, applicabilities: [{ node_code: 'K05b' }],
+      },
+      // Gói KHÁC cũng gán loại này cho K01. Danh mục mẫu là của toàn hệ thống
+      // nên nó vẫn nằm đây, nhưng hạng mục đang mở không dùng — lọc thẳng danh
+      // mục theo node sẽ kéo nhầm nó về, đúng lỗi "K01 có 5 giấy mà nạp 16".
+      {
+        id: 'TPL_GOI_KHAC', name: 'Giấy của gói khác', source_label: 'Công ty soạn/lập',
+        is_active: true, applicabilities: [{ node_code: 'K01' }],
+      },
+    ];
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ nodeReady: true })}
+        workItems={[workItem]}
+        documentTemplates={docs}
+        // Sổ giấy tờ của CHÍNH hạng mục này — đã lọc theo Gói + Hạng mục.
+        plannedNodeByTemplate={{ TPL_SO_DO: 'K01', TPL_BIEN_NHAN: 'K05b' }}
+        catalog={[{ code: 'K01', name: 'Nghiệm thu', checklist_template: [{ name: 'Kiểm tra đầu vào' }] }]}
+        capabilities={{ amend_workflow: true, review_workflow_node: true, review_workflow_checklist: true }}
+        addToast={vi.fn()}
+        targetNodeKey="node-1"
+        targetType="checklist_review"
+        targetNonce={1}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Nạp checklist mẫu/ }));
+
+    expect(screen.getByText('Sổ đỏ gốc')).toBeInTheDocument();
+    // Bước khác, và giấy gói khác gán cho cùng K01, đều KHÔNG được lọt vào.
+    expect(screen.queryByText('Biên nhận hồ sơ')).not.toBeInTheDocument();
+    expect(screen.queryByText('Giấy của gói khác')).not.toBeInTheDocument();
+  });
+
+  it('menu chọn neo cố định để không bị vùng cuộn checklist cắt', () => {
+    // Menu nằm trong .wf-node-panel__scroll (overflow-y:auto) nên nếu để
+    // position:absolute thì bị cắt — trước đây "chữa" bằng cách bắt menu gói
+    // khoán mở ngược lên, che mất tên checklist.
+    renderWithDocs();
+
+    const trigger = screen.getAllByRole('button', { name: /Người duyệt|Giám đốc/ })[0];
+    fireEvent.click(trigger);
+
+    const menu = document.querySelector('.wcl-picker__menu');
+    expect(menu).toBeInTheDocument();
+    expect(menu.style.position).toBe('fixed');
+  });
+
+  it('badge trên card đếm số giấy đầu ra, không đếm thứ khác', () => {
+    renderDesigner({ nodeReady: true });
+
+    // Checklist của harness chưa gán giấy đầu ra nào.
+    expect(document.querySelector('.wcl-count')).toHaveTextContent('0');
+  });
+});
+
+describe('Ô chọn tài liệu đầu ra lấy từ SỔ của hạng mục', () => {
+  afterEach(() => {
+    cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals();
+    // apiFetch nhớ kết quả GET vài giây, và designer đọc thẳng cache đó lúc
+    // dựng state. Hai khối test dùng CÙNG url sổ nên không dọn là khối sau
+    // nhận payload của khối trước — xanh/đỏ theo thứ tự chạy.
+    clearApiCache();
+  });
+
+  // Sổ giấy tờ của CHÍNH hạng mục này — đã lọc theo bốn trục Gói → Hạng mục →
+  // Node → Loại giấy. Khác hẳn danh mục mẫu toàn hệ thống ở DOC_TEMPLATES.
+  const SO_HANG_MUC = {
+    planned_node_by_template: {},
+    groups: [
+      {
+        source: 'KHACH_HANG',
+        label: 'Khách hàng cung cấp',
+        slots: [
+          { id: 'S1', template_id: 'TPL_SO_DO', name: 'Sổ đỏ gốc',
+            source_label: 'Khách hàng cung cấp', needs_original: true },
+        ],
+      },
+      {
+        source: 'CONG_TY',
+        label: 'Công ty soạn/lập',
+        slots: [
+          { id: 'S2', template_id: 'TPL_BAN_KY_THUAT_GOC', name: 'Bản kỹ thuật gốc',
+            source_label: 'Công ty soạn/lập', needs_original: false },
+          // Ô TỰ THÊM: không có template_id nên không khai làm đầu ra được.
+          { id: 'S3', template_id: null, name: 'Giấy phát sinh tự thêm',
+            source_label: 'Công ty soạn/lập', needs_original: false },
+        ],
+      },
+    ],
+  };
+
+  function renderCoSo() {
+    vi.stubGlobal('fetch', vi.fn((url) => Promise.resolve(new Response(
+      JSON.stringify(String(url).includes('/document-register/register') ? SO_HANG_MUC : {}),
+      { status: 200 },
+    ))));
+    return render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ nodeReady: true })}
+        contractId="001/BK-2026"
+        workItems={[workItem]}
+        documentTemplates={DOC_TEMPLATES}
+        capabilities={{ amend_workflow: true, review_workflow_checklist: true }}
+        addToast={vi.fn()}
+        targetNodeKey="node-1"
+        targetType="checklist_review"
+        targetNonce={1}
+      />
+    );
+  }
+
+  it('chỉ bày loại giấy CÓ trong sổ của hạng mục này', async () => {
+    renderCoSo();
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ })).toBeInTheDocument());
+    expect(within(dialog).getByRole('option', { name: /Bản kỹ thuật gốc/ })).toBeInTheDocument();
+  });
+
+  it('KHÔNG bày loại giấy chỉ có trong danh mục toàn hệ thống', async () => {
+    renderCoSo();
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ })).toBeInTheDocument());
+
+    // "Ảnh hiện trạng" và "Biên nhận hồ sơ" nằm trong DOC_TEMPLATES nhưng KHÔNG
+    // có trong sổ của hạng mục này. Bày chúng ra là mời Giám đốc khai một tờ mà
+    // sổ hồ sơ không bao giờ có ô để chứa.
+    expect(within(dialog).queryByRole('option', { name: /Ảnh hiện trạng/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('option', { name: /Biên nhận hồ sơ/ })).not.toBeInTheDocument();
+  });
+
+  it('ô tự thêm không có loại giấy thì không khai làm đầu ra được', async () => {
+    renderCoSo();
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ })).toBeInTheDocument());
+
+    // output_documents khoá theo LOẠI giấy, không theo ô — ô không có loại thì
+    // chọn xong cũng không lưu được vào đâu.
+    expect(within(dialog).queryByRole('option', { name: /Giấy phát sinh tự thêm/ }))
+      .not.toBeInTheDocument();
+  });
+
+  it('nhóm giữ đúng nhãn của sổ, không đặt lại tên', async () => {
+    renderCoSo();
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole('heading', { name: /Khách hàng cung cấp/ })).toBeInTheDocument());
+    expect(within(dialog).getByRole('heading', { name: /Công ty soạn\/lập/ })).toBeInTheDocument();
+    // Sổ hạng mục này không có giấy cơ quan trả — nhóm rỗng thì ẩn hẳn.
+    expect(within(dialog).queryByRole('heading', { name: /Cơ quan nhà nước/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('Ô chọn tài liệu đầu ra nói RÕ loại giấy đang nằm ở bước nào', () => {
+  afterEach(() => {
+    cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals();
+    // apiFetch nhớ kết quả GET vài giây, và designer đọc thẳng cache đó lúc
+    // dựng state. Hai khối test dùng CÙNG url sổ nên không dọn là khối sau
+    // nhận payload của khối trước — xanh/đỏ theo thứ tự chạy.
+    clearApiCache();
+  });
+
+  // Hai bước: K02 đã gán "Bản kỹ thuật gốc", K03 là bước đang mở picker.
+  // Không có graph hai bước thì không dựng được đúng ca người dùng phàn nàn:
+  // mở checklist sau thấy y hệt câu "đã dùng ở checklist khác" nên tưởng chưa gán.
+  const hangMucHaiBuoc = () => {
+    const k02 = {
+      task_code: 'K02',
+      name: 'Khảo sát',
+      pool_department_code: 'SURVEY',
+      claim_roles: ['MAIN'],
+      checklist: [{
+        key: 'c-k02',
+        name: 'Đo hiện trường',
+        required: true,
+        output_documents: [{ template_id: 'TPL_BAN_KY_THUAT_GOC', min_count: 1 }],
+        compensation: { is_payable: false },
+      }],
+      transitions: { pass: 'node-2' },
+    };
+    const k03 = {
+      task_code: 'K03',
+      name: 'Chuẩn hoá',
+      pool_department_code: 'SURVEY',
+      claim_roles: ['MAIN'],
+      checklist: [{ key: 'c-k03', name: 'Chuẩn hoá bản vẽ', required: true, compensation: { is_payable: false } }],
+      transitions: {},
+    };
+    return {
+      id: 'line-1',
+      workflow: {
+        status: 'active',
+        active_revision_id: null,
+        revision_status: null,
+        graph: { start_node: 'node-1', nodes: { 'node-1': k02, 'node-2': k03 }, ui: {} },
+        active_graph: null,
+        execution_nodes: [
+          { id: 'task-1', node_key: 'node-1', node_code: 'K02', status: 'ready', checklist_results: [] },
+          { id: 'task-2', node_key: 'node-2', node_code: 'K03', status: 'ready', checklist_results: [] },
+        ],
+      },
+    };
+  };
+
+  const SO = {
+    // Master data xếp "Ảnh hiện trạng" ở K05a — loại chưa gán vào bước nào.
+    planned_node_by_template: { TPL_ANH_HIEN_TRANG: 'K05a' },
+    groups: [{
+      source: 'CONG_TY',
+      label: 'Công ty soạn/lập',
+      slots: [
+        { id: 'S1', template_id: 'TPL_BAN_KY_THUAT_GOC', name: 'Bản kỹ thuật gốc',
+          source_label: 'Công ty soạn/lập', needs_original: false },
+        { id: 'S2', template_id: 'TPL_ANH_HIEN_TRANG', name: 'Ảnh hiện trạng',
+          source_label: 'Công ty soạn/lập', needs_original: false },
+        { id: 'S3', template_id: 'TPL_BIEN_NHAN', name: 'Biên nhận hồ sơ',
+          source_label: 'Công ty soạn/lập', needs_original: false },
+      ],
+    }],
+  };
+
+  async function moPickerCuaK03() {
+    vi.stubGlobal('fetch', vi.fn((url) => Promise.resolve(new Response(
+      JSON.stringify(String(url).includes('/document-register/register') ? SO : {}),
+      { status: 200 },
+    ))));
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={hangMucHaiBuoc()}
+        contractId="001/BK-2026"
+        workItems={[workItem]}
+        documentTemplates={DOC_TEMPLATES}
+        capabilities={{ amend_workflow: true, review_workflow_checklist: true }}
+        addToast={vi.fn()}
+        targetNodeKey="node-2"
+        targetType="checklist_review"
+        targetNonce={1}
+      />
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+    await waitFor(() =>
+      expect(within(dialog).getByRole('option', { name: /Bản kỹ thuật gốc/ })).toBeInTheDocument());
+    return dialog;
+  }
+
+  it('loại giấy đã gán ở bước khác thì NÊU ĐÍCH DANH bước đó', async () => {
+    const dialog = await moPickerCuaK03();
+
+    // "đã dùng ở checklist khác" là câu vô dụng: mở checklist nào cũng thấy y hệt.
+    const o = within(dialog).getByRole('option', { name: /Bản kỹ thuật gốc/ });
+    expect(o).toHaveTextContent(/Đang ở K02 · Đo hiện trường/);
+    expect(o).not.toHaveTextContent('đã dùng ở checklist khác');
+  });
+
+  it('loại giấy chưa gán thì nói master data xếp nó ở bước nào', async () => {
+    const dialog = await moPickerCuaK03();
+
+    // Tủ hồ sơ đã phân giấy theo bước rất rõ — picker phải nói được cùng con số đó.
+    expect(within(dialog).getByRole('option', { name: /Ảnh hiện trạng/ }))
+      .toHaveTextContent(/master data xếp ở K05A/i);
+  });
+
+  it('loại giấy không thuộc bước nào thì nói thẳng là chưa gán', async () => {
+    const dialog = await moPickerCuaK03();
+    expect(within(dialog).getByRole('option', { name: /Biên nhận hồ sơ/ }))
+      .toHaveTextContent(/Chưa gán vào bước nào/);
+  });
+
+  it('chọn vào checklist đang mở thì đổi sang "đã chọn ở checklist này"', async () => {
+    const dialog = await moPickerCuaK03();
+    fireEvent.click(within(dialog).getByRole('option', { name: /Biên nhận hồ sơ/ }));
+
+    // Ở checklist NÀY và ở bước KHÁC là hai chuyện khác hẳn — gộp làm một câu
+    // "đã dùng" thì người ta không biết mình vừa làm gì.
+    await waitFor(() => expect(within(dialog).getByRole('option', { name: /Biên nhận hồ sơ/ }))
+      .toHaveTextContent(/Đã chọn ở checklist này/));
+  });
+});
+
+describe('Giấy chưa gán vào bước nào chỉ CẢNH BÁO, không chặn kích hoạt', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); clearApiCache(); });
+
+  // Máy chủ trả 409 kèm readiness. Từ nay giấy thiếu nằm ở `warnings` và
+  // requires_confirmation = true — không còn `blockers`.
+  const READINESS = {
+    code: 'ACTIVATION_CONFIRMATION_REQUIRED',
+    message: '2 loại giấy trong bộ chuẩn của gói chưa gán vào bước nào. '
+      + 'Quy trình này không cần tới chúng thì bỏ qua được. '
+      + '1 bước chưa gắn khoán — nhân viên làm các bước đó sẽ không có tiền khoán.',
+    blockers: [],
+    requires_confirmation: true,
+    warnings: [
+      { code: 'MISSING_PIECE_RATE_MAPPING', node_key: 'node-1', node_name: 'K02 · Khảo sát' },
+      { code: 'MANDATORY_OUTPUT_UNALLOCATED', template_id: 'TPL_HON_NHAN',
+        template_name: 'Giấy tờ hôn nhân' },
+      { code: 'MANDATORY_OUTPUT_UNALLOCATED', template_id: 'TPL_CU_TRU',
+        template_name: 'Giấy xác nhận thông tin cư trú' },
+    ],
+  };
+
+  async function bamKichHoat() {
+    vi.stubGlobal('fetch', vi.fn((url) => {
+      if (String(url).includes('/activate')) {
+        return Promise.resolve(new Response(JSON.stringify({ detail: READINESS }), { status: 409 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200 }));
+    }));
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ nodeReady: true })}
+        workItems={[workItem]}
+        documentTemplates={DOC_TEMPLATES}
+        capabilities={{ amend_workflow: true }}
+        addToast={vi.fn()}
+      />
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Kích hoạt/ }));
+    // Hộp xác nhận có nút trùng tên với nút trên thanh công cụ — trỏ theo lớp
+    // của chính nút trong hộp, không trỏ theo tên.
+    const nutXacNhan = await waitFor(() => {
+      const nut = document.querySelector('.workflow-activation-confirm');
+      expect(nut).toBeTruthy();
+      return nut;
+    });
+    fireEvent.click(nutXacNhan);
+  }
+
+  it('vẫn cho kích hoạt — không phải hộp thoại chỉ có nút Đóng', async () => {
+    await bamKichHoat();
+
+    // Bộ chuẩn của gói là GỢI Ý. Một hợp đồng chỉ thuê đo vẽ rồi nhận bản vẽ có
+    // quyền không dùng giấy pháp lý — chặn cứng là bắt dựng thêm bước chỉ để
+    // thoả một danh sách.
+    expect(await screen.findByRole('button', { name: /Vẫn kích hoạt/ })).toBeInTheDocument();
+  });
+
+  it('tách hai loại cảnh báo, mỗi loại một tiêu đề riêng', async () => {
+    await bamKichHoat();
+    await screen.findByRole('button', { name: /Vẫn kích hoạt/ });
+
+    // Thiếu khoán là nhân viên mất tiền thật; thiếu giấy có thể chỉ vì quy trình
+    // không cần. Gộp một danh sách thì người đọc không biết cái nào đáng lo.
+    expect(screen.getByText(/sẽ không nhận khoán/)).toBeInTheDocument();
+    expect(screen.getByText(/2 loại giấy chưa gán vào bước nào/)).toBeInTheDocument();
+    expect(screen.getByText('K02 · Khảo sát')).toBeInTheDocument();
+    expect(screen.getByText('Giấy tờ hôn nhân')).toBeInTheDocument();
+  });
+
+  it('bấm Vẫn kích hoạt thì gửi lại kèm cờ xác nhận', async () => {
+    await bamKichHoat();
+    fireEvent.click(await screen.findByRole('button', { name: /Vẫn kích hoạt/ }));
+
+    await waitFor(() => {
+      const lanCuoi = goiToi(globalThis.fetch, '/activate').at(-1);
+      expect(JSON.parse(lanCuoi[1].body).confirm_warnings).toBe(true);
+    });
   });
 });

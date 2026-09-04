@@ -249,6 +249,44 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
     return <WorkspaceEmpty title="Chọn một hợp đồng" description="Chọn hợp đồng ở tab Danh sách để xem Hạng mục, tài liệu và thiết lập workflow." />;
   }
 
+  // Giám đốc duyệt/từ chối MỘT tờ giấy. Cố tình không tự làm mới cả workspace
+  // sau mỗi lần bấm: duyệt 10 tờ là 10 lần nạp lại toàn bộ hợp đồng, và mỗi lần
+  // nạp lại là thanh Chờ duyệt nhảy chỗ dưới tay người đang bấm.
+  const reviewDocument = async (checklistResultId, doc, decision, reason) => {
+    if (!checklistResultId || !doc?.document_id) {
+      addToast?.('Tờ giấy này chưa có tệp nào để duyệt', 'error');
+      return;
+    }
+    try {
+      await apiFetch(
+        `/api/contracts/workflow/checklist-results/${encodeURIComponent(checklistResultId)}/document-review`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ document_id: doc.document_id, decision, reason }),
+        },
+      );
+      setRefreshKey(current => current + 1);
+    } catch (error) {
+      addToast?.(error?.message || 'Không duyệt được tờ giấy này', 'error');
+    }
+  };
+
+  // Chốt đợt duyệt. Nuốt lỗi có chủ đích: đây chỉ là đường CỐ GẮNG chốt sớm,
+  // còn lưới an toàn thật là đường chốt lười phía máy chủ. Ném một toast đỏ lúc
+  // Giám đốc vừa đóng Drawer chỉ làm họ hoang mang về một việc đã có người lo.
+  const flushReviewBatch = async (taskNodeId) => {
+    if (!taskNodeId) return;
+    try {
+      await apiFetch(
+        `/api/contracts/workflow/nodes/${encodeURIComponent(taskNodeId)}/review-batch`,
+        { method: 'POST' },
+      );
+      setRefreshKey(current => current + 1);
+    } catch {
+      // Máy chủ sẽ tự chốt sau 15 phút.
+    }
+  };
+
   return (
     <div className={`contract-workspace contract-workspace--${tab}`}>
       <div className="contract-workspace__header">
@@ -352,9 +390,16 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
                   templates={workspace.workflow_templates}
                   employees={workspace.assignment_options}
                   workItems={workspace.work_item_catalog}
+                  contractTotalValue={workspace.contract.total_value}
+                  contractPaidAmount={workspace.contract.paid_amount}
                   contractDateSigned={workspace.contract.date_signed}
               capabilities={workspace.capabilities}
                   addToast={addToast}
+                  onApproveDocument={(checklistResultId, doc) =>
+                    reviewDocument(checklistResultId, doc, 'approved')}
+                  onRejectDocument={(checklistResultId, doc, reason) =>
+                    reviewDocument(checklistResultId, doc, 'rejected', reason)}
+                  onFlushReviewBatch={flushReviewBatch}
                   onPersisted={() => setRefreshKey(current => current + 1)}
                   targetNodeKey={selectedServiceLine?.id === targetServiceLineId ? targetNodeKey : undefined}
                   targetType={selectedServiceLine?.id === targetServiceLineId ? targetType : undefined}

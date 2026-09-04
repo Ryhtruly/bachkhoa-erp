@@ -269,21 +269,28 @@ it('mở một hạng mục ra là thấy cả sơ đồ chuỗi và bước đa
   render(<EmployeePortalDashboard />)
   fireEvent.click(await screen.findByRole('button', { name: 'Mở ra làm' }))
 
-  // Đầu trang nói ngay hạng mục nào và tiền đã tích luỹ trên tổng.
+  // Tầng 1: hợp đồng, tên gói, và nhãn ưu tiên bên phải.
   expect(await screen.findByRole('heading', { name: 'Đo vẽ hiện trạng' })).toBeInTheDocument()
   expect(screen.getByText(/HĐ 010\/BK-2026 · KH: Lê Thị Lan/)).toBeInTheDocument()
-  expect(screen.getByText('250.000đ')).toBeInTheDocument()
 
-  // Cả 3 bước của chuỗi đều hiện, kể cả bước chưa tới lượt.
-  expect(screen.getByRole('heading', { name: /SƠ ĐỒ CHUỖI CÔNG VIỆC/ })).toBeInTheDocument()
-  expect(screen.getByText('K01')).toBeInTheDocument()
-  expect(screen.getByText('K03')).toBeInTheDocument()
-  expect(screen.getByText('ĐANG CHỌN')).toBeInTheDocument()
+  // Cả 3 bước của chuỗi đều hiện, kể cả bước chưa tới lượt; bước đang mở được
+  // đánh dấu bằng aria-current chứ không bằng một chữ "ĐANG CHỌN".
+  const chain = screen.getByRole('list', { name: /Các bước của hạng mục/ })
+  expect(within(chain).getByText('K01')).toBeInTheDocument()
+  expect(within(chain).getByText('K03')).toBeInTheDocument()
+  expect(within(chain).getByRole('button', { current: 'step' })).toHaveTextContent('K02')
 
-  // Bước đang làm mở sẵn checklist để nộp minh chứng.
-  expect(screen.getByRole('heading', { name: 'Khảo sát & đo hiện trường' })).toBeInTheDocument()
+  // Tầng 2: tên bước và đồng hồ.
+  expect(screen.getByRole('heading', { name: /K02: Khảo sát & đo hiện trường/ })).toBeInTheDocument()
+  expect(screen.getByText('Thời gian còn lại')).toBeInTheDocument()
+
+  // Tầng 3 cột trái: mô tả và bảng tiền ba dòng.
+  expect(screen.getByText(/Đo đạc thực địa/)).toBeInTheDocument()
+  expect(screen.getByText('Khoán nhiệm vụ')).toBeInTheDocument()
+  expect(screen.getByText('Tổng')).toBeInTheDocument()
+
+  // Tầng 3 cột phải: checklist để nộp minh chứng.
   expect(screen.getByText('4 ảnh mốc ranh GPS')).toBeInTheDocument()
-  expect(screen.getByText(/tự đóng bước/)).toBeInTheDocument()
 })
 
 it('bước chưa tới lượt thì mở ra chỉ báo chờ, không cho thao tác', async () => {
@@ -303,7 +310,8 @@ it('bước chưa tới lượt thì mở ra chỉ báo chờ, không cho thao t
   expect(await screen.findByText('● Chờ bước trước')).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'Mở ra làm' }))
-  expect(await screen.findByText(/K03 Chuẩn hoá tài liệu chưa tới lượt bạn/)).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: /K03 · Chuẩn hoá tài liệu/ })).toBeInTheDocument()
+  expect(screen.getByText(/chưa giao cho ai, hoặc chưa tới lượt bạn/)).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Chọn file minh chứng/ })).not.toBeInTheDocument()
 })
 

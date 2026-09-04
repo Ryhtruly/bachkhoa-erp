@@ -444,21 +444,6 @@
   .dr-slot__toggle { width: 34px; padding: 7px; }
 }
 
-/* ---------- Màn cấu hình bộ mẫu giấy tờ ---------- */
-.dts { display: flex; flex-direction: column; gap: 14px; }
-
-.dts-head { display: flex; align-items: center; gap: 12px; }
-.dts-head h2 {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--text-primary, #0f172a);
-}
-.dts-head h2 svg { color: #c23816; }
-
 .dts-new {
   margin-left: auto;
   display: inline-flex;
@@ -581,48 +566,6 @@
 }
 .dr-mismatch:hover { background: rgba(245, 158, 11, 0.2); }
 
-.dts-places {
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 12px;
-  padding: 14px 16px 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.dts-places h3 {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text-primary, #0f172a);
-}
-.dts-places h3 svg { color: #c23816; }
-.dts-places h3 button {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  background: #fff;
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: #334155;
-  padding: 6px 11px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.dts-places h3 button:hover { border-color: #eb4a23; color: #c23816; }
-
-
-/* ═══ Mẫu Giấy Tờ ═══
-   Vuông và sát: màn này nằm cùng hàng với Hồ Sơ Đo Vẽ / Pháp Lý nên phải cùng
-   một ngôn ngữ — khung tràn viền, không bo góc, các khối dính liền nhau bằng
-   đường kẻ 1px chứ không tách rời bằng khoảng trắng. */
-.dts.list-page-frame { padding: 0; }
-
 .dts-hint {
   flex-shrink: 0;
   margin: 0;
@@ -634,91 +577,6 @@
   color: var(--text-secondary, #64748b);
 }
 .dts-hint strong { color: var(--text-primary, #0f172a); font-weight: 700; }
-
-/* Vùng cuộn duy nhất của trang — tiêu đề và ghi chú đứng yên, chỉ danh sách chạy. */
-.dts-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* ── Danh sách ──
-   Mọi hàng dùng CHUNG một lưới cột nên tiêu đề chỉ kê MỘT lần và dính khi cuộn.
-   Trước đây mỗi nhóm là một <table> riêng, tự lặp lại đủ sáu tiêu đề cột — hai
-   mươi nhóm là hai mươi lần lặp, mắt không phân biệt nổi nhóm mới với tiêu đề cũ. */
-.dts-list {
-  /* Rãnh cuối là khoảng trống có chủ ý: trên màn 1700px, để cột tên nuốt hết
-     phần dư sẽ đẩy Nguồn/SL/Đang dùng ra tít mép phải, mắt phải chạy ngang cả
-     gang tay mới nối được tên giấy với con số của nó. */
-  --dts-cols: minmax(220px, 560px) 160px 84px 92px 56px 108px 104px 1fr;
-}
-
-.dts-list__head,
-.dts-row {
-  display: grid;
-  grid-template-columns: var(--dts-cols);
-  align-items: center;
-  gap: 12px;
-  padding: 0 18px;
-}
-
-.dts-list__head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  min-height: 36px;
-  background: var(--bg-deep);
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-secondary, #64748b);
-}
-
-.dts-list .is-mid { text-align: center; }
-
-.dts-group__head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  border: 0;
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
-  background: color-mix(in srgb, var(--orange-500) 5%, var(--bg-card));
-  font: inherit;
-  font-size: 13px;
-  color: var(--text-primary, #0f172a);
-  text-align: left;
-  cursor: pointer;
-}
-.dts-group__head:hover { background: color-mix(in srgb, var(--orange-500) 10%, var(--bg-card)); }
-.dts-group__head:focus-visible { outline: 2px solid var(--orange-500); outline-offset: -2px; }
-
-.dts-group__caret { flex: none; color: #94a3b8; transition: transform 0.12s ease; }
-.dts-group.is-open .dts-group__caret,
-.dts-places.is-open .dts-group__caret { transform: rotate(90deg); }
-
-.dts-group__meta { margin-left: auto; font-size: 11.5px; color: var(--text-secondary, #64748b); }
-.dts-group__meta em { font-style: normal; color: #c23816; font-weight: 700; }
-.dts-group__meta i { font-style: normal; }
-
-.dts-row {
-  min-height: 38px;
-  border-bottom: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.7));
-  font-size: 13px;
-  color: var(--text-primary, #0f172a);
-}
-.dts-row.is-off { opacity: 0.5; }
-.dts-row__name { font-weight: 600; }
-.dts-row__source { font-size: 12px; color: var(--text-secondary, #64748b); }
-
-.dts-yes { color: #059669; font-weight: 800; }
-.dts-zero { color: #cbd5e1; }
-/* Số hồ sơ đang dùng phải nổi: tắt một mục KHÔNG gỡ giấy khỏi hồ sơ đang chạy,
-   nên đây là con số Giám đốc cần liếc trước khi bấm tắt. */
-.dts-inuse { color: #c23816; font-weight: 800; }
 
 .dts-row-actions { display: flex; gap: 5px; justify-content: flex-start; }
 .dts-row-actions button {
@@ -734,59 +592,11 @@
 .dts-row-actions button:hover { background: var(--bg-deep); border-color: var(--orange-500); }
 .dts-row-actions button.is-off { color: #b91c1c; padding: 3px 7px; }
 
-/* ── Ô tìm + nút thêm, nằm ngay trong dải tiêu đề ── */
-.dts-head__tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.dts-search {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  height: 32px;
-  border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 0;
-  background: var(--bg-card, #fff);
-  color: #94a3b8;
-}
-.dts-search:focus-within { border-color: var(--orange-500); color: #c23816; }
-.dts-search input {
-  border: 0;
-  outline: 0;
-  background: none;
-  font: inherit;
-  font-size: 12.5px;
-  color: var(--text-primary, #0f172a);
-  width: 172px;
-}
-
 .dts-new { border-radius: 0; }
-
-/* ── Nơi lưu bản cứng: cấu hình của cấu hình, gập sẵn, nằm cuối ── */
-.dts-places { border-top: 1px solid var(--border-default, #e2e8f0); }
-.dts-places__toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 18px;
-  border: 0;
-  background: var(--bg-deep);
-  font: inherit;
-  font-size: 13px;
-  color: var(--text-primary, #0f172a);
-  text-align: left;
-  cursor: pointer;
-}
-.dts-places__toggle:hover { background: color-mix(in srgb, var(--orange-500) 7%, var(--bg-card)); }
-.dts-places__toggle svg:not(.dts-group__caret) { color: #c23816; flex: none; }
-.dts-places__body { padding: 10px 18px 14px; border-top: 1px solid var(--border-subtle); }
 
 .dts-empty { margin: 0; padding: 22px 18px; text-align: center; font-size: 13px; color: var(--text-secondary, #64748b); }
 
 @media (max-width: 1100px) {
-  .dts-list { --dts-cols: minmax(150px, 1fr) 112px 62px 66px 44px 78px 88px; }
-  .dts-list__head, .dts-row { padding: 0 10px; gap: 8px; }
-  .dts-search input { width: 120px; }
 }
 
 /* ── Trạng thái từng loại giấy ──
@@ -899,3 +709,454 @@
   color: var(--text-secondary); white-space: nowrap;
 }
 .dr-dem b { color: var(--danger-600, #dc2626); font-weight: 800; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Mẫu Giấy Tờ — master-detail ba cột
+
+   Cây năm trục: Gói → Hạng mục → Nhóm nguồn gốc → Node → Loại giấy tờ.
+   Hai hàng tab chốt ba trục đầu, ba cột đi nốt hai trục còn lại.
+
+   `.list-page-frame` đã cho sẵn khung cao đúng viewport và overflow:hidden, nên
+   ở đây chỉ cần một hàng grid `min-height: 0` là mỗi cột tự cuộn phần thân của
+   nó. Thiếu `min-height: 0` thì grid item lấy chiều cao theo nội dung và cả
+   trang đổ dài ra — thanh cuộn của cột không bao giờ xuất hiện.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── HÀNG 1: dải tiêu đề ──
+   Dùng .contract-pane-title dùng chung nên chiều cao và nền khớp Danh sách hợp
+   đồng / Hồ Sơ Đo Vẽ. Ở đây chỉ nới thêm cho đường dẫn bốn nấc. */
+.dtm { padding: 0; gap: 0; background: var(--bg-deep); }
+
+.dtm__bar { flex-wrap: wrap; }
+.dtm__bar > div { min-width: 0; flex-wrap: wrap; }
+
+.dtm__crumb {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-left: 6px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-default, #e2e8f0);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+.dtm__crumb span { display: inline-flex; align-items: center; gap: 4px; }
+.dtm__crumb svg { color: var(--border-default, #cbd5e1); }
+/* Nấc cuối là thứ đang xem, phải nổi hơn các nấc dẫn đường. */
+.dtm__crumb .is-cuoi { color: var(--orange-600, #c23816); font-weight: 800; }
+
+.dtm__bar-tools { display: flex; align-items: center; gap: 10px; flex: none; }
+.dtm__places {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+}
+.dtm__places:hover { border-color: var(--orange-500); color: var(--orange-600, #c23816); }
+
+/* ── Lưới dùng chung cho HÀNG 2 và HÀNG 3 ──
+   Một khai báo cột duy nhất nên đầu cột và thân cột không bao giờ lệch nhau.
+   Khe 10px giữa các cột: ba khối rời nhau đọc ra ba việc khác nhau, dính liền
+   thành một mảng thì mắt phải tự đi tìm ranh giới. */
+.dtm__grid {
+  display: grid;
+  /* 400 / 705 / 288 đo từ bản vẽ. Cột 3 HẸP hơn Cột 1 vì nó chỉ chứa mã bước và
+     nhãn phạm vi, còn Cột 1 chứa tên hạng mục dài. */
+  grid-template-columns: minmax(160px, 1.05fr) minmax(240px, 1.85fr) minmax(190px, 0.75fr);
+  gap: 10px;
+  padding: 0 10px;
+}
+
+/* ── HÀNG 2: đầu cột ── */
+.dtm__heads { flex-shrink: 0; padding-top: 10px; padding-bottom: 10px; }
+.dtm__head {
+  display: flex;
+  min-width: 0;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  overflow: hidden;
+}
+.dtm__head.is-label {
+  align-items: center;
+  padding: 0 14px;
+  background: color-mix(in srgb, var(--orange-500) 12%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--orange-500) 30%, transparent);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--orange-600, #c23816);
+}
+
+.dtm__tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 8px;
+  border: 0;
+  border-right: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.8));
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  /* Cho xuống dòng: "Xin Phép Xây Dựng" dài gấp đôi "Đo Vẽ" mà ô tab chia đều.
+     Để nowrap thì chữ tràn ra đè lên tab bên cạnh. */
+  overflow-wrap: anywhere;
+}
+.dtm__tab:last-child { border-right: 0; }
+.dtm__tab:hover { background: color-mix(in srgb, var(--orange-500) 8%, transparent); }
+.dtm__tab:focus-visible { outline: 2px solid var(--orange-500); outline-offset: -2px; }
+.dtm__tab.is-active {
+  background: linear-gradient(135deg, var(--orange-400), var(--orange-600));
+  color: #fff;
+  font-weight: 800;
+}
+
+/* ── HÀNG 3: ba cột ── */
+.dtm__cols { flex: 1; min-height: 0; padding-bottom: 10px; }
+.dtm__col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+  overflow: hidden;
+}
+.dtm__col-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+
+.dtm__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.7));
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-primary, #0f172a);
+  text-align: left;
+  cursor: pointer;
+}
+.dtm__item:hover { background: var(--bg-deep); }
+.dtm__item:focus-visible { outline: 2px solid var(--orange-500); outline-offset: -2px; }
+.dtm__item.is-active {
+  background: color-mix(in srgb, var(--orange-500) 14%, var(--bg-card));
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--orange-500);
+}
+/* Mẫu đã tắt vẫn hiện, chỉ mờ đi: ẩn hẳn thì không còn đường nào bật lại. */
+.dtm__item.is-off { opacity: 0.55; }
+.dtm__item span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.dtm__empty {
+  margin: 0;
+  padding: 18px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary, #64748b);
+}
+.dtm__empty strong { color: var(--orange-600, #c23816); }
+
+/* ── Cột 3: bản ghi gán ──
+   Dòng không mang nút riêng — bản vẽ để Cột 3 sạch, hai nút ghim ở đáy tác động
+   lên dòng đang chọn. */
+.dtm__node {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 9px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.7));
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-primary, #0f172a);
+  text-align: left;
+  cursor: pointer;
+}
+.dtm__node:hover { background: var(--bg-deep); }
+.dtm__node:focus-visible { outline: 2px solid var(--orange-500); outline-offset: -2px; }
+.dtm__node.is-active {
+  background: color-mix(in srgb, var(--orange-500) 14%, var(--bg-card));
+  box-shadow: inset 3px 0 0 var(--orange-500);
+}
+.dtm__node b { color: var(--orange-600, #c23816); font-weight: 800; }
+/* Nhãn phạm vi phải luôn đứng cạnh mã bước: cùng một tờ giấy có thể vừa nhận
+   bước từ chính hạng mục này, vừa thừa hưởng từ dòng "mọi gói". Không nói rõ
+   thì bấm Sửa xong không hiểu vừa đổi cái nào. */
+.dtm__node em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+}
+.dtm__node .dr-tag { margin-left: 0; }
+
+.dtm__foot {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-deep);
+}
+.dtm__act {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  cursor: pointer;
+}
+.dtm__act:hover:not(:disabled) { border-color: var(--orange-500); color: var(--orange-600, #c23816); }
+.dtm__act.is-off:hover:not(:disabled) { border-color: #b91c1c; color: #b91c1c; }
+.dtm__act:disabled { opacity: 0.45; cursor: default; }
+
+@media (max-width: 900px) {
+  /* Màn hẹp: xếp thành từng tầng, mỗi tầng vẫn tự cuộn. Ép ba cột vào 900px thì
+     cột giữa còn chưa tới 200px, tên giấy xuống dòng từng chữ.
+     Hàng đầu cột xếp chồng theo — ẩn nó đi là mất luôn hai bộ lọc Gói và Nhóm,
+     tức là không dùng được màn này trên máy nhỏ. */
+  .dtm__heads { grid-template-columns: 1fr; }
+  .dtm__heads .is-label { padding: 9px 14px; }
+  .dtm__cols { grid-template-columns: 1fr; grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .dtm__crumb { margin-left: 0; padding-left: 0; border-left: 0; flex-basis: 100%; }
+}
+
+/* ═══ Modal thiết lập mẫu giấy tờ ═══ */
+
+.tfm__form { display: flex; flex-direction: column; gap: 12px; }
+.tfm__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary, #475569);
+}
+.tfm__field input,
+.tfm__field select,
+.tfm__field textarea {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default, #cbd5e1);
+  background: var(--bg-card, #fff);
+  color: var(--text-primary, #0f172a);
+  resize: vertical;
+}
+.tfm__field input:focus-visible,
+.tfm__field select:focus-visible,
+.tfm__field textarea:focus-visible { outline: 2px solid var(--orange-500); outline-offset: -1px; }
+
+/* ── Chọn bước: radio, đúng một ── */
+.tfm-node { border: 1px solid var(--border-default, #e2e8f0); }
+.tfm-node__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 0;
+  background: var(--bg-deep);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.tfm-node__head:focus-visible { outline: 2px solid var(--orange-500); outline-offset: -2px; }
+.tfm-node__label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-secondary, #475569);
+}
+.tfm-node__chon {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--orange-600, #c23816);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Chưa gán bước là trạng thái cần nhìn thấy, không phải mặc định vô hại: giấy
+   không bước nào nhận thì không hiện ở màn nhân viên nào. */
+.tfm-node__chon.is-chua,
+.tfm-node__item .is-chua { color: var(--danger-600, #dc2626); font-weight: 700; }
+
+.tfm-node__list { max-height: 220px; overflow-y: auto; border-top: 1px solid var(--border-default, #e2e8f0); }
+.tfm-node__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.7));
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.tfm-node__item:last-child { border-bottom: 0; }
+.tfm-node__item:hover { background: var(--bg-deep); }
+.tfm-node__item input { width: auto; margin: 0; flex: none; }
+.tfm-node__item b { color: var(--orange-600, #c23816); }
+
+/* ── Ma trận Gói / Hạng mục ── */
+.tsm {
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-deep);
+}
+.tsm legend {
+  padding: 0 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #64748b);
+}
+.tsm__global {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 0 9px;
+  border-bottom: 1px dashed var(--border-default, #e2e8f0);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tsm__global em { font-style: normal; font-weight: 400; color: var(--text-secondary, #64748b); }
+.tsm__global input { width: auto; margin: 0; }
+
+/* Tick "mọi gói" thì phần gói lẻ mờ đi — nó đã bị trùm, tick thêm là khai hai
+   lần cùng một điều. */
+.tsm__body.is-mo { opacity: 0.42; pointer-events: none; }
+
+.tsm__pkg { border-bottom: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.7)); }
+.tsm__pkg:last-child { border-bottom: 0; }
+.tsm__pkg-head { display: flex; align-items: center; gap: 8px; padding: 7px 0; }
+.tsm__pkg-head label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.tsm__pkg-head input { width: auto; margin: 0; }
+
+.tsm__expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-card, #fff);
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+}
+.tsm__expand:hover { border-color: var(--orange-500); color: var(--orange-600, #c23816); }
+.tsm__dem {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--orange-600, #c23816);
+}
+
+.tsm__types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2px 12px;
+  padding: 2px 0 8px 22px;
+}
+.tsm__types label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.tsm__types input { width: auto; margin: 0; flex: none; }
+.tsm__types input:disabled + span { opacity: 0.5; }
+.tsm__trong { margin: 0; font-size: 12px; color: var(--text-secondary, #64748b); }
+
+/* ── Khoá phạm vi ở chế độ Sửa ── */
+.tfm__locked {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--orange-500) 40%, transparent);
+  background: color-mix(in srgb, var(--orange-500) 8%, transparent);
+}
+.tfm__locked svg { flex: none; margin-top: 2px; color: var(--orange-600, #c23816); }
+.tfm__locked strong { font-size: 12.5px; color: var(--orange-600, #c23816); }
+.tfm__locked p {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-secondary, #64748b);
+}
+
+.tfm__canhbao {
+  margin: 0;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--danger-600, #dc2626);
+  background: color-mix(in srgb, var(--danger-500, #ef4444) 9%, transparent);
+}
+
+.tfm__flags { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.tfm__flags .is-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tfm__flags .is-check input { width: auto; margin: 0; }
+.tfm__flags .is-small {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 88px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary, #475569);
+}
+.tfm__flags .is-small input {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 7px 9px;
+  border: 1px solid var(--border-default, #cbd5e1);
+  background: var(--bg-card, #fff);
+}
+
+.tfm__actions { display: flex; gap: 9px; justify-content: flex-end; }

@@ -81,6 +81,7 @@ DOSSIER_STAGES = (
     "do-hien-truong",
     "chuan-hoa-ky-thuat",
     "soan-ho-so",
+    "nop-noi-nghiep",
     "nop-co-quan",
     "ket-qua",
 )
@@ -92,8 +93,16 @@ STAGE_BY_NODE_CODE = {
     "K02": "do-hien-truong",
     "K03": "chuan-hoa-ky-thuat",
     "K04": "soan-ho-so",
-    "K05": "nop-co-quan",
+    # K05a nộp nội nghiệp trong công ty, chưa ra cơ quan — giai đoạn riêng.
+    "K05a": "nop-noi-nghiep",
+    "K05b": "nop-co-quan",
     "K06": "ket-qua",
+}
+
+# Xem ghi chú ở workflow_runtime: mã bước có chữ thường nên mọi nơi tra bảng này
+# phải đi qua chỉ mục viết hoa, không tra thẳng STAGE_BY_NODE_CODE.
+STAGE_BY_UPPER_NODE_CODE = {
+    ma.upper(): giai_doan for ma, giai_doan in STAGE_BY_NODE_CODE.items()
 }
 
 

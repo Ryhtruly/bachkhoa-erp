@@ -15,7 +15,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.files.references import DOSSIER_STAGES, STAGE_BY_NODE_CODE, DossierFileReference
+from src.files.references import (
+    DOSSIER_STAGES, STAGE_BY_NODE_CODE, STAGE_BY_UPPER_NODE_CODE, DossierFileReference,
+)
 from src.services.storage_service import ensure_bucket, get_file, upload_file
 
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
@@ -77,7 +79,7 @@ STAGE_FIELDS = {
 
 
 def stage_for_node_code(node_code: str | None) -> str | None:
-    return STAGE_BY_NODE_CODE.get(str(node_code or "").upper())
+    return STAGE_BY_UPPER_NODE_CODE.get(str(node_code or "").strip().upper())
 
 
 def _validate_upload(file_name: str, content_type: str | None, data: bytes) -> None:
@@ -591,7 +593,15 @@ _NODE_OUTPUT_STATE_QUERY = text("""
            r.approver_role,
            coalesce(cr_graph.item->'output_documents', '[]'::jsonb) as output_documents,
            coalesce(jsonb_object_agg(s.template_id, cnt.so_ban)
-                    filter (where s.template_id is not null), '{}'::jsonb) as dang_co
+                    filter (where s.template_id is not null), '{}'::jsonb) as dang_co,
+           -- Phán quyết của Giám đốc cho tờ mới nhất ở mỗi loại giấy. Giao diện
+           -- đọc cái này để bày "đã duyệt" / "đã từ chối kèm lý do" thay vì để
+           -- nút Duyệt sáng lên trên một tờ đã xử rồi.
+           coalesce(jsonb_object_agg(s.template_id, jsonb_build_object(
+                      'document_id',      cnt.document_id,
+                      'review_status',    cnt.review_status,
+                      'rejection_reason', cnt.rejection_reason))
+                    filter (where s.template_id is not null), '{}'::jsonb) as review_by_template
     from public.task_node_checklist_results r
     join public.task_nodes n on n.id = r.task_node_id
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
@@ -606,7 +616,13 @@ _NODE_OUTPUT_STATE_QUERY = text("""
       limit 1
     ) cr_graph
     left join lateral (
-      select d.slot_id, count(*) as so_ban
+      -- Đếm bản hợp lệ, và lấy phán quyết của bản MỚI NHẤT. Nhiều bản cùng loại
+      -- thì bản mới là bản nhân viên vừa nộp lại sau khi bị trả — bày phán quyết
+      -- của bản cũ là hiện lý do từ chối đã hết hiệu lực.
+      select d.slot_id, count(*) as so_ban,
+             (array_agg(l.document_id      order by d.uploaded_at desc, d.id desc))[1] as document_id,
+             (array_agg(l.review_status    order by d.uploaded_at desc, d.id desc))[1] as review_status,
+             (array_agg(l.rejection_reason order by d.uploaded_at desc, d.id desc))[1] as rejection_reason
       from public.checklist_result_document_links l
       join public.dossier_documents d on d.id = l.document_id
       where l.checklist_result_id = r.id and d.doc_status = 'DANG_DUNG'
@@ -796,7 +812,8 @@ def submit_output_document(
 
     # Giai đoạn suy từ mã bước, không ghi cứng theo K02/K03: quy trình tự do không
     # có mã K nào thì rơi về kho hồ sơ gốc thay vì vỡ.
-    stage = STAGE_BY_NODE_CODE.get(context_row["node_code"] or "") or "ho-so-goc"
+    stage = STAGE_BY_UPPER_NODE_CODE.get(
+        str(context_row["node_code"] or "").strip().upper()) or "ho-so-goc"
 
     document_id = uuid.uuid4().hex
     reference = DossierFileReference.build(
@@ -843,6 +860,9 @@ def submit_output_document(
                 "actor": actor_id,
             },
         )
+        _lock_checklist_and_reject_overwrite(
+            db, checklist_result_id=checklist_result_id, document_id=document_id
+        )
         db.execute(
             text("""
                 insert into public.checklist_result_document_links
@@ -886,6 +906,60 @@ def submit_output_document(
     }
 
 
+def _lock_checklist_and_reject_overwrite(
+    db: Session, *, checklist_result_id: str, document_id: str
+) -> None:
+    """Khoá mục checklist, rồi chặn gán đè lên ô giấy Giám đốc ĐÃ DUYỆT.
+
+    ── Vì sao phải chặn ─────────────────────────────────────────────────────────
+    Quy tắc hiển thị là "bản mới nhất thắng". Nên gán một tệp khác vào ô giấy đã
+    được duyệt đạt sẽ đẩy phán quyết cũ ra rìa, tờ quay về chờ duyệt — tức tệp đã
+    duyệt bị thay SAU LƯNG người duyệt. Muốn thay thì Giám đốc phải từ chối tờ đó
+    trước; đó là đường duy nhất có ghi vết ai quyết.
+
+    ── Vì sao phải KHOÁ, không chỉ kiểm ────────────────────────────────────────
+    Postgres mặc định READ COMMITTED. Giám đốc bấm duyệt trong một giao dịch chưa
+    commit, nhân viên bấm gán trong giao dịch khác: phép kiểm của nhân viên đọc
+    ảnh chụp CŨ, không thấy trạng thái 'approved' chưa commit, nên cho qua. Hai
+    bên commit xong là tồn tại đồng thời một dòng đã duyệt và một dòng mới.
+
+    Khoá chính hàng mục checklist là điểm hẹn chung: đường duyệt tờ
+    (``review_node_document``) cũng khoá đúng hàng này, nên hai bên xếp hàng thay
+    vì chạy song song. Khoá một bên là khoá một chiều, vô dụng.
+    """
+    db.execute(
+        text("select 1 from public.task_node_checklist_results where id = :i for update"),
+        {"i": checklist_result_id},
+    )
+    da_duyet = db.execute(
+        text("""
+            select coalesce(s.name, d.file_name) as ten
+            from public.checklist_result_document_links l
+            join public.dossier_documents d on d.id = l.document_id
+            left join public.dossier_document_slots s on s.id = d.slot_id
+            where l.checklist_result_id = :checklist_result_id
+              and l.review_status = 'approved'
+              and l.document_id <> :document_id
+              -- Cùng Ô GIẤY nhưng khác tệp mới là gán đè. Tệp của ô khác thì
+              -- không liên quan.
+              and d.slot_id is not null
+              and d.slot_id = (
+                select d2.slot_id from public.dossier_documents d2 where d2.id = :document_id
+              )
+            limit 1
+        """),
+        {"checklist_result_id": checklist_result_id, "document_id": document_id},
+    ).scalar()
+    if da_duyet:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"“{da_duyet}” đã được Giám đốc duyệt đạt nên không thay được. "
+                "Cần thay thì Giám đốc phải từ chối tờ đó trước."
+            ),
+        )
+
+
 def reuse_document_for_checklist(
     db: Session,
     *,
@@ -903,6 +977,9 @@ def reuse_document_for_checklist(
     from src.dossiers.slot_requests import assert_document_not_reserved
 
     assert_document_not_reserved(db, document_id)
+    _lock_checklist_and_reject_overwrite(
+        db, checklist_result_id=checklist_result_id, document_id=document_id
+    )
     db.execute(
         text("""
             insert into public.checklist_result_document_links

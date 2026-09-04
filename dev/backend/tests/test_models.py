@@ -32,7 +32,6 @@ def test_table_model_alignment(db):
         f"Mapped tables missing from DB: {set(mapped_tables) - set(db_tables)}"
     )
     removed_tables = {
-        "legal_submissions",
         "task_transitions",
         "task_nodes_legacy_empty",
         "node_pay_rates_legacy_empty",

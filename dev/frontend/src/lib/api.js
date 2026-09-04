@@ -10,13 +10,83 @@ export class ApiError extends Error {
 
 export function clearAccessToken() {
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  // Đổi phiên thì mọi bản đọc đã nhớ đều thuộc về người cũ.
+  clearApiCache();
 }
 
 export function getAccessToken() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+/* ── Gộp lượt gọi trùng + nhớ bản đọc trong thời gian ngắn ───────────────────
+ * Đo trên máy thật: mỗi lần mở màn Quy trình bắn 8 lượt, mỗi endpoint đúng hai
+ * lần, và không có lớp cache nào cả. Hai cơ chế dưới đây xử lý hai nguyên nhân
+ * khác nhau:
+ *
+ *   inFlight  — hai chỗ cùng hỏi một URL trong lúc lượt đầu chưa về thì dùng
+ *               chung đúng một lượt. Đây cũng là thứ triệt cái nhân đôi của
+ *               StrictMode ở dev.
+ *   readCache — mở lại màn vừa xem trong vài giây thì vẽ ngay, không đợi mạng.
+ *
+ * Giữ TTL rất ngắn và XOÁ SẠCH sau mỗi lệnh ghi: thà tốn thêm một lượt gọi còn
+ * hơn để Giám đốc lưu xong mà vẫn nhìn thấy số cũ.
+ *
+ * Bản lưu giữ dạng chuỗi rồi parse lại cho từng người đọc — nếu phát thẳng một
+ * object dùng chung, chỗ nào lỡ sửa nó là những chỗ còn lại thấy theo.
+ */
+const READ_CACHE_TTL_MS = 5000;
+const inFlight = new Map();
+const readCache = new Map();
+
+/** Đọc bản đã nhớ NGAY, không qua promise — trả undefined nếu chưa có.
+ *
+ * Dùng để gieo state ban đầu lúc render: effect chạy sau lần vẽ đầu, nên nếu
+ * chỉ dựa vào effect thì khung hình đầu tiên luôn là trạng thái rỗng, rồi giật
+ * một cái khi dữ liệu về. Có sẵn trong cache thì vẽ đúng ngay từ đầu.
+ */
+export function peekApiCache(path) {
+  const cached = readCache.get(path);
+  if (!cached || Date.now() - cached.at >= READ_CACHE_TTL_MS) return undefined;
+  return JSON.parse(cached.raw);
+}
+
+/** Vứt mọi bản đọc đã nhớ. Gọi khi biết dữ liệu vừa đổi ngoài luồng apiFetch. */
+export function clearApiCache() {
+  readCache.clear();
+  inFlight.clear();
+}
+
 export async function apiFetch(path, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+
+  // Chỉ gộp/nhớ lượt ĐỌC, và bỏ qua khi bên gọi tự mang signal: chia chung một
+  // promise thì một bên huỷ là bên kia gãy theo.
+  if (method !== 'GET' || options.signal) {
+    if (method !== 'GET') readCache.clear();
+    return requestOnce(path, options);
+  }
+
+  const cached = readCache.get(path);
+  if (cached && Date.now() - cached.at < READ_CACHE_TTL_MS) {
+    return JSON.parse(cached.raw);
+  }
+
+  const flying = inFlight.get(path);
+  if (flying) return flying.then(raw => JSON.parse(raw));
+
+  const promise = requestOnce(path, options)
+    .then((body) => {
+      const raw = JSON.stringify(body ?? null);
+      readCache.set(path, { at: Date.now(), raw });
+      return raw;
+    })
+    .finally(() => { inFlight.delete(path); });
+
+  inFlight.set(path, promise);
+  return promise.then(raw => JSON.parse(raw));
+}
+
+async function requestOnce(path, options = {}) {
   const { headers: callerHeaders, timeout = 10000, signal: callerSignal, ...fetchOptions } = options;
   const headers = { ...(callerHeaders || {}) };
   const token = window.localStorage.getItem(ACCESS_TOKEN_KEY);

@@ -105,17 +105,20 @@ def _child_entrypoint(scenario_name: str) -> None:
         return result
 
     class _ChildScenarios(unittest.TestCase):
-        def test_unallocated_mandatory_checklist_blocks_atomically(self):
+        def test_unallocated_mandatory_documents_only_ask_for_confirmation(self):
+            """Giấy chưa gán vào bước nào KHÔNG chặn kích hoạt.
+
+            Danh mục giấy của Master Data là bộ CHUẨN cho cả Gói. Một hợp đồng
+            cụ thể có quyền chạy ít bước hơn — khách chỉ thuê đo vẽ rồi nhận bản
+            vẽ, không làm pháp lý. Ép quy trình đó dùng hết mọi loại giấy của gói
+            là bắt Giám đốc dựng thêm bước chỉ để thoả một danh sách.
+            """
             db = MagicMock()
             graph = _graph_with_output_templates([])
             with patch("src.dossiers.register.applicable_templates", return_value=[
                 {"id": "TPL_REQUIRED_1", "name": "Sổ đỏ gốc", "is_required": True},
                 {"id": "TPL_REQUIRED_2", "name": "CCCD", "is_required": True},
-            ]), patch.object(
-                workflow_runtime,
-                "save_workflow_draft",
-                side_effect=AssertionError("save_workflow_draft must not run when readiness has blockers"),
-            ):
+            ]):
                 with self.assertRaises(workflow_runtime.WorkflowActivationReadinessError) as caught:
                     workflow_runtime.activate_workflow(
                         db,
@@ -126,11 +129,16 @@ def _child_entrypoint(scenario_name: str) -> None:
                         actor_id="director-1",
                     )
             readiness = caught.exception.readiness
-            self.assertTrue(readiness["blockers"])
+            # Không còn blocker nào — chỉ hỏi lại rồi cho đi tiếp.
+            self.assertEqual(readiness["blockers"], [])
+            self.assertTrue(readiness["requires_confirmation"])
+            thieu_giay = [w for w in readiness["warnings"]
+                          if w["code"] == "MANDATORY_OUTPUT_UNALLOCATED"]
             self.assertEqual(
-                [item["template_id"] for item in readiness["blockers"]],
+                [item["template_id"] for item in thieu_giay],
                 ["TPL_REQUIRED_1", "TPL_REQUIRED_2"],
             )
+            # Vẫn dừng trước khi ghi: người dùng phải xác nhận đã.
             db.execute.assert_not_called()
 
         def test_fully_allocated_activation_continues_existing_success_path(self):
@@ -279,12 +287,20 @@ def _child_entrypoint(scenario_name: str) -> None:
                     service_line_id="line-1",
                     graph=graph,
                 )
-            self.assertEqual(readiness["code"], "ACTIVATION_READINESS_FAILED")
-            self.assertEqual(len(readiness["blockers"]), 1)
-            self.assertEqual(readiness["blockers"][0]["template_id"], "TPL_REQUIRED_1")
-            self.assertEqual(len(readiness["warnings"]), 1)
-            self.assertEqual(readiness["warnings"][0]["code"], "MISSING_PIECE_RATE_MAPPING")
-            self.assertFalse(readiness["requires_confirmation"])
+            self.assertEqual(readiness["code"], "ACTIVATION_CONFIRMATION_REQUIRED")
+            self.assertEqual(readiness["blockers"], [])
+            self.assertTrue(readiness["requires_confirmation"])
+
+            # Hai loại cảnh báo khác nhau, phải phân biệt được: thiếu khoán là
+            # nhân viên mất tiền; thiếu giấy có thể chỉ là quy trình không cần.
+            ma = sorted(item["code"] for item in readiness["warnings"])
+            self.assertEqual(ma, ["MANDATORY_OUTPUT_UNALLOCATED", "MISSING_PIECE_RATE_MAPPING"])
+            thieu_giay = [w for w in readiness["warnings"]
+                          if w["code"] == "MANDATORY_OUTPUT_UNALLOCATED"]
+            self.assertEqual(thieu_giay[0]["template_id"], "TPL_REQUIRED_1")
+            # Giấy KHÔNG bắt buộc thì không cảnh báo — nếu không mọi quy trình
+            # đều đỏ và cảnh báo mất hết ý nghĩa.
+            self.assertNotIn("TPL_OPTIONAL_1", [w.get("template_id") for w in readiness["warnings"]])
 
         def test_collect_activation_readiness_ready_when_clean(self):
             db = MagicMock()
@@ -383,8 +399,8 @@ class WorkflowActivationReadinessTests(unittest.TestCase):
                 f"Parent process sys.modules entry for '{mod}' was altered during child scenario execution",
             )
 
-    def test_unallocated_mandatory_checklist_blocks_atomically(self):
-        self._run_child_scenario("test_unallocated_mandatory_checklist_blocks_atomically")
+    def test_unallocated_mandatory_documents_only_ask_for_confirmation(self):
+        self._run_child_scenario("test_unallocated_mandatory_documents_only_ask_for_confirmation")
 
     def test_fully_allocated_activation_continues_existing_success_path(self):
         self._run_child_scenario("test_fully_allocated_activation_continues_existing_success_path")

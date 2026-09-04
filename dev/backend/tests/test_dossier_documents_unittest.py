@@ -90,7 +90,7 @@ class DieuKienKichHoatTheoBuocTests(unittest.TestCase):
 
     def test_anh_xa_buoc_sang_ngan_luu_tru(self):
         self.assertEqual(documents.stage_for_node_code("K04"), "soan-ho-so")
-        self.assertEqual(documents.stage_for_node_code("K05"), "nop-co-quan")
+        self.assertEqual(documents.stage_for_node_code("K05b"), "nop-co-quan")
         self.assertEqual(documents.stage_for_node_code("K06"), "ket-qua")
         self.assertEqual(documents.stage_for_node_code("K03"), "chuan-hoa-ky-thuat")
         # K02 sinh tài liệu THÔ tại hiện trường, K03 sinh bản ĐÃ XỬ LÝ — hai giai
@@ -766,12 +766,15 @@ class GopPhamViApDungTests(unittest.TestCase):
     """
 
     @staticmethod
-    def _dong(template_id, pham_vi, is_default, ten="Giấy A"):
+    def _dong(template_id, pham_vi, is_default, ten="Giấy A", node_code=None):
         return {
             "id": template_id, "name": ten, "source": "KHACH_HANG",
             "is_required": True, "needs_original": False, "default_quantity": 1,
             "sort_order": 1, "note": None,
             "applicability_type": pham_vi, "is_default": is_default,
+            # Trục thứ tư. Mặc định None = chưa gán bước nào, đúng trạng thái của
+            # mọi mẫu trước khi Giám đốc cấu hình.
+            "node_code": node_code,
         }
 
     def _chay(self, dong):
@@ -863,3 +866,391 @@ class PhienBanSoGiayToTests(unittest.TestCase):
         trang_thai = register.k01_blockers(db, "SL-0")
         self.assertTrue(trang_thai["can_submit"])
         self.assertEqual(db.execute.call_args_list[2].args[1]["register_version"], 2)
+
+
+class TrucNodeTrongPhamViTests(unittest.TestCase):
+    """Trục thứ tư: loại giấy này thuộc BƯỚC nào.
+
+    Trước đây trục Node chỉ nằm trong graph quy trình của từng Hạng mục — cấu
+    hình runtime, phải tick lại cho mỗi hợp đồng. Nay nó là Master Data, khai
+    một lần dùng chung.
+    """
+
+    @staticmethod
+    def _dong(template_id, pham_vi, node_code, ten="Giấy A"):
+        return GopPhamViApDungTests._dong(
+            template_id, pham_vi, True, ten=ten, node_code=node_code)
+
+    def _chay(self, dong):
+        from src.dossiers import register
+
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value = dong
+        return register.applicable_templates(db, "SL-1")
+
+    def test_tra_ve_dung_buoc_da_khai(self):
+        ket = self._chay([self._dong("T-1", "TASK_TYPE", "K01")])
+        self.assertEqual(ket[0]["node_code"], "K01")
+
+    def test_chua_gan_buoc_thi_node_code_la_None(self):
+        """None phải đi tới nơi, không được biến thành chuỗi rỗng hay bịa ra K01
+        — giao diện đọc chính giá trị này để dán nhãn 'chưa phân bước'."""
+        ket = self._chay([self._dong("T-1", "GLOBAL", None)])
+        self.assertIsNone(ket[0]["node_code"])
+
+    def test_pham_vi_cu_the_hon_quyet_dinh_luon_ca_buoc(self):
+        """Cùng một mẫu khai hai phạm vi trỏ hai bước khác nhau thì phạm vi hẹp
+        hơn thắng — kể cả về bước. Lấy nhầm bước của phạm vi rộng là giấy hiện ở
+        sai bước, nhân viên bước đó không hiểu vì sao mình phải thu."""
+        ket = self._chay([
+            self._dong("T-1", "GLOBAL", "K01"),
+            self._dong("T-1", "TASK_TYPE", "K03"),
+        ])
+        self.assertEqual(len(ket), 1)
+        self.assertEqual(ket[0]["node_code"], "K03")
+
+    def test_gom_theo_buoc_giu_ca_nhom_chua_gan(self):
+        from src.dossiers import register
+
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value = [
+            self._dong("T-1", "TASK_TYPE", "K01", ten="CCCD"),
+            self._dong("T-2", "TASK_TYPE", "K03", ten="Bản vẽ"),
+            self._dong("T-3", "GLOBAL", None, ten="Giấy lạ"),
+        ]
+        by_node = register.templates_by_node(db, "SL-1")
+
+        self.assertEqual([m["name"] for m in by_node["K01"]], ["CCCD"])
+        self.assertEqual([m["name"] for m in by_node["K03"]], ["Bản vẽ"])
+        # Nhóm chưa gán bước PHẢI lộ ra, không được bỏ đi — đó là khối lượng
+        # tồn đọng Giám đốc còn phải cấu hình.
+        self.assertEqual([m["name"] for m in by_node[None]], ["Giấy lạ"])
+
+
+class TachNodeK05Tests(unittest.TestCase):
+    """K05 tách làm hai: K05a nộp nội nghiệp (Đo vẽ), K05b nộp một cửa (Pháp lý).
+
+    Gộp làm một thì không khai được "phiếu nộp nội nghiệp thuộc K05a" còn "biên
+    nhận một cửa thuộc K05b" — đúng thứ mô hình bốn trục cần phân biệt.
+
+    K05 nay đã xoá hẳn khỏi danh mục: không còn dữ liệu và không còn quy trình
+    mẫu nào tham chiếu tới nó.
+    """
+
+    def test_hai_buoc_ve_hai_phong_khac_nhau(self):
+        from src.contracts.workflow_runtime import TASK_POOL_DEPARTMENTS_BY_NODE_CODE as PHONG
+
+        # Nhầm vế này là việc rơi vào hàng chờ của phòng không làm nó: hồ sơ nằm
+        # im tới khi có người để ý, và không ai được báo là mình thiếu việc.
+        self.assertEqual(PHONG["K05a"], ("SURVEY",))
+        self.assertEqual(PHONG["K05b"], ("LEGAL",))
+
+    def test_khong_con_dau_vet_K05_trong_bat_ky_map_nao(self):
+        from src.contracts.workflow_runtime import (
+            TASK_POOL_DEPARTMENTS_BY_NODE_CODE as PHONG,
+            TASK_POOL_ROLES_BY_NODE_CODE as VAI_TRO,
+            NODES_SUBMITTED_TO_AGENCY,
+        )
+        from src.files.references import STAGE_BY_NODE_CODE
+        from src.dossiers.slot_requests import _DEFAULT_SOURCE_BY_NODE
+
+        # K05 đã xoá khỏi danh mục workflow_nodes, và không còn quy trình mẫu nào
+        # sinh ra nó. Để sót khoá "K05" trong map là để lại nhánh không bao giờ
+        # chạy — nửa năm sau đọc lại sẽ tưởng K05 vẫn dùng được.
+        for ten, ban_do in (("phòng ban", PHONG), ("vai trò", VAI_TRO),
+                            ("giai đoạn", STAGE_BY_NODE_CODE),
+                            ("nguồn giấy", _DEFAULT_SOURCE_BY_NODE)):
+            self.assertNotIn("K05", ban_do, ten)
+        self.assertNotIn("K05", NODES_SUBMITTED_TO_AGENCY)
+
+    def test_chi_K05b_la_buoc_ra_co_quan(self):
+        from src.contracts.workflow_runtime import NODES_SUBMITTED_TO_AGENCY
+
+        # K05a nộp nội nghiệp TRONG công ty. Xếp nó vào nhóm "ra cơ quan" sẽ bật
+        # nhầm luồng theo dõi biên nhận / giấy hẹn cho một bước không có biên nhận.
+        self.assertIn("K05b", NODES_SUBMITTED_TO_AGENCY)
+        self.assertNotIn("K05a", NODES_SUBMITTED_TO_AGENCY)
+
+    def test_giai_doan_luu_tru_tach_rieng(self):
+        from src.files.references import DOSSIER_STAGES, STAGE_BY_NODE_CODE
+
+        self.assertEqual(STAGE_BY_NODE_CODE["K05a"], "nop-noi-nghiep")
+        self.assertEqual(STAGE_BY_NODE_CODE["K05b"], "nop-co-quan")
+        self.assertIn("nop-noi-nghiep", DOSSIER_STAGES)
+
+    def test_nguon_giay_mac_dinh_khac_nhau(self):
+        from src.dossiers.slot_requests import _DEFAULT_SOURCE_BY_NODE
+
+        # K05a chưa ra khỏi công ty nên giấy nó sinh là CÔNG TY soạn; K05b nộp
+        # một cửa nên giấy nhận về là của CƠ QUAN. Gán nhầm là tờ giấy hiện sai
+        # ngăn trong tủ hồ sơ.
+        self.assertEqual(_DEFAULT_SOURCE_BY_NODE["K05a"], "CONG_TY")
+        self.assertEqual(_DEFAULT_SOURCE_BY_NODE["K05b"], "CO_QUAN")
+
+    def test_ke_thua_minh_chung_theo_dung_buoc_truoc(self):
+        from src.contracts.workflow_runtime import EVIDENCE_INHERITED_FROM_NODE as KE_THUA
+
+        # K05a nộp bản kỹ thuật nên kế thừa từ K03; K05b nộp bộ hồ sơ đã soạn nên
+        # kế thừa từ K04. Đảo hai vế là nhân viên mở ra thấy tệp của bước khác và
+        # tưởng mình nộp nhầm.
+        self.assertEqual(KE_THUA["K05A"], "K03")
+        self.assertEqual(KE_THUA["K05B"], "K04")
+        self.assertNotIn("K05", KE_THUA)
+
+
+class GhiTungBanGhiGanTests(unittest.TestCase):
+    """Sửa một bản ghi gán không được chạm bản ghi nào khác.
+
+    Cây phân cấp là Gói → Hạng mục → Nhóm → Node → Loại giấy, mỗi nhánh một bản
+    ghi độc lập. "Biên nhận ở Tách thửa" và "Biên nhận ở Cấp đổi sổ" là hai dòng
+    riêng; sửa bước của cái này mà xoá cái kia là mất cấu hình im lặng.
+    """
+
+    def setUp(self):
+        from src.dossiers import register
+
+        self.register = register
+        self.db = MagicMock()
+
+    def _co_dong(self, **ghi_de):
+        """db.execute trả về một bản ghi gán có thật, và danh mục node đang bật."""
+        dong = {
+            "id": "APP-1", "applicability_type": "TASK_TYPE",
+            "service_package_id": None, "task_type_id": "tt_006", "node_code": "K01",
+        }
+        dong.update(ghi_de)
+
+        def dispatch(cau_lenh, tham_so=None):
+            sql = str(cau_lenh)
+            ket = MagicMock()
+            if "from public.workflow_nodes" in sql:
+                ket.all.return_value = [("K01",), ("K03",), ("K05a",), ("K05b",)]
+            elif "document_template_applicabilities" in sql:
+                ket.mappings.return_value.first.return_value = dong
+            return ket
+
+        self.db.execute.side_effect = dispatch
+        return dong
+
+    def test_update_chi_cham_dung_mot_dong(self):
+        self._co_dong()
+        self.register.update_applicability(self.db, "T-1", "APP-1", node_code="K03")
+
+        cac_lenh = [str(g.args[0]) for g in self.db.execute.call_args_list]
+        cap_nhat = [s for s in cac_lenh if s.lstrip().startswith("update")]
+        self.assertEqual(len(cap_nhat), 1)
+        # Điều kiện phải là id của đúng dòng đó. Thiếu vế này là cập nhật cả mẫu.
+        self.assertIn("where id = :id", cap_nhat[0])
+        # Và tuyệt đối không được có lệnh xoá nào — đó là cách replace_ cũ làm.
+        self.assertEqual([s for s in cac_lenh if s.lstrip().startswith("delete")], [])
+
+    def test_update_khong_doi_pham_vi(self):
+        """Phạm vi không sửa qua đường này: đổi phạm vi là chuyển sang nhánh khác,
+        mà nhánh đích có thể đã có bản ghi của chính loại giấy này."""
+        self._co_dong()
+        self.register.update_applicability(self.db, "T-1", "APP-1", node_code="K03")
+
+        cap_nhat = next(str(g.args[0]) for g in self.db.execute.call_args_list
+                        if str(g.args[0]).lstrip().startswith("update"))
+        self.assertNotIn("task_type_id", cap_nhat)
+        self.assertNotIn("service_package_id", cap_nhat)
+        self.assertNotIn("applicability_type", cap_nhat)
+
+    def test_update_bat_node_khong_co_trong_danh_muc(self):
+        self._co_dong()
+        with self.assertRaises(HTTPException) as loi:
+            self.register.update_applicability(self.db, "T-1", "APP-1", node_code="K99")
+        self.assertEqual(loi.exception.status_code, 422)
+
+    def test_update_cho_phep_go_bo_buoc_ve_null(self):
+        """Bỏ trống bước là hợp lệ — nghĩa là chưa gán. Chặn ở đây thì không có
+        đường gỡ một bước gán nhầm."""
+        self._co_dong()
+        ket = self.register.update_applicability(self.db, "T-1", "APP-1", node_code="")
+        self.assertIsNone(ket["node_code"])
+
+    def test_update_ban_ghi_khong_ton_tai_thi_404(self):
+        def dispatch(cau_lenh, tham_so=None):
+            ket = MagicMock()
+            ket.mappings.return_value.first.return_value = None
+            ket.all.return_value = []
+            return ket
+
+        self.db.execute.side_effect = dispatch
+        with self.assertRaises(HTTPException) as loi:
+            self.register.update_applicability(self.db, "T-1", "KHONG-CO", node_code="K03")
+        self.assertEqual(loi.exception.status_code, 404)
+
+    def test_remove_gioi_han_theo_ca_template_lan_dong(self):
+        """Điều kiện xoá phải có cả template_id: chỉ khớp id thì một id đoán trúng
+        là gỡ được bản ghi của loại giấy bất kỳ."""
+        self._co_dong()
+        self.register.remove_applicability(self.db, "T-1", "APP-1")
+
+        xoa = next(str(g.args[0]) for g in self.db.execute.call_args_list
+                   if str(g.args[0]).lstrip().startswith("delete"))
+        self.assertIn("where id = :id and template_id = :t", xoa)
+        # Không đụng chính loại giấy — nó vẫn áp dụng ở nhánh khác.
+        self.assertNotIn("document_checklist_templates", xoa)
+
+
+class MotPhamViMotBuocTests(unittest.TestCase):
+    """Ba unique index của bảng khoá theo (template, phạm vi) và không tính node.
+
+    Nghiệp vụ đã chốt đúng như vậy: một tờ giấy chỉ nộp ở bước sinh ra nó, các
+    bước sau kế thừa từ Tủ hồ sơ chứ không bắt nộp lại.
+    """
+
+    def _chay(self, scopes):
+        from src.dossiers import register
+
+        db = MagicMock()
+
+        def dispatch(cau_lenh, tham_so=None):
+            sql = str(cau_lenh)
+            ket = MagicMock()
+            if "from public.workflow_nodes" in sql:
+                ket.all.return_value = [("K01",), ("K03",)]
+            else:
+                ket.first.return_value = (1,)
+            return ket
+
+        db.execute.side_effect = dispatch
+        return register.replace_applicabilities(db, "T-1", scopes, actor_id="U-1")
+
+    def test_hai_buoc_cung_mot_hang_muc_bi_chan_bang_422(self):
+        # Để lọt xuống DB thì unique index ném IntegrityError trần, người dùng
+        # thấy 500 không hiểu vì sao.
+        with self.assertRaises(HTTPException) as loi:
+            self._chay([
+                {"applicability_type": "TASK_TYPE", "task_type_id": "tt_006", "node_code": "K01"},
+                {"applicability_type": "TASK_TYPE", "task_type_id": "tt_006", "node_code": "K03"},
+            ])
+        self.assertEqual(loi.exception.status_code, 422)
+        self.assertIn("một bước", loi.exception.detail)
+
+    def test_hai_hang_muc_khac_nhau_thi_qua(self):
+        so_dong = self._chay([
+            {"applicability_type": "TASK_TYPE", "task_type_id": "tt_006", "node_code": "K01"},
+            {"applicability_type": "TASK_TYPE", "task_type_id": "tt_002", "node_code": "K03"},
+        ])
+        self.assertEqual(so_dong, 2)
+
+    def test_moi_goi_va_hang_muc_song_song_duoc(self):
+        """GLOBAL và TASK_TYPE là hai hình dạng khác nhau nên không đụng index nhau."""
+        so_dong = self._chay([
+            {"applicability_type": "GLOBAL", "node_code": None},
+            {"applicability_type": "TASK_TYPE", "task_type_id": "tt_006", "node_code": "K01"},
+        ])
+        self.assertEqual(so_dong, 2)
+
+
+class TraMaBuocCoChuThuongTests(unittest.TestCase):
+    """Mã bước K05a/K05b có CHỮ THƯỜNG — mọi hàm tra phải chịu được điều đó.
+
+    Đây là lỗ hổng đã lọt một lần: các hàm tra đều gọi `.upper()` trên mã rồi đối
+    chiếu khoá gốc, nên "K05a" thành "K05A" và trượt khỏi mọi bảng. Không nổ,
+    chỉ im lặng trả về mặc định — bước không có phòng ban, không có vai trò, nên
+    không hiện trong Bể việc của ai và hồ sơ nằm im.
+
+    Test cũ tra THẲNG vào dict (`PHONG["K05a"]`) nên vẫn xanh trong khi runtime
+    hỏng. Nhóm test này cố ý đi qua đúng các hàm mà mã sản phẩm gọi.
+    """
+
+    def test_phong_ban_tra_duoc_cho_ca_hai_buoc_nop(self):
+        from src.contracts.workflow_runtime import task_pool_department_code
+
+        self.assertEqual(task_pool_department_code("K05a"), "SURVEY")
+        self.assertEqual(task_pool_department_code("K05b"), "LEGAL")
+
+    def test_vai_tro_tra_duoc_cho_ca_hai_buoc_nop(self):
+        from src.contracts.workflow_runtime import task_pool_roles
+
+        self.assertEqual(task_pool_roles("K05a"), ("SUBMITTER",))
+        self.assertEqual(task_pool_roles("K05b"), ("SUBMITTER",))
+
+    def test_giai_doan_luu_tru_tra_duoc(self):
+        from src.dossiers.documents import stage_for_node_code
+
+        self.assertEqual(stage_for_node_code("K05a"), "nop-noi-nghiep")
+        self.assertEqual(stage_for_node_code("K05b"), "nop-co-quan")
+
+    def test_tra_duoc_du_go_hoa_hay_thuong(self):
+        """Graph do Giám đốc vẽ có thể lưu mã ở dạng nào cũng được."""
+        from src.contracts.workflow_runtime import task_pool_department_code
+        from src.dossiers.documents import stage_for_node_code
+
+        for viet in ("K05A", "k05a", " K05a "):
+            self.assertEqual(task_pool_department_code(viet), "SURVEY", viet)
+        for viet in ("K05B", "k05b", " K05b "):
+            self.assertEqual(stage_for_node_code(viet), "nop-co-quan", viet)
+
+    def test_ma_da_xoa_va_ma_la_deu_rot_ve_mac_dinh_an_toan(self):
+        from src.contracts.workflow_runtime import task_pool_department_code, task_pool_roles
+        from src.dossiers.documents import stage_for_node_code
+
+        for ma in ("K05", "K99", "", None):
+            self.assertIsNone(task_pool_department_code(ma), ma)
+            self.assertEqual(task_pool_roles(ma), (), ma)
+            self.assertIsNone(stage_for_node_code(ma), ma)
+
+
+class NhanBuocTheoMasterDataTests(unittest.TestCase):
+    """Tủ hồ sơ dán nhãn bước từ MASTER DATA, không từ graph quy trình.
+
+    `phan_bo_loai_giay_theo_buoc` đọc graph đang chạy nên trước khi Giám đốc vẽ
+    xong quy trình thì mọi dòng giấy đều trống nhãn — đúng cái làm người dùng
+    tưởng cấu hình bị mất. `planned_node_by_template` đọc cấu hình bốn trục nên
+    có nhãn ngay từ lúc tạo hợp đồng.
+    """
+
+    @staticmethod
+    def _db(rows):
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value = rows
+        return db
+
+    @staticmethod
+    def _row(template_id, node_code, scope='TASK_TYPE', name='Giấy'):
+        return {
+            "id": template_id, "name": name, "source": "KHACH_HANG",
+            "is_required": True, "needs_original": False, "default_quantity": 1,
+            "sort_order": 1, "note": None,
+            "applicability_type": scope, "is_default": True, "node_code": node_code,
+        }
+
+    def test_tra_ve_ma_buoc_theo_tung_loai_giay(self):
+        from src.dossiers import register
+
+        ket = register.planned_node_by_template(
+            self._db([self._row("T-1", "K01"), self._row("T-2", "K03")]), "SL-1")
+        self.assertEqual(ket, {"T-1": "K01", "T-2": "K03"})
+
+    def test_loai_giay_chua_gan_buoc_khong_co_trong_ket_qua(self):
+        """Vắng mặt chính là tín hiệu 'chưa gán bước'. Trả về None sẽ khiến giao
+        diện in ra chữ 'None' thay vì nhãn cảnh báo."""
+        from src.dossiers import register
+
+        ket = register.planned_node_by_template(
+            self._db([self._row("T-1", "K01"), self._row("T-2", None)]), "SL-1")
+        self.assertEqual(ket, {"T-1": "K01"})
+        self.assertNotIn("T-2", ket)
+
+    def test_dung_chung_phep_uu_tien_pham_vi_voi_applicable_templates(self):
+        """Cùng một mẫu khai hai phạm vi thì phạm vi HẸP hơn quyết định bước.
+
+        Nếu hàm này tự truy vấn riêng thay vì dùng lại applicable_templates, hai
+        nơi sẽ trả lời khác nhau về cùng một tờ giấy.
+        """
+        from src.dossiers import register
+
+        ket = register.planned_node_by_template(self._db([
+            self._row("T-1", "K07", scope="GLOBAL"),
+            self._row("T-1", "K01", scope="TASK_TYPE"),
+        ]), "SL-1")
+        self.assertEqual(ket, {"T-1": "K01"})
+
+    def test_khong_co_mau_nao_thi_tra_dict_rong(self):
+        from src.dossiers import register
+
+        self.assertEqual(register.planned_node_by_template(self._db([]), "SL-1"), {})

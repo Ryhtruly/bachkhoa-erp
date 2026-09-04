@@ -14,6 +14,7 @@ Hai tầng:
 from typing import Any
 
 from fastapi import HTTPException
+import json
 import logging
 
 from sqlalchemy import text
@@ -73,7 +74,7 @@ _APPLICABILITY_RANK = {"GLOBAL": 1, "PACKAGE": 2, "TASK_TYPE": 3}
 _APPLICABLE_TEMPLATES_QUERY = text("""
     select t.id, t.name, t.source, t.is_required, t.needs_original,
            t.default_quantity, t.sort_order, t.note,
-           a.applicability_type, a.is_default
+           a.applicability_type, a.is_default, a.node_code
     from service_lines sl
     join task_types tt on tt.id = sl.task_type_id
     join document_template_applicabilities a
@@ -113,6 +114,9 @@ def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, An
             "note": row["note"],
             "applicability_type": row["applicability_type"],
             "is_default": bool(row["is_default"]),
+            # Bước nào nhận loại giấy này. None = chưa gán bước — giấy sẽ không
+            # hiện ở màn nhân viên nào, đó là việc Giám đốc còn phải cấu hình.
+            "node_code": row["node_code"],
             "_rank": hang,
         }
     sorted_templates = sorted(
@@ -122,6 +126,361 @@ def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, An
     for template in sorted_templates:
         template.pop("_rank", None)
     return sorted_templates
+
+
+def templates_by_node(db: Session, service_line_id: str) -> dict[str, list[dict[str, Any]]]:
+    """Bộ mẫu của một Hạng mục, gom theo BƯỚC mà Giám đốc đã khai.
+
+    Dùng lại nguyên ``applicable_templates`` để hai nơi không bao giờ nói khác
+    nhau: cùng một phép gộp phạm vi, cùng một quy tắc ưu tiên.
+
+    Khoá ``None`` gom những loại giấy CHƯA gán bước nào. Cố ý để lộ ra chứ không
+    bỏ đi: đó là khối lượng tồn đọng — giấy không bước nào nhận thì không ai thu,
+    và không có chỗ nào khác trong hệ thống nói cho Giám đốc biết điều đó.
+    """
+    by_node: dict[str, list[dict[str, Any]]] = {}
+    for template in applicable_templates(db, service_line_id):
+        by_node.setdefault(template.get("node_code"), []).append(template)
+    return by_node
+
+
+def cabinet_by_node(db: Session, service_line_id: str) -> list[dict[str, Any]]:
+    """TỦ HỒ SƠ của một Hạng mục, xếp theo BƯỚC — đúng hình cây tab Mẫu giấy tờ.
+
+    ── Vì sao không phải danh sách phẳng ────────────────────────────────────────
+    Tab Mẫu giấy tờ khai theo cây Gói → Hạng mục → Nguồn → Node → Loại giấy, và
+    docstring của chính màn đó đã ghi vì sao: bảng phẳng bày cả 31 mẫu cùng lúc
+    thì không trả lời được câu hỏi duy nhất người ta vào đây để hỏi — "hạng mục
+    này cần những tờ gì".
+
+    Tủ hồ sơ trước đây lặp lại đúng cái sai ấy: một danh sách 33 tờ công ty soạn,
+    không nói tờ nào thuộc bước nào.
+
+    ── Cấu trúc lấy từ MASTER DATA, không lấy từ ô giấy ─────────────────────────
+    "Hạng mục này cần tờ gì, rơi vào bước nào" là câu hỏi của master data. Ô giấy
+    (`dossier_document_slots`) chỉ trả lời "đã có tờ đó chưa".
+
+    Tách hai vai này ra thì ô giấy thừa — sinh ra bởi luật cũ vơ cả kho mẫu công
+    ty — tự không xuất hiện, vì chúng không nằm trong bộ master data khai cho
+    hạng mục này.
+    """
+    by_node = templates_by_node(db, service_line_id)
+    if not by_node:
+        return []
+
+    node_names = dict(db.execute(
+        text("select code, name from public.workflow_nodes")
+    ).all())
+
+    # ── Trạng thái thực tế của từng ô giấy ──────────────────────────────────
+    # Đếm tệp phải theo ĐÚNG luật của sổ giấy tờ (``_SLOTS_QUERY_TMPL``): tệp vào
+    # ô bằng hai đường — gán qua ``dossier_document_links``, hoặc nộp thẳng với
+    # ``dossier_documents.slot_id``. Chỉ đếm đường thứ nhất là tủ báo "chưa có"
+    # cho tờ đã nằm sẵn trong hồ sơ.
+    waiver_column = "s.is_waived_cache" if _co_cot_waiver_cache(db) else "false"
+    slot_state: dict[str, dict[str, Any]] = {}
+    for row in db.execute(
+        text(f"""
+            select s.template_id, s.id as slot_id, s.status,
+                   {waiver_column} as is_waived,
+                   coalesce((
+                     select jsonb_agg(jsonb_build_object(
+                              'id', d.id, 'file_name', d.file_name,
+                              'content_type', d.content_type
+                            ) order by d.uploaded_at desc)
+                     from (
+                       select d.*
+                       from public.dossier_document_links l
+                       join public.dossier_documents d on d.id = l.document_id
+                       where l.slot_id = s.id and l.link_status = 'DANG_DUNG'
+                         and d.doc_status <> 'DA_GO'
+                       union
+                       select d.*
+                       from public.dossier_documents d
+                       where d.slot_id = s.id and d.doc_status <> 'DA_GO'
+                     ) d
+                   ), '[]'::jsonb) as files
+            from public.dossier_document_slots s
+            join public.service_lines sl on sl.id = :service_line_id
+            where (s.service_line_id = :service_line_id
+                   or (s.scope = 'CONTRACT' and s.contract_id = sl.contract_id))
+              and s.template_id is not null
+            -- Một loại giấy về nguyên tắc chỉ có một ô, nhưng ô phạm vi hợp đồng
+            -- và ô phạm vi hạng mục đều có thể trỏ về nó. Xếp ô hạng mục trước và
+            -- giữ dòng ĐẦU, để hai lần gọi không ra hai kết quả khác nhau.
+            order by (s.service_line_id is null), s.id
+        """),
+        {"service_line_id": service_line_id},
+    ).mappings():
+        slot_state.setdefault(row["template_id"], dict(row))
+
+    result = []
+    # Bước chưa gán (khoá None) xuống CUỐI, không lẫn vào giữa các bước thật.
+    for node_code in sorted(by_node, key=lambda x: (x is None, x or "")):
+        documents = []
+        for template in by_node[node_code]:
+            state = slot_state.get(template["id"], {})
+            files = list(state.get("files") or [])
+            documents.append({
+                "template_id": template["id"],
+                "name": template["name"],
+                "source": template["source"],
+                "source_label": template["source_label"],
+                "is_required": template["is_required"],
+                "needs_original": template["needs_original"],
+                "slot_id": state.get("slot_id"),
+                "status": state.get("status") or "CHUA_CO",
+                "status_label": STATUS_LABELS.get(state.get("status") or "CHUA_CO"),
+                # Ô được miễn vẫn nằm nguyên trong tủ, chỉ thôi đòi giấy — xoá đi
+                # là mất chính thứ cần đọc lại sau: hồ sơ này lẽ ra cần tờ đó.
+                "is_waived": bool(state.get("is_waived")),
+                "files": files,
+                "file_count": len(files),
+            })
+        result.append({
+            "node_code": node_code,
+            "node_name": node_names.get(node_code) if node_code else None,
+            "documents": documents,
+            "total": len(documents),
+            "done": len([m for m in documents if m["file_count"] > 0]),
+        })
+    return result
+
+
+def _co_cot_waiver_cache(db: Session) -> bool:
+    """Cột phụ trợ có thể chưa có ở DB cũ — hỏi trước để truy vấn không gãy."""
+    return bool(db.execute(text("""
+        select 1 from information_schema.columns
+        where table_schema='public' and table_name='dossier_document_slots'
+          and column_name='is_waived_cache'
+    """)).first())
+
+
+def _active_node_codes(db: Session) -> set[str]:
+    """Mã bước đang bật. K05 đã tắt nên không khai mới được, nhưng dữ liệu cũ trỏ
+    vào nó vẫn đọc bình thường."""
+    return {
+        row[0] for row in db.execute(
+            text("select code from public.workflow_nodes where coalesce(is_active, true)")
+        ).all()
+    }
+
+
+def _normalize_scope(scope: dict[str, Any], known_nodes: set[str]) -> dict[str, Any]:
+    """Cắt một dòng phạm vi về đúng hình dạng ràng buộc CHECK của bảng.
+
+      GLOBAL     → không gói, không hạng mục
+      PACKAGE    → có gói,   không hạng mục
+      TASK_TYPE  → có hạng mục, không gói
+
+    Cắt chứ không chỉ kiểm: giao diện gửi kèm gói làm bộ lọc tìm hạng mục, để
+    nguyên là DB từ chối. ``node_code`` là chiều độc lập, cắt ngang cả ba hình
+    dạng và được phép để trống — trống nghĩa là "chưa gán bước nào".
+
+    Tách riêng khỏi ``replace_applicabilities`` để đường ghi cả cụm và đường ghi
+    từng dòng dùng chung đúng một bộ kiểm tra; hai bộ song song là sớm muộn cũng
+    lệch nhau.
+    """
+    scope_type = str(scope.get("applicability_type") or "").strip().upper()
+    package_id = (scope.get("service_package_id") or None)
+    task_type_id = (scope.get("task_type_id") or None)
+    node_code = (scope.get("node_code") or None)
+
+    if scope_type == "GLOBAL":
+        package_id = task_type_id = None
+    elif scope_type == "PACKAGE":
+        if not package_id:
+            raise HTTPException(status_code=422, detail="Phạm vi theo Gói thì phải chọn Gói.")
+        task_type_id = None
+    elif scope_type == "TASK_TYPE":
+        if not task_type_id:
+            raise HTTPException(status_code=422, detail="Phạm vi theo Hạng mục thì phải chọn Hạng mục.")
+        package_id = None
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="Phạm vi phải là GLOBAL, PACKAGE hoặc TASK_TYPE.",
+        )
+
+    if node_code and node_code not in known_nodes:
+        raise HTTPException(
+            status_code=422, detail=f"Bước “{node_code}” không có trong danh mục.")
+
+    return {
+        "scope_type": scope_type, "package_id": package_id,
+        "task_type_id": task_type_id, "node_code": node_code,
+        "is_default": bool(scope.get("is_default", True)),
+    }
+
+
+def replace_applicabilities(
+    db: Session, template_id: str, scopes: list[dict[str, Any]], *, actor_id: str
+) -> int:
+    """Thay TOÀN BỘ phạm vi của một loại giấy trong một giao dịch.
+
+    CHỈ dùng cho loại giấy VỪA TẠO. Với mẫu đã có phạm vi thì đây là đường sai:
+    nó xoá sạch mọi dòng rồi ghi lại, nên sửa "Biên nhận ở Tách thửa" bằng hàm
+    này là xoá luôn "Biên nhận ở Cấp đổi sổ" — hai bản ghi đáng lẽ độc lập.
+    Sửa một bản ghi thì dùng ``update_applicability``.
+    """
+    if not db.execute(
+        text("select 1 from public.document_checklist_templates where id = :id"),
+        {"id": template_id},
+    ).first():
+        raise HTTPException(status_code=404, detail="Không tìm thấy loại giấy tờ.")
+
+    known_nodes = _active_node_codes(db)
+
+    cleaned: list[dict[str, Any]] = []
+    seen: set[tuple] = set()
+    for scope in scopes or []:
+        row = _normalize_scope(scope, known_nodes)
+        # Ba unique index của bảng khoá theo (template, phạm vi) và KHÔNG tính
+        # node_code, nên khoá trùng ở đây cũng phải bỏ node ra — bắt trước bằng
+        # 422 có lời giải thích, thay vì để DB ném IntegrityError trần.
+        key = (row["scope_type"], row["package_id"], row["task_type_id"])
+        if key in seen:
+            raise HTTPException(
+                status_code=422,
+                detail="Một loại giấy trong cùng một phạm vi chỉ khai được một bước.",
+            )
+        seen.add(key)
+        cleaned.append(row)
+
+    db.execute(
+        text("delete from public.document_template_applicabilities where template_id = :t"),
+        {"t": template_id},
+    )
+    for scope in cleaned:
+        db.execute(
+            text("""
+                insert into public.document_template_applicabilities
+                    (id, template_id, applicability_type, service_package_id,
+                     task_type_id, node_code, is_default, created_by)
+                values (gen_random_uuid()::text, :t, :scope_type, :package_id,
+                        :task_type_id, :node_code, :is_default, :actor)
+            """),
+            {"t": template_id, "actor": actor_id, **scope},
+        )
+    return len(cleaned)
+
+
+def add_applicabilities(
+    db: Session, template_id: str, scopes: list[dict[str, Any]], *, actor_id: str
+) -> int:
+    """THÊM bản ghi gán cho một loại giấy đã có, không đụng bản ghi cũ.
+
+    Đây là đường "gán tờ giấy sẵn có vào hạng mục mới". Dùng
+    ``replace_applicabilities`` cho việc này là xoá sạch mọi nhánh cũ của tờ giấy
+    — đúng cái tai nạn mà mô hình độc lập sinh ra để tránh.
+
+    Va vào nhánh đã có thì trả 422 nêu đích danh, chứ không ``on conflict do
+    nothing``: bỏ qua im lặng thì Giám đốc tưởng đã gán xong mà thực ra bước cũ
+    vẫn nguyên.
+    """
+    if not db.execute(
+        text("select 1 from public.document_checklist_templates where id = :id"),
+        {"id": template_id},
+    ).first():
+        raise HTTPException(status_code=404, detail="Không tìm thấy loại giấy tờ.")
+
+    known_nodes = _active_node_codes(db)
+    cleaned = [_normalize_scope(scope, known_nodes) for scope in scopes or []]
+
+    # Ba unique index khoá theo (template, phạm vi) và KHÔNG tính node_code, nên
+    # đối chiếu ở đây cũng phải bỏ node ra thì mới bắt đúng cái DB sẽ chặn.
+    existing = {
+        (row["applicability_type"], row["service_package_id"], row["task_type_id"])
+        for row in db.execute(
+            text("""
+                select applicability_type, service_package_id, task_type_id
+                from public.document_template_applicabilities where template_id = :t
+            """),
+            {"t": template_id},
+        ).mappings()
+    }
+
+    for scope in cleaned:
+        key = (scope["scope_type"], scope["package_id"], scope["task_type_id"])
+        if key in existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Loại giấy này đã được gán cho phạm vi đó rồi. "
+                       "Vào đúng hạng mục đó bấm Sửa để đổi bước.",
+            )
+        existing.add(key)
+
+        db.execute(
+            text("""
+                insert into public.document_template_applicabilities
+                    (id, template_id, applicability_type, service_package_id,
+                     task_type_id, node_code, is_default, created_by)
+                values (gen_random_uuid()::text, :t, :scope_type, :package_id,
+                        :task_type_id, :node_code, :is_default, :actor)
+            """),
+            {"t": template_id, "actor": actor_id, **scope},
+        )
+    return len(cleaned)
+
+
+def update_applicability(
+    db: Session, template_id: str, applicability_id: str,
+    *, node_code: str | None, is_default: bool = True,
+) -> dict[str, Any]:
+    """Đổi bước của ĐÚNG MỘT bản ghi gán, không đụng bản ghi nào khác.
+
+    Đây là đường ghi của nút Sửa trên màn Mẫu Giấy Tờ. Mỗi bản ghi là một nhánh
+    độc lập của cây Gói → Hạng mục → Nhóm → Node → Loại giấy, nên sửa nhánh này
+    phải để yên nhánh kia — kể cả khi hai nhánh cùng một loại giấy.
+
+    Phạm vi (gói / hạng mục) KHÔNG sửa được qua đây: đổi phạm vi là chuyển bản
+    ghi sang nhánh khác, mà nhánh đích có thể đã có bản ghi của chính loại giấy
+    này. Muốn vậy thì gỡ rồi khai lại, để va chạm lộ ra chứ không ghi đè im lặng.
+    """
+    row = db.execute(
+        text("""
+            select id, applicability_type, service_package_id, task_type_id, node_code
+            from public.document_template_applicabilities
+            where id = :id and template_id = :t
+        """),
+        {"id": applicability_id, "t": template_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi gán này.")
+
+    node = (node_code or None)
+    if node and node not in _active_node_codes(db):
+        raise HTTPException(
+            status_code=422, detail=f"Bước “{node}” không có trong danh mục.")
+
+    db.execute(
+        text("""
+            update public.document_template_applicabilities
+            set node_code = :node, is_default = :mac_dinh
+            where id = :id
+        """),
+        {"node": node, "mac_dinh": bool(is_default), "id": applicability_id},
+    )
+    return {"id": applicability_id, "node_code": node, "is_default": bool(is_default)}
+
+
+def remove_applicability(db: Session, template_id: str, applicability_id: str) -> dict[str, Any]:
+    """Gỡ ĐÚNG MỘT bản ghi gán — loại giấy thôi áp dụng cho nhánh đó.
+
+    Không đụng chính loại giấy: nó vẫn còn trong Master Data và vẫn áp dụng ở các
+    nhánh khác. Muốn bỏ hẳn tờ giấy thì dùng ``deactivate_template``.
+    """
+    row = db.execute(
+        text("""
+            delete from public.document_template_applicabilities
+            where id = :id and template_id = :t
+            returning id, applicability_type, task_type_id, service_package_id, node_code
+        """),
+        {"id": applicability_id, "t": template_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy bản ghi gán này.")
+    return dict(row)
 
 
 def checklist_options(db: Session) -> list[dict[str, Any]]:
@@ -376,34 +735,70 @@ def open_service_line_register(
     if not line:
         raise HTTPException(status_code=404, detail="Không tìm thấy hạng mục.")
 
+    # ── Nguồn sự thật: MASTER DATA, không phải danh mục mẫu ─────────────────
+    #
+    # Luật cũ quét thẳng document_checklist_templates:
+    #     (t.task_type_id is null AND t.source in ('CONG_TY','CO_QUAN'))
+    #     hoặc t.task_type_id = :task_type_id
+    #
+    # Vế đầu là chỗ vỡ: MỌI giấy công ty soạn và cơ quan trả chưa gắn thủ tục
+    # đều bị lôi vào, bất kể Gói nào, Hạng mục nào. Đo trên hợp đồng thật:
+    # master data khai 18 loại cho hạng mục, sổ tạo ra 49 ô — 31 ô không thuộc
+    # về nó. Tủ hồ sơ vì thế bày cả kho giấy của công ty, và 31 ô đó không có
+    # node_code nên hiện lên là "chưa phân bước" — trông như Giám đốc quên gán,
+    # trong khi chúng vốn không thuộc hạng mục này.
+    #
+    # `applicable_templates` đọc đúng bảng document_template_applicabilities —
+    # tức tab Mẫu giấy tờ, nơi bốn trục Gói → Hạng mục → Node → Loại giấy được
+    # khai. Cùng hàm mà cổng kích hoạt quy trình và Tủ hồ sơ đang dùng, nên từ
+    # nay ba chỗ nói cùng một luật.
+    mau = applicable_templates(db, service_line_id)
+
+    # Giấy KHÁCH ĐƯA của bộ chung nằm ở sổ gốc hợp đồng — kê lại ở hạng mục là
+    # bắt scan hai lần. Nhưng giấy khách của RIÊNG thủ tục này thì phải có ở đây
+    # (Hoàn công đòi Giấy phép xây dựng, chỉ thủ tục đó mới cần).
+    can_tao = [
+        muc for muc in mau
+        if muc["source"] in ("CONG_TY", "CO_QUAN")
+        or muc["applicability_type"] == "TASK_TYPE"
+    ]
+    if not can_tao:
+        return 0
+
     created = db.execute(
         text("""
             insert into dossier_document_slots
                 (scope, contract_id, service_line_id, template_id, name, source,
                  is_required, needs_original, quantity, sort_order, updated_by)
-            select 'SERVICE_LINE', :contract_id, :service_line_id, t.id, t.name, t.source,
-                   t.is_required, t.needs_original, t.default_quantity, t.sort_order, :actor
-            from document_checklist_templates t
-            where t.is_active
-              and (
-                -- Bộ chung: chỉ phần công ty soạn và cơ quan trả. Giấy khách đưa
-                -- đã nằm ở sổ gốc hợp đồng, kê lại ở đây là bắt scan hai lần.
-                (t.task_type_id is null and t.source in ('CONG_TY', 'CO_QUAN'))
-                -- Phần riêng của đúng thủ tục thì lấy hết, kể cả giấy khách đưa
-                -- (ví dụ Hoàn công cần Giấy phép xây dựng — chỉ thủ tục này mới đòi).
-                or t.task_type_id = :task_type_id
-              )
-              and not exists (
+            select 'SERVICE_LINE', :contract_id, :service_line_id,
+                   m.id, m.name, m.source, m.is_required, m.needs_original,
+                   m.quantity, m.sort_order, :actor
+            from jsonb_to_recordset(cast(:mau as jsonb)) as m(
+                id text, name text, source text, is_required boolean,
+                needs_original boolean, quantity int, sort_order int
+            )
+            where not exists (
                 select 1 from dossier_document_slots s
-                where s.service_line_id = :service_line_id and s.name = t.name
+                where s.service_line_id = :service_line_id and s.name = m.name
               )
             returning id
         """),
         {
             "contract_id": line["contract_id"],
             "service_line_id": service_line_id,
-            "task_type_id": line["task_type_id"],
             "actor": actor_id,
+            "mau": json.dumps([
+                {
+                    "id": muc["id"],
+                    "name": muc["name"],
+                    "source": muc["source"],
+                    "is_required": muc["is_required"],
+                    "needs_original": muc["needs_original"],
+                    "quantity": muc["default_quantity"],
+                    "sort_order": index,
+                }
+                for index, muc in enumerate(can_tao)
+            ]),
         },
     ).fetchall()
     return len(created)
@@ -475,6 +870,20 @@ _SLOTS_QUERY_TMPL = """
                where d.slot_id = s.id and d.doc_status <> 'DA_GO'
              ) d
            ), '[]'::jsonb) as files,
+           -- Tệp ĐÃ nằm trong ô giấy nhưng CHƯA được gắn vào mục checklist nào.
+           -- Đây là khối lượng tồn đọng sau khi Giám đốc dựng quy trình: giấy có
+           -- rồi mà không bước nào nhận thì không ai xử lý, và nó không hiện ra
+           -- ở bất kỳ màn nhân viên nào.
+           (select count(*)
+              from dossier_document_links l
+              join dossier_documents d on d.id = l.document_id
+             where l.slot_id = s.id and l.link_status = 'DANG_DUNG'
+               and d.doc_status <> 'DA_GO'
+               and not exists (
+                 select 1 from checklist_result_document_links c
+                 where c.document_id = d.id
+               )
+           ) as so_tep_chua_gan_checklist,
            exists (
              select 1
              from dossier_document_links l
@@ -542,6 +951,7 @@ def _serialize(row) -> dict[str, Any]:
         "is_custom": row["template_id"] is None,
         "files": files,
         "file_count": len(files),
+        "chua_gan_checklist": int(row["so_tep_chua_gan_checklist"] or 0),
         "has_newer_revision": bool(row.get("has_newer_revision", False)),
         # Ô được miễn vẫn hiện nguyên trên sổ, chỉ thôi đòi giấy. Xoá nó khỏi
         # danh sách là đánh mất chính thứ cần đọc lại sau này: hồ sơ này lẽ ra
@@ -598,6 +1008,27 @@ def map_document_templates_to_nodes(db: Session, service_line_id: str) -> dict[s
     return template_node_map
 
 
+def planned_node_by_template(db: Session, service_line_id: str) -> dict[str, str]:
+    """template_id → node_code theo MASTER DATA, không theo graph đang chạy.
+
+    Khác ``phan_bo_loai_giay_theo_buoc`` ở nguồn đọc, và đó là khác biệt quan
+    trọng: hàm kia đọc graph quy trình, nên trước khi Giám đốc vẽ xong quy trình
+    thì mọi dòng giấy đều trống nhãn. Hàm này đọc cấu hình bốn trục (Gói → Hạng
+    mục → Node → Loại giấy) nên có nhãn NGAY từ lúc tạo hợp đồng.
+
+    Hai hàm trả lời hai câu khác nhau — kế hoạch và thực tế đang chạy — nên giữ
+    cả hai chứ không thay thế.
+
+    Dùng lại ``applicable_templates``: nó đã gộp theo độ ưu tiên phạm vi, mỗi
+    loại giấy ra đúng một dòng kèm ``node_code``.
+    """
+    return {
+        mau["id"]: mau["node_code"]
+        for mau in applicable_templates(db, service_line_id)
+        if mau.get("node_code")
+    }
+
+
 def get_register(
     db: Session, contract_id: str, *, service_line_id: str | None = None
 ) -> dict[str, Any]:
@@ -631,6 +1062,12 @@ def get_register(
         "phan_bo_theo_buoc": (
             map_document_templates_to_nodes(db, service_line_id) if service_line_id else {}
         ),
+        # template_id -> node_code theo MASTER DATA. Có ngay từ lúc tạo hợp đồng,
+        # khác `phan_bo_theo_buoc` ở trên vốn đọc graph nên còn trống cho tới khi
+        # Giám đốc vẽ xong quy trình. Tủ hồ sơ ở sidebar dán nhãn từ trường này.
+        "planned_node_by_template": (
+            planned_node_by_template(db, service_line_id) if service_line_id else {}
+        ),
         "groups": [
             {
                 "source": source,
@@ -639,6 +1076,11 @@ def get_register(
             }
             for source in SOURCES
         ],
+        # TỦ HỒ SƠ xếp theo BƯỚC — cấu trúc lấy từ master data, không lấy từ ô
+        # giấy. Đây mới là câu trả lời cho "hạng mục này cần tờ gì, ở bước nào".
+        "cabinet_by_node": (
+            cabinet_by_node(db, service_line_id) if service_line_id else []
+        ),
         "summary": {
             "total": len(slots),
             "required": len(required),
@@ -1818,7 +2260,22 @@ def list_templates(db: Session) -> dict[str, Any]:
                    t.needs_original, t.default_quantity, t.sort_order, t.note, t.is_active,
                    coalesce(tt.name, '— Bộ chung (mọi thủ tục) —') as task_type_name,
                    (select count(*) from dossier_document_slots s
-                    where s.template_id = t.id) as in_use
+                    where s.template_id = t.id) as in_use,
+                   -- Phạm vi đã khai của mẫu này: Gói · Hạng mục · Node. Không
+                   -- trả kèm thì màn Mẫu Giấy Tờ không hiển thị được cấu hình
+                   -- bốn trục, và Giám đốc không biết mình đã khai gì.
+                   coalesce((
+                     select jsonb_agg(jsonb_build_object(
+                              'id', a.id,
+                              'applicability_type', a.applicability_type,
+                              'service_package_id', a.service_package_id,
+                              'task_type_id', a.task_type_id,
+                              'node_code', a.node_code,
+                              'is_default', a.is_default
+                            ) order by a.applicability_type, a.node_code)
+                     from document_template_applicabilities a
+                     where a.template_id = t.id
+                   ), '[]'::jsonb) as applicabilities
             from document_checklist_templates t
             left join task_types tt on tt.id = t.task_type_id
             order by (t.task_type_id is not null), tt.name nulls first, t.sort_order, t.name
@@ -1841,6 +2298,7 @@ def list_templates(db: Session) -> dict[str, Any]:
             "needs_original": bool(row["needs_original"]),
             "default_quantity": int(row["default_quantity"] or 1),
             "sort_order": int(row["sort_order"] or 0),
+            "applicabilities": list(row["applicabilities"] or []),
             "note": row["note"],
             "is_active": bool(row["is_active"]),
             "in_use": int(row["in_use"] or 0),

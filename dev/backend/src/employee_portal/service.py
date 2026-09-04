@@ -8,8 +8,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.core.redis_utils import get_cached_json, set_cached_json
+from src.finance.repository import priority_multiplier
 from src.contracts.workflow_runtime import (
     WIP_ITEM_LIMIT,
+    expire_stale_help_requests,
+    refresh_node_config,
     wip_limit_reached,
     workflow_node_duration,
     task_pool_department_code,
@@ -59,6 +62,19 @@ _TASKS_QUERY = text(
            -- chỗ (bàn giao / hồ sơ nộp cơ quan), không bày nhầm lên mọi bước.
            coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover')::boolean, false) as is_handover,
            coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'requires_gov_submission')::boolean, false) as requires_gov_submission,
+           -- Tạm dừng: đồng hồ phải ĐÓNG BĂNG THẤY ĐƯỢC. Không trả mấy trường này
+           -- thì nhân viên vẫn thấy mình sắp trễ trong lúc chờ cơ quan, và cả tính
+           -- năng tạm dừng vô nghĩa với họ.
+           n.pause_reason_type, n.paused_at, n.paused_note, n.paused_seconds,
+           -- Cờ cấu hình của bước, đọc từ DANH MỤC. Giao diện chọn khối nghiệp
+           -- vụ theo ba cờ này chứ không theo mã K — đổi bước nào được tạm dừng
+           -- là một câu update, không phải một lần deploy.
+           coalesce(wn.allow_pause, false) as allow_pause,
+           coalesce(wn.allow_gov_tracking, false) as allow_gov_tracking,
+           wn.cluster_code,
+           -- Bước bị kéo về sửa đọc hạn MỚI này, không đọc deadline_at cũ — hạn cũ
+           -- gần như chắc chắn đã trôi qua, dùng lại là vừa mở lại đã đỏ quá hạn.
+           n.rework_deadline_at,
            n.status, n.outcome, n.started_at, n.submitted_at, n.deadline_at,
            n.is_overdue, n.completed_at,
            n.execution_data,
@@ -196,6 +212,19 @@ _MY_ITEMS_QUERY = text(
       wi.service_line_id,
       sl.contract_id,
       sl.priority,
+      -- Tiền hợp đồng cho thanh công nợ ở K06. Bước bàn giao chỉ đóng được khi
+      -- đã thu đủ hoặc có đơn nợ được duyệt, nên con số này phải thấy ngay tại
+      -- chỗ làm việc thay vì bắt mở sang màn Thu chi.
+      coalesce(c.total_value, 0) as contract_total_value,
+      -- Số đã thu tính từ PHIẾU THU đã duyệt, không có cột sẵn trên hợp đồng.
+      -- Dùng lại đúng nguồn mà debt_summary() dùng, để thanh công nợ ở màn này
+      -- không bao giờ nói khác cổng chặn bàn giao.
+      coalesce((
+        select sum(t.amount) from public.cashflow_transactions t
+        where t.contract_id = c.id
+          and t.transaction_type = any(:income_types)
+          and t.status = any(:approved_statuses)
+      ), 0) as contract_paid_amount,
       coalesce(tt.name, sl.service_type, 'Hạng mục') as service_line_name,
       coalesce(cu.full_name, 'Khách hàng') as customer_name,
       coalesce(w.name, nullif(sl.property_address, '')) as location_label,
@@ -353,7 +382,7 @@ _MY_ITEMS_MONEY_QUERY = text(
       group by n.workflow_instance_id
     ), da_chot as (
       select workflow_instance_id, coalesce(sum(amount), 0) as amount_earned
-      from public.work_pay_entitlements
+      from public.active_work_pay_entitlements
       where employee_id = :employee_id
         and workflow_instance_id = any(:instance_ids)
         and status in ('eligible', 'approved', 'locked', 'paid')
@@ -375,6 +404,16 @@ _ITEM_NODE_DETAIL_QUERY = text(
     """
     select
       n.id as task_node_id,
+      -- Số ĐÃ CHỐT lúc nghiệm thu, nếu bước đã xong. Bảng giá đổi sau đó thì con
+      -- số này KHÔNG đổi — nhân viên được trả theo giá lúc làm, không theo giá
+      -- hôm nay. Đọc qua VIEW nên suất đã chuyển cho người nhận hỗ trợ không bị
+      -- cộng nhầm cho người nhường.
+      (
+        select sum(e.amount)
+        from public.active_work_pay_entitlements e
+        where e.task_node_id = n.id and e.employee_id = :employee_id
+          and e.status <> 'void'
+      ) as settled_amount,
       coalesce((
         select sum(wr.amount)
         from public.task_node_checklist_results r
@@ -569,7 +608,7 @@ _DAILY_SUMMARY_QUERY = text(
         )
     ), today_pay as (
       select coalesce(sum(amount), 0) as amount
-      from public.work_pay_entitlements
+      from public.active_work_pay_entitlements
       where employee_id = :employee_id
         and earned_at >= date_trunc('day', now())
         and status in ('eligible', 'approved', 'locked', 'paid')
@@ -614,8 +653,33 @@ _TASK_CHECKLIST_QUERY = text(
                '[]'::jsonb)) item
              where item->>'key' = r.checklist_key
              limit 1
-           ) as output_documents
+           ) as output_documents,
+           -- Phán quyết của Giám đốc cho TỪNG TỜ. Thiếu trường này thì nhân viên
+           -- bị trả bài không đọc được vì sao — dải băng đỏ trên giao diện không
+           -- có dữ liệu để hiện.
+           --
+           -- Khoá theo template_id vì giao diện bày theo LOẠI giấy đầu ra, và lấy
+           -- bản MỚI NHẤT mỗi ô giấy: nộp lại tệp sửa thì phải thấy tệp mới đang
+           -- chờ duyệt, không phải lý do từ chối của tệp đã bị thay.
+           coalesce(rv.review_by_template, '{}'::jsonb) as review_by_template
     from public.task_node_checklist_results r
+    left join lateral (
+      select jsonb_object_agg(t.template_id, jsonb_build_object(
+               'document_id',      t.document_id,
+               'review_status',    t.review_status,
+               'rejection_reason', t.rejection_reason)) as review_by_template
+      from (
+        select distinct on (s.template_id)
+               s.template_id, l.document_id, l.review_status, l.rejection_reason
+        from public.checklist_result_document_links l
+        join public.dossier_documents d on d.id = l.document_id
+        join public.dossier_document_slots s on s.id = d.slot_id
+        where l.checklist_result_id = r.id
+          and d.doc_status = 'DANG_DUNG'
+          and s.template_id is not null
+        order by s.template_id, d.uploaded_at desc, d.id desc
+      ) t
+    ) rv on true
     join public.task_nodes n on n.id = r.task_node_id
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
@@ -645,7 +709,7 @@ _CURRENT_PAYROLL_QUERY = text(
       limit 1
     ), piece as (
       select count(*) as tasks_completed, coalesce(sum(amount), 0) as piece_amount
-      from public.work_pay_entitlements, period
+      from public.active_work_pay_entitlements, period
       where employee_id = :employee_id
         and status in ('eligible', 'approved', 'locked', 'paid')
         and earned_at >= period.start_date
@@ -702,7 +766,13 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
     ngôn ngữ Hạng mục: đang ở bước nào, còn mấy bước, đã chốt bao nhiêu tiền
     trên tổng bao nhiêu. Liệt kê rời từng node là bắt họ tự ghép lại trong đầu.
     """
-    rows = db.execute(_MY_ITEMS_QUERY, {"employee_id": employee_id}).mappings().all()
+    from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+
+    rows = db.execute(_MY_ITEMS_QUERY, {
+        "employee_id": employee_id,
+        "income_types": list(INCOME_TX_TYPES),
+        "approved_statuses": list(APPROVED_TX_STATUSES),
+    }).mappings().all()
     if not rows:
         return []
 
@@ -724,12 +794,30 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
 
     items = []
     for row in rows:
+        # Hệ số ưu tiên là của cả Hạng mục, hỏi một lần rồi dùng cho mọi bước.
+        he_so_uu_tien = priority_multiplier(db, row["priority"])
         nodes = []
         for node in list(row["nodes"] or []):
             detail = detail_by_node.get(node["id"], {})
             nodes.append({
                 **node,
-                "amount": _number_value(detail.get("amount") or 0),
+                # Đã nghiệm thu thì lấy SỐ ĐÃ CHỐT; chưa thì lấy bảng giá hôm
+                # nay làm ước tính. Giao diện đọc `amount_is_settled` để biết ghi
+                # "dự kiến" hay không — bày số trần lúc bước còn chạy là hứa một
+                # khoản chưa chắc có.
+                "amount": _number_value(
+                    detail.get("settled_amount")
+                    if detail.get("settled_amount") is not None
+                    else (detail.get("amount") or 0)
+                ),
+                "amount_is_settled": detail.get("settled_amount") is not None,
+                "bonus_amount": _number_value(
+                    float(
+                        detail.get("settled_amount")
+                        if detail.get("settled_amount") is not None
+                        else (detail.get("amount") or 0)
+                    ) * max(0.0, he_so_uu_tien - 1.0)
+                ),
                 "assignee_name": detail.get("assignee_name"),
                 "help_request_open": bool(detail.get("help_request_open")),
                 "my_help_request_id": detail.get("my_help_request_id"),
@@ -754,6 +842,8 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
             "customer_name": row["customer_name"],
             "location_label": row["location_label"],
             "priority": row["priority"] or "NORMAL",
+            "contract_total_value": _number_value(row["contract_total_value"]),
+            "contract_paid_amount": _number_value(row["contract_paid_amount"]),
             "nodes": nodes,
             "current_task_node_id": (current or {}).get("id"),
             "current_node_code": (current or {}).get("node_code"),
@@ -813,8 +903,41 @@ class EmployeePortalService:
                         "submitted_at": _date_value(row["submitted_at"]),
                         "evidence_files": (row["evidence_data"] or {}).get("files", []),
                         "output_documents": list(row["output_documents"] or []),
+                        "review_by_template": dict(row["review_by_template"] or {}),
                     }
                 )
+        # Tên loại giấy: một truy vấn cho tất cả id được nhắc tới.
+        #
+        # Không nhét vào truy vấn checklist bằng lateral — lateral chỉ thấy bảng
+        # khai TRƯỚC nó, mà graph nằm ở hai bảng revision join sau. Tách ra vừa
+        # chạy được vừa đọc được.
+        #
+        # Thiếu bản đồ này thì giao diện bày nguyên UUID lên màn nhân viên.
+        ma_loai_giay = {
+            str(doc.get("template_id"))
+            for items in checklist_by_task.values()
+            for item in items
+            for doc in (item.get("output_documents") or [])
+            if isinstance(doc, dict) and doc.get("template_id")
+        }
+        ten_loai_giay = {}
+        if ma_loai_giay:
+            ten_loai_giay = {
+                row[0]: row[1]
+                for row in db.execute(
+                    text("select id, name from public.document_checklist_templates"
+                         " where id = any(:ids)"),
+                    {"ids": list(ma_loai_giay)},
+                ).all()
+            }
+        for items in checklist_by_task.values():
+            for item in items:
+                item["template_names"] = {
+                    str(doc.get("template_id")): ten_loai_giay.get(str(doc.get("template_id")))
+                    for doc in (item.get("output_documents") or [])
+                    if isinstance(doc, dict) and doc.get("template_id")
+                }
+
         leave_records = (
             db.query(LeaveRecord)
             .filter(LeaveRecord.employee_id == employee.id)
@@ -865,6 +988,14 @@ class EmployeePortalService:
                     "submitted_at": _date_value(task["submitted_at"]),
                     "deadline_at": _date_value(task["deadline_at"]),
                     "deadline": _date_value(task["deadline_at"]),
+                    "allow_pause": bool(task["allow_pause"]),
+                    "allow_gov_tracking": bool(task["allow_gov_tracking"]),
+                    "cluster_code": task["cluster_code"],
+                    "pause_reason_type": task["pause_reason_type"],
+                    "paused_at": _date_value(task["paused_at"]),
+                    "paused_note": task["paused_note"],
+                    "paused_seconds": int(task["paused_seconds"] or 0),
+                    "rework_deadline_at": _date_value(task["rework_deadline_at"]),
                     "is_overdue": bool(task["is_overdue"]),
                     "completion_date": _date_value(task["completed_at"]),
                     "actual_duration_seconds": int(
@@ -904,6 +1035,13 @@ class EmployeePortalService:
 
     @staticmethod
     def get_task_pool(db: Session, employee: Employee) -> dict:
+        # Nạp cấu hình bước trước khi lọc theo phòng ban: chính vòng lọc ngay bên
+        # dưới gọi task_pool_departments. Nạp sau là lọc bằng hằng số dự phòng
+        # rồi mới có cấu hình — bể việc hiện sai đúng một lượt.
+        refresh_node_config(db)
+        # Lời nhờ quá hạn phải rụng TRƯỚC khi dựng bể việc, nếu không nó còn nằm
+        # đó mời người ta nhận một việc đã trả về chủ cũ.
+        expire_stale_help_requests(db)
         department = None
         if employee.department_id:
             department = db.query(Department).filter(Department.id == employee.department_id).first()
@@ -1113,6 +1251,8 @@ class EmployeePortalService:
         Nhân viên bấm "Nhận trọn" là cam kết đi tới cùng cả chuỗi, nên không thể
         bắt họ quyết định khi chỉ nhìn thấy một con số tổng.
         """
+        refresh_node_config(db)
+        expire_stale_help_requests(db, task_node_id=task_node_id)
         header = db.execute(
             _POOL_DETAIL_HEADER_QUERY, {"task_node_id": task_node_id}
         ).mappings().first()
@@ -1281,7 +1421,7 @@ class EmployeePortalService:
             select (date_trunc('month', earned_at))::date as m_start,
                    count(*) as tasks_completed,
                    coalesce(sum(amount), 0) as piece_amount
-            from public.work_pay_entitlements
+            from public.active_work_pay_entitlements
             where employee_id = :emp_id
               and status in ('eligible', 'approved', 'locked', 'paid')
             group by date_trunc('month', earned_at)

@@ -1,15 +1,89 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch, downloadFile } from './api';
+import { apiFetch, clearApiCache, downloadFile, peekApiCache } from './api';
 
 describe('apiFetch', () => {
   beforeEach(() => {
     localStorage.clear();
+    // apiFetch nhớ bản đọc trong vài giây; không xoá thì test sau ăn kết quả
+    // của test trước.
+    clearApiCache();
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  const stubJson = (body) => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('hai chỗ cùng hỏi một URL trong lúc chờ thì chỉ đi MỘT lượt', async () => {
+    // Đây cũng là thứ triệt cái nhân đôi của StrictMode ở dev.
+    const fetchMock = stubJson({ ok: 1 });
+
+    const [a, b] = await Promise.all([apiFetch('/api/x'), apiFetch('/api/x')]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a).toEqual({ ok: 1 });
+    expect(b).toEqual({ ok: 1 });
+  });
+
+  it('mỗi người đọc nhận một bản riêng, sửa bản này không đụng bản kia', async () => {
+    stubJson({ danh_sach: [1, 2] });
+
+    const a = await apiFetch('/api/y');
+    a.danh_sach.push(3);
+    const b = await apiFetch('/api/y');
+
+    expect(b.danh_sach).toEqual([1, 2]);
+  });
+
+  it('đọc lại trong vài giây thì lấy bản đã nhớ, không gọi mạng', async () => {
+    const fetchMock = stubJson({ ok: 1 });
+
+    await apiFetch('/api/z');
+    await apiFetch('/api/z');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('sau một lệnh GHI thì mọi bản đã nhớ bị vứt', async () => {
+    // Lưu xong mà vẫn thấy số cũ là lỗi nặng hơn nhiều so với tốn thêm một lượt.
+    const fetchMock = stubJson({ ok: 1 });
+
+    await apiFetch('/api/z');
+    await apiFetch('/api/z', { method: 'POST', body: '{}' });
+    await apiFetch('/api/z');
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('bên gọi tự mang signal thì KHÔNG gộp chung — một bên huỷ là bên kia gãy theo', async () => {
+    const fetchMock = stubJson({ ok: 1 });
+    const controller = new AbortController();
+
+    await Promise.all([
+      apiFetch('/api/w', { signal: controller.signal }),
+      apiFetch('/api/w', { signal: controller.signal }),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('peekApiCache trả bản đã nhớ ngay, chưa có thì undefined', async () => {
+    // Gieo state ban đầu lúc render: nếu chỉ dựa vào effect thì khung hình đầu
+    // luôn rỗng rồi giật một cái.
+    stubJson({ ok: 1 });
+
+    expect(peekApiCache('/api/p')).toBeUndefined();
+    await apiFetch('/api/p');
+    expect(peekApiCache('/api/p')).toEqual({ ok: 1 });
   });
 
   it('adds the saved bearer token to protected requests', async () => {

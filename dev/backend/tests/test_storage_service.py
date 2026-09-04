@@ -132,6 +132,61 @@ def test_contract_template_storage_is_private_and_returns_docx_bytes(monkeypatch
     assert uploaded["read_request"] == {"Bucket": storage_service.CONTRACT_TEMPLATE_BUCKET, "Key": expected_key}
 
 
+def test_local_contract_template_reader_falls_back_to_legacy_bucket_on_missing_key(monkeypatch):
+    reads = []
+
+    class FakeS3:
+        def get_object(self, **kwargs):
+            reads.append(kwargs)
+            if kwargs["Bucket"] == storage_service.CONTRACT_TEMPLATE_BUCKET:
+                raise ClientError(
+                    {"Error": {"Code": "NoSuchKey"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                    "GetObject",
+                )
+            return {"Body": BytesIO(b"PK-legacy-template")}
+
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+    monkeypatch.setattr(
+        storage_service,
+        "_storage_config",
+        replace(storage_service._storage_config, managed=False),
+    )
+    monkeypatch.delenv("MINIO_CONTRACT_TEMPLATE_BUCKET", raising=False)
+
+    object_key = "contract-templates/HOP_DONG_DICH_VU_KHUNG_BACH_KHOA/v1.docx"
+    assert storage_service.get_contract_template(object_key) == b"PK-legacy-template"
+    assert reads == [
+        {"Bucket": storage_service.CONTRACT_TEMPLATE_BUCKET, "Key": object_key},
+        {"Bucket": "contract-template-files", "Key": object_key},
+    ]
+
+
+def test_managed_contract_template_reader_never_uses_legacy_minio_bucket(monkeypatch):
+    reads = []
+
+    class FakeS3:
+        def get_object(self, **kwargs):
+            reads.append(kwargs)
+            raise ClientError(
+                {"Error": {"Code": "NoSuchKey"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                "GetObject",
+            )
+
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+    monkeypatch.setattr(
+        storage_service,
+        "_storage_config",
+        replace(storage_service._storage_config, managed=True),
+    )
+    monkeypatch.setenv("MINIO_CONTRACT_TEMPLATE_BUCKET", "contract-template-files")
+
+    object_key = "contract-templates/HOP_DONG_DICH_VU_KHUNG_BACH_KHOA/v1.docx"
+    with pytest.raises(ClientError):
+        storage_service.get_contract_template(object_key)
+
+    assert reads == [{"Bucket": storage_service.CONTRACT_TEMPLATE_BUCKET, "Key": object_key}]
+
+
 def test_contract_template_upload_reports_atomic_create_conflict(monkeypatch):
     class FakeS3:
         def put_object(self, **_kwargs):

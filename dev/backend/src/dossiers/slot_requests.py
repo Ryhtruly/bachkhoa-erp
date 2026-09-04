@@ -24,7 +24,9 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.files.references import DossierFileReference, STAGE_BY_NODE_CODE
+from src.files.references import (
+    DossierFileReference, STAGE_BY_NODE_CODE, STAGE_BY_UPPER_NODE_CODE,
+)
 from src.services.storage_service import ensure_bucket, upload_file
 
 SOURCES = ("KHACH_HANG", "CONG_TY", "CO_QUAN")
@@ -34,11 +36,20 @@ SOURCES = ("KHACH_HANG", "CONG_TY", "CO_QUAN")
 #
 #   K02/K03 (đo vẽ, chuẩn hoá) → sản phẩm do công ty làm ra
 #   K04 (soạn hồ sơ)           → công ty soạn
-#   K05/K06 (nộp, nhận kết quả)→ giấy cơ quan trả
+#   K05a (nộp kỹ thuật)        → phần lớn là giấy công ty soạn (phiếu nộp).
+#                                Biên nhận nhận về khai riêng là CO_QUAN — đây
+#                                chỉ là gợi ý mặc định khi nhân viên đề xuất
+#                                thêm ô giấy, không phải luật cứng.
+#   K05b/K06 (nộp một cửa, nhận)→ giấy cơ quan trả
 _DEFAULT_SOURCE_BY_NODE = {
     "K01": "KHACH_HANG",
     "K02": "CONG_TY", "K03": "CONG_TY", "K04": "CONG_TY",
-    "K05": "CO_QUAN", "K06": "CO_QUAN",
+    "K05a": "CONG_TY",
+    "K05b": "CO_QUAN", "K06": "CO_QUAN",
+}
+# Mã bước có chữ thường ("K05a") nên phải tra qua chỉ mục viết hoa.
+_DEFAULT_SOURCE_BY_UPPER_NODE = {
+    ma.upper(): nguon for ma, nguon in _DEFAULT_SOURCE_BY_NODE.items()
 }
 
 
@@ -48,7 +59,7 @@ def default_source_for_node(db: Session, task_node_id: str) -> str:
         text("select node_code from public.task_nodes where id = :id"),
         {"id": task_node_id},
     ).scalar()
-    return _DEFAULT_SOURCE_BY_NODE.get(str(node_code or "").upper(), "CONG_TY")
+    return _DEFAULT_SOURCE_BY_UPPER_NODE.get(str(node_code or "").strip().upper(), "CONG_TY")
 
 
 # Trạng thái đề xuất mà tài liệu bên trong CHƯA phải tài liệu chính thức.
@@ -268,7 +279,7 @@ def add_file(
         text("select node_code from public.task_nodes where id = :id"),
         {"id": request["task_node_id"]},
     ).scalar()
-    stage = STAGE_BY_NODE_CODE.get(str(node_code or "").upper()) or "ho-so-goc"
+    stage = STAGE_BY_UPPER_NODE_CODE.get(str(node_code or "").strip().upper()) or "ho-so-goc"
 
     document_id = uuid.uuid4().hex
     reference = DossierFileReference.build(
