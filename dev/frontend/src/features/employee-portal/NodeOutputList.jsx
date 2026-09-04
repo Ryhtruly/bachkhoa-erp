@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   AlertTriangle,
   Check,
@@ -33,6 +33,21 @@ const renderDocIcon = (name = '') => {
   return <FileText size={16} className="eiw-doc__type-icon is-doc" />
 }
 
+// Nhãn cho trình đọc màn hình mà không phá bố cục đã duyệt. Nút tải lên chỉ có
+// icon; tên "Tải lên <tờ>" nằm trong span ẩn này để nút có tên truy cập đúng tờ,
+// còn ô <input> nhận aria-label riêng — hai thứ không đè danh tính lên nhau.
+const SR_ONLY = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+}
+
 /**
  * Danh mục giấy tờ đầu ra của một mục checklist (chuẩn giao diện Hình 2).
  */
@@ -46,8 +61,33 @@ export default function NodeOutputList({
   onUploadDocument,
 }) {
   const [collapsed, setCollapsed] = useState(false)
+  // Một ô <input type=file> cho MỖI tờ, giữ theo template_id. Khoá theo id bền
+  // thay vì chỉ số mảng: sắp lại danh sách hay thêm tờ mới không được làm tệp
+  // rơi sang tờ khác.
+  const inputRefs = useRef({})
+  // Tờ đang gửi — khoá riêng từng hàng, không khoá cả danh mục.
+  const [uploadingId, setUploadingId] = useState('')
   const documents = mergeDocumentVerdicts(checklistItem)
   const counter = documentCounter(documents, nodeStatus)
+
+  const pickFile = (doc) => {
+    inputRefs.current[doc.template_id]?.click()
+  }
+
+  const onFileChosen = async (doc, file) => {
+    if (!file || !onUploadDocument) return
+    setUploadingId(doc.template_id)
+    try {
+      await onUploadDocument({
+        checklistResultId: checklistItem?.id,
+        templateId: doc.template_id,
+        documentId: doc.document_id || null,
+        file,
+      })
+    } finally {
+      setUploadingId('')
+    }
+  }
 
   const templateName = (doc) =>
     checklistItem?.template_names?.[doc.template_id]
@@ -142,7 +182,7 @@ export default function NodeOutputList({
               <p className="eiw-docs__empty">Bước này chưa khai loại giấy đầu ra nào.</p>
             )}
 
-            {documents.map((doc, index) => {
+            {documents.map((doc) => {
               const state = docState(doc)
               const name = templateName(doc)
               const fileName = doc.file_name || doc.fileName || (doc.document_id ? `${name}.pdf` : null)
@@ -151,8 +191,8 @@ export default function NodeOutputList({
               return (
                 <div
                   className={`eiw-doc is-${state}`}
-                  key={doc.template_id || `doc-${index}`}
-                  id={`checklist-doc-${doc.document_id || doc.template_id || index}`}
+                  key={doc.template_id || doc.document_id}
+                  id={`checklist-doc-${doc.document_id || doc.template_id}`}
                 >
                   <div className="eiw-doc__row">
                     <div className="eiw-doc__info-col">
@@ -197,14 +237,34 @@ export default function NodeOutputList({
 
 
                       {state !== 'approved' && onUploadDocument && (
-                        <button
-                          type="button"
-                          className="eiw-doc__upload-btn"
-                          title="Tải lên / Thay thế tệp này"
-                          onClick={() => onUploadDocument(doc)}
-                        >
-                          <Upload size={13} />
-                        </button>
+                        <>
+                          <input
+                            type="file"
+                            className="eiw-doc__file-input"
+                            style={SR_ONLY}
+                            ref={(el) => { inputRefs.current[doc.template_id] = el }}
+                            aria-label={`Tải lên ${name}`}
+                            id={`upload-input-${doc.document_id || doc.template_id}`}
+                            disabled={uploadingId === doc.template_id}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0]
+                              // Xoá value NGAY để chọn lại đúng tệp đó vẫn bắn
+                              // 'change' lần sau (thử lại cùng một tệp).
+                              event.target.value = ''
+                              onFileChosen(doc, file)
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="eiw-doc__upload-btn"
+                            title="Tải lên / Thay thế tệp này"
+                            disabled={uploadingId === doc.template_id}
+                            onClick={() => pickFile(doc)}
+                          >
+                            <Upload size={13} />
+                            <span style={SR_ONLY}>Tải lên {name}</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

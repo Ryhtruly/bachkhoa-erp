@@ -90,6 +90,9 @@ export default function EmployeeItemWorkspace({
   const [preview, setPreview] = useState(null)
   const [openError, setOpenError] = useState(null)
   const objectUrlRef = useRef(null)
+  // Số thứ tự lượt đọc /shortage: chỉ lượt MỚI NHẤT được ghi vào state, nên lượt
+  // cũ về muộn (hay về sau khi component đã rời) không đạp lên kết quả mới.
+  const gateReqRef = useRef(0)
   // Mục checklist đang xin thêm loại giấy. Nhân viên chỉ ĐỀ XUẤT —
   // Giám đốc duyệt thì ô giấy mới được tạo.
   const [proposeFor, setProposeFor] = useState(null)
@@ -119,14 +122,21 @@ export default function EmployeeItemWorkspace({
   // Vì sao chưa nộp được — máy chủ trả đủ ba lý do trong một lượt hỏi. Bày ra
   // thay vì để nút xám câm: nút không nói lý do là bắt nhân viên đoán rồi gọi
   // điện hỏi.
-  useEffect(() => {
-    if (!task?.id) { setGate(null); return undefined }
-    let huy = false
-    apiFetch(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
-      .then(res => { if (!huy) setGate(res) })
-      .catch(() => { if (!huy) setGate(null) })
-    return () => { huy = true }
-  }, [task?.id, task?.status, task?.pause_reason_type])
+  //
+  // Một helper DÙNG CHUNG cho cả hai đường đọc cổng: effect lúc đổi bước, và
+  // sau khi nộp tệp thành công (tờ vừa thay có thể vừa gỡ blocker 'rejected'
+  // đang treo). An toàn khi huỷ nhờ gateReqRef: mỗi lượt LẤY một số thứ tự mới
+  // ngay từ đầu — kể cả nhánh không còn task — nên chỉ lượt mới nhất được ghi
+  // state; kết quả cũ về muộn không đạp lên trạng thái mới.
+  const refreshGate = useCallback(() => {
+    const seq = ++gateReqRef.current
+    if (!task?.id) { setGate(null); return Promise.resolve() }
+    return apiFetch(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
+      .then(res => { if (gateReqRef.current === seq) setGate(res) })
+      .catch(() => { if (gateReqRef.current === seq) setGate(null) })
+  }, [task?.id])
+
+  useEffect(() => { refreshGate() }, [refreshGate, task?.status, task?.pause_reason_type])
 
   // Tạm dừng. Chọn SURVEYOR thì KHÔNG dừng ngay: bản vẽ sai ranh nghĩa là phải
   // kéo bước đo vẽ về sửa, mà đó là việc nặng nên đi tiếp một nhịp chọn bước.
@@ -185,6 +195,38 @@ export default function EmployeeItemWorkspace({
       setBusy(false)
     }
   }, [addToast, onRefresh])
+
+  // Nộp/thay tệp cho ĐÚNG một tờ đầu ra, dùng API multipart có sẵn. Danh tính
+  // đi theo checklistResultId + templateId do NodeOutputList gửi lên — không
+  // đoán theo chỉ số hàng, tờ đầu, hay tên tệp. Chỉ báo thành công SAU khi máy
+  // chủ trả về, rồi để onRefresh nạp lại trạng thái thật thay cho state cục bộ.
+  const handleUploadDocument = useCallback(async ({ checklistResultId, templateId, file }) => {
+    if (!task?.id || !checklistResultId || !templateId || !file) return
+    const body = new FormData()
+    body.append('template_id', templateId)
+    body.append('file', file)
+    try {
+      await apiFetch(
+        `/api/employee-portal/tasks/${encodeURIComponent(task.id)}/checklist/${encodeURIComponent(checklistResultId)}/output-documents`,
+        { method: 'POST', body },
+      )
+      // NỘP XONG THÌ ĐỌC LẠI CỔNG: tờ vừa thay có thể vừa gỡ đúng blocker
+      // 'rejected_documents' đang treo cạnh nút. Effect /shortage chỉ chạy lại
+      // khi task.id/status/pause đổi — nộp tệp không đổi mấy thứ đó — nên phải
+      // tự gọi, nếu không cảnh báo cũ đứng hình và nút vẫn xám dù đã sửa.
+      //
+      // refreshGate KHÔNG được await và tự nuốt lỗi bên trong: POST đã THÀNH
+      // CÔNG rồi, nên một lượt đọc cổng hỏng cũng không được biến thành "nộp
+      // lỗi". Giữ nguyên báo thành công và để onRefresh của cha nạp lại thật.
+      addToast?.('Đã nộp tài liệu vào hồ sơ', 'success')
+      refreshGate()
+      onRefresh?.()
+    } catch (error) {
+      // Nộp hỏng thì KHÔNG đọc lại cổng, KHÔNG gọi onRefresh, KHÔNG báo thành
+      // công — chỉ nêu đúng lỗi của máy chủ.
+      addToast?.(error?.message || 'Không nộp được tài liệu', 'error')
+    }
+  }, [task?.id, addToast, onRefresh, refreshGate])
 
   const closePreview = useCallback(() => {
     if (objectUrlRef.current) {
@@ -376,6 +418,7 @@ export default function EmployeeItemWorkspace({
                   canPropose={!isDirector}
                   onProposeDocument={(muc) => setProposeFor(muc.id)}
                   onOpenDocument={openDocument}
+                  onUploadDocument={handleUploadDocument}
                 />
               ) : (
                 <ChecklistEvidenceItem
@@ -443,7 +486,7 @@ export default function EmployeeItemWorkspace({
                 </button>
               )
             )}
-            <NodeActionBar task={task} onChanged={onRefresh} />
+            <NodeActionBar task={task} onChanged={onRefresh} gate={gate} />
           </footer>
         </div>
       )}

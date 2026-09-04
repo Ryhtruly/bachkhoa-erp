@@ -43,6 +43,12 @@ def _row(value):
     return result
 
 
+def _scalar_one(value):
+    result = MagicMock()
+    result.scalar_one.return_value = value
+    return result
+
+
 ACTIVE_TEMPLATES = {"TPL_BAN_KY_THUAT_GOC", "TPL_ANH_HIEN_TRANG", "TPL_BAN_VE_CHUAN_HOA"}
 
 
@@ -774,3 +780,91 @@ class ChanDoIdChecklistTests(unittest.TestCase):
         ket_qua, loi = self._goi(thuoc_ve=True, co_quyen_hop_dong=True, duoc_giao=False)
         self.assertIsNone(loi)
         self.assertTrue(ket_qua["can_submit"])
+
+
+class NopThangKhiConToBiTraLaiTests(unittest.TestCase):
+    """Cổng /shortage đã báo `rejected_documents` là chặn cứng (can_submit=False),
+    nhưng NÚT NỘP thật (`submit_task_node_for_acceptance`) phải TỰ chặn lại — nếu
+    không thì gọi thẳng POST .../submit là qua mặt được cảnh báo trên giao diện.
+
+    Ranh giới nghiệp vụ: còn MỘT tờ đầu ra đang mang phán quyết 'rejected' của
+    Giám đốc mà chưa nộp tệp sửa thì đây là "nộp lại y nguyên bài đã bị trả".
+    Bước không được rời khỏi tay nhân viên cho tới khi tờ đó được thay.
+
+    ── ĐANG ĐỎ CÓ CHỦ ĐÍCH ──────────────────────────────────────────────────────
+    Đây là test chuẩn bị (red). Bản production hôm nay của
+    `submit_task_node_for_acceptance` chỉ soi TRẠNG THÁI checklist và chụp ảnh
+    thiếu tài liệu; nó KHÔNG hề hỏi `node_document_review_summary`, nên một tờ bị
+    trả vẫn nộp lại trót lọt. Test này phải ĐỎ tới khi bất biến được cài, KHÔNG
+    được sửa production trong lượt này.
+
+    Test giả định bản vá dùng lại chính `node_document_review_summary` — đúng hàm
+    mà cổng /shortage đang dùng để đếm `rejected_count`. Đó là mối nối DRY hiển
+    nhiên; nếu bản vá tự viết truy vấn riêng thì chỉnh mock ở đây một nhịp.
+    """
+
+    def _side_effect_duong_nop_tron_tru(self):
+        """Chín lượt db.execute của đường nộp THÀNH CÔNG hôm nay, theo đúng thứ tự.
+
+        Bản production chạy hết chuỗi này rồi trả 'submitted'. Có bất biến thì nó
+        dừng giữa chừng ở cổng tài liệu bị trả — các lượt thừa phía sau bỏ không,
+        không sao.
+        """
+        return [
+            _first(1),   # 1 _require_node_assignment — có phân công
+            _first(1),   # 2 vai trò được nộp cả gói (SUBMIT_CAPABLE_ROLES)
+            _row({"pause_reason_type": None, "paused_note": None}),  # 3 node_pause_block — không tạm dừng
+            _row({"id": "TN-1", "status": "in_progress", "is_handover": False}),  # 4 khoá node
+            _rows([]),   # 5 không còn mục checklist nào dang dở
+            _scalar_one(1),            # 6 attempt_no kế tiếp
+            _scalar_one("ACC-THANG-1"),  # 7 chèn lượt nghiệm thu
+            MagicMock(),  # 8 update task_nodes -> submitted
+            MagicMock(),  # 9 chèn task_node_events
+        ]
+
+    def test_con_to_dau_ra_bi_tra_lai_thi_nop_thang_phai_bi_chan(self):
+        from src.contracts import workflow_runtime
+
+        db = MagicMock()
+        db.execute.side_effect = self._side_effect_duong_nop_tron_tru()
+
+        # Một tờ đầu ra đã bị Giám đốc trả (rejected) và chưa được thay.
+        review = {
+            "total": 2, "approved_count": 1, "rejected_count": 1, "pending_count": 0,
+            "rejected_items": [{
+                "document_name": "Bản vẽ hiện trạng",
+                "checklist_name": "Chuẩn hoá bản vẽ",
+                "reason": "Ảnh mờ không đọc được",
+            }],
+        }
+        with patch("src.dossiers.documents.node_shortage_report", return_value=[]), \
+             patch.object(workflow_runtime, "node_document_review_summary", return_value=review):
+            with self.assertRaises(
+                workflow_runtime.WorkflowValidationError,
+                msg="Nộp thẳng khi còn tờ đầu ra bị trả lại phải bị chặn, "
+                    "nhưng submit_task_node_for_acceptance đã cho nộp trót lọt.",
+            ):
+                workflow_runtime.submit_task_node_for_acceptance(
+                    db, task_node_id="TN-1", employee_id="EMP-1",
+                    actor_id="U-1", note=None,
+                )
+
+    def test_moi_to_dau_ra_deu_dat_thi_nop_thang_van_qua(self):
+        """Đối chứng: không có tờ nào bị trả thì đường nộp cũ vẫn phải thông —
+        bất biến mới KHÔNG được vạ lây sang hồ sơ sạch."""
+        from src.contracts import workflow_runtime
+
+        db = MagicMock()
+        db.execute.side_effect = self._side_effect_duong_nop_tron_tru()
+
+        review = {
+            "total": 2, "approved_count": 2, "rejected_count": 0, "pending_count": 0,
+            "rejected_items": [],
+        }
+        with patch("src.dossiers.documents.node_shortage_report", return_value=[]), \
+             patch.object(workflow_runtime, "node_document_review_summary", return_value=review):
+            ket_qua = workflow_runtime.submit_task_node_for_acceptance(
+                db, task_node_id="TN-1", employee_id="EMP-1",
+                actor_id="U-1", note=None,
+            )
+        self.assertEqual(ket_qua["status"], "submitted")

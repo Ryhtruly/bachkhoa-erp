@@ -251,13 +251,13 @@ Allowed files only:
 - dev/frontend/src/features/employee-portal/EmployeeItemWorkspace.test.jsx
 
 Required behavior:
-1. For each non-approved document row, the upload icon opens a real file input for that exact template_id.
+1. For each non-approved document row, the upload icon opens a real file input for that exact template_id; the test must click the child-B upload control first, then select the file from the revealed input.
 2. The callback payload is exactly { checklistResultId: checklistItem.id, templateId: doc.template_id, documentId: doc.document_id || null, file }.
 3. EmployeeItemWorkspace creates FormData, appends template_id and file, and POSTs to /api/employee-portal/tasks/{task.id}/checklist/{checklistResultId}/output-documents using apiFetch.
 4. Show success only after the POST resolves. On error show the API error and do not change local document/review state.
 5. Call onRefresh after success so server state replaces the UI state.
 6. Approved documents never expose a file input or replacement button.
-7. A rejected child uses its own templateId; never use array index, first child, file name, or parent-level fallback.
+7. A rejected child uses its own templateId; never use array index, first child, file name, or parent-level fallback. Array indexes must not be used for upload/preview identity, DOM ids, or React keys when a stable checklist/template/document id exists.
 8. Disable only the row currently uploading and prevent duplicate submission for that row.
 
 Write failing tests first. Include a checklist with two children and click/upload child B; assert FormData contains B's template_id and the exact File object, and no request targets child A. Do not commit. Return exact diff and test output.
@@ -268,6 +268,7 @@ Write failing tests first. Include a checklist with two children and click/uploa
 Required shape:
 
 ```jsx
+await userEvent.click(screen.getByRole('button', { name: /Tải lên Bản vẽ hiện trạng/i }))
 const file = new File(['replacement'], 'ban-ve-sua.pdf', { type: 'application/pdf' })
 fireEvent.change(screen.getByLabelText('Tải lên Bản vẽ hiện trạng'), {
   target: { files: [file] },
@@ -428,6 +429,53 @@ Reviewer prompt:
 ```text
 Review Task 3 only. Do not edit. Verify the code distinguishes hard paused/rejected blockers from soft missing-document warnings, blocks both stale initial state and fresh API responses, does not block pending_approval, preserves K06 specialization, and never relies solely on disabled UI for security. Findings first, then APPROVE or REQUEST_CHANGES.
 ```
+
+---
+
+## Wave 3.5: Backend Submit Invariant and Gate Refresh
+
+**Owner:** OpenCode for the isolated backend implementation, coordinator review and approval before production edit.
+
+**Reason for insertion:** Wave 3's UI gate is correct but cannot be the sole authority. The direct submit endpoint must reject nodes with rejected output documents, and replacing a document must refresh the already-loaded shortage gate so the employee does not remain blocked by stale state.
+
+**Required pre-edit gate:** Run GitNexus impact for `submit_task_node_for_acceptance` and `node_document_review_summary`. The current Windows CLI may be unavailable; record that degradation and supplement with `rg` callers. Because this path is high-risk, add the backend regression test first, run it red, and obtain coordinator approval before changing `workflow_runtime.py`.
+
+**Allowed files:**
+- `dev/backend/tests/<existing workflow regression test>.py` (new failing test and final regression coverage)
+- `dev/backend/src/contracts/workflow_runtime.py` (minimal rejected-document invariant only, after red test approval)
+- `dev/frontend/src/features/employee-portal/EmployeeItemWorkspace.jsx`
+- `dev/frontend/src/features/employee-portal/EmployeeItemWorkspace.test.jsx`
+
+**Required behavior:**
+1. `submit_task_node_for_acceptance` must call the existing current-document review summary and raise the established workflow validation error when `rejected_count > 0`. Do not change schemas, migrations, endpoint shapes, or missing-document/pending-approval semantics.
+2. Add a backend test that fails before the production change and passes after it, exercising a direct submit with a rejected output document.
+3. After a successful output-document upload, refresh `/shortage` (or equivalent existing gate source) before/alongside `onRefresh`, so replacing a rejected document can clear the stale hard blocker. Add a frontend regression test proving the gate is re-read and the submit control becomes available when the refreshed response has no hard blocker.
+4. Preserve upload error behavior: no success toast, no local review mutation, and no gate refresh on a failed upload.
+5. Do not edit `T:\New folder`, UI layout/CSS, or any other backend path.
+
+**Worker prompt:**
+
+```text
+Work only in T:\github\bachkhoa-erp. Do not touch T:\New folder. This is a high-risk workflow authority fix; do not change UI layout, schemas, migrations, or endpoint contracts.
+
+First inspect the existing backend test helpers and run a newly added regression test RED before editing production code. The regression must prove that a direct submit of a node with rejected output-document review is rejected by submit_task_node_for_acceptance. Use the existing node_document_review_summary and established WorkflowValidationError conventions; do not invent a parallel query or error type.
+
+After the coordinator reviews the red test, implement the smallest backend check in workflow_runtime.py. Keep missing_documents soft and pending_approval submittable. Add/adjust only the focused backend regression test.
+
+Also fix the frontend stale gate in EmployeeItemWorkspace.jsx: a successful output-document upload must re-read the existing /shortage payload before or with onRefresh so a rejected-document blocker can clear without reopening the node. Failed uploads must not refresh gate or show success. Add a focused test for this exact sequence.
+
+Allowed files only:
+- dev/backend/src/contracts/workflow_runtime.py (after red-test approval)
+- dev/backend/tests/<focused existing workflow test>.py
+- dev/frontend/src/features/employee-portal/EmployeeItemWorkspace.jsx
+- dev/frontend/src/features/employee-portal/EmployeeItemWorkspace.test.jsx
+
+Run the focused backend test, focused frontend tests, and oxlint for changed frontend files. Do not run Playwright and do not commit. Return the red-test output, final test output, exact files changed, and any unresolved risk.
+```
+
+### Wave 3.5 Review Gate
+
+Fresh reviewer verifies the backend test genuinely fails before the change, the server rejects rejected documents on direct submit, existing soft/pending rules remain unchanged, and the upload-success gate refresh has no unhandled race or failed-upload refresh. Coordinator must approve before Wave 4.
 
 ---
 

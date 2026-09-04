@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import EmployeeItemWorkspace from './EmployeeItemWorkspace'
+import { ToastProvider } from '../../contexts/ToastContext'
 
 vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), getAccessToken: () => null }))
 vi.mock('../document-register/DocumentRegister', () => ({
@@ -12,7 +13,14 @@ vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({ default: () => null 
 vi.mock('../handover/HandoverPanel', () => ({ default: () => null }))
 vi.mock('./EmployeeWorkspaceCalendar', () => ({
   ChecklistEvidenceItem: () => <div data-testid="minh-chung" />,
-  NodeActionBar: ({ task }) => <button type="button">Hành động {task.status}</button>,
+  NodeActionBar: ({ task, gate }) => (
+    <button
+      type="button"
+      data-gate-blockers={(gate?.blockers || []).map(b => b.kind).join(',')}
+    >
+      Hành động {task.status}
+    </button>
+  ),
 }))
 
 const { apiFetch } = await import('../../lib/api')
@@ -196,6 +204,21 @@ describe('Thông báo của bước', () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalled())
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
+
+  // Task 3: gate /shortage đã nạp sẵn được CHUYỂN xuống NodeActionBar để nút
+  // biết cổng cứng ngay từ đầu, không phải đợi bấm rồi mới hỏi lại.
+  it('chuyển payload /shortage đã nạp xuống NodeActionBar qua prop gate', async () => {
+    mount({}, {
+      blockers: [
+        { kind: 'rejected_documents', message: 'Còn 1 tờ bị Giám đốc trả lại chưa sửa.' },
+      ],
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Hành động/ }))
+        .toHaveAttribute('data-gate-blockers', 'rejected_documents')
+    })
+  })
 })
 
 describe('Bước của người khác', () => {
@@ -338,5 +361,167 @@ describe('Mở tệp qua callback thật của cha (openDocument)', () => {
     await waitFor(() => {
       expect(screen.getByText(/Xem tài liệu Hợp đồng lưu trữ/)).toBeInTheDocument()
     })
+  })
+})
+
+describe('Tải lên tài liệu đầu ra qua API thật (multipart)', () => {
+  const UPLOAD_TASK = {
+    ...TASK,
+    checklist: [{
+      id: 'c1',
+      name: 'Bộ hồ sơ kỹ thuật',
+      template_names: { 'T-CCCD': 'CCCD chủ đất', 'T-BANVE': 'Bản vẽ hiện trạng' },
+      output_documents: [{ template_id: 'T-CCCD' }, { template_id: 'T-BANVE' }],
+      review_by_template: {
+        'T-CCCD': { document_id: 'd1', review_status: 'approved' },
+        'T-BANVE': { document_id: 'd2', review_status: 'rejected', rejection_reason: 'Ảnh mờ' },
+      },
+    }],
+  }
+
+  const mountUpload = (gate = { blockers: [] }) => {
+    apiFetch.mockReset()
+    apiFetch.mockResolvedValue(gate)
+    const onRefresh = vi.fn()
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace item={ITEM} tasks={[UPLOAD_TASK]} onBack={vi.fn()} onRefresh={onRefresh} />
+      </ToastProvider>,
+    )
+    return { onRefresh }
+  }
+
+  const selectChildBFile = () => {
+    fireEvent.click(screen.getByRole('button', { name: /Tải lên Bản vẽ hiện trạng/i }))
+    const file = new File(['replacement'], 'ban-ve-sua.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Tải lên Bản vẽ hiện trạng'), {
+      target: { files: [file] },
+    })
+    return file
+  }
+
+  it('POST FormData đúng URL với template_id và File của tờ B', async () => {
+    mountUpload()
+    const file = selectChildBFile()
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/employee-portal/tasks/n2/checklist/c1/output-documents',
+        expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+      )
+    })
+
+    const call = apiFetch.mock.calls.find(([url]) => String(url).includes('/output-documents'))
+    const body = call[1].body
+    expect(body.get('template_id')).toBe('T-BANVE')
+    expect(body.get('file')).toBe(file)
+  })
+
+  it('không có request nào nhắm tới tờ A khi tải lên tờ B', async () => {
+    mountUpload()
+    selectChildBFile()
+
+    await waitFor(() => {
+      expect(
+        apiFetch.mock.calls.some(([url]) => String(url).includes('/output-documents')),
+      ).toBe(true)
+    })
+    // FormData chỉ mang template_id của B; không có lượt POST nào cho A.
+    const posts = apiFetch.mock.calls.filter(([url]) => String(url).includes('/output-documents'))
+    expect(posts).toHaveLength(1)
+    expect(posts[0][1].body.get('template_id')).toBe('T-BANVE')
+  })
+
+  it('thành công thì gọi onRefresh SAU khi API trả về', async () => {
+    const { onRefresh } = mountUpload()
+    selectChildBFile()
+
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('API lỗi thì KHÔNG gọi onRefresh và hiện lỗi API', async () => {
+    apiFetch.mockReset()
+    // Lượt shortage GET ban đầu ổn; lượt POST output-documents hỏng.
+    apiFetch.mockImplementation((url, opts) => {
+      if (String(url).includes('/output-documents') && opts?.method === 'POST') {
+        return Promise.reject(new Error('Tệp vượt quá dung lượng cho phép'))
+      }
+      return Promise.resolve({ blockers: [] })
+    })
+    const onRefresh = vi.fn()
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace item={ITEM} tasks={[UPLOAD_TASK]} onBack={vi.fn()} onRefresh={onRefresh} />
+      </ToastProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Tải lên Bản vẽ hiện trạng/i }))
+    fireEvent.change(screen.getByLabelText('Tải lên Bản vẽ hiện trạng'), {
+      target: { files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Tệp vượt quá dung lượng cho phép')).toBeInTheDocument()
+    })
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
+  it('tờ đã duyệt (CCCD) không có nút/ô tải lên ở màn cha', () => {
+    mountUpload()
+    expect(screen.queryByRole('button', { name: /Tải lên CCCD chủ đất/i })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Tải lên CCCD chủ đất')).not.toBeInTheDocument()
+  })
+
+  const demShortage = () =>
+    apiFetch.mock.calls.filter(([url]) => String(url).includes('/shortage')).length
+
+  // ── ĐANG ĐỎ CÓ CHỦ ĐÍCH ─────────────────────────────────────────────────
+  // Nộp tệp sửa xong thì cổng /shortage PHẢI được đọc lại: tờ vừa thay có thể
+  // vừa gỡ đúng blocker 'rejected_documents' đang treo cạnh nút. Hôm nay handler
+  // chỉ gọi onRefresh (làm mới ở CHA), còn effect đọc /shortage chỉ chạy lại khi
+  // task.id/status/pause đổi — mà nộp tệp không đổi mấy thứ đó. Kết quả: cảnh báo
+  // cũ đứng hình, nút vẫn xám dù đã sửa. Test này đỏ tới khi component tự đọc lại.
+  it('nộp THÀNH CÔNG thì đọc lại cổng /shortage', async () => {
+    const { onRefresh } = mountUpload()
+
+    await waitFor(() => expect(demShortage()).toBeGreaterThanOrEqual(1))
+    const truoc = demShortage()
+
+    selectChildBFile()
+    // Đợi lượt nộp đi qua đúng đường THÀNH CÔNG (onRefresh chỉ gọi sau khi API về).
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1))
+
+    await waitFor(() => expect(demShortage()).toBeGreaterThan(truoc))
+  })
+
+  it('nộp LỖI thì KHÔNG đọc lại cổng /shortage', async () => {
+    apiFetch.mockReset()
+    // Lượt shortage GET ban đầu ổn; lượt POST output-documents hỏng.
+    apiFetch.mockImplementation((url, opts) => {
+      if (String(url).includes('/output-documents') && opts?.method === 'POST') {
+        return Promise.reject(new Error('Tệp vượt quá dung lượng cho phép'))
+      }
+      return Promise.resolve({ blockers: [] })
+    })
+    const onRefresh = vi.fn()
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace item={ITEM} tasks={[UPLOAD_TASK]} onBack={vi.fn()} onRefresh={onRefresh} />
+      </ToastProvider>,
+    )
+
+    await waitFor(() => expect(demShortage()).toBeGreaterThanOrEqual(1))
+    const truoc = demShortage()
+
+    selectChildBFile()
+    await waitFor(() =>
+      expect(screen.getByText('Tệp vượt quá dung lượng cho phép')).toBeInTheDocument())
+
+    // Nộp hỏng thì không có gì đổi để phải đọc lại — và không được nuốt lỗi bằng
+    // một lượt làm mới lặng lẽ.
+    expect(demShortage()).toBe(truoc)
+    expect(onRefresh).not.toHaveBeenCalled()
   })
 })
