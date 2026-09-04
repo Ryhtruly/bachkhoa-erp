@@ -44,7 +44,7 @@ export default function NodeDocumentCabinet({
     let huy = false
     apiFetch(`/api/document-register/register?contract_id=${encodeURIComponent(contractId)}`
       + `&service_line_id=${encodeURIComponent(serviceLineId)}`)
-      .then(res => { if (!huy) setGroups(res?.cabinet_by_node || []) })
+      .then(res => { if (!huy) setGroups(res?.checklist_cabinet_by_node || []) })
       .catch(err => { if (!huy) setError(err?.message || 'Không mở được tủ hồ sơ') })
     return () => { huy = true }
   }, [contractId, serviceLineId])
@@ -59,7 +59,7 @@ export default function NodeDocumentCabinet({
   if (groups.length === 0) {
     return (
       <p className="eiw-cab__msg">
-        Hạng mục này chưa khai loại giấy nào trong Mẫu giấy tờ.
+        Hạng mục này chưa có loại giấy nào được gắn vào checklist.
       </p>
     )
   }

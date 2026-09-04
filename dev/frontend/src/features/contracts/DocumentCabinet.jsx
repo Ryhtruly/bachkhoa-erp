@@ -135,7 +135,7 @@ export default function DocumentCabinet({ contractId, serviceLines = [], addToas
   useEffect(() => { load() }, [load])
 
   // Bộ giấy của Hạng mục, xếp theo bước — cấu trúc lấy từ master data.
-  const nodeGroups = useMemo(() => register?.cabinet_by_node || [], [register])
+  const nodeGroups = useMemo(() => register?.checklist_cabinet_by_node || [], [register])
 
   const counts = useMemo(
     () => nodeGroups.reduce(
@@ -490,7 +490,7 @@ export default function DocumentCabinet({ contractId, serviceLines = [], addToas
                 <p className="doc-cabinet__empty">
                   {serviceLines.length === 0
                     ? 'Hợp đồng chưa có hạng mục nào, nên chưa có bộ giấy tờ riêng.'
-                    : 'Hạng mục này chưa khai loại giấy nào trong tab Mẫu giấy tờ.'}
+                    : 'Hạng mục này chưa có loại giấy nào được gắn vào checklist.'}
                 </p>
               )}
 
@@ -553,6 +553,7 @@ export default function DocumentCabinet({ contractId, serviceLines = [], addToas
                                   <span className="doc-cabinet__src">
                                     {SOURCE_SHORT[doc.source] || doc.source_label || doc.source}
                                   </span>
+                                  {hasFile && <span>{doc.file_count} tệp</span>}
                                   {doc.is_required && <span>Bắt buộc</span>}
                                   {copy && <span>{copy}</span>}
                                 </span>

@@ -56,6 +56,7 @@ const RAC = Array.from({ length: 30 }, (_, i) => slot({
 
 const REGISTER = {
   planned_node_by_template: { 'T-CCCD': 'K01', 'T-BANVE': 'K03' },
+  checklist_cabinet_by_node: cabinet(),
   cabinet_by_node: cabinet(),
   groups: [
     {
@@ -169,6 +170,47 @@ describe('Tủ đọc master data, không đọc ô giấy thô', () => {
     <DocumentCabinet contractId="HD-1" serviceLines={SERVICE_LINES} addToast={vi.fn()} />,
   )
 
+  it('hiện tên loại và đủ số tệp của tủ checklist đã hoàn tất', async () => {
+    mockApi({
+      ...REGISTER,
+      checklist_cabinet_by_node: [{
+        node_code: 'K01', node_name: 'Tiếp nhận', total: 1, done: 1,
+        documents: [{
+          ...CCCD,
+          name: 'Hồ sơ pháp lý đã duyệt',
+          checklist_result_id: 'CR-DONE',
+          review_status: 'approved',
+          status_label: 'Đã duyệt',
+          file_count: 3,
+          files: [
+            { id: 'D-1', file_name: 'mat-truoc.jpg', content_type: 'image/jpeg' },
+            { id: 'D-2', file_name: 'mat-sau.jpg', content_type: 'image/jpeg' },
+            { id: 'D-3', file_name: 'xac-nhan.pdf', content_type: 'application/pdf' },
+          ],
+        }],
+      }],
+      cabinet_by_node: cabinet({ K01: [CCCD], K03: [], null: [] }),
+    })
+    mount()
+    await screen.findByText('anh-zalo.jpg')
+    openNodeTab()
+
+    const row = screen.getByText('Hồ sơ pháp lý đã duyệt').closest('.doc-cabinet__row')
+    expect(within(row).getByText('3 tệp')).toBeInTheDocument()
+    expect(screen.queryByText('CCCD')).not.toBeInTheDocument()
+  })
+
+  it('bỏ qua hoàn toàn tủ legacy khi phản hồi chưa có trường tủ checklist', async () => {
+    const { checklist_cabinet_by_node: _shared, ...legacyOnly } = REGISTER
+    mockApi({ ...legacyOnly, cabinet_by_node: cabinet() })
+    mount()
+    await screen.findByText('anh-zalo.jpg')
+    openNodeTab()
+
+    expect(screen.getByText(/chưa có loại giấy nào được gắn vào checklist/)).toBeInTheDocument()
+    expect(screen.queryByText('CCCD')).not.toBeInTheDocument()
+  })
+
   it('đếm theo bộ giấy của hạng mục, không đếm 30 ô rác trong sổ', async () => {
     mount()
     await screen.findByText('anh-zalo.jpg')
@@ -268,7 +310,7 @@ describe('Tủ đọc master data, không đọc ô giấy thô', () => {
   it('loại giấy được miễn nói rõ là miễn, không nằm im ở "Chưa có"', async () => {
     mockApi({
       ...REGISTER,
-      cabinet_by_node: cabinet({
+      checklist_cabinet_by_node: cabinet({
         K01: [{ ...CCCD, is_waived: true }], K03: [BAN_VE], null: [SO_HO_KHAU],
       }),
     })
@@ -280,13 +322,13 @@ describe('Tủ đọc master data, không đọc ô giấy thô', () => {
     expect(within(row).getByText('Đã miễn')).toBeInTheDocument()
   })
 
-  it('hạng mục chưa khai giấy nào thì nói thẳng, không mở tủ rỗng không lời', async () => {
-    mockApi({ ...REGISTER, cabinet_by_node: [] })
+  it('hạng mục chưa có giấy checklist thì nói thẳng, không mở tủ rỗng không lời', async () => {
+    mockApi({ ...REGISTER, checklist_cabinet_by_node: [] })
     mount()
     await screen.findByText('anh-zalo.jpg')
     openNodeTab()
 
-    expect(screen.getByText(/chưa khai loại giấy nào trong tab Mẫu giấy tờ/)).toBeInTheDocument()
+    expect(screen.getByText(/chưa có loại giấy nào được gắn vào checklist/)).toBeInTheDocument()
   })
 })
 
@@ -372,7 +414,7 @@ describe('Kho nguyên bản', () => {
     const daDay = (d) => ({ ...d, file_count: 1, files: [{ id: `D-${d.template_id}` }] })
     mockApi({
       ...REGISTER,
-      cabinet_by_node: cabinet({
+      checklist_cabinet_by_node: cabinet({
         K01: [daDay(CCCD)], K03: [BAN_VE], null: [daDay(SO_HO_KHAU)],
       }),
     })
@@ -389,7 +431,7 @@ describe('Kho nguyên bản', () => {
   it('loại giấy đã khai nhưng chưa dựng được ô thì không mời gán vào nó', async () => {
     mockApi({
       ...REGISTER,
-      cabinet_by_node: cabinet({
+      checklist_cabinet_by_node: cabinet({
         K01: [{ ...CCCD, slot_id: null }], K03: [BAN_VE], null: [SO_HO_KHAU],
       }),
     })
