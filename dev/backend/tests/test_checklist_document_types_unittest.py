@@ -2,6 +2,7 @@ import json
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
@@ -101,6 +102,164 @@ class ChecklistDocumentTypeProgressTests(unittest.TestCase):
         self.assertEqual(progress(db, "CR-2"), {
             "approved": 1, "total": 3, "percent": 33, "is_complete": False,
         })
+
+
+class _ProfileResult:
+    def __init__(self, *, rows=None, first=None):
+        self._rows = list(rows or [])
+        self._first = first
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+    def first(self):
+        return self._first
+
+
+class _ProfileSerializationDb:
+    def __init__(self, service):
+        self.service = service
+        self.execute_calls = []
+        self.tasks = [{
+            "id": "NODE-1", "node_key": "survey", "node_code": "K02",
+            "node_name": "Khảo sát", "node_description": None,
+            "node_definition": {}, "is_handover": False,
+            "requires_gov_submission": False, "pause_reason_type": None,
+            "paused_at": None, "paused_note": None, "paused_seconds": 0,
+            "allow_pause": True, "allow_gov_tracking": False,
+            "cluster_code": "SURVEY", "rework_deadline_at": None,
+            "status": "rework_required", "outcome": None, "started_at": None,
+            "submitted_at": None, "deadline_at": None, "is_overdue": False,
+            "completed_at": None, "execution_data": {}, "role_code": "MAIN",
+            "is_primary": True, "service_line_id": "SL-1",
+            "contract_id": "HD-1", "priority": "NORMAL",
+        }]
+        self.checklists = [
+            {
+                "id": "CR-1", "task_node_id": "NODE-1", "checklist_key": "anh-moc",
+                "checklist_name": "Ảnh mốc", "is_required": True,
+                "status": "failed", "require_evidence": True,
+                "approver_role": "DIRECTOR", "is_overdue": False,
+                "late_reason": None, "director_note": "Chụp lại ảnh mờ",
+                "submitted_at": None, "evidence_data": {},
+                "output_documents": [], "review_by_template": {},
+            },
+            {
+                "id": "CR-2", "task_node_id": "NODE-1", "checklist_key": "bien-ban",
+                "checklist_name": "Biên bản", "is_required": True,
+                "status": "pending", "require_evidence": False,
+                "approver_role": "DIRECTOR", "is_overdue": False,
+                "late_reason": None, "director_note": None,
+                "submitted_at": None, "evidence_data": {},
+                "output_documents": [], "review_by_template": {},
+            },
+        ]
+        self.document_types = [
+            {
+                "id": "CRT-1", "checklist_result_id": "CR-1", "template_id": None,
+                "name": "Ảnh mốc phụ", "source": "CONG_TY",
+                "origin": "EMPLOYEE_CREATED", "status": "rejected",
+                "rejection_reason": "Ảnh mờ",
+            },
+            {
+                "id": "CRT-2", "checklist_result_id": "CR-1",
+                "template_id": "TPL-BB", "name": "Biên bản ranh giới",
+                "source": "CO_QUAN", "origin": "CONFIGURED",
+                "status": "approved", "rejection_reason": None,
+            },
+        ]
+        self.files = [
+            {"document_type_id": "CRT-1", "document_id": "D-1", "file_name": "moc-1.jpg", "content_type": "image/jpeg"},
+            {"document_type_id": "CRT-1", "document_id": "D-2", "file_name": "moc-2.jpg", "content_type": "image/jpeg"},
+            {"document_type_id": "CRT-1", "document_id": "D-3", "file_name": "moc-3.png", "content_type": "image/png"},
+            {"document_type_id": "CRT-2", "document_id": "D-4", "file_name": "bien-ban.pdf", "content_type": "application/pdf"},
+        ]
+
+    def execute(self, query, params=None):
+        self.execute_calls.append((query, params or {}))
+        if query is self.service._TASKS_QUERY:
+            return _ProfileResult(rows=self.tasks)
+        if query is self.service._TASK_ASSIGNEES_QUERY:
+            return _ProfileResult(rows=[])
+        if query is self.service._TASK_CHECKLIST_QUERY:
+            return _ProfileResult(rows=self.checklists)
+        if query is getattr(self.service, "_CHECKLIST_DOCUMENT_TYPES_QUERY", None):
+            return _ProfileResult(rows=self.document_types)
+        if query is getattr(self.service, "_CHECKLIST_DOCUMENT_TYPE_FILES_QUERY", None):
+            return _ProfileResult(rows=self.files)
+        if query is self.service._CURRENT_PAYROLL_QUERY:
+            return _ProfileResult(first={
+                "base_salary": 0, "tasks_completed": 0,
+                "piece_amount": 0, "adjustment_amount": 0,
+            })
+        raise AssertionError(f"Unexpected profile query: {query}")
+
+    def query(self, model):
+        query = MagicMock()
+        query.filter.return_value = query
+        query.order_by.return_value = query
+        query.first.return_value = (
+            SimpleNamespace(email="nhan-vien@example.test")
+            if model.__name__ == "User" else None
+        )
+        query.all.return_value = []
+        return query
+
+
+class EmployeeProfileDocumentTypeSerializationTests(unittest.TestCase):
+    def test_profile_returns_every_active_type_file_and_progress_in_two_batched_queries(self):
+        from src.employee_portal import service
+
+        db = _ProfileSerializationDb(service)
+        employee = SimpleNamespace(
+            id="EMP-1", user_id="USER-1", department_id=None,
+            full_name="Nhân viên", avatar_url=None, department="Survey",
+            job_title="Kỹ thuật", join_date=None, base_salary=0, is_active=True,
+        )
+
+        with patch.object(service, "_held_items", return_value=[]):
+            profile = service.EmployeePortalService.build_profile(db, employee)
+
+        checklist = profile["tasks"][0]["checklist"][0]
+        self.assertEqual(checklist["document_types"][0], {
+            "id": "CRT-1",
+            "template_id": None,
+            "name": "Ảnh mốc phụ",
+            "source": "CONG_TY",
+            "source_label": "Công ty soạn/lập",
+            "origin": "EMPLOYEE_CREATED",
+            "status": "rejected",
+            "rejection_reason": "Ảnh mờ",
+            "files": [
+                {"document_id": "D-1", "file_name": "moc-1.jpg", "content_type": "image/jpeg"},
+                {"document_id": "D-2", "file_name": "moc-2.jpg", "content_type": "image/jpeg"},
+                {"document_id": "D-3", "file_name": "moc-3.png", "content_type": "image/png"},
+            ],
+            "file_count": 3,
+        })
+        self.assertEqual(checklist["document_type_progress"], {
+            "approved": 1, "total": 2, "percent": 50, "is_complete": False,
+        })
+        self.assertEqual(
+            profile["tasks"][0]["checklist"][1]["document_type_progress"],
+            {"approved": 0, "total": 0, "percent": 0, "is_complete": False},
+        )
+
+        type_calls = [
+            call for call in db.execute_calls
+            if call[0] is getattr(service, "_CHECKLIST_DOCUMENT_TYPES_QUERY", None)
+        ]
+        file_calls = [
+            call for call in db.execute_calls
+            if call[0] is getattr(service, "_CHECKLIST_DOCUMENT_TYPE_FILES_QUERY", None)
+        ]
+        self.assertEqual(len(type_calls), 1)
+        self.assertEqual(len(file_calls), 1)
+        self.assertEqual(type_calls[0][1], {"checklist_result_ids": ["CR-1", "CR-2"]})
+        self.assertEqual(file_calls[0][1], {"checklist_result_ids": ["CR-1", "CR-2"]})
 
 
 class ChecklistDocumentTypeContextTests(unittest.TestCase):

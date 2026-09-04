@@ -26,6 +26,7 @@ from src.db.models import (
     LeaveRecord,
     User,
 )
+from src.dossiers.checklist_document_types import SOURCE_LABELS as DOCUMENT_TYPE_SOURCE_LABELS
 
 # Runtime execution/pay tables (task_nodes, task_node_assignments,
 # work_pay_entitlements, employee_compensation_terms, employee_pay_adjustments)
@@ -690,6 +691,31 @@ _TASK_CHECKLIST_QUERY = text(
     """
 )
 
+_CHECKLIST_DOCUMENT_TYPES_QUERY = text(
+    """
+    select t.id, t.checklist_result_id, t.template_id, t.name, t.source,
+           t.origin, t.status, t.rejection_reason
+    from public.checklist_result_document_types t
+    where t.checklist_result_id = any(:checklist_result_ids)
+      and t.is_active
+    order by t.checklist_result_id, t.created_at, t.id
+    """
+)
+
+_CHECKLIST_DOCUMENT_TYPE_FILES_QUERY = text(
+    """
+    select f.document_type_id, d.id as document_id, d.file_name, d.content_type
+    from public.checklist_result_document_type_files f
+    join public.checklist_result_document_types t on t.id = f.document_type_id
+    join public.dossier_documents d on d.id = f.document_id
+    where t.checklist_result_id = any(:checklist_result_ids)
+      and t.is_active
+      and f.is_active
+      and d.doc_status = 'DANG_DUNG'
+    order by f.document_type_id, f.created_at, d.id
+    """
+)
+
 _CURRENT_PAYROLL_QUERY = text(
     """
     with period as (
@@ -869,6 +895,7 @@ class EmployeePortalService:
         user = db.query(User).filter(User.id == employee.user_id).first()
         tasks = db.execute(_TASKS_QUERY, {"employee_id": employee.id}).mappings().all()
         checklist_by_task = {}
+        checklist_by_id = {}
         assignees_by_task = {}
         task_node_ids = [task["id"] for task in tasks]
         if task_node_ids:
@@ -889,24 +916,80 @@ class EmployeePortalService:
                 _TASK_CHECKLIST_QUERY, {"task_node_ids": task_node_ids}
             ).mappings().all()
             for row in checklist_rows:
-                checklist_by_task.setdefault(row["task_node_id"], []).append(
-                    {
-                        "id": row["id"],
-                        "key": row["checklist_key"],
-                        "name": row["checklist_name"],
-                        "is_required": bool(row["is_required"]),
-                        "status": row["status"],
-                        "require_evidence": bool(row["require_evidence"]),
-                        "approver_role": row["approver_role"],
-                        "is_overdue": bool(row["is_overdue"]),
-                        "late_reason": row["late_reason"],
-                        "director_note": row["director_note"],
-                        "submitted_at": _date_value(row["submitted_at"]),
-                        "evidence_files": (row["evidence_data"] or {}).get("files", []),
-                        "output_documents": list(row["output_documents"] or []),
-                        "review_by_template": dict(row["review_by_template"] or {}),
-                    }
+                checklist = {
+                    "id": row["id"],
+                    "key": row["checklist_key"],
+                    "name": row["checklist_name"],
+                    "is_required": bool(row["is_required"]),
+                    "status": row["status"],
+                    "require_evidence": bool(row["require_evidence"]),
+                    "approver_role": row["approver_role"],
+                    "is_overdue": bool(row["is_overdue"]),
+                    "late_reason": row["late_reason"],
+                    "director_note": row["director_note"],
+                    "submitted_at": _date_value(row["submitted_at"]),
+                    "evidence_files": (row["evidence_data"] or {}).get("files", []),
+                    "output_documents": list(row["output_documents"] or []),
+                    "review_by_template": dict(row["review_by_template"] or {}),
+                }
+                checklist_by_task.setdefault(row["task_node_id"], []).append(checklist)
+                checklist_by_id[row["id"]] = checklist
+
+            checklist_result_ids = list(checklist_by_id)
+            document_type_by_id = {}
+            for row in db.execute(
+                _CHECKLIST_DOCUMENT_TYPES_QUERY,
+                {"checklist_result_ids": checklist_result_ids},
+            ).mappings().all():
+                document_type = {
+                    "id": row["id"],
+                    "template_id": row["template_id"],
+                    "name": row["name"],
+                    "source": row["source"],
+                    "source_label": DOCUMENT_TYPE_SOURCE_LABELS.get(
+                        row["source"], row["source"]
+                    ),
+                    "origin": row["origin"],
+                    "status": row["status"],
+                    "rejection_reason": row["rejection_reason"],
+                    "files": [],
+                    "file_count": 0,
+                }
+                document_type_by_id[row["id"]] = document_type
+                checklist_by_id[row["checklist_result_id"]].setdefault(
+                    "document_types", []
+                ).append(document_type)
+
+            for row in db.execute(
+                _CHECKLIST_DOCUMENT_TYPE_FILES_QUERY,
+                {"checklist_result_ids": checklist_result_ids},
+            ).mappings().all():
+                document_type = document_type_by_id.get(row["document_type_id"])
+                if document_type is None:
+                    continue
+                document_type["files"].append({
+                    "document_id": row["document_id"],
+                    "file_name": row["file_name"],
+                    "content_type": row["content_type"],
+                })
+
+            for checklist in checklist_by_id.values():
+                document_types = checklist.setdefault("document_types", [])
+                for document_type in document_types:
+                    document_type["file_count"] = len(document_type["files"])
+                approved = sum(
+                    1
+                    for document_type in document_types
+                    if document_type["status"] == "approved"
+                    and document_type["file_count"] > 0
                 )
+                total = len(document_types)
+                checklist["document_type_progress"] = {
+                    "approved": approved,
+                    "total": total,
+                    "percent": round(approved * 100 / total) if total else 0,
+                    "is_complete": total > 0 and approved == total,
+                }
         # Tên loại giấy: một truy vấn cho tất cả id được nhắc tới.
         #
         # Không nhét vào truy vấn checklist bằng lateral — lateral chỉ thấy bảng

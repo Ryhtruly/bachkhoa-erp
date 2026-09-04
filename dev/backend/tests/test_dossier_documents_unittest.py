@@ -1254,3 +1254,92 @@ class NhanBuocTheoMasterDataTests(unittest.TestCase):
         from src.dossiers import register
 
         self.assertEqual(register.planned_node_by_template(self._db([]), "SL-1"), {})
+
+
+class TuHoSoTheoChecklistTests(unittest.TestCase):
+    def test_an_checklist_99_phan_tram_va_tra_du_moi_tep_cua_checklist_100_phan_tram(self):
+        from src.dossiers import register
+
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value.all.return_value = [
+            {
+                "node_code": "K02", "node_name": "Khảo sát", "task_node_id": "TN-2",
+                "checklist_result_id": "CR-99", "checklist_name": "Checklist gần đạt",
+                "checklist_complete": False, "document_type_id": "DT-99",
+                "template_id": "T-99", "promoted_template_id": None,
+                "name": "Giấy còn thiếu", "source": "CONG_TY", "origin": "CONFIGURED",
+                "needs_original": False, "slot_id": "S-99", "review_status": "approved",
+                "rejection_reason": None,
+                "files": [{"id": "D-99", "document_id": "D-99", "file_name": "gan-xong.pdf", "content_type": "application/pdf"}],
+                "file_count": 1,
+            },
+            {
+                "node_code": "K02", "node_name": "Khảo sát", "task_node_id": "TN-2",
+                "checklist_result_id": "CR-100", "checklist_name": "Checklist đã đạt",
+                "checklist_complete": True, "document_type_id": "DT-ANH",
+                "template_id": None, "promoted_template_id": "T-ANH-MOI",
+                "name": "Ảnh hiện trạng", "source": "CONG_TY",
+                "origin": "EMPLOYEE_CREATED", "needs_original": False,
+                "slot_id": "S-ANH", "review_status": "approved",
+                "rejection_reason": None,
+                "files": [
+                    {"id": "D-1", "document_id": "D-1", "file_name": "hien-trang-1.jpg", "content_type": "image/jpeg"},
+                    {"id": "D-2", "document_id": "D-2", "file_name": "hien-trang-2.jpg", "content_type": "image/jpeg"},
+                    {"id": "D-3", "document_id": "D-3", "file_name": "hien-trang-3.png", "content_type": "image/png"},
+                ],
+                "file_count": 3,
+            },
+            {
+                "node_code": "K02", "node_name": "Khảo sát", "task_node_id": "TN-2",
+                "checklist_result_id": "CR-100", "checklist_name": "Checklist đã đạt",
+                "checklist_complete": True, "document_type_id": "DT-BB",
+                "template_id": "T-BB", "promoted_template_id": None,
+                "name": "Biên bản ranh giới", "source": "KHACH_HANG",
+                "origin": "CONFIGURED", "needs_original": True,
+                "slot_id": "S-BB", "review_status": "approved",
+                "rejection_reason": None,
+                "files": [{"id": "D-4", "document_id": "D-4", "file_name": "bien-ban.pdf", "content_type": "application/pdf"}],
+                "file_count": 1,
+            },
+        ]
+
+        groups = register.checklist_cabinet_by_node(db, "SL-1")
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["total"], 2)
+        self.assertEqual(groups[0]["done"], 2)
+        self.assertEqual(
+            [item["name"] for item in groups[0]["documents"]],
+            ["Ảnh hiện trạng", "Biên bản ranh giới"],
+        )
+        self.assertEqual(groups[0]["documents"][0]["template_id"], "T-ANH-MOI")
+        self.assertEqual(groups[0]["documents"][0]["file_count"], 3)
+        self.assertEqual(
+            [file["id"] for file in groups[0]["documents"][0]["files"]],
+            ["D-1", "D-2", "D-3"],
+        )
+        emitted_query = " ".join(str(db.execute.call_args.args[0]).lower().split())
+        self.assertIn("checklist_result_document_types", emitted_query)
+        self.assertIn("checklist_result_document_type_files", emitted_query)
+        self.assertIn("bool_and", emitted_query)
+        self.assertIn("file_count > 0", emitted_query)
+        self.assertNotIn("limit 1", emitted_query)
+
+    def test_get_register_exposes_the_completed_checklists_through_the_shared_field(self):
+        from src.dossiers import register
+
+        shared = [{"node_code": "K02", "documents": [], "total": 0, "done": 0}]
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value.all.return_value = []
+
+        with patch.object(register, "_contract_or_404"), \
+             patch.object(register, "_slots_query"), \
+             patch.object(register, "register_version", return_value=2), \
+             patch.object(register, "map_document_templates_to_nodes", return_value={}), \
+             patch.object(register, "planned_node_by_template", return_value={}), \
+             patch.object(register, "cabinet_by_node", return_value=[]), \
+             patch.object(register, "checklist_cabinet_by_node", return_value=shared) as cabinet:
+            response = register.get_register(db, "HD-1", service_line_id="SL-1")
+
+        self.assertIs(response["checklist_cabinet_by_node"], shared)
+        cabinet.assert_called_once_with(db, "SL-1")
