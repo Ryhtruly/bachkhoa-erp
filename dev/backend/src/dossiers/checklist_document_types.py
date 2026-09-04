@@ -21,6 +21,104 @@ SOURCE_LABELS = {
 }
 
 
+_MATERIALIZE_CONFIGURED_TYPES_QUERY = text("""
+    insert into public.checklist_result_document_types
+        (checklist_result_id, template_id, name, normalized_name, source,
+         origin, status, created_by)
+    select cr.id,
+           t.id,
+           t.name,
+           lower(regexp_replace(btrim(t.name), '[[:space:]]+', ' ', 'g')),
+           t.source,
+           'CONFIGURED',
+           'draft',
+           :actor_id
+    from public.task_node_checklist_results cr
+    join public.task_nodes n on n.id = cr.task_node_id
+    join public.workflow_instances wi on wi.id = n.workflow_instance_id
+    join public.workflow_instance_revisions r_defined
+      on r_defined.id = n.defined_by_revision_id
+    left join public.workflow_instance_revisions r_active
+      on r_active.id = wi.active_revision_id
+    cross join lateral jsonb_array_elements(coalesce(
+        r_active.graph->'nodes'->n.node_key->'checklist',
+        r_defined.graph->'nodes'->n.node_key->'checklist',
+        '[]'::jsonb
+    )) checklist_item
+    cross join lateral jsonb_array_elements(coalesce(
+        checklist_item->'output_documents', '[]'::jsonb
+    )) output_document
+    join public.document_checklist_templates t
+      on t.id = output_document->>'template_id'
+    where cr.id = :checklist_result_id
+      and checklist_item->>'key' = cr.checklist_key
+    on conflict (checklist_result_id, normalized_name, source) where is_active
+    do nothing
+    returning id
+""")
+
+
+_EXACT_COMBO_SUGGESTIONS_QUERY = text("""
+    select t.id as template_id, t.name, t.source
+    from public.document_template_applicabilities a
+    join public.document_checklist_templates t on t.id = a.template_id
+    where a.applicability_type = 'COMBO'
+      and a.service_package_id = :service_package_id
+      and a.task_type_id = :task_type_id
+      and a.node_code = :node_code
+      and a.is_default
+      and coalesce(t.is_active, true)
+    order by t.sort_order, t.name, t.id
+""")
+
+
+def materialize_configured_types(
+    db: Session, checklist_result_id: str, actor_id: str | None = None
+) -> int:
+    """Snapshot configured graph outputs into idempotent runtime type rows."""
+    created = db.execute(
+        _MATERIALIZE_CONFIGURED_TYPES_QUERY,
+        {
+            "checklist_result_id": checklist_result_id,
+            "actor_id": actor_id,
+        },
+    ).fetchall()
+    return len(created)
+
+
+def exact_combo_suggestions(
+    db: Session, checklist_result_id: str
+) -> dict[str, Any]:
+    """Return only active defaults matching the checklist's exact server scope."""
+    context = checklist_context(db, checklist_result_id)
+    response_context = {
+        "service_package_name": context.get("service_package_name"),
+        "task_type_name": context.get("task_type_name"),
+        "node_code": context.get("node_code"),
+    }
+    scope = {
+        "service_package_id": context.get("service_package_id"),
+        "task_type_id": context.get("task_type_id"),
+        "node_code": context.get("node_code"),
+    }
+    if not all(scope.values()):
+        return {"data": [], "context": response_context}
+
+    rows = db.execute(_EXACT_COMBO_SUGGESTIONS_QUERY, scope).mappings().all()
+    return {
+        "data": [
+            {
+                "template_id": row["template_id"],
+                "name": row["name"],
+                "source": row["source"],
+                "source_label": SOURCE_LABELS.get(row["source"], row["source"]),
+            }
+            for row in rows
+        ],
+        "context": response_context,
+    }
+
+
 def checklist_context(db: Session, checklist_result_id: str) -> dict[str, Any]:
     """Derive the exact template-applicability scope from a checklist result."""
     row = db.execute(

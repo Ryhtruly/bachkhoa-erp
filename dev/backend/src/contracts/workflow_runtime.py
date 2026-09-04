@@ -17,6 +17,8 @@ from sqlalchemy import text
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
 
+from src.dossiers.checklist_document_types import materialize_configured_types
+
 
 ROLE_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 APPROVER_ROLE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -1569,6 +1571,9 @@ def _apply_workflow_amendment(
                     },
                 checklist_name=item["name"],
                 )
+                materialize_configured_types(
+                    db, checklist_result_id, actor_id=actor_id
+                )
             checklist_count += 1
 
             if is_payable:
@@ -1739,6 +1744,9 @@ def _apply_workflow_amendment(
                     "pay_key": compensation.get("pay_key") if is_payable else None,
                 },
             checklist_name=item["name"],
+            )
+            materialize_configured_types(
+                db, checklist_result_id, actor_id=actor_id
             )
             checklist_count += 1
             if is_payable:
@@ -2081,6 +2089,9 @@ def activate_workflow(
                     "pay_key": compensation.get("pay_key") if is_payable else None,
                 },
             checklist_name=item["name"],
+            )
+            materialize_configured_types(
+                db, checklist_result_id, actor_id=actor_id
             )
             checklist_count += 1
 

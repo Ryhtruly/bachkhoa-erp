@@ -69,7 +69,7 @@ def _contract_or_404(db: Session, contract_id: str) -> dict:
 # Tuyệt đối không OR các phạm vi lại với nhau: mẫu GLOBAL bật + PACKAGE tắt mà
 # OR thì ra bật, tức là Giám đốc tắt cho gói Pháp Lý xong nó vẫn tự tick — im
 # lặng phủ quyết đúng cái quyết định vừa đưa ra.
-_APPLICABILITY_RANK = {"GLOBAL": 1, "PACKAGE": 2, "TASK_TYPE": 3}
+_APPLICABILITY_RANK = {"GLOBAL": 1, "PACKAGE": 2, "TASK_TYPE": 3, "COMBO": 4}
 
 _APPLICABLE_TEMPLATES_QUERY = text("""
     select t.id, t.name, t.source, t.is_required, t.needs_original,
@@ -82,6 +82,11 @@ _APPLICABLE_TEMPLATES_QUERY = text("""
       or (a.applicability_type = 'PACKAGE'
           and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id))
       or (a.applicability_type = 'TASK_TYPE' and a.task_type_id = tt.id)
+      or (a.applicability_type = 'COMBO'
+          and :node_code is not null
+          and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id)
+          and a.task_type_id = tt.id
+          and a.node_code = :node_code)
     join document_checklist_templates t
       on t.id = a.template_id and coalesce(t.is_active, true)
     where sl.id = :service_line_id
@@ -89,7 +94,9 @@ _APPLICABLE_TEMPLATES_QUERY = text("""
 """)
 
 
-def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, Any]]:
+def applicable_templates(
+    db: Session, service_line_id: str, *, node_code: str | None = None
+) -> list[dict[str, Any]]:
     """Bộ mẫu gợi ý cho một Hạng mục, đã gộp theo độ ưu tiên phạm vi.
 
     Mỗi ``template_id`` chỉ ra ĐÚNG MỘT dòng. Không có phạm vi nào khớp thì
@@ -97,7 +104,8 @@ def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, An
     """
     gop: dict[str, dict[str, Any]] = {}
     for row in db.execute(
-        _APPLICABLE_TEMPLATES_QUERY, {"service_line_id": service_line_id}
+        _APPLICABLE_TEMPLATES_QUERY,
+        {"service_line_id": service_line_id, "node_code": node_code},
     ).mappings():
         hang = _APPLICABILITY_RANK.get(row["applicability_type"], 0)
         cu_hon = gop.get(row["id"])
