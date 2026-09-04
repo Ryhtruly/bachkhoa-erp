@@ -56,6 +56,11 @@ class PauseNodeIn(BaseModel):
     note: str
 
 
+class ClassifySourceDocumentIn(BaseModel):
+    document_type_id: str | None = None
+    template_id: str | None = None
+
+
 class ClaimClusterIn(BaseModel):
     workflow_instance_id: str
     cluster_code: str
@@ -784,6 +789,63 @@ def reuse_checklist_output_document(
         db.rollback()
         raise
     publish_timeline_change("checklist_output_document_added", entity_id=checklist_result_id)
+    return {"status": "success", "data": result}
+
+
+@router.post("/tasks/{task_node_id}/checklist/{checklist_result_id}/source-documents/{document_id}")
+def classify_source_document(
+    task_node_id: str,
+    checklist_result_id: str,
+    document_id: str,
+    payload: ClassifySourceDocumentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Gán giấy nguyên bản vào đúng loại giấy checklist trong một transaction."""
+    from src.dossiers.checklist_document_types import attach_existing_file
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    document_type_id = str(payload.document_type_id or "").strip() or None
+    if document_type_id:
+        _require_document_type_in_checklist(db, checklist_result_id, document_type_id)
+    else:
+        template_id = str(payload.template_id or "").strip() or None
+        if not template_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Phải chọn loại giấy runtime hoặc mẫu giấy cũ.",
+            )
+        document_type_id = db.execute(
+            text("""
+                select id
+                from public.checklist_result_document_types
+                where checklist_result_id = :checklist_result_id
+                  and template_id = :template_id and is_active
+                order by created_at
+                limit 1
+            """),
+            {
+                "checklist_result_id": checklist_result_id,
+                "template_id": template_id,
+            },
+        ).scalar()
+        if not document_type_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Mẫu giấy này chưa được cấu hình trong checklist.",
+            )
+    try:
+        result = attach_existing_file(
+            db,
+            document_type_id=document_type_id,
+            document_id=document_id,
+            actor_id=user.id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("source_document_classified", entity_id=checklist_result_id)
     return {"status": "success", "data": result}
 
 

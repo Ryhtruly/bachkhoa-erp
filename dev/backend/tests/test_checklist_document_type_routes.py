@@ -130,5 +130,19 @@ class ChecklistDocumentTypeRouteTests(unittest.TestCase):
         self.db.commit.assert_called_once()
         self.assertEqual(result["data"]["document_id"], "D-1")
 
+    def test_raw_assignment_payload_prefers_runtime_document_type(self):
+        payload_type = routes.ClassifySourceDocumentIn
+        payload = payload_type(document_type_id="DT-1", template_id="TPL-OLD")
+        with patch.object(routes, "_active_employee_for_user", return_value=self.employee), \
+             patch.object(routes.EmployeePortalService, "authorize_checklist_evidence_submission"), \
+             patch("src.dossiers.checklist_document_types.attach_existing_file", return_value={
+                 "document_type_id": "DT-1",
+             }) as attach:
+            routes.classify_source_document("NODE-1", "CR-1", "D-RAW", payload, self.db, self.user)
+        attach.assert_called_once_with(
+            self.db, document_type_id="DT-1", document_id="D-RAW", actor_id="USER-1",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
