@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import fs from 'node:fs'
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:3000'
 const username = process.env.E2E_USERNAME
@@ -238,5 +239,95 @@ test('employee workflow remains usable on mobile', async ({ page }, testInfo) =>
   await page.screenshot({ path: testInfo.outputPath('employee-mobile.png'), fullPage: true })
 
   // All runtime failures fatal
+  expect(failures, failures.join('\n')).toEqual([])
+})
+
+test('employee submission gate exposes hard rejection and soft shortage', async ({ page }) => {
+  const failures = setupRuntimeErrorCollector(page)
+
+  await login(page)
+  const openButtons = page.locator('article.ew-held').getByRole('button', { name: 'Mở ra làm' })
+  if (await openButtons.count() === 0) {
+    throw new Error('TEST_DATA_BLOCKED: No assigned employee item with "Mở ra làm" found for gate test')
+  }
+  const taskId = await page.evaluate(async () => {
+    const token = window.localStorage.getItem('bachkhoa_access_token')
+    const response = await fetch('/api/employee-portal/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const body = await response.json()
+    return body.tasks?.find(task => task.node_code === 'K01')?.id || null
+  })
+  if (!taskId) {
+    throw new Error('TEST_DATA_BLOCKED: Node detail does not expose task node identity for gate request')
+  }
+  const token = await page.evaluate(() => window.localStorage.getItem('bachkhoa_access_token'))
+  await openButtons.first().click()
+  await expect(page.locator('.eiw-node-banner, h1, h2.eiw-band--name').first()).toBeVisible({ timeout: 15_000 })
+
+  const rejectionAlert = page.locator('.eiw-alert.is-rejected_documents')
+  const shortageAlert = page.locator('.eiw-alert.is-missing_documents')
+  await expect(rejectionAlert).toBeVisible()
+  await expect(shortageAlert).toBeVisible()
+  const submitResponse = await page.request.post(
+    `/api/employee-portal/tasks/${encodeURIComponent(taskId)}/submit`,
+    {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      data: { note: 'Wave 5 gate assertion' },
+    },
+  )
+  const submitBody = await submitResponse.json().catch(() => null)
+  expect(submitResponse.status()).toBe(422)
+  expect(submitBody?.detail).toMatch(/chưa điền xong|trả lại|tài liệu đầu ra/i)
+  expect(failures, failures.join('\n')).toEqual([])
+})
+
+test('employee upload targets the selected output document child', async ({ page }) => {
+  const failures = setupRuntimeErrorCollector(page)
+
+  await login(page)
+  const openButtons = page.locator('article.ew-held').getByRole('button', { name: 'Mở ra làm' })
+  if (await openButtons.count() === 0) {
+    throw new Error('TEST_DATA_BLOCKED: No assigned employee item with "Mở ra làm" found for upload test')
+  }
+  await openButtons.first().click()
+  await expect(page.locator('.eiw-node-banner, h1, h2.eiw-band--name').first()).toBeVisible({ timeout: 15_000 })
+
+  const retryButton = page.getByRole('button', { name: 'Làm lại' })
+  if (await retryButton.count() > 0) {
+    const startResponse = page.waitForResponse(response =>
+      response.request().method() === 'POST' && response.url().includes('/api/employee-portal/tasks/') && response.url().endsWith('/start'),
+    )
+    await retryButton.click()
+    expect((await startResponse).status()).toBe(200)
+  }
+
+  const outputArea = page.getByRole('region', { name: 'Giấy tờ đầu ra' })
+  await expect(page.getByRole('button', { name: 'Nộp nghiệm thu' })).toBeVisible()
+  const targetRow = outputArea.locator('.eiw-doc').filter({ hasText: 'Giấy chứng nhận quyền sử dụng đất' })
+  await expect(targetRow).toHaveCount(1)
+  const uploadInput = targetRow.locator('input[type="file"]')
+  await expect(uploadInput).toHaveCount(1)
+
+  const requestPromise = page.waitForRequest(request =>
+    request.method() === 'POST'
+      && request.url().includes('/api/employee-portal/tasks/')
+      && request.url().includes('/output-documents'),
+  )
+  const responsePromise = page.waitForResponse(response =>
+    response.request().method() === 'POST'
+      && response.url().includes('/api/employee-portal/tasks/')
+      && response.url().includes('/output-documents'),
+  )
+  await uploadInput.setInputFiles({
+    name: 'wave5-child-replacement.png',
+    mimeType: 'image/png',
+    buffer: fs.readFileSync('../backend/static/title_banner.png'),
+  })
+  const [request, response] = await Promise.all([requestPromise, responsePromise])
+  expect(response.status()).toBe(200)
+  expect(request.url()).toMatch(/\/checklist\/[^/]+\/output-documents$/)
+  await expect(targetRow.locator('.eiw-doc__filename-pill')).toContainText('wave5-child-replacement.png')
+  await expect(targetRow).not.toHaveClass(/is-rejected/)
   expect(failures, failures.join('\n')).toEqual([])
 })

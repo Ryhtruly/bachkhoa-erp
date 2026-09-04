@@ -1,98 +1,5 @@
 import pytest
 from sqlalchemy import text
-from src.db.models import (
-    WorkflowInstance, TaskNode, ChecklistResult, 
-    ChecklistResultDocumentLink, DossierDocument
-)
-
-def test_prior_document_idor_sql_contract(db_session):
-    """
-    Structural SQL contract test cho chốt chặn IDOR trong tải tài liệu bước trước.
-    """
-    if db_session.bind.dialect.name != "postgresql":
-        pytest.skip("Test requires PostgreSQL")
-
-    # Arrange: Setup workflow
-    wi = WorkflowInstance(id="wi-test-idor", title="Test WI")
-    db_session.add(wi)
-    
-    n1 = TaskNode(id="n1-idor", workflow_instance_id=wi.id, node_code="100", occurrence_no=1, status="accepted")
-    n2 = TaskNode(id="n2-idor", workflow_instance_id=wi.id, node_code="200", occurrence_no=1, status="processing")
-    n3 = TaskNode(id="n3-idor", workflow_instance_id=wi.id, node_code="300", occurrence_no=1, status="pending")
-    db_session.add_all([n1, n2, n3])
-    
-    r1 = ChecklistResult(id="r1-idor", task_node_id=n1.id)
-    r2 = ChecklistResult(id="r2-idor", task_node_id=n2.id)
-    r3 = ChecklistResult(id="r3-idor", task_node_id=n3.id)
-    db_session.add_all([r1, r2, r3])
-    
-    # Valid prior document
-    d1 = DossierDocument(id="d1-idor", doc_status="DANG_DUNG")
-    l1 = ChecklistResultDocumentLink(checklist_result_id=r1.id, document_id=d1.id, review_status="approved")
-
-    # Rejected document at prior node
-    d2 = DossierDocument(id="d2-idor", doc_status="DANG_DUNG")
-    l2 = ChecklistResultDocumentLink(checklist_result_id=r1.id, document_id=d2.id, review_status="rejected")
-
-    # Revoked/Superseded document at prior node
-    d3 = DossierDocument(id="d3-idor", doc_status="THU_HOI")
-    l3 = ChecklistResultDocumentLink(checklist_result_id=r1.id, document_id=d3.id, review_status="approved")
-    
-    # Document in current node
-    d4 = DossierDocument(id="d4-idor", doc_status="DANG_DUNG")
-    l4 = ChecklistResultDocumentLink(checklist_result_id=r2.id, document_id=d4.id, review_status="rejected")
-
-    # Document in later node
-    d5 = DossierDocument(id="d5-idor", doc_status="DANG_DUNG")
-    l5 = ChecklistResultDocumentLink(checklist_result_id=r3.id, document_id=d5.id, review_status="approved")
-    
-    # Document in wrong workflow
-    wi2 = WorkflowInstance(id="wi-other", title="Other WI")
-    n_other = TaskNode(id="n-other", workflow_instance_id=wi2.id, node_code="100", occurrence_no=1, status="accepted")
-    r_other = ChecklistResult(id="r-other", task_node_id=n_other.id)
-    d6 = DossierDocument(id="d6-idor", doc_status="DANG_DUNG")
-    l6 = ChecklistResultDocumentLink(checklist_result_id=r_other.id, document_id=d6.id, review_status="approved")
-
-    db_session.add_all([wi2, n_other, r_other, d1, l1, d2, l2, d3, l3, d4, l4, d5, l5, d6, l6])
-    db_session.commit()
-
-    sql_check = text("""
-        with moc as (
-            select workflow_instance_id, node_code, occurrence_no
-            from public.task_nodes where id = :task_node_id
-        )
-        select exists (
-            select 1
-            from moc
-            join public.task_nodes n
-              on n.workflow_instance_id = moc.workflow_instance_id
-             and (
-                 n.id = :task_node_id
-                 or (
-                     (n.node_code, n.occurrence_no) < (moc.node_code, moc.occurrence_no)
-                     and n.status in ('accepted', 'completed')
-                 )
-             )
-            join public.task_node_checklist_results r on r.task_node_id = n.id
-            join public.checklist_result_document_links l on l.checklist_result_id = r.id
-            join public.dossier_documents d on d.id = l.document_id
-            where d.id = :document_id
-              and d.doc_status = 'DANG_DUNG'
-              and (n.id = :task_node_id or l.review_status <> 'rejected')
-        )
-    """)
-
-    def check_doc(doc_id):
-        return db_session.execute(sql_check, {"task_node_id": n2.id, "document_id": doc_id}).scalar()
-
-    assert check_doc(d1.id) is True, "Valid prior document must be accepted"
-    assert check_doc(d2.id) is False, "Rejected document must be blocked"
-    assert check_doc(d3.id) is False, "Superseded/revoked document (not DANG_DUNG) must be blocked"
-    assert check_doc(d4.id) is True, "Current-node document must be viewable even when rejected"
-    assert check_doc(d5.id) is False, "Document in later node must be blocked"
-    assert check_doc(d6.id) is False, "Document from wrong workflow must be blocked"
-
-    db_session.rollback()
 
 
 # ---------------------------------------------------------------------------
@@ -121,10 +28,10 @@ def _download_prior_document_source() -> str:
     # Collect lines until the next top-level definition or end-of-file
     body_lines = []
     for line in lines[start + 1 :]:
-        if line and not line.startswith(" ") and not line.startswith("\t") and line.strip():
+        if line.startswith(("def ", "async def ", "@")):
             break
         body_lines.append(line)
-    return "\n".join(lines[start:])  # include the def line itself for full context
+    return "\n".join([lines[start], *body_lines])
 
 
 def _extract_valid_prior_sql() -> str:
@@ -133,12 +40,83 @@ def _extract_valid_prior_sql() -> str:
     # The SQL is inside db.execute(text(""" ... """))
     import re
     m = re.search(
-        r"valid_prior\s*=\s*db\.execute\(\s*text\(\s*\"\"\"(.+?)\"\"\"\s*\)",
+        r"valid_prior\s*=\s*db\.execute\(\s*text\(\s*\"\"\"(.+?)\"\"\"\s*\)\s*(?:,|$)",
         src,
         re.DOTALL,
     )
     assert m is not None, "Could not locate valid_prior SQL in handler source"
     return m.group(1)
+
+
+def test_prior_document_idor_sql_contract(db_session):
+    """Execute the handler predicate against an isolated PostgreSQL fixture.
+
+    The workflow tables are intentionally SQL-only in this repository; there are
+    no ORM models to import for them. Temporary tables keep this test independent
+    of the restored pg-test data while exercising the actual SQL fragment.
+    """
+    if db_session.bind.dialect.name != "postgresql":
+        pytest.skip("Test requires PostgreSQL")
+
+    db_session.execute(text("""
+        create temporary table task_nodes (
+            id text primary key,
+            workflow_instance_id text not null,
+            node_code text not null,
+            occurrence_no integer not null,
+            status text not null
+        ) on commit drop;
+        create temporary table task_node_checklist_results (
+            id text primary key,
+            task_node_id text not null
+        ) on commit drop;
+        create temporary table checklist_result_document_links (
+            checklist_result_id text not null,
+            document_id text not null,
+            review_status text not null
+        ) on commit drop;
+        create temporary table dossier_documents (
+            id text primary key,
+            doc_status text not null
+        ) on commit drop;
+    """))
+    db_session.execute(text("""
+        insert into pg_temp.task_nodes values
+            ('n1-idor', 'wi-test-idor', '100', 1, 'accepted'),
+            ('n2-idor', 'wi-test-idor', '200', 1, 'processing'),
+            ('n3-idor', 'wi-test-idor', '300', 1, 'pending'),
+            ('n-other', 'wi-other', '100', 1, 'accepted');
+        insert into pg_temp.task_node_checklist_results values
+            ('r1-idor', 'n1-idor'), ('r2-idor', 'n2-idor'),
+            ('r3-idor', 'n3-idor'), ('r-other', 'n-other');
+        insert into pg_temp.checklist_result_document_links values
+            ('r1-idor', 'd1-idor', 'approved'),
+            ('r1-idor', 'd2-idor', 'rejected'),
+            ('r1-idor', 'd3-idor', 'approved'),
+            ('r2-idor', 'd4-idor', 'rejected'),
+            ('r3-idor', 'd5-idor', 'approved'),
+            ('r-other', 'd6-idor', 'approved');
+        insert into pg_temp.dossier_documents values
+            ('d1-idor', 'DANG_DUNG'), ('d2-idor', 'DANG_DUNG'),
+            ('d3-idor', 'THU_HOI'), ('d4-idor', 'DANG_DUNG'),
+            ('d5-idor', 'DANG_DUNG'), ('d6-idor', 'DANG_DUNG');
+    """))
+
+    sql_check = _extract_valid_prior_sql().replace("public.", "pg_temp.")
+
+    def check_doc(doc_id):
+        return db_session.execute(
+            text(sql_check),
+            {"task_node_id": "n2-idor", "document_id": doc_id},
+        ).scalar()
+
+    assert check_doc("d1-idor") is True, "Valid prior document must be accepted"
+    assert check_doc("d2-idor") is False, "Rejected document must be blocked"
+    assert check_doc("d3-idor") is False, "Revoked document must be blocked"
+    assert check_doc("d4-idor") is True, "Current-node document remains viewable"
+    assert check_doc("d5-idor") is False, "Later-node document must be blocked"
+    assert check_doc("d6-idor") is False, "Wrong-workflow document must be blocked"
+    db_session.rollback()
 
 
 def test_download_prior_sql_includes_workflow_instance_join():
@@ -182,12 +160,14 @@ def test_download_prior_sql_uses_bind_parameter_for_document_id():
 
 def test_read_scan_called_after_valid_prior_gate():
     """read_scan must be reached only after valid_prior returns truthy — never before."""
+    import re
+
     src = _download_prior_document_source()
     vp_pos = src.find("valid_prior")
-    rs_pos = src.find("read_scan")
+    read_scan_call = re.search(r"(?m)^\s*row, body = read_scan\(", src)
     assert vp_pos != -1, "valid_prior not found in handler"
-    assert rs_pos != -1, "read_scan not found in handler"
-    assert vp_pos < rs_pos, (
+    assert read_scan_call is not None, "read_scan call not found in handler"
+    assert vp_pos < read_scan_call.start(), (
         "read_scan must appear AFTER valid_prior check in handler source"
     )
 
@@ -205,8 +185,9 @@ def test_read_scan_gated_by_valid_prior_check():
         "Handler must have 'if not valid_prior: raise' guard before read_scan"
     )
     guard_end = m.end()
-    rs_pos = src.find("read_scan")
-    assert guard_end < rs_pos, (
+    read_scan_call = re.search(r"(?m)^\s*row, body = read_scan\(", src)
+    assert read_scan_call is not None, "read_scan call not found in handler"
+    assert guard_end < read_scan_call.start(), (
         "The valid_prior guard must precede the read_scan call"
     )
 

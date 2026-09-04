@@ -199,6 +199,7 @@ describe('Mở tệp', () => {
     const doc = onOpenDocument.mock.calls[0][0]
     expect(doc.document_id).toBe('d2')
     expect(doc).toHaveProperty('template_id', 'T-BANVE')
+    expect(doc.name).toBe('Bản vẽ hiện trạng')
   })
 })
 
@@ -277,6 +278,7 @@ describe('Tải lên đúng tờ — danh tính bền theo template_id', () => {
     // Không được đụng tới tờ khác (A/CCCD hay Sơ đồ).
     expect(onUploadDocument.mock.calls[0][0].templateId).not.toBe('T-CCCD')
     expect(onUploadDocument.mock.calls[0][0].templateId).not.toBe('T-SODO')
+    expect(await within(rowOf('Bản vẽ hiện trạng')).findByText('ban-ve-sua.pdf')).toBeInTheDocument()
   })
 
   it('tờ CHƯA NỘP gửi documentId là null, không mượn id của tờ khác', () => {

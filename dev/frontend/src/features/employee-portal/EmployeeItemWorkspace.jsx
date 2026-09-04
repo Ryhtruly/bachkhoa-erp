@@ -238,7 +238,7 @@ export default function EmployeeItemWorkspace({
 
   const openDocument = useCallback(async (doc) => {
     if (!doc) return
-    const docName = doc.name || doc.file_name || doc.fileName || doc.template_id || 'Tài liệu'
+    const docName = doc.file_name || doc.fileName || doc.name || 'Tài liệu'
     setOpenError(null)
 
     if (task?.id && doc.document_id) {

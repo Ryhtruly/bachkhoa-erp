@@ -597,10 +597,11 @@ _NODE_OUTPUT_STATE_QUERY = text("""
            -- Phán quyết của Giám đốc cho tờ mới nhất ở mỗi loại giấy. Giao diện
            -- đọc cái này để bày "đã duyệt" / "đã từ chối kèm lý do" thay vì để
            -- nút Duyệt sáng lên trên một tờ đã xử rồi.
-           coalesce(jsonb_object_agg(s.template_id, jsonb_build_object(
-                      'document_id',      cnt.document_id,
-                      'review_status',    cnt.review_status,
-                      'rejection_reason', cnt.rejection_reason))
+            coalesce(jsonb_object_agg(s.template_id, jsonb_build_object(
+                       'document_id',      cnt.document_id,
+                       'file_name',        cnt.file_name,
+                       'review_status',    cnt.review_status,
+                       'rejection_reason', cnt.rejection_reason))
                     filter (where s.template_id is not null), '{}'::jsonb) as review_by_template
     from public.task_node_checklist_results r
     join public.task_nodes n on n.id = r.task_node_id
@@ -620,7 +621,8 @@ _NODE_OUTPUT_STATE_QUERY = text("""
       -- thì bản mới là bản nhân viên vừa nộp lại sau khi bị trả — bày phán quyết
       -- của bản cũ là hiện lý do từ chối đã hết hiệu lực.
       select d.slot_id, count(*) as so_ban,
-             (array_agg(l.document_id      order by d.uploaded_at desc, d.id desc))[1] as document_id,
+              (array_agg(l.document_id      order by d.uploaded_at desc, d.id desc))[1] as document_id,
+              (array_agg(d.file_name        order by d.uploaded_at desc, d.id desc))[1] as file_name,
              (array_agg(l.review_status    order by d.uploaded_at desc, d.id desc))[1] as review_status,
              (array_agg(l.rejection_reason order by d.uploaded_at desc, d.id desc))[1] as rejection_reason
       from public.checklist_result_document_links l

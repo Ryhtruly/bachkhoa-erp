@@ -106,10 +106,34 @@ from src.db.models import User, Role, UserRole, RolePermission, AuditLog
 from src.core.auth import hash_password, create_access_token
 
 
+def _ensure_audit_log_sequence(connection):
+    """Keep model DDL usable when pg-test was restored before the audit migration.
+
+    ``AuditLog`` declares this sequence in ``Base.metadata``. A restored dump can
+    contain the table/default but not the sequence, which makes both ``create_all``
+    and its teardown fail. The operation is restricted to PostgreSQL and is
+    idempotent; production databases are never selected by this conftest.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    connection.execute(text("create sequence if not exists public.audit_log_id_seq as bigint"))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_test_db():
     import src.db.models
     from sqlalchemy import text
+    with engine.connect() as conn:
+        schema_preexisted = bool(conn.execute(text(
+            """select exists (
+                select 1 from information_schema.tables
+                where table_schema = 'public'
+            )"""
+        )).scalar())
+    with engine.begin() as conn:
+        _ensure_audit_log_sequence(conn)
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
@@ -185,16 +209,22 @@ def init_test_db():
                 pass
     yield
 
-    # Chỉ dọn khi schema DO CHÍNH conftest dựng ra.
-    with engine.connect() as conn:
-        if conn.dialect.name == "sqlite":
-            return
-        dung_tu_dump = bool(
-            conn.execute(text("select to_regclass('public.dossier_document_slots')")).scalar()
-        )
-    if dung_tu_dump:
+    # Chỉ dọn khi conftest dựng một database trống. A pg-test dump is a
+    # pre-existing, possibly partial schema; dropping all ORM metadata there
+    # is unsafe because migrations may own objects absent from Base.metadata.
+    if engine.dialect.name == "sqlite" or schema_preexisted:
         return
-    Base.metadata.drop_all(bind=engine)
+    # A partial restored dump may omit metadata objects (notably the audit
+    # sequence). Do not recreate a missing object solely to tear it down: that
+    # makes SQLAlchemy's metadata walker attempt to drop it twice. When the
+    # sequence is absent, the disposable pg-test database needs no cleanup.
+    with engine.connect() as conn:
+        audit_sequence_exists = bool(
+            conn.execute(text("select to_regclass('public.audit_log_id_seq')")).scalar()
+        )
+    if not audit_sequence_exists:
+        return
+    Base.metadata.drop_all(bind=engine, checkfirst=True)
 
 
 @pytest.fixture(scope="session")

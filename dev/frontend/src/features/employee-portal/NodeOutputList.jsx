@@ -67,6 +67,9 @@ export default function NodeOutputList({
   const inputRefs = useRef({})
   // Tờ đang gửi — khoá riêng từng hàng, không khoá cả danh mục.
   const [uploadingId, setUploadingId] = useState('')
+  // API review_by_template chỉ trả phán quyết, không trả lại tên file. Giữ tên
+  // file vừa chọn theo template để UI không quay về tên giả sau khi upload.
+  const [uploadedFileNames, setUploadedFileNames] = useState({})
   const documents = mergeDocumentVerdicts(checklistItem)
   const counter = documentCounter(documents, nodeStatus)
 
@@ -84,6 +87,10 @@ export default function NodeOutputList({
         documentId: doc.document_id || null,
         file,
       })
+      setUploadedFileNames(previous => ({
+        ...previous,
+        [doc.template_id]: file.name,
+      }))
     } finally {
       setUploadingId('')
     }
@@ -185,8 +192,15 @@ export default function NodeOutputList({
             {documents.map((doc) => {
               const state = docState(doc)
               const name = templateName(doc)
-              const fileName = doc.file_name || doc.fileName || (doc.document_id ? `${name}.pdf` : null)
+              const fileName = doc.file_name || doc.fileName || uploadedFileNames[doc.template_id] || null
               const isRejected = state === 'rejected'
+              const documentForOpen = {
+                ...doc,
+                // Pass the resolved display name along with the document. The
+                // parent must not fall back to template_id when opening it.
+                name: doc.name || name,
+                ...(fileName && !doc.file_name && !doc.fileName ? { file_name: fileName } : {}),
+              }
 
               return (
                 <div
@@ -229,7 +243,7 @@ export default function NodeOutputList({
                               : 'Xem chi tiết giấy tờ'
                         }
                         aria-label={`Mở ${name}`}
-                        onClick={() => onOpenDocument?.(doc)}
+                        onClick={() => onOpenDocument?.(documentForOpen)}
                       >
                         <Eye size={13} />
                         <span>Xem</span>
@@ -290,4 +304,3 @@ export default function NodeOutputList({
     </section>
   )
 }
-
