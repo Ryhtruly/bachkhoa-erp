@@ -444,11 +444,12 @@ def _resolve_or_create_template(
     """Reuse a compatible active template or create one without committing."""
     same_name_templates = db.execute(
         text("""
-            select id, name, source, is_active, is_required, needs_original,
-                   default_quantity, note
+            select id, name, source, is_active, is_identity_owner,
+                   is_required, needs_original, default_quantity, note
             from public.document_checklist_templates
-            where lower(trim(name)) = lower(trim(:name))
-            order by is_active desc
+            where lower(regexp_replace(btrim(name), '[[:space:]]+', ' ', 'g')) =
+                  lower(regexp_replace(btrim(:name), '[[:space:]]+', ' ', 'g'))
+            order by is_active desc, is_identity_owner desc, created_at, id
         """),
         {"name": name, "source": source},
     ).mappings().all()
@@ -466,9 +467,9 @@ def _resolve_or_create_template(
             (template, differences)
         )
 
-    if matching_templates:
+    if reject_conflicting_same_name and matching_templates:
         return matching_templates[0][0]["id"]
-    if mismatched_templates and reject_conflicting_same_name:
+    if reject_conflicting_same_name and mismatched_templates:
         _, differences = mismatched_templates[0]
         raise HTTPException(
             status_code=409,
@@ -479,13 +480,40 @@ def _resolve_or_create_template(
             ),
         )
 
-    return db.execute(
+    # Runtime learning has a deliberately narrower identity than the legacy
+    # request flow: normalized name + source. Slot defaults belong to the
+    # current runtime type and must not make an otherwise identical catalog
+    # type unpromotable. Different sources remain distinct identities.
+    same_source_templates = [
+        template for template in same_name_templates
+        if template["source"] == source
+    ]
+    if same_source_templates:
+        template = same_source_templates[0]
+        if not template["is_active"]:
+            db.execute(
+                text("""
+                    update public.document_checklist_templates
+                    set is_active = true, updated_at = now()
+                    where id = :template_id
+                """),
+                {"template_id": template["id"]},
+            )
+        return template["id"]
+
+    inserted_id = db.execute(
         text("""
             insert into public.document_checklist_templates
                 (id, task_type_id, name, source, is_required, needs_original,
                  default_quantity, sort_order, is_active)
             values (gen_random_uuid()::text, null, :name, :source, :required,
                     :needs_original, :quantity, 900, true)
+            on conflict (
+                (coalesce(task_type_id, '~chung~')),
+                (lower(regexp_replace(btrim(name), '[[:space:]]+', ' ', 'g'))),
+                source
+            ) where is_identity_owner
+            do nothing
             returning id
         """),
         {
@@ -496,6 +524,22 @@ def _resolve_or_create_template(
             "quantity": quantity,
         },
     ).scalar()
+    if inserted_id:
+        return inserted_id
+
+    # A concurrent transaction inserted the same canonical identity after the
+    # first read. ON CONFLICT keeps this transaction usable; resolve again so
+    # runtime calls reuse the winner and legacy calls still compare its full
+    # configuration instead of silently accepting a conflicting template.
+    return _resolve_or_create_template(
+        db,
+        name=name,
+        source=source,
+        quantity=quantity,
+        required=required,
+        needs_original=needs_original,
+        reject_conflicting_same_name=reject_conflicting_same_name,
+    )
 
 
 def promote_template_for_combo(

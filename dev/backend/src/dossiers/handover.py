@@ -780,6 +780,14 @@ def submit_handover_for_acceptance(
     if not checklist_state["ready_for_acceptance"]:
         raise HTTPException(status_code=400, detail="Phải nộp đủ toàn bộ checklist và minh chứng bắt buộc")
 
+    # K06 has a dedicated submit endpoint, but runtime document types still use
+    # the same one-submit state machine as every other node. Keep this after
+    # actor/debt/checklist gates so a forbidden or financially blocked request
+    # cannot mutate employee evidence.
+    from src.dossiers.checklist_document_types import submit_types_for_node
+
+    submit_types_for_node(db, task_node_id, actor_id)
+
     attempt_no = db.execute(
         text("""
             select coalesce(max(attempt_no), 0) + 1
