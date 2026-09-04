@@ -67,6 +67,23 @@ describe('Kho giấy tờ khách gửi trong không gian nhân viên', () => {
     expect(screen.queryByText('Công ty nhà nước')).not.toBeInTheDocument()
   })
 
+  it('báo trạng thái rỗng ngay khi API không còn giấy thô', async () => {
+    const onEmptyChange = vi.fn()
+    apiFetch.mockResolvedValueOnce({ status: 'success', data: [], unclassified: 0 })
+
+    render(
+      <CustomerSourceDocuments
+        contractId="HD-1"
+        taskNodeId="TN-1"
+        checklist={CHECKLIST}
+        onEmptyChange={onEmptyChange}
+      />,
+    )
+
+    await screen.findByText('Không còn giấy nguyên bản nào chưa phân loại.')
+    expect(onEmptyChange).toHaveBeenLastCalledWith(true)
+  })
+
   it('đích phân loại chỉ lấy loại giấy sếp đã gắn trong checklist hiện tại', async () => {
     mount()
     const row = (await screen.findByText('cccd-khach-gui.jpg')).closest('li')
@@ -102,6 +119,7 @@ describe('Kho giấy tờ khách gửi trong không gian nhân viên', () => {
 
   it('ưu tiên loại runtime, chỉ cho gán vào nhóm khách hàng và gửi document_type_id', async () => {
     const onChanged = vi.fn()
+    const onEmptyChange = vi.fn()
     const runtimeChecklist = [{
       id: 'CR-1',
       name: 'Kiểm tra hồ sơ đầu vào',
@@ -121,7 +139,7 @@ describe('Kho giấy tờ khách gửi trong không gian nhân viên', () => {
       ],
       output_documents: [{ template_id: 'LEGACY-HIDDEN' }],
     }]
-    mount({ checklist: runtimeChecklist, onChanged })
+    mount({ checklist: runtimeChecklist, onChanged, onEmptyChange })
 
     const row = (await screen.findByText('cccd-khach-gui.jpg')).closest('li')
     fireEvent.click(within(row).getByRole('button', { name: 'Phân loại' }))
@@ -144,5 +162,6 @@ describe('Kho giấy tờ khách gửi trong không gian nhân viên', () => {
       },
     ))
     expect(onChanged).toHaveBeenCalled()
+    expect(onEmptyChange).toHaveBeenLastCalledWith(true)
   })
 })

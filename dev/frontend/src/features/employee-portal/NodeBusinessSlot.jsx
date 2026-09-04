@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, Pause, Play } from 'lucide-react'
 
-import DocumentRegister from '../document-register/DocumentRegister'
+import CustomerSourceDocuments from './CustomerSourceDocuments'
 import HandoverPanel from '../handover/HandoverPanel'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import { formatMoney } from './nodeWorkFormat'
@@ -16,7 +16,7 @@ import { formatMoney } from './nodeWorkFormat'
  *   allow_pause         → dải tạm dừng / tiếp tục          (K05a, K05b)
  *   allow_gov_tracking  → thêm bảng theo dõi cơ quan       (chỉ K05b)
  *   is_handover         → thanh công nợ + lập phiếu nợ     (K06)
- *   K01                 → kho giấy tờ khách gửi
+ *   mọi node            → kho giấy tờ khách gửi chưa phân loại
  *
  * Đổi bước nào có gì sau này là một câu update xuống danh mục, không phải sửa
  * mã rồi deploy.
@@ -39,8 +39,41 @@ export default function NodeBusinessSlot({
   const allowGovTracking = Boolean(task.allow_gov_tracking)
   const requiresGovSubmission = Boolean(task.requires_gov_submission)
 
+  useEffect(() => {
+    setCustomerDocsOpen(true)
+  }, [task.id])
+
+  const handleCustomerDocumentsEmpty = useCallback((isEmpty) => {
+    if (isEmpty) setCustomerDocsOpen(false)
+  }, [])
+
   return (
     <>
+      {/* Kho nguyên bản luôn đứng đầu vùng thao tác. Nó chỉ hiện tệp chưa phân
+          loại; đích gán lấy từ checklist của chính node đang mở. */}
+      <button
+        type="button"
+        className="eiw-band eiw-band--slot"
+        aria-expanded={customerDocsOpen}
+        aria-controls="customer-source-documents-panel"
+        onClick={() => setCustomerDocsOpen(value => !value)}
+      >
+        <span>Kho giấy tờ khách gửi</span>
+        <ChevronDown size={16} className={customerDocsOpen ? 'is-open' : ''} />
+      </button>
+      {customerDocsOpen && (
+        <div id="customer-source-documents-panel" className="eiw-slotbody">
+          <CustomerSourceDocuments
+            contractId={item.contract_id}
+            taskNodeId={task.id}
+            checklist={task.checklist || []}
+            addToast={addToast}
+            onChanged={onRefresh}
+            onEmptyChange={handleCustomerDocumentsEmpty}
+          />
+        </div>
+      )}
+
       {/* ── K05a · K05b: dừng đồng hồ khi việc đứng vì lý do ngoài mình ── */}
       {allowPause && (
         paused ? (
@@ -86,34 +119,6 @@ export default function NodeBusinessSlot({
         </>
       )}
 
-      {/* ── K01: kho giấy khách gửi ── */}
-      {task.node_code === 'K01' && (
-        <>
-          <button
-            type="button"
-            className="eiw-band eiw-band--slot"
-            aria-expanded={customerDocsOpen}
-            aria-controls="k01-customer-docs-panel"
-            onClick={() => setCustomerDocsOpen(value => !value)}
-          >
-            <span>Kho giấy tờ khách gửi</span>
-            <ChevronDown size={16} className={customerDocsOpen ? 'is-open' : ''} />
-          </button>
-          {customerDocsOpen && (
-            <div id="k01-customer-docs-panel" className="eiw-slotbody">
-              <DocumentRegister
-                contractId={item.contract_id}
-                serviceLineId={item.service_line_id}
-                addToast={addToast}
-                title="Giấy tờ khách cung cấp"
-                inputOnly
-                nodeKey={(task.node_key || task.node_code || '').toLowerCase()}
-                nodeCode={task.node_code || ''}
-              />
-            </div>
-          )}
-        </>
-      )}
     </>
   )
 }

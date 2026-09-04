@@ -3499,7 +3499,8 @@
 }
 
 .eiw-type-picker__options > li:hover,
-.eiw-type-picker__options > li:focus-visible {
+.eiw-type-picker__options > li:focus-visible,
+.eiw-type-picker__options > li.is-active {
   background: #eff6ff;
 }
 

@@ -84,6 +84,44 @@ describe('Thêm loại giấy ngay trong checklist', () => {
     expect(screen.getByLabelText('Tên loại giấy')).toBeInTheDocument()
   })
 
+  it('điều hướng combobox bằng phím mũi tên, Enter và Escape', async () => {
+    const onClose = vi.fn()
+    apiFetch.mockResolvedValueOnce(SUGGESTIONS)
+    mount({ onClose })
+
+    const combobox = await screen.findByRole('combobox', { name: 'Loại giấy' })
+    await screen.findByRole('option', { name: /CCCD\/CMND/ })
+
+    fireEvent.keyDown(combobox, { key: 'ArrowDown' })
+    const cccd = screen.getByRole('option', { name: /CCCD\/CMND/ })
+    expect(cccd).toHaveAttribute('aria-selected', 'true')
+    expect(combobox).toHaveAttribute('aria-activedescendant', cccd.id)
+
+    fireEvent.keyDown(combobox, { key: 'ArrowDown' })
+    expect(screen.getByRole('option', { name: /Bản vẽ hiện trạng/ })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(combobox, { key: 'ArrowUp' })
+    fireEvent.keyDown(combobox, { key: 'Enter' })
+    expect(screen.getByLabelText('Nhóm')).toHaveValue('KHACH_HANG')
+    expect(screen.getByLabelText('Nhóm')).toBeDisabled()
+
+    fireEvent.keyDown(screen.getByLabelText('Nhóm'), { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hủy' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('Escape đóng picker khi combobox đang mở', async () => {
+    const onClose = vi.fn()
+    apiFetch.mockResolvedValueOnce(SUGGESTIONS)
+    mount({ onClose })
+
+    const combobox = await screen.findByRole('combobox', { name: 'Loại giấy' })
+    fireEvent.keyDown(combobox, { key: 'Escape' })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('chọn gợi ý gửi duy nhất template_id rồi upload nhiều file trong một request', async () => {
     const onAdded = vi.fn()
     apiFetch
@@ -138,5 +176,29 @@ describe('Thêm loại giấy ngay trong checklist', () => {
         body: JSON.stringify({ name: 'Ảnh vị trí mốc phụ', source: 'CO_QUAN' }),
       },
     ))
+  })
+
+  it('vẫn refresh loại đã tạo và báo đúng khi request upload bị lỗi', async () => {
+    const onAdded = vi.fn()
+    const addToast = vi.fn()
+    const created = { id: 'TYPE-1', name: 'CCCD/CMND' }
+    apiFetch
+      .mockResolvedValueOnce(SUGGESTIONS)
+      .mockResolvedValueOnce({ status: 'success', data: created })
+      .mockRejectedValueOnce(new Error('Mất kết nối khi tải file'))
+    mount({ onAdded, addToast })
+
+    fireEvent.click(await screen.findByRole('option', { name: /CCCD\/CMND/ }))
+    fireEvent.change(screen.getByLabelText('Chọn file hoặc ảnh'), {
+      target: { files: [new File(['front'], 'cccd.jpg', { type: 'image/jpeg' })] },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào checklist' }))
+
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith(created))
+    expect(addToast).toHaveBeenCalledWith(
+      expect.stringMatching(/Đã tạo loại giấy.*file chưa tải được/i),
+      'warning',
+    )
+    expect(addToast).not.toHaveBeenCalledWith(expect.stringMatching(/Không thêm được loại giấy/i), 'error')
   })
 })

@@ -16,6 +16,7 @@ export default function CustomerSourceDocuments({
   checklist = [],
   addToast,
   onChanged,
+  onEmptyChange,
 }) {
   const [documents, setDocuments] = useState(null)
   const [error, setError] = useState('')
@@ -24,19 +25,26 @@ export default function CustomerSourceDocuments({
   const [busyId, setBusyId] = useState(null)
 
   useEffect(() => {
-    if (!contractId) return undefined
+    if (!contractId) {
+      setDocuments([])
+      onEmptyChange?.(true)
+      return undefined
+    }
     let cancelled = false
     setDocuments(null)
     setError('')
     apiFetch(`/api/document-register/contracts/${encodeURIComponent(contractId)}/source-documents`)
       .then(payload => {
-        if (!cancelled) setDocuments((payload?.data || []).filter(doc => !(doc.slots || []).length))
+        if (cancelled) return
+        const unclassified = (payload?.data || []).filter(doc => !(doc.slots || []).length)
+        setDocuments(unclassified)
+        onEmptyChange?.(unclassified.length === 0)
       })
       .catch(requestError => {
         if (!cancelled) setError(requestError?.message || 'Không đọc được kho giấy khách gửi.')
       })
     return () => { cancelled = true }
-  }, [contractId])
+  }, [contractId, onEmptyChange])
 
   const targets = useMemo(() => checklist.flatMap(item => {
     const hasRuntimeTypes = Object.prototype.hasOwnProperty.call(item || {}, 'document_types')
@@ -78,7 +86,9 @@ export default function CustomerSourceDocuments({
           ),
         },
       )
-      setDocuments(current => (current || []).filter(row => row.id !== document.id))
+      const remaining = (documents || []).filter(row => row.id !== document.id)
+      setDocuments(remaining)
+      onEmptyChange?.(remaining.length === 0)
       setClassifyingId(null)
       addToast?.(`Đã phân loại ${document.file_name}`, 'success')
       onChanged?.()

@@ -31,6 +31,7 @@ export default function ChecklistDocumentTypePicker({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [activeIndex, setActiveIndex] = useState(-1)
 
   useEffect(() => {
     let cancelled = false
@@ -63,6 +64,7 @@ export default function ChecklistDocumentTypePicker({
     setQuery(suggestion.name)
     setSource(suggestion.source)
     setError('')
+    setActiveIndex(-1)
   }
 
   const startCreating = () => {
@@ -71,6 +73,44 @@ export default function ChecklistDocumentTypePicker({
     setQuery('')
     setSource('KHACH_HANG')
     setError('')
+    setActiveIndex(-1)
+  }
+
+  const optionCount = filteredSuggestions.length + 1
+  const optionsId = `document-type-options-${checklistResultId}`
+  const optionId = index => `${optionsId}-option-${index}`
+
+  const chooseActiveOption = () => {
+    if (activeIndex < 0) return
+    if (activeIndex < filteredSuggestions.length) {
+      chooseSuggestion(filteredSuggestions[activeIndex])
+    } else {
+      startCreating()
+    }
+  }
+
+  const handleComboboxKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setActiveIndex(-1)
+      onClose?.()
+      return
+    }
+    if (loading || optionCount === 0) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveIndex(current => (current + 1) % optionCount)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex(current => (current <= 0 ? optionCount - 1 : current - 1))
+      return
+    }
+    if (event.key === 'Enter' && activeIndex >= 0) {
+      event.preventDefault()
+      chooseActiveOption()
+    }
   }
 
   const submit = async (event) => {
@@ -83,6 +123,7 @@ export default function ChecklistDocumentTypePicker({
 
     setBusy(true)
     setError('')
+    let created
     try {
       const createdPayload = await apiFetch(
         `${endpointRoot(taskNodeId, checklistResultId)}/document-types`,
@@ -95,7 +136,16 @@ export default function ChecklistDocumentTypePicker({
           ),
         },
       )
-      const created = createdPayload?.data || createdPayload
+      created = createdPayload?.data || createdPayload
+    } catch (requestError) {
+      const message = requestError?.message || 'Không thêm được loại giấy vào checklist.'
+      setError(message)
+      addToast?.(message, 'error')
+      setBusy(false)
+      return
+    }
+
+    try {
       if (files.length > 0) {
         const body = new FormData()
         files.forEach(file => body.append('files', file))
@@ -110,12 +160,12 @@ export default function ChecklistDocumentTypePicker({
         }
       }
       addToast?.(`Đã thêm ${created.name || selected?.name || name} vào checklist.`, 'success')
-      onAdded?.(created)
-    } catch (requestError) {
-      const message = requestError?.message || 'Không thêm được loại giấy vào checklist.'
+    } catch {
+      const message = 'Đã tạo loại giấy nhưng file chưa tải được. Bạn có thể tải lại tại hàng loại giấy.'
       setError(message)
-      addToast?.(message, 'error')
+      addToast?.(message, 'warning')
     } finally {
+      onAdded?.(created)
       setBusy(false)
     }
   }
@@ -148,14 +198,19 @@ export default function ChecklistDocumentTypePicker({
               role={creating ? undefined : 'combobox'}
               aria-label={creating ? 'Tên loại giấy' : 'Loại giấy'}
               aria-expanded={!creating && !selected}
-              aria-controls={!creating ? `document-type-options-${checklistResultId}` : undefined}
+              aria-controls={!creating ? optionsId : undefined}
               aria-autocomplete={!creating ? 'list' : undefined}
+              aria-activedescendant={!creating && !selected && activeIndex >= 0
+                ? optionId(activeIndex)
+                : undefined}
               value={query}
               placeholder={creating ? 'Nhập tên loại giấy phát sinh' : 'Tìm loại giấy đã cấu hình'}
               onChange={event => {
                 setQuery(event.target.value)
                 if (selected) setSelected(null)
+                setActiveIndex(-1)
               }}
+              onKeyDown={handleComboboxKeyDown}
             />
           </span>
         </label>
@@ -176,18 +231,21 @@ export default function ChecklistDocumentTypePicker({
       </div>
 
       {!creating && !selected && (
-        <ul className="eiw-type-picker__options" role="listbox" id={`document-type-options-${checklistResultId}`}>
+        <ul className="eiw-type-picker__options" role="listbox" id={optionsId}>
           {loading ? (
             <li className="eiw-type-picker__loading"><LoaderCircle size={15} className="is-spinning" /> Đang tải gợi ý…</li>
           ) : (
             <>
-              {filteredSuggestions.map(suggestion => (
+              {filteredSuggestions.map((suggestion, index) => (
                 <li
                   key={suggestion.template_id}
+                  id={optionId(index)}
                   role="option"
-                  aria-selected="false"
-                  tabIndex={0}
+                  aria-selected={activeIndex === index}
+                  tabIndex={-1}
+                  className={activeIndex === index ? 'is-active' : undefined}
                   onClick={() => chooseSuggestion(suggestion)}
+                  onMouseEnter={() => setActiveIndex(index)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
@@ -200,11 +258,13 @@ export default function ChecklistDocumentTypePicker({
                 </li>
               ))}
               <li
+                id={optionId(filteredSuggestions.length)}
                 role="option"
-                aria-selected="false"
-                tabIndex={0}
-                className="eiw-type-picker__create"
+                aria-selected={activeIndex === filteredSuggestions.length}
+                tabIndex={-1}
+                className={`eiw-type-picker__create${activeIndex === filteredSuggestions.length ? ' is-active' : ''}`}
                 onClick={startCreating}
+                onMouseEnter={() => setActiveIndex(filteredSuggestions.length)}
                 onKeyDown={event => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
