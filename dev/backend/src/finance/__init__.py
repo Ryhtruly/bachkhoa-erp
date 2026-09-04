@@ -8,7 +8,7 @@ from src.finance.enums import (
 )
 from src.finance.schemas import (
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
-    AdvanceCreateIn, AdvanceClearIn, FundCloseIn,
+    AdvanceCreateIn, AdvanceRequestIn, AdvanceClearIn, FundCloseIn,
     WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn
 )
 from src.finance.serializers import (
@@ -38,6 +38,7 @@ __all__ = [
     "CashflowUpdateIn",
     "CashflowVoidIn",
     "AdvanceCreateIn",
+    "AdvanceRequestIn",
     "AdvanceClearIn",
     "FundCloseIn",
     "WageCreateIn",

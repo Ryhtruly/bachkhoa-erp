@@ -36,6 +36,7 @@ from src.db.models.operations import (
 )
 from src.db.models.finance import (
     CashflowTransaction,
+    AdvanceRequest,
     Receivable,
     FundOpeningBalance,
     FinanceSetting,
@@ -90,6 +91,7 @@ __all__ = [
     "TaskType",
     "ServicePackage",
     "CashflowTransaction",
+    "AdvanceRequest",
     "Receivable",
     "FundOpeningBalance",
     "FinanceSetting",

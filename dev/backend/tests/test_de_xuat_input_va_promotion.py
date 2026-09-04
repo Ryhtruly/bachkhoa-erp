@@ -71,10 +71,10 @@ class PromotionCoPhamViTests(unittest.TestCase):
             ]}),
             MagicMock(), MagicMock(),
         ]
-        slot_requests._promote_theo_pham_vi(
+        slot_requests._promote_template_by_scope(
             db, request={"service_line_id": "SL-1"}, promotion_scope=scope,
-            ten_chinh_thuc="Giấy lạ", nguon="KHACH_HANG", so_luong=1,
-            bat_buoc=False, can_ban_chinh=False, actor_id="GD", request_id="Q1",
+            official_name="Giấy lạ", source="KHACH_HANG", quantity=1,
+            required=False, needs_original=False, actor_id="GD", request_id="Q1",
         )
         return db
 
@@ -83,10 +83,10 @@ class PromotionCoPhamViTests(unittest.TestCase):
         from src.dossiers import slot_requests
 
         db = MagicMock()
-        slot_requests._promote_theo_pham_vi(
+        slot_requests._promote_template_by_scope(
             db, request={"service_line_id": "SL-1"}, promotion_scope=None,
-            ten_chinh_thuc="Giấy lạ", nguon="KHACH_HANG", so_luong=1,
-            bat_buoc=False, can_ban_chinh=False, actor_id="GD", request_id="Q1",
+            official_name="Giấy lạ", source="KHACH_HANG", quantity=1,
+            required=False, needs_original=False, actor_id="GD", request_id="Q1",
         )
         db.execute.assert_not_called()
 
@@ -94,10 +94,10 @@ class PromotionCoPhamViTests(unittest.TestCase):
         from src.dossiers import slot_requests
 
         db = MagicMock()
-        slot_requests._promote_theo_pham_vi(
+        slot_requests._promote_template_by_scope(
             db, request={"service_line_id": "SL-1"}, promotion_scope="HANG_MUC_NAY",
-            ten_chinh_thuc="Giấy lạ", nguon="KHACH_HANG", so_luong=1,
-            bat_buoc=False, can_ban_chinh=False, actor_id="GD", request_id="Q1",
+            official_name="Giấy lạ", source="KHACH_HANG", quantity=1,
+            required=False, needs_original=False, actor_id="GD", request_id="Q1",
         )
         db.execute.assert_not_called()
 
@@ -126,10 +126,10 @@ class PromotionCoPhamViTests(unittest.TestCase):
         from src.dossiers import slot_requests
 
         with self.assertRaises(HTTPException) as treo:
-            slot_requests._promote_theo_pham_vi(
+            slot_requests._promote_template_by_scope(
                 db=MagicMock(), request={"service_line_id": "SL-1"},
-                promotion_scope="TOAN_VU_TRU", ten_chinh_thuc="x", nguon="KHACH_HANG",
-                so_luong=1, bat_buoc=False, can_ban_chinh=False,
+                promotion_scope="TOAN_VU_TRU", official_name="x", source="KHACH_HANG",
+                quantity=1, required=False, needs_original=False,
                 actor_id="GD", request_id="Q1",
             )
         self.assertEqual(treo.exception.status_code, 422)
@@ -143,33 +143,33 @@ class TaiDungTemplateAnToanTests(unittest.TestCase):
     làm hỏng chỗ kia.
     """
 
-    def _chay(self, cac_mau_trung_ten, nguon_moi="KHACH_HANG",
-              so_luong=1, bat_buoc=False, can_ban_chinh=False):
+    def _run_promotion(self, same_name_templates, source="KHACH_HANG",
+              quantity=1, required=False, needs_original=False):
         from src.dossiers import slot_requests
 
         db = MagicMock()
         db.execute.side_effect = [
             _row({"task_type_id": "T-TT", "service_package_id": "P-PL"}),
-            MagicMock(**{"mappings.return_value.all.return_value": cac_mau_trung_ten}),
+            MagicMock(**{"mappings.return_value.all.return_value": same_name_templates}),
             MagicMock(**{"scalar.return_value": "TPL-MOI"}),
             MagicMock(), MagicMock(),
         ]
-        slot_requests._promote_theo_pham_vi(
+        slot_requests._promote_template_by_scope(
             db, request={"service_line_id": "SL-1"}, promotion_scope="TASK_TYPE",
-            ten_chinh_thuc="Giấy uỷ quyền", nguon=nguon_moi, so_luong=so_luong,
-            bat_buoc=bat_buoc, can_ban_chinh=can_ban_chinh,
+            official_name="Giấy uỷ quyền", source=source, quantity=quantity,
+            required=required, needs_original=needs_original,
             actor_id="GD", request_id="Q1",
         )
         return db
 
     def test_trung_ten_va_trung_nguon_thi_dung_lai(self):
-        db = self._chay([_mau("TPL-CU")])
+        db = self._run_promotion([_mau("TPL-CU")])
         thamso = [c.args[1] for c in db.execute.call_args_list if len(c.args) > 1]
         self.assertEqual([t for t in thamso if "tpl" in t][0]["tpl"], "TPL-CU")
 
     def test_trung_ten_khac_nguon_thi_TU_CHOI_chu_khong_noi_bua(self):
         with self.assertRaises(HTTPException) as treo:
-            self._chay([_mau("TPL-CU", source="CONG_TY")])
+            self._run_promotion([_mau("TPL-CU", source="CONG_TY")])
         self.assertEqual(treo.exception.status_code, 409)
         # Thông báo nay nêu ĐÍCH DANH chỗ lệch để Giám đốc biết phải quyết gì.
         self.assertIn("nguồn Công ty soạn/lập ≠ Khách hàng cung cấp", treo.exception.detail)
@@ -177,11 +177,11 @@ class TaiDungTemplateAnToanTests(unittest.TestCase):
     def test_trung_ten_nhung_mau_da_tat_thi_cung_tu_choi(self):
         """Không tự bật lại mẫu đã tắt — Giám đốc tắt nó là có lý do."""
         with self.assertRaises(HTTPException) as treo:
-            self._chay([_mau("TPL-CU", is_active=False)])
+            self._run_promotion([_mau("TPL-CU", is_active=False)])
         self.assertEqual(treo.exception.status_code, 409)
 
     def test_khong_trung_gi_thi_tao_mau_moi(self):
-        db = self._chay([])
+        db = self._run_promotion([])
         thamso = [c.args[1] for c in db.execute.call_args_list if len(c.args) > 1]
         self.assertEqual([t for t in thamso if "tpl" in t][0]["tpl"], "TPL-MOI")
 
@@ -189,45 +189,47 @@ class TaiDungTemplateAnToanTests(unittest.TestCase):
 class SoCauHinhMauTests(unittest.TestCase):
     """Cùng tên + cùng nguồn vẫn có thể là hai loại giấy khác nhau."""
 
-    def _chay(self, mau_cu, **chot_moi):
+    def _run_promotion(self, existing_template, **approved_configuration):
         from src.dossiers import slot_requests
 
         db = MagicMock()
         db.execute.side_effect = [
             _row({"task_type_id": "T-TT", "service_package_id": "P-PL"}),
-            MagicMock(**{"mappings.return_value.all.return_value": [mau_cu]}),
+            MagicMock(**{"mappings.return_value.all.return_value": [existing_template]}),
             MagicMock(**{"scalar.return_value": "TPL-MOI"}),
             MagicMock(), MagicMock(),
         ]
-        tham_so = {"so_luong": 1, "bat_buoc": False, "can_ban_chinh": False}
-        tham_so.update(chot_moi)
-        slot_requests._promote_theo_pham_vi(
+        approved_configuration = {
+            "quantity": 1, "required": False, "needs_original": False,
+            **approved_configuration,
+        }
+        slot_requests._promote_template_by_scope(
             db, request={"service_line_id": "SL-1"}, promotion_scope="TASK_TYPE",
-            ten_chinh_thuc="Giấy uỷ quyền", nguon="KHACH_HANG",
-            actor_id="GD", request_id="Q1", **tham_so,
+            official_name="Giấy uỷ quyền", source="KHACH_HANG",
+            actor_id="GD", request_id="Q1", **approved_configuration,
         )
         return db
 
     def test_khac_yeu_cau_ban_chinh_thi_khong_tu_dung_lai(self):
         with self.assertRaises(HTTPException) as treo:
-            self._chay(_mau("TPL-CU", needs_original=True), can_ban_chinh=False)
+            self._run_promotion(_mau("TPL-CU", needs_original=True), needs_original=False)
         self.assertEqual(treo.exception.status_code, 409)
         self.assertIn("bản chính", treo.exception.detail)
 
     def test_khac_so_luong_mac_dinh_thi_khong_tu_dung_lai(self):
         with self.assertRaises(HTTPException) as treo:
-            self._chay(_mau("TPL-CU", default_quantity=2), so_luong=1)
+            self._run_promotion(_mau("TPL-CU", default_quantity=2), quantity=1)
         self.assertEqual(treo.exception.status_code, 409)
         self.assertIn("số lượng", treo.exception.detail)
 
     def test_khac_mac_dinh_bat_buoc_thi_khong_tu_dung_lai(self):
         with self.assertRaises(HTTPException) as treo:
-            self._chay(_mau("TPL-CU", is_required=True), bat_buoc=False)
+            self._run_promotion(_mau("TPL-CU", is_required=True), required=False)
         self.assertEqual(treo.exception.status_code, 409)
         self.assertIn("bắt buộc", treo.exception.detail)
 
     def test_tuong_thich_hoan_toan_thi_dung_lai_dung_mau_do(self):
-        db = self._chay(_mau("TPL-CU"))
+        db = self._run_promotion(_mau("TPL-CU"))
         thamso = [c.args[1] for c in db.execute.call_args_list if len(c.args) > 1]
         self.assertEqual([t for t in thamso if "tpl" in t][0]["tpl"], "TPL-CU")
 
@@ -243,10 +245,10 @@ class SoCauHinhMauTests(unittest.TestCase):
                 _mau("TPL-CU", needs_original=True)]}),
         ]
         with self.assertRaises(HTTPException):
-            slot_requests._promote_theo_pham_vi(
+            slot_requests._promote_template_by_scope(
                 db, request={"service_line_id": "SL-1"}, promotion_scope="TASK_TYPE",
-                ten_chinh_thuc="Giấy uỷ quyền", nguon="KHACH_HANG", so_luong=1,
-                bat_buoc=False, can_ban_chinh=False, actor_id="GD", request_id="Q1",
+                official_name="Giấy uỷ quyền", source="KHACH_HANG", quantity=1,
+                required=False, needs_original=False, actor_id="GD", request_id="Q1",
             )
         cau_lenh = " ".join(str(c.args[0]) for c in db.execute.call_args_list)
         self.assertNotIn("insert into public.document_checklist_templates", cau_lenh)
@@ -254,5 +256,5 @@ class SoCauHinhMauTests(unittest.TestCase):
 
     def test_sort_order_khong_duoc_tinh_la_khac_biet(self):
         """Thứ tự hiển thị không đổi ý nghĩa tờ giấy."""
-        db = self._chay(_mau("TPL-CU"))
+        db = self._run_promotion(_mau("TPL-CU"))
         self.assertTrue(db.execute.called)

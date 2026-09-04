@@ -20,7 +20,7 @@ from src.core.auth import check_user_permission, get_current_user, require_permi
 from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import handover as HO
-from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note
+from src.dossiers.actor_guard import assert_can_act_on_node, assert_can_view_node, format_on_behalf_note
 from src.files.payment_receipts import (
     MAX_RECEIPT_BYTES,
     MAX_RECEIPT_FILES,
@@ -329,6 +329,7 @@ def list_handover_deliverables(
     user: User = Depends(get_current_user),
 ):
     """Danh sách tài liệu sẽ giao cho khách, kèm điều kiện mở khoá."""
+    assert_can_view_node(db, task_node_id=task_node_id, user=user)
     return {"data": HO.get_handover_deliverables(db, task_node_id)}
 
 
@@ -339,6 +340,7 @@ def download_handover_package(
     user: User = Depends(get_current_user),
 ):
     """Đóng gói toàn bộ tài liệu bàn giao thành một file zip."""
+    assert_can_view_node(db, task_node_id=task_node_id, user=user)
     deliverables_package = HO.get_handover_deliverables(db, task_node_id)
     if not deliverables_package["can_download"]:
         raise HTTPException(status_code=409, detail=deliverables_package["blocked_reason"])
@@ -365,11 +367,14 @@ def download_handover_package(
         # chủ đi gọi tới nơi không nên gọi. Lấy bằng khoá đối tượng chứ không qua
         # HTTP: địa chỉ lưu trong CSDL là địa chỉ cho trình duyệt (localhost:9000),
         # máy chủ chạy trong container gọi vào đó không tới được.
-        for goc in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
-            tien_to = f"{goc.rstrip(chr(47))}/{MINIO_BUCKET}/" if goc else None
-            if tien_to and url.startswith(tien_to):
+        for storage_base_url in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
+            storage_prefix = (
+                f"{storage_base_url.rstrip(chr(47))}/{MINIO_BUCKET}/"
+                if storage_base_url else None
+            )
+            if storage_prefix and url.startswith(storage_prefix):
                 # get_file trả response S3 (dict); zipfile cần bytes.
-                return get_file(unquote(url[len(tien_to):].split("?")[0]))["Body"].read()
+                return get_file(unquote(url[len(storage_prefix):].split("?")[0]))["Body"].read()
         return None
 
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -431,8 +436,8 @@ def deliver(
     return {"status": "success", "data": {**result, "on_behalf": actor["on_behalf"]}}
 
 
-def _nhan_bill_roi_ghi(db, user, receipt_files, khoa_luu_tru: str, ghi_nhan):
-    """Nhận bill, đẩy lên kho, rồi gọi `ghi_nhan(attachments)` để tạo phiếu thu.
+def _store_payment_receipts(db, user, receipt_files, storage_key: str, record_payment):
+    """Nhận bill, đẩy lên kho, rồi gọi `record_payment(attachments)` để tạo phiếu thu.
 
     Tách ra vì có hai đường vào cùng làm việc này: thu tại bước bàn giao và thu
     thẳng theo hợp đồng. Cả hai đều phải có bill, và nếu ghi nhận hỏng thì file
@@ -457,7 +462,7 @@ def _nhan_bill_roi_ghi(db, user, receipt_files, khoa_luu_tru: str, ghi_nhan):
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-            metadata = build_receipt_metadata(khoa_luu_tru, batch_id, receipt)
+            metadata = build_receipt_metadata(storage_key, batch_id, receipt)
             upload_finance_file(
                 io.BytesIO(receipt.data),
                 metadata["object_key"],
@@ -470,7 +475,7 @@ def _nhan_bill_roi_ghi(db, user, receipt_files, khoa_luu_tru: str, ghi_nhan):
             uploaded_keys.append(metadata["object_key"])
             attachments.append(metadata)
 
-        result = ghi_nhan(attachments)
+        result = record_payment(attachments)
         db.commit()
         # Đánh thức chuông của giám đốc ngay. Không có tín hiệu này thì phiếu chờ
         # duyệt chỉ hiện sau khi người ta tình cờ tải lại trang.
@@ -515,7 +520,7 @@ def record_contract_payment(
         timeout_seconds=5,
         custom_error_msg="Đang xử lý một đợt thanh toán cho hợp đồng này, vui lòng đợi trong giây lát.",
     ):
-        return _nhan_bill_roi_ghi(
+        return _store_payment_receipts(
             db, user, receipt_files, contract_id,
             lambda attachments: HO.record_contract_payment(
                 db,
@@ -547,7 +552,7 @@ def record_payment(
         timeout_seconds=5,
         custom_error_msg="Đang xử lý một đợt thanh toán cho bước này, vui lòng đợi trong giây lát.",
     ):
-        return _nhan_bill_roi_ghi(
+        return _store_payment_receipts(
             db, user, receipt_files, task_node_id,
             lambda attachments: HO.record_payment(
                 db,

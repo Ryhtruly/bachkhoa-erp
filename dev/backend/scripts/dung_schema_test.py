@@ -44,47 +44,72 @@ def main() -> int:
     with engine.begin() as conn:
         conn.execute(text("create extension if not exists pgcrypto"))
         conn.execute(text("create extension if not exists vector"))
+        # Supabase creates these roles in a managed project. The disposable
+        # PostgreSQL container does not, but migration SQL legitimately
+        # revokes/grants privileges to them. Create inert equivalents before
+        # replaying migrations so the test schema matches the target platform.
+        conn.execute(text("""
+            do $$
+            begin
+              if not exists (select 1 from pg_roles where rolname = 'anon') then
+                create role anon noinherit;
+              end if;
+              if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+                create role authenticated noinherit;
+              end if;
+              if not exists (select 1 from pg_roles where rolname = 'service_role') then
+                create role service_role noinherit;
+              end if;
+            end
+            $$;
+        """))
     Base.metadata.create_all(engine)
+    # Let SQLAlchemy create the model's sequence together with the table first.
+    # Creating it before ``create_all`` makes PostgreSQL generate a second
+    # implicit BIGSERIAL sequence (audit_log_id_seq1), which breaks teardown.
+    # The fallback is only for a partially initialized disposable database.
+    with engine.begin() as conn:
+        conn.execute(text("create sequence if not exists public.audit_log_id_seq as bigint"))
     print("  bảng từ model: xong")
 
     # 2) Migration SQL thuần
-    goc = pathlib.Path("/app/supabase/migrations")
-    if not goc.exists():
-        goc = pathlib.Path(__file__).resolve().parents[3] / "supabase" / "migrations"
+    migrations_dir = pathlib.Path("/app/supabase/migrations")
+    if not migrations_dir.exists():
+        migrations_dir = pathlib.Path(__file__).resolve().parents[3] / "supabase" / "migrations"
 
     files = sorted(
-        f for f in goc.glob("*.sql")
+        f for f in migrations_dir.glob("*.sql")
         if not f.name.endswith("_down.sql")
     )
-    con_lai = list(files)
-    for vong in range(1, 6):
-        that_bai = []
-        for duong_dan in con_lai:
-            sql = duong_dan.read_text(encoding="utf-8")
+    pending_files = list(files)
+    for attempt in range(1, 6):
+        failed_files = []
+        for migration_file in pending_files:
+            sql = migration_file.read_text(encoding="utf-8")
             try:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
-            except Exception as loi:
-                that_bai.append((duong_dan, str(loi).splitlines()[0][:90]))
-        print(f"  vòng {vong}: {len(con_lai) - len(that_bai)}/{len(con_lai)} chạy được")
-        if not that_bai or len(that_bai) == len(con_lai):
-            con_lai = [f for f, _ in that_bai]
+            except Exception as error:
+                failed_files.append((migration_file, str(error).splitlines()[0][:90]))
+        print(f"  lần {attempt}: {len(pending_files) - len(failed_files)}/{len(pending_files)} chạy được")
+        if not failed_files or len(failed_files) == len(pending_files):
+            pending_files = [file for file, _ in failed_files]
             break
-        con_lai = [f for f, _ in that_bai]
-    for duong_dan in con_lai:
-        print(f"  VẪN LỖI  {duong_dan.name}")
+        pending_files = [file for file, _ in failed_files]
+    for migration_file in pending_files:
+        print(f"  VẪN LỖI  {migration_file.name}")
 
     # 3) Đối soát
     with engine.connect() as conn:
-        for bang in ("dossier_document_slots", "dossier_documents", "dossier_document_links",
+        for table_name in ("dossier_document_slots", "dossier_documents", "dossier_document_links",
                      "document_slot_change_requests", "document_slot_creation_requests",
                      "document_template_applicabilities"):
-            co = conn.execute(text("select to_regclass(:t)"), {"t": f"public.{bang}"}).scalar()
-            print(f"  {'CÓ ' if co else 'THIẾU'} {bang}")
-        co_ver = conn.execute(text(
+            exists = conn.execute(text("select to_regclass(:t)"), {"t": f"public.{table_name}"}).scalar()
+            print(f"  {'CÓ ' if exists else 'THIẾU'} {table_name}")
+        has_register_version = conn.execute(text(
             "select count(*) from information_schema.columns where table_name='service_lines'"
             " and column_name='document_register_version'")).scalar()
-        print(f"  {'CÓ ' if co_ver else 'THIẾU'} service_lines.document_register_version")
+        print(f"  {'CÓ ' if has_register_version else 'THIẾU'} service_lines.document_register_version")
     return 0
 
 

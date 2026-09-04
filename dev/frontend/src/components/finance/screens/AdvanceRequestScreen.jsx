@@ -203,21 +203,17 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         ? `[${form.category}] ${form.note.trim()}`
         : form.note.trim();
 
-      await apiFetch(`${API}/api/finance/advance/create`, {
+      await apiFetch(`${API}/api/employee-portal/advance-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contract_id: form.contract_id || null,
           amount,
-          payer_payee: form.payer_payee,
           note: finalNote,
-          payment_method: form.payment_method,
-          created_by: form.created_by,
-          status: 'PENDING',
-          department_code: form.department_code || null
+          payment_method: form.payment_method
         })
       });
-      addToast('Đã lập đề xuất tạm ứng thành công (Chờ Giám đốc duyệt)', 'success');
+      addToast('Đã gửi yêu cầu tạm ứng (chờ Giám đốc duyệt)', 'success');
       setModal(false);
       load();
     } catch (err) {
@@ -483,7 +479,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
               disabled={submitting}
               style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
             >
-              <PlusCircle size={16} /> {submitting ? 'Đang tạo đề xuất...' : 'Tạo Phiếu Tạm Ứng'}
+              <PlusCircle size={16} /> {submitting ? 'Đang gửi yêu cầu...' : 'Gửi yêu cầu tạm ứng'}
             </button>
           </div>
         </form>

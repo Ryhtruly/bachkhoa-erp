@@ -16,7 +16,7 @@ def test_hang_cho_tra_kind_va_hang_muc_cua_phieu_waive_khi_schema_v2_san_sang():
         "id": "WV-1", "kind": "WAIVE", "service_line_id": "SL-1",
         "service_line_name": "Cắm mốc",
     }])
-    with patch("src.routes.routes_document_register.register._co_cot_waiver_service_line", return_value=True):
+    with patch("src.routes.routes_document_register.register._has_waiver_service_line_column", return_value=True):
         result = list_pending_change_requests(db=db, user=MagicMock())
 
     sql = str(db.execute.call_args.args[0])
@@ -30,7 +30,7 @@ def test_hang_cho_van_doc_duoc_schema_cu_chua_co_service_line_tren_phieu():
     from src.routes.routes_document_register import list_pending_change_requests
 
     db = _db_with_rows([{"id": "CR-1", "kind": "EDIT", "service_line_id": None}])
-    with patch("src.routes.routes_document_register.register._co_cot_waiver_service_line", return_value=False):
+    with patch("src.routes.routes_document_register.register._has_waiver_service_line_column", return_value=False):
         result = list_pending_change_requests(db=db, user=MagicMock())
 
     sql = str(db.execute.call_args.args[0])

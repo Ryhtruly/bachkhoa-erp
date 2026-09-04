@@ -13,8 +13,8 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from tests.fixtures_so_giay_to import (
-    dung_boi_canh, gan_tep_vao_o, giao_viec, nguoi_dung, them_buoc_k01, them_mau,
-    them_nhiem_vu, them_o_giay, them_tep, thieu_bang,
+    build_test_context, link_document_to_slot, assign_node, create_test_user, insert_k01_node, insert_template,
+    insert_checklist_item, insert_document_slot, insert_document, get_missing_documents,
 )
 
 
@@ -23,7 +23,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
         from src.db.database import SessionLocal
 
         self.db = SessionLocal()
-        thieu = thieu_bang(self.db)
+        thieu = get_missing_documents(self.db)
         if thieu:
             self.db.close()
             self.skipTest(
@@ -48,11 +48,11 @@ class SoGiayToDbThatTests(unittest.TestCase):
 
     # ── 1 ────────────────────────────────────────────────────────────────────
     def test_materialize_dung_danh_sach_da_chon(self):
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        a = them_mau(self.db, ten="Sổ đỏ thử")
-        b = them_mau(self.db, ten="CCCD thử")
-        them_mau(self.db, ten="Giấy không chọn thử")
+        a = insert_template(self.db, name="Sổ đỏ thử")
+        b = insert_template(self.db, name="CCCD thử")
+        insert_template(self.db, name="Giấy không chọn thử")
 
         so = self.register.materialize_service_line_register(
             self.db, sl, template_ids=[a, b], actor_id=None)
@@ -65,9 +65,9 @@ class SoGiayToDbThatTests(unittest.TestCase):
 
     def test_danh_sach_rong_tao_0_o_va_van_la_v2(self):
         """Chọn 'không cần giấy nào' là một quyết định hợp lệ, không phải lỗi."""
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        them_mau(self.db, ten="Sổ đỏ thử")
+        insert_template(self.db, name="Sổ đỏ thử")
 
         so = self.register.materialize_service_line_register(
             self.db, sl, template_ids=[], actor_id=None)
@@ -78,10 +78,10 @@ class SoGiayToDbThatTests(unittest.TestCase):
         self.assertEqual(self.register.register_version(self.db, sl), 2)
 
     def test_sentinel_chi_lay_is_default_true(self):
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        them_mau(self.db, ten="Giấy bật thử", is_default=True)
-        them_mau(self.db, ten="Giấy tắt thử", is_default=False)
+        insert_template(self.db, name="Giấy bật thử", is_default=True)
+        insert_template(self.db, name="Giấy tắt thử", is_default=False)
 
         goi_y = self.register.applicable_templates(self.db, sl)
         mac_dinh = [m["name"] for m in goi_y if m["is_default"]]
@@ -95,9 +95,9 @@ class SoGiayToDbThatTests(unittest.TestCase):
     def test_materialize_loi_thi_khong_de_lai_o_nao(self):
         """Hạng mục V2 mà sổ dựng dở là tệ nhất: nhân viên mở ra thấy trống,
         tưởng hợp đồng không cần giấy nào rồi cho qua K01."""
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        a = them_mau(self.db, ten="Giấy có thật thử")
+        a = insert_template(self.db, name="Giấy có thật thử")
 
         diem_luu = self.db.begin_nested()
         try:
@@ -111,9 +111,9 @@ class SoGiayToDbThatTests(unittest.TestCase):
 
     # ── 3 ────────────────────────────────────────────────────────────────────
     def test_sua_mau_sau_do_khong_doi_hang_muc_da_materialize(self):
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        a = them_mau(self.db, ten="Giấy gốc thử", bat_buoc=True)
+        a = insert_template(self.db, name="Giấy gốc thử", required=True)
         self.register.materialize_service_line_register(
             self.db, sl, template_ids=[a], actor_id=None)
 
@@ -122,7 +122,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
             text("update public.document_checklist_templates "
                  "set name = 'Giấy đã đổi tên', is_required = false where id = :id"),
             {"id": a})
-        them_mau(self.db, ten="Giấy mới thêm sau thử")
+        insert_template(self.db, name="Giấy mới thêm sau thử")
 
         o = self.db.execute(
             text("select name, is_required from public.dossier_document_slots "
@@ -137,15 +137,15 @@ class SoGiayToDbThatTests(unittest.TestCase):
     # ── 4 ────────────────────────────────────────────────────────────────────
     def test_mot_object_dung_cho_nhieu_hang_muc(self):
         """CCCD scan một lần, dùng cho cả đo vẽ lẫn pháp lý — một object duy nhất."""
-        boi_canh = dung_boi_canh(self.db, so_hang_muc=2)
+        boi_canh = build_test_context(self.db, item_count=2)
         hd = boi_canh["contract_id"]
         sl_a, sl_b = (h["id"] for h in boi_canh["hang_muc"])
-        o_a = them_o_giay(self.db, contract_id=hd, service_line_id=sl_a, ten="CCCD thử")
-        o_b = them_o_giay(self.db, contract_id=hd, service_line_id=sl_b, ten="CCCD thử")
+        o_a = insert_document_slot(self.db, contract_id=hd, service_line_id=sl_a, name="CCCD thử")
+        o_b = insert_document_slot(self.db, contract_id=hd, service_line_id=sl_b, name="CCCD thử")
 
-        tep = them_tep(self.db, contract_id=hd, ten_tep="cccd.pdf")
-        gan_tep_vao_o(self.db, contract_id=hd, slot_id=o_a, document_id=tep)
-        gan_tep_vao_o(self.db, contract_id=hd, slot_id=o_b, document_id=tep)
+        tep = insert_document(self.db, contract_id=hd, file_name="cccd.pdf")
+        link_document_to_slot(self.db, contract_id=hd, slot_id=o_a, document_id=tep)
+        link_document_to_slot(self.db, contract_id=hd, slot_id=o_b, document_id=tep)
 
         so_object = self.db.execute(
             text("select count(*) from public.dossier_documents where contract_id = :hd"),
@@ -165,16 +165,16 @@ class SoGiayToDbThatTests(unittest.TestCase):
     # ── 5 ────────────────────────────────────────────────────────────────────
     def test_mien_hang_muc_A_khong_anh_huong_hang_muc_B(self):
         """Ô cấp Hợp đồng dùng chung cả hai Hạng mục — đây là ca dễ rò nhất."""
-        boi_canh = dung_boi_canh(self.db, so_hang_muc=2)
+        boi_canh = build_test_context(self.db, item_count=2)
         hd = boi_canh["contract_id"]
         sl_a, sl_b = (h["id"] for h in boi_canh["hang_muc"])
-        o_chung = them_o_giay(self.db, contract_id=hd, service_line_id=None,
-                              ten="Giấy tờ hôn nhân thử")
-        nv = nguoi_dung(self.db)
+        o_chung = insert_document_slot(self.db, contract_id=hd, service_line_id=None,
+                              name="Giấy tờ hôn nhân thử")
+        nv = create_test_user(self.db)
 
         phieu = self.register.request_slot_waiver(
             self.db, o_chung, service_line_id=sl_a,
-            reason="Hạng mục A không cần giấy này", requester_id=nv, la_quan_tri=True)
+            reason="Hạng mục A không cần giấy này", requester_id=nv, is_admin=True)
         self.register.review_slot_change(
             self.db, phieu["id"], decision="approved", review_note="ok", actor_id=nv)
 
@@ -194,22 +194,22 @@ class SoGiayToDbThatTests(unittest.TestCase):
         # Và Hạng mục B vẫn xin miễn riêng được.
         phieu_b = self.register.request_slot_waiver(
             self.db, o_chung, service_line_id=sl_b,
-            reason="Hạng mục B cũng không cần", requester_id=nv, la_quan_tri=True)
+            reason="Hạng mục B cũng không cần", requester_id=nv, is_admin=True)
         self.assertEqual(phieu_b["status"], "pending")
 
     def test_khong_xin_mien_hai_lan_cho_cung_hang_muc(self):
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         hd, sl = boi_canh["contract_id"], boi_canh["hang_muc"][0]["id"]
-        o = them_o_giay(self.db, contract_id=hd, service_line_id=sl, ten="Giấy thử trùng")
-        nv = nguoi_dung(self.db)
+        o = insert_document_slot(self.db, contract_id=hd, service_line_id=sl, name="Giấy thử trùng")
+        nv = create_test_user(self.db)
 
         self.register.request_slot_waiver(
             self.db, o, service_line_id=sl, reason="lý do đủ dài", requester_id=nv,
-            la_quan_tri=True)
+            is_admin=True)
         with self.assertRaises(HTTPException) as treo:
             self.register.request_slot_waiver(
                 self.db, o, service_line_id=sl, reason="xin lần nữa", requester_id=nv,
-                la_quan_tri=True)
+                is_admin=True)
         self.assertEqual(treo.exception.status_code, 409)
 
     # ── 10 ───────────────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
         đường thoát duy nhất còn lại là nhét đại một tệp cho qua cổng. Ô ở đây là
         ô cấp Hợp đồng (V1) — ca dễ rò nhất vì hai Hạng mục dùng chung một ô.
         """
-        boi_canh = dung_boi_canh(self.db, so_hang_muc=2)
+        boi_canh = build_test_context(self.db, item_count=2)
         hd = boi_canh["contract_id"]
         sl_a, sl_b = (h["id"] for h in boi_canh["hang_muc"])
         # Ép về V1: đây chính là trạng thái của mọi hợp đồng đang chạy trên live.
@@ -229,9 +229,9 @@ class SoGiayToDbThatTests(unittest.TestCase):
                  " where id = any(:ids)"),
             {"ids": [sl_a, sl_b]},
         )
-        them_o_giay(self.db, contract_id=hd, service_line_id=None,
-                    ten="Giấy tờ hôn nhân V1", bat_buoc=True)
-        nv = nguoi_dung(self.db)
+        insert_document_slot(self.db, contract_id=hd, service_line_id=None,
+                    name="Giấy tờ hôn nhân V1", required=True)
+        nv = create_test_user(self.db)
 
         def o_cua(sl):
             so = self.register.get_register(self.db, hd, service_line_id=sl)
@@ -250,7 +250,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
         phieu = self.register.request_slot_waiver(
             self.db, o_cua(sl_a)["id"], service_line_id=sl_a,
             reason="Khách độc thân, không có giấy hôn nhân", requester_id=nv,
-            la_quan_tri=True)
+            is_admin=True)
 
         # Đang chờ duyệt: chỉ Hạng mục A thấy, Hạng mục B tuyệt đối không.
         self.assertTrue(o_cua(sl_a)["waiver_pending"])
@@ -284,21 +284,21 @@ class SoGiayToDbThatTests(unittest.TestCase):
 
         for quyet_dinh, mong_doi in (("accepted", "approved"), ("rework_required", "rejected")):
             with self.subTest(quyet_dinh=quyet_dinh):
-                boi_canh = dung_boi_canh(self.db)
+                boi_canh = build_test_context(self.db)
                 sl = boi_canh["hang_muc"][0]["id"]
-                o = them_o_giay(self.db, contract_id=boi_canh["contract_id"],
-                                service_line_id=sl, ten="Giấy hôn nhân " + quyet_dinh)
-                nv = nguoi_dung(self.db)
-                node = them_buoc_k01(self.db, service_line_id=sl)
+                o = insert_document_slot(self.db, contract_id=boi_canh["contract_id"],
+                                service_line_id=sl, name="Giấy hôn nhân " + quyet_dinh)
+                nv = create_test_user(self.db)
+                node = insert_k01_node(self.db, service_line_id=sl)
 
                 phieu = self.register.request_slot_waiver(
                     self.db, o, service_line_id=sl, reason="Khách độc thân",
-                    requester_id=nv, la_quan_tri=True)
+                    requester_id=nv, is_admin=True)
 
                 # Chưa quyết thì phiếu còn treo, nhưng KHÔNG chặn nộp nữa.
                 self.assertFalse(self.register.k01_blockers(self.db, sl)["required_missing"])
 
-                ten_da_chot = workflow_runtime._chot_phieu_mien_theo_nghiem_thu(
+                ten_da_chot = workflow_runtime._finalize_waivers_after_acceptance(
                     self.db, task_node_id=node, decision=quyet_dinh,
                     actor_id=nv, review_note="Khách khẳng định không có" if quyet_dinh == "accepted" else None)
                 self.assertEqual(ten_da_chot, ["Giấy hôn nhân " + quyet_dinh])
@@ -318,16 +318,16 @@ class SoGiayToDbThatTests(unittest.TestCase):
 
     # ── 12 ───────────────────────────────────────────────────────────────────
     def test_chi_chot_phieu_cua_dung_hang_muc_do(self):
-        boi_canh = dung_boi_canh(self.db, so_hang_muc=2)
+        boi_canh = build_test_context(self.db, item_count=2)
         sl_a, sl_b = (h["id"] for h in boi_canh["hang_muc"])
-        o_chung = them_o_giay(self.db, contract_id=boi_canh["contract_id"],
-                              service_line_id=None, ten="Giấy dùng chung")
-        nv = nguoi_dung(self.db)
-        node_a = them_buoc_k01(self.db, service_line_id=sl_a)
+        o_chung = insert_document_slot(self.db, contract_id=boi_canh["contract_id"],
+                              service_line_id=None, name="Giấy dùng chung")
+        nv = create_test_user(self.db)
+        node_a = insert_k01_node(self.db, service_line_id=sl_a)
 
         p_a = self.register.request_slot_waiver(
             self.db, o_chung, service_line_id=sl_a, reason="A không cần",
-            requester_id=nv, la_quan_tri=True)
+            requester_id=nv, is_admin=True)
 
         # GIỚI HẠN CÒN TỒN TẠI: chỉ số uq_document_slot_change_one_pending vẫn
         # khoá theo slot_id đơn thuần, nên Hạng mục B chưa gửi được phiếu cho
@@ -337,12 +337,12 @@ class SoGiayToDbThatTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as treo:
             self.register.request_slot_waiver(
                 self.db, o_chung, service_line_id=sl_b, reason="B cũng không cần",
-                requester_id=nv, la_quan_tri=True)
+                requester_id=nv, is_admin=True)
         self.assertEqual(treo.exception.status_code, 409)
         self.assertIn("dùng chung", treo.exception.detail)
 
         from src.contracts import workflow_runtime
-        workflow_runtime._chot_phieu_mien_theo_nghiem_thu(
+        workflow_runtime._finalize_waivers_after_acceptance(
             self.db, task_node_id=node_a, decision="accepted", actor_id=nv, review_note="ok")
 
         def trang_thai(pid):
@@ -356,9 +356,9 @@ class SoGiayToDbThatTests(unittest.TestCase):
         # được đụng tới phiếu của B.
         p_b = self.register.request_slot_waiver(
             self.db, o_chung, service_line_id=sl_b, reason="B cũng không cần",
-            requester_id=nv, la_quan_tri=True)
+            requester_id=nv, is_admin=True)
         # Mỗi Hạng mục chỉ có một workflow_instance, nên dùng lại đúng bước đó.
-        workflow_runtime._chot_phieu_mien_theo_nghiem_thu(
+        workflow_runtime._finalize_waivers_after_acceptance(
             self.db, task_node_id=node_a, decision="accepted", actor_id=nv, review_note="ok")
         self.assertEqual(trang_thai(p_b["id"]), "pending",
                          "nghiệm thu Hạng mục A đã chốt nhầm phiếu của Hạng mục B")
@@ -368,14 +368,14 @@ class SoGiayToDbThatTests(unittest.TestCase):
         """Chuông không báo thì Giám đốc mở lượt nghiệm thu ra mới biết — mà
         phần lớn thời gian là không mở, chỉ bấm duyệt cho xong. Con số phải nằm
         ngay trên dòng thông báo."""
-        from src.routes.routes_notifications import _truy_van_nghiem_thu
+        from src.routes.routes_notifications import _build_acceptance_query
 
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        nv = nguoi_dung(self.db)
-        node = them_buoc_k01(self.db, service_line_id=sl)
-        o = them_o_giay(self.db, contract_id=boi_canh["contract_id"],
-                        service_line_id=sl, ten="Giấy hôn nhân chuông")
+        nv = create_test_user(self.db)
+        node = insert_k01_node(self.db, service_line_id=sl)
+        o = insert_document_slot(self.db, contract_id=boi_canh["contract_id"],
+                        service_line_id=sl, name="Giấy hôn nhân chuông")
         self.db.execute(
             text("""insert into public.task_node_acceptances
                     (task_node_id, attempt_no, status, submitted_by)
@@ -384,7 +384,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
         )
 
         def dem():
-            for dong in self.db.execute(_truy_van_nghiem_thu(self.db)).mappings().all():
+            for dong in self.db.execute(_build_acceptance_query(self.db)).mappings().all():
                 if dong["task_node_id"] == node:
                     return int(dong["so_phieu_mien"] or 0)
             self.fail("lượt nghiệm thu đang chờ không hiện trên chuông của Giám đốc")
@@ -393,7 +393,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
 
         self.register.request_slot_waiver(
             self.db, o, service_line_id=sl, reason="Khách độc thân",
-            requester_id=nv, la_quan_tri=True)
+            requester_id=nv, is_admin=True)
 
         self.assertEqual(dem(), 1, "chuông không đếm phiếu xin miễn đang chờ")
 
@@ -410,13 +410,13 @@ class SoGiayToDbThatTests(unittest.TestCase):
         """
         from src.contracts import workflow_runtime
 
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        o = them_o_giay(self.db, contract_id=boi_canh["contract_id"],
-                        service_line_id=sl, ten="Giấy hôn nhân cổng nộp")
-        nv = nguoi_dung(self.db)
-        node = them_buoc_k01(self.db, service_line_id=sl)
-        emp = giao_viec(self.db, task_node_id=node, user_id=nv)
+        o = insert_document_slot(self.db, contract_id=boi_canh["contract_id"],
+                        service_line_id=sl, name="Giấy hôn nhân cổng nộp")
+        nv = create_test_user(self.db)
+        node = insert_k01_node(self.db, service_line_id=sl)
+        emp = assign_node(self.db, task_node_id=node, user_id=nv)
         self.db.execute(
             text("update public.task_nodes set status = 'in_progress' where id = :id"),
             {"id": node},
@@ -444,7 +444,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
             {"i": node})
         self.register.request_slot_waiver(
             self.db, o, service_line_id=sl, reason="Khách độc thân",
-            requester_id=nv, la_quan_tri=True)
+            requester_id=nv, is_admin=True)
         self.assertEqual(nop()["status"], "submitted")
         self.assertEqual(anh_chup()["missing"], [],
                          "đã xin miễn mà vẫn báo thiếu")
@@ -461,17 +461,17 @@ class SoGiayToDbThatTests(unittest.TestCase):
         from src.contracts import workflow_runtime
         from src.contracts.workflow_runtime import WorkflowValidationError
 
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        nv = nguoi_dung(self.db)
-        node = them_buoc_k01(self.db, service_line_id=sl)
-        emp = giao_viec(self.db, task_node_id=node, user_id=nv)
+        nv = create_test_user(self.db)
+        node = insert_k01_node(self.db, service_line_id=sl)
+        emp = assign_node(self.db, task_node_id=node, user_id=nv)
         self.db.execute(
             text("update public.task_nodes set status = 'in_progress' where id = :id"),
             {"id": node},
         )
-        muc = them_nhiem_vu(self.db, task_node_id=node, ten="Ảnh hiện trạng",
-                            trang_thai="pending")
+        muc = insert_checklist_item(self.db, task_node_id=node, name="Ảnh hiện trạng",
+                            status="pending")
 
         def nop():
             return workflow_runtime.submit_task_node_for_acceptance(
@@ -493,17 +493,17 @@ class SoGiayToDbThatTests(unittest.TestCase):
         """Một quyết định duyệt trọn gói — không còn bắt Giám đốc bấm từng mục."""
         from src.contracts import workflow_runtime
 
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        nv = nguoi_dung(self.db)
-        node = them_buoc_k01(self.db, service_line_id=sl)
-        emp = giao_viec(self.db, task_node_id=node, user_id=nv)
+        nv = create_test_user(self.db)
+        node = insert_k01_node(self.db, service_line_id=sl)
+        emp = assign_node(self.db, task_node_id=node, user_id=nv)
         self.db.execute(
             text("update public.task_nodes set status = 'in_progress' where id = :id"),
             {"id": node},
         )
-        muc = them_nhiem_vu(self.db, task_node_id=node, ten="Ảnh hiện trạng",
-                            trang_thai="pending_approval")
+        muc = insert_checklist_item(self.db, task_node_id=node, name="Ảnh hiện trạng",
+                            status="pending_approval")
         workflow_runtime.submit_task_node_for_acceptance(
             self.db, task_node_id=node, employee_id=emp, actor_id=nv, note=None)
         luot = self.db.execute(
@@ -525,17 +525,17 @@ class SoGiayToDbThatTests(unittest.TestCase):
     def test_tra_lai_thi_moi_minh_chung_dang_cho_quay_ve_can_sua(self):
         from src.contracts import workflow_runtime
 
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         sl = boi_canh["hang_muc"][0]["id"]
-        nv = nguoi_dung(self.db)
-        node = them_buoc_k01(self.db, service_line_id=sl)
-        emp = giao_viec(self.db, task_node_id=node, user_id=nv)
+        nv = create_test_user(self.db)
+        node = insert_k01_node(self.db, service_line_id=sl)
+        emp = assign_node(self.db, task_node_id=node, user_id=nv)
         self.db.execute(
             text("update public.task_nodes set status = 'in_progress' where id = :id"),
             {"id": node},
         )
-        muc = them_nhiem_vu(self.db, task_node_id=node, ten="Ảnh hiện trạng",
-                            trang_thai="pending_approval")
+        muc = insert_checklist_item(self.db, task_node_id=node, name="Ảnh hiện trạng",
+                            status="pending_approval")
         workflow_runtime.submit_task_node_for_acceptance(
             self.db, task_node_id=node, employee_id=emp, actor_id=nv, note=None)
         luot = self.db.execute(

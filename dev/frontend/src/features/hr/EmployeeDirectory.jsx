@@ -12,6 +12,7 @@ import AvatarImage from '../../components/AvatarImage';
 import { printElement } from '../../components/finance/print/printDocument';
 import EmployeePrintProfile from './EmployeePrintProfile';
 import employeeProfilePrintStyles from './employeeProfile.print.css?inline';
+import { ACCOUNT_ROLE_OPTIONS, defaultAccountRoleForDepartment } from './accountRoles';
 import './humanResources.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -68,7 +69,11 @@ function Field({ label, value }) {
 
 function CreateAccountModal({ employee, onClose, onCreated }) {
   const { addToast } = useToast();
-  const [form, setForm] = useState({ username: '', email: employee?.email || '' });
+  const [form, setForm] = useState({
+    username: '',
+    email: employee?.email || '',
+    role_name: defaultAccountRoleForDepartment(employee?.department_id),
+  });
   const [saving, setSaving] = useState(false);
 
   const submit = async (event) => {
@@ -133,6 +138,24 @@ function CreateAccountModal({ employee, onClose, onCreated }) {
               onChange={(event) => setForm({ ...form, email: event.target.value })}
               placeholder="ten.nv@bachkhoa.local"
             />
+          </FormRow>
+          <FormRow
+            label="Vai trò hệ thống"
+            required
+            hint="Role được tự chọn theo phòng ban; kiểm tra lại trước khi tạo tài khoản"
+            align="left"
+          >
+            <select
+              className="form-control"
+              required
+              value={form.role_name}
+              onChange={(event) => setForm({ ...form, role_name: event.target.value })}
+            >
+              <option value="">Chọn vai trò</option>
+              {ACCOUNT_ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </FormRow>
         </FormGrid>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border-default)' }}>

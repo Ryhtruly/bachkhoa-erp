@@ -41,13 +41,16 @@ def employee_of(db: Session, user_id: str) -> dict | None:
 
 
 def is_director(db: Session, user_id: str) -> bool:
-    """Giám đốc = tài khoản admin hoặc có vai trò admin/director."""
+    """The director is the active canonical ``admin`` role or admin account."""
     return db.execute(
         text("""
             select 1 from users u
             left join user_roles ur on ur.user_id = u.id
             left join roles r on r.id = ur.role_id
-            where u.id = :u and (lower(u.username) = 'admin' or lower(r.role_name) in ('admin', 'director', 'giam_doc', 'giám đốc'))
+            where u.id = :u and (
+                lower(u.username) = 'admin'
+                or (lower(r.role_name) = 'admin' and r.is_active is true)
+            )
             limit 1
         """),
         {"u": user_id},
@@ -66,6 +69,33 @@ def is_assigned_to_node(db: Session, *, task_node_id: str, employee_id: str) -> 
     ).first() is not None
 
 
+def assert_can_view_node(db: Session, *, task_node_id: str, user) -> None:
+    """Read access for sensitive node documents and shortage reports."""
+    from src.core.auth import check_user_permission
+
+    if is_director(db, user.id) or check_user_permission(db, user, "finance", "read"):
+        return
+    employee = employee_of(db, user.id)
+    if employee and db.execute(
+        text("""
+            select 1
+            from task_node_assignments
+            where task_node_id = :node and employee_id = :employee
+              and assignment_status not in ('replaced', 'declined', 'cancelled')
+            union all
+            select 1
+            from task_node_checklist_assignments ca
+            join task_node_checklist_results cr on cr.id = ca.checklist_result_id
+            where cr.task_node_id = :node and ca.employee_id = :employee
+              and ca.status not in ('replaced', 'cancelled')
+            limit 1
+        """),
+        {"node": task_node_id, "employee": employee["id"]},
+    ).first():
+        return
+    raise HTTPException(status_code=403, detail="Bạn không được phân công cho công việc này.")
+
+
 def assert_can_act_on_node(
     db: Session,
     *,
@@ -82,9 +112,11 @@ def assert_can_act_on_node(
     họ đã bấm đúng nút "Xử lý thay" và điền lý do, chứ không phải vô tình bấm
     nhầm bộ nút của nhân viên.
     """
-    nv = employee_of(db, user_id)
-    if task_node_id and nv and is_assigned_to_node(db, task_node_id=task_node_id, employee_id=nv["id"]):
-        return {"on_behalf": False, "actor_employee_id": nv["id"], "reason": None}
+    employee_record = employee_of(db, user_id)
+    if task_node_id and employee_record and is_assigned_to_node(
+        db, task_node_id=task_node_id, employee_id=employee_record["id"]
+    ):
+        return {"on_behalf": False, "actor_employee_id": employee_record["id"], "reason": None}
 
     if not is_director(db, user_id):
         raise HTTPException(
@@ -105,7 +137,7 @@ def assert_can_act_on_node(
 
     return {
         "on_behalf": True,
-        "actor_employee_id": nv["id"] if nv else None,
+        "actor_employee_id": employee_record["id"] if employee_record else None,
         "reason": cleaned_reason,
     }
 

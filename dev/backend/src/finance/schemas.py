@@ -7,7 +7,7 @@ from src.finance.enums import (
 
 class CashflowIn(BaseModel):
     type: str = "INCOME"                # "INCOME" | "EXPENSE" | "ADVANCE" | "REIMBURSEMENT"
-    amount: float
+    amount: float = Field(gt=0)
     category: str                       # Category code / label
     payer_payee: str
     payment_method: str = "CASH"        # "CASH" | "BANK_TRANSFER"
@@ -46,7 +46,7 @@ class CashflowUpdateIn(BaseModel):
     category: str
     payer_payee: str
     payment_method: str = "CASH"
-    amount: float
+    amount: float = Field(gt=0)
     transaction_date: Optional[str] = None
     description: Optional[str] = ""
     notes: Optional[str] = ""
@@ -70,6 +70,10 @@ class CashflowVoidIn(BaseModel):
 
 
 class AdvanceCreateIn(BaseModel):
+    # The public official-voucher endpoint requires this field.  It remains
+    # optional here for old internal scripts that only construct the DTO;
+    # route-level authorization rejects such payloads before persistence.
+    request_id: Optional[str] = None
     project_id: Optional[str] = None
     contract_id: Optional[str] = None
     amount: float
@@ -83,15 +87,36 @@ class AdvanceCreateIn(BaseModel):
         return normalize_payment_method(v)
 
 
+class AdvanceRequestIn(BaseModel):
+    project_id: Optional[str] = None
+    contract_id: Optional[str] = None
+    amount: float = Field(gt=0)
+    note: str = Field(min_length=1, max_length=2000)
+    payment_method: str = "CASH"
+
+    @field_validator("note")
+    @classmethod
+    def normalize_note(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Lý do tạm ứng không được để trống")
+        return value
+
+    @field_validator("payment_method", mode="before")
+    @classmethod
+    def normalize_pm(cls, v):
+        return normalize_payment_method(v)
+
+
 class AdvanceClearIn(BaseModel):
     advance_id: str          # ID of original advance voucher
-    actual_amount: float     # Actual amount spent
+    actual_amount: float = Field(ge=0)     # Actual amount spent
     note: Optional[str] = ""
 
 
 class FundCloseIn(BaseModel):
     payment_method: str = "CASH"      # "CASH" | "BANK_TRANSFER"
-    actual_amount: float
+    actual_amount: float = Field(ge=0)
     closing_date: str                 # ISO string or YYYY-MM-DD HH:MM:SS
     notes: Optional[str] = ""
     closing_user: Optional[str] = ""
@@ -104,7 +129,7 @@ class FundCloseIn(BaseModel):
 
 class WageCreateIn(BaseModel):
     project_id: str
-    amount: float
+    amount: float = Field(gt=0)
     payer_payee: str
     note: Optional[str] = ""
     payment_method: str = "CASH"

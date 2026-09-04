@@ -42,13 +42,17 @@ __DEM_PHIEU_MIEN__
     """
 
 
-def _truy_van_nghiem_thu(db):
+def _build_acceptance_query(db):
     """Chọn biến thể theo schema: DB chưa có cột service_line_id thì đếm ra 0
     chứ không làm vỡ cả chuông thông báo."""
-    from src.dossiers.register import co_so_giay_theo_hang_muc
+    from src.dossiers.register import has_service_line_document_register
 
-    dem = _DEM_PHIEU_MIEN if co_so_giay_theo_hang_muc(db) else "           0 as so_phieu_mien"
-    return text(_MANAGER_NODE_REVIEW_TMPL.replace("__DEM_PHIEU_MIEN__", dem))
+    waiver_count_sql = (
+        _DEM_PHIEU_MIEN
+        if has_service_line_document_register(db)
+        else "           0 as so_phieu_mien"
+    )
+    return text(_MANAGER_NODE_REVIEW_TMPL.replace("__DEM_PHIEU_MIEN__", waiver_count_sql))
 
 
 _MANAGER_CHECKLIST_REVIEW_QUERY = text(
@@ -174,7 +178,7 @@ def get_notifications_summary(
     items = []
 
     if check_user_permission(db, user, "contract", "update"):
-        for row in db.execute(_truy_van_nghiem_thu(db)).mappings().all():
+        for row in db.execute(_build_acceptance_query(db)).mappings().all():
             so_mien = int(row["so_phieu_mien"] or 0)
             items.append({
                 "type": "node_review",

@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
-from src.db.models import AuditLog, SystemSetting
-from src.core.auth import require_permission, require_any_permission, User
+from src.db.models import AdvanceRequest, AuditLog, SystemSetting
+from src.core.auth import require_permission, require_any_permission, require_payroll_all, require_accountant, get_current_user, User
 from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.services.timeline_realtime import publish_timeline_change
 from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json
@@ -19,7 +19,7 @@ from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
     AdvanceCreateIn, AdvanceClearIn, FundCloseIn,
-    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
+    EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee,
     TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
     normalize_transaction_type, normalize_status, normalize_payment_method, normalize_scope,
@@ -136,9 +136,9 @@ def cashflow_cash(
         status=status, category=category
     )
     
-    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán", None, ""}
-    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and (r.status in approved_set or not r.status))
-    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) and (r.status in approved_set or not r.status))
+    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán"}
+    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and r.status in approved_set)
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) and r.status in approved_set)
 
     result = {
         "balance": balance,
@@ -177,9 +177,9 @@ def cashflow_bank(
         status=status, category=category
     )
     
-    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán", None, ""}
-    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and (r.status in approved_set or not r.status))
-    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) and (r.status in approved_set or not r.status))
+    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán"}
+    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and r.status in approved_set)
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) and r.status in approved_set)
 
     result = {
         "balance": balance,
@@ -226,8 +226,8 @@ def void_cashflow(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "delete"))
 ):
-    actor = payload.actor_id or user.id
-    result = FinanceService.void_cashflow(db, transaction_id, payload.reason, actor)
+    # Actor identity comes from the verified token; never trust a body field.
+    result = FinanceService.void_cashflow(db, transaction_id, payload.reason, user.id)
     invalidate_money_caches()
     return result
 
@@ -331,9 +331,64 @@ def list_advance(
 def create_advance(
     payload: AdvanceCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("finance", "create"))
+    user: User = Depends(require_accountant)
 ):
+    if not payload.request_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Phiếu tạm ứng chính thức phải được lập từ yêu cầu đã được Giám đốc duyệt.",
+        )
     result = FinanceService.create_advance(db, payload, actor_id=user.id)
+    invalidate_money_caches()
+    return result
+
+
+@router.get("/advance/requests")
+def list_advance_requests(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read")),
+):
+    rows = db.query(AdvanceRequest).order_by(AdvanceRequest.created_at.desc()).all()
+    return [
+        {
+            "id": row.id,
+            "employee_id": row.employee_id,
+            "amount": float(row.amount or 0),
+            "payment_method": row.payment_method,
+            "note": row.note,
+            "status": row.status,
+            "reviewed_by_user_id": row.reviewed_by_user_id,
+            "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "official_transaction_id": row.official_transaction_id,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
+@router.post("/advance/requests/{request_id}/approve")
+def approve_advance_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = FinanceService.review_advance_request(
+        db, request_id, approved=True, reason=None, actor_id=user.id
+    )
+    invalidate_money_caches()
+    return result
+
+
+@router.post("/advance/requests/{request_id}/reject")
+def reject_advance_request(
+    request_id: str,
+    payload: CashflowVoidIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = FinanceService.review_advance_request(
+        db, request_id, approved=False, reason=payload.reason, actor_id=user.id
+    )
     invalidate_money_caches()
     return result
 
@@ -445,7 +500,7 @@ async def upload_employee_avatar(
 def list_payroll(
     month: str = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "read"))
+    user: User = Depends(require_payroll_all)
 ):
     target_month = month or date.today().strftime("%Y-%m")
     cache_key = f"bachkhoa:finance:payroll:{target_month}"
@@ -461,7 +516,7 @@ def list_payroll(
 def list_worker_wages(
     project_id: str = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "read"))
+    user: User = Depends(require_payroll_all)
 ):
     return FinanceRepository.list_worker_wages_formatted(db, project_id)
 
@@ -469,23 +524,14 @@ def list_worker_wages(
 def get_worker_wage_records(
     month: str = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "read"))
+    user: User = Depends(require_payroll_all)
 ):
     return FinanceRepository.list_worker_wage_records_formatted(db, month)
-
-@router.post("/payroll/workers/create")
-def create_worker_wage(
-    payload: WageCreateIn,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "create"))
-):
-    return FinanceService.create_worker_wage(db, payload, actor_id=user.id)
-
 
 @router.get("/payroll/periods")
 def list_payroll_periods(
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "read"))
+    user: User = Depends(require_payroll_all)
 ):
     """Danh sách các kỳ lương kèm trạng thái chốt."""
     cache_key = "bachkhoa:finance:payroll_periods"
@@ -515,7 +561,7 @@ def lock_payroll_period(
 def mark_paid_payroll_period(
     period_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "update"))
+    user: User = Depends(require_payroll_all)
 ):
     """Kế toán/Giám đốc đánh dấu đã chi trả lương (locked -> paid)."""
     result = FinanceService.mark_paid_payroll_period(db, period_id, actor_id=user.id)
@@ -686,7 +732,7 @@ def close_fund(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "approve"))
 ):
-    return FinanceService.close_fund(db, payload)
+    return FinanceService.close_fund(db, payload, actor_id=user.id)
 
 @router.get("/monthly-dashboard")
 def get_monthly_dashboard(

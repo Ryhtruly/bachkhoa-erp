@@ -356,7 +356,7 @@ _MY_ITEMS_MONEY_QUERY = text(
       from public.work_pay_entitlements
       where employee_id = :employee_id
         and workflow_instance_id = any(:instance_ids)
-        and status in ('eligible', 'approved', 'paid')
+        and status in ('eligible', 'approved', 'locked', 'paid')
       group by workflow_instance_id
     )
     select coalesce(d.workflow_instance_id, c.workflow_instance_id) as workflow_instance_id,
@@ -572,7 +572,7 @@ _DAILY_SUMMARY_QUERY = text(
       from public.work_pay_entitlements
       where employee_id = :employee_id
         and earned_at >= date_trunc('day', now())
-        and status in ('eligible', 'approved', 'paid')
+        and status in ('eligible', 'approved', 'locked', 'paid')
     )
     select count(*) filter (where status in ('submitted', 'accepted')) as submitted_count,
            count(*) filter (where status = 'accepted') as accepted_count,
@@ -647,14 +647,14 @@ _CURRENT_PAYROLL_QUERY = text(
       select count(*) as tasks_completed, coalesce(sum(amount), 0) as piece_amount
       from public.work_pay_entitlements, period
       where employee_id = :employee_id
-        and status in ('eligible', 'approved', 'paid')
+        and status in ('eligible', 'approved', 'locked', 'paid')
         and earned_at >= period.start_date
         and earned_at < period.end_date
     ), adjustments as (
       select coalesce(sum(amount), 0) as adjustment_amount
       from public.employee_pay_adjustments, period
       where employee_id = :employee_id
-        and status = 'approved'
+        and status in ('approved', 'locked')
         and effective_date >= period.start_date
         and effective_date < period.end_date
     )
@@ -1056,17 +1056,19 @@ class EmployeePortalService:
         for row in db.execute(
             _HELP_POOL_QUERY, {"employee_id": employee.id}
         ).mappings().all():
-            phong_lam_duoc = task_pool_departments(
+            allowed_departments = task_pool_departments(
                 row["node_code"], row["node_definition"] or {}
             )
-            la_cua_minh = row["requested_by_employee_id"] == employee.id
-            dung_phong = not phong_lam_duoc or department_code in phong_lam_duoc
-            if la_cua_minh:
-                ly_do_khong_nhan = "Đây là bước bạn đã nhờ — chờ đồng đội nhận."
-            elif not dung_phong:
-                ly_do_khong_nhan = "Bước này thuộc phòng khác, bạn xem để nắm tình hình."
+            is_mine = row["requested_by_employee_id"] == employee.id
+            is_allowed_department = (
+                not allowed_departments or department_code in allowed_departments
+            )
+            if is_mine:
+                cannot_claim_reason = "Đây là bước bạn đã nhờ — chờ đồng đội nhận."
+            elif not is_allowed_department:
+                cannot_claim_reason = "Bước này thuộc phòng khác, bạn xem để nắm tình hình."
             else:
-                ly_do_khong_nhan = None
+                cannot_claim_reason = None
             help_items.append({
                 "id": row["id"],
                 "help_request_id": row["help_request_id"],
@@ -1086,9 +1088,9 @@ class EmployeePortalService:
                 "proposed_amount": _number_value(row["proposed_amount"] or 0),
                 "groups": ["HELP"],
                 "available_roles": ["MAIN"],
-                "is_mine": la_cua_minh,
-                "can_claim": ly_do_khong_nhan is None,
-                "cannot_claim_reason": ly_do_khong_nhan,
+                "is_mine": is_mine,
+                "can_claim": cannot_claim_reason is None,
+                "cannot_claim_reason": cannot_claim_reason,
             })
 
         held = int(guard.get("held_items") or 0)
@@ -1281,7 +1283,7 @@ class EmployeePortalService:
                    coalesce(sum(amount), 0) as piece_amount
             from public.work_pay_entitlements
             where employee_id = :emp_id
-              and status in ('eligible', 'approved', 'paid')
+              and status in ('eligible', 'approved', 'locked', 'paid')
             group by date_trunc('month', earned_at)
         """), {"emp_id": employee.id}).mappings().all()
         piece_map = {r["m_start"]: r for r in piece_rows}
@@ -1292,14 +1294,14 @@ class EmployeePortalService:
                    coalesce(sum(amount), 0) as adjustment_amount
             from public.employee_pay_adjustments
             where employee_id = :emp_id
-              and status = 'approved'
+              and status in ('approved', 'locked')
             group by date_trunc('month', effective_date)
         """), {"emp_id": employee.id}).mappings().all()
         adj_map = {r["m_start"]: r for r in adj_rows}
 
         # 3. Fetch locked/paid payroll periods from payroll_periods table
         pp_rows = db.execute(text("""
-            select period_month, status, locked_at, paid_at
+            select period_month, status, locked_at, paid_at, snapshot
             from public.payroll_periods
             where status in ('Locked', 'Paid')
         """)).mappings().all()
@@ -1364,6 +1366,14 @@ class EmployeePortalService:
 
             pp_info = period_status_map.get(p_date)
             period_status = "Open" if p_date == current_period_start else (pp_info["status"] if pp_info else "Closed")
+
+            locked_snapshot = (pp_info or {}).get("snapshot") or {}
+            employee_snapshot = locked_snapshot.get(str(employee.id)) if isinstance(locked_snapshot, dict) else None
+            if employee_snapshot:
+                b_salary = float(employee_snapshot.get("base_salary") or 0)
+                p_amount = float(employee_snapshot.get("piece_amount") or 0)
+                t_count = int(employee_snapshot.get("tasks_completed") or 0)
+                adj_amount = float(employee_snapshot.get("adjustment_amount") or 0)
 
             formatted = {
                 "month": p_date.isoformat(),

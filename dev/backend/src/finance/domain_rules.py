@@ -10,6 +10,11 @@ from src.finance.enums import (
     PaymentMethod, TransactionType, TransactionStatus
 )
 
+
+def is_posted_transaction_status(status: str | None) -> bool:
+    """Only an explicit completed/approved status affects accounting totals."""
+    return normalize_status(status) == TransactionStatus.COMPLETED.value if status else False
+
 def counts_toward_receivable(status: str, transaction_type: str) -> bool:
     norm_status = normalize_status(status)
     norm_type = normalize_transaction_type(transaction_type)

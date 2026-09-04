@@ -14,7 +14,7 @@ import uuid
 
 from sqlalchemy import text
 
-BANG_CAN_CO = (
+REQUIRED_TABLES = (
     "contracts", "service_lines", "task_types", "service_packages",
     "dossier_document_slots", "dossier_documents", "dossier_document_links",
     "document_checklist_templates", "document_template_applicabilities",
@@ -22,59 +22,65 @@ BANG_CAN_CO = (
 )
 
 
-def thieu_bang(db) -> list[str]:
+def get_missing_documents(db) -> list[str]:
     try:
         if db.bind and db.bind.dialect.name == "sqlite":
-            return list(BANG_CAN_CO)
+            return list(REQUIRED_TABLES)
         return [
-            ten for ten in BANG_CAN_CO
-            if not db.execute(text("select to_regclass(:t)"), {"t": f"public.{ten}"}).scalar()
+            table_name for table_name in REQUIRED_TABLES
+            if not db.execute(text("select to_regclass(:table_name)"), {"table_name": f"public.{table_name}"}).scalar()
         ]
     except Exception:
-        return list(BANG_CAN_CO)
+        return list(REQUIRED_TABLES)
 
 
-def _ma(tien_to: str) -> str:
-    return f"{tien_to}-{uuid.uuid4().hex[:10]}"
+def _ma(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:10]}"
 
 
-def dung_boi_canh(db, *, so_hang_muc: int = 1, version: int = 2) -> dict:
+def build_test_context(db, *, item_count: int = 1, version: int = 2) -> dict:
     """Một hợp đồng + N Hạng mục, mỗi Hạng mục một Dạng hồ sơ riêng.
 
     Trả về dict gồm ``contract_id``, ``goi_id`` và danh sách ``hang_muc``
     (mỗi phần tử có ``id`` và ``task_type_id``).
     """
-    goi = _ma("P")
-    db.execute(text("insert into public.service_packages (id, name) values (:id, :ten)"),
-               {"id": goi, "ten": "Gói thử nghiệm"})
+    package_id = _ma("P")
+    db.execute(text("insert into public.service_packages (id, name) values (:id, :name)"),
+               {"id": package_id, "name": "Gói thử nghiệm"})
 
-    hd = _ma("HD")
-    db.execute(text("insert into public.contracts (id) values (:id)"), {"id": hd})
+    contract_id = _ma("HD")
+    db.execute(text("insert into public.contracts (id) values (:id)"), {"id": contract_id})
 
-    hang_muc = []
-    for i in range(so_hang_muc):
-        tt = _ma("T")
+    service_lines = []
+    for i in range(item_count):
+        task_type_id = _ma("T")
         db.execute(
             text("insert into public.task_types (id, name, service_package_id) "
-                 "values (:id, :ten, :goi)"),
-            {"id": tt, "ten": f"Thủ tục thử {i + 1}", "goi": goi},
+                 "values (:id, :name, :package_id)"),
+            {"id": task_type_id, "name": f"Thủ tục thử {i + 1}", "package_id": package_id},
         )
-        sl = _ma("SL")
+        service_line_id = _ma("SL")
         db.execute(
             text("""
                 insert into public.service_lines
                     (id, contract_id, task_type_id, service_package_id, document_register_version)
-                values (:id, :hd, :tt, :goi, :ver)
+                values (:id, :contract_id, :task_type_id, :package_id, :version)
             """),
-            {"id": sl, "hd": hd, "tt": tt, "goi": goi, "ver": version},
+            {
+                "id": service_line_id,
+                "contract_id": contract_id,
+                "task_type_id": task_type_id,
+                "package_id": package_id,
+                "version": version,
+            },
         )
-        hang_muc.append({"id": sl, "task_type_id": tt})
+        service_lines.append({"id": service_line_id, "task_type_id": task_type_id})
 
-    return {"contract_id": hd, "goi_id": goi, "hang_muc": hang_muc}
+    return {"contract_id": contract_id, "goi_id": package_id, "hang_muc": service_lines}
 
 
-def them_mau(db, *, ten: str, nguon: str = "KHACH_HANG", bat_buoc: bool = True,
-             pham_vi: str = "GLOBAL", goi_id=None, task_type_id=None,
+def insert_template(db, *, name: str, source: str = "KHACH_HANG", required: bool = True,
+             scope: str = "GLOBAL", package_id=None, task_type_id=None,
              is_default: bool = True) -> str:
     """Một loại giấy trong bộ mẫu, kèm phạm vi áp dụng."""
     tpl = _ma("TPL")
@@ -82,69 +88,84 @@ def them_mau(db, *, ten: str, nguon: str = "KHACH_HANG", bat_buoc: bool = True,
         text("""
             insert into public.document_checklist_templates
                 (id, name, source, is_required, needs_original, default_quantity, is_active)
-            values (:id, :ten, :nguon, :bb, false, 1, true)
+            values (:id, :name, :source, :required, false, 1, true)
         """),
-        {"id": tpl, "ten": ten, "nguon": nguon, "bb": bat_buoc},
+        {"id": tpl, "name": name, "source": source, "required": required},
     )
     db.execute(
         text("""
             insert into public.document_template_applicabilities
                 (template_id, applicability_type, service_package_id, task_type_id, is_default)
-            values (:tpl, :loai, :goi, :tt, :mac_dinh)
+            values (:template_id, :scope, :package_id, :task_type_id, :is_default)
         """),
-        {"tpl": tpl, "loai": pham_vi,
-         "goi": goi_id if pham_vi == "PACKAGE" else None,
-         "tt": task_type_id if pham_vi == "TASK_TYPE" else None,
-         "mac_dinh": is_default},
+        {
+            "template_id": tpl,
+            "scope": scope,
+            "package_id": package_id if scope == "PACKAGE" else None,
+            "task_type_id": task_type_id if scope == "TASK_TYPE" else None,
+            "is_default": is_default,
+        },
     )
     return tpl
 
 
-def them_o_giay(db, *, contract_id: str, service_line_id=None, ten: str,
-                nguon: str = "KHACH_HANG", bat_buoc: bool = True) -> str:
+def insert_document_slot(db, *, contract_id: str, service_line_id=None, name: str,
+                source: str = "KHACH_HANG", required: bool = True) -> str:
     """Một ô giấy runtime. ``service_line_id`` None = ô cấp Hợp đồng (legacy)."""
-    o = _ma("S")
+    slot_id = _ma("S")
     db.execute(
         text("""
             insert into public.dossier_document_slots
                 (id, scope, contract_id, service_line_id, name, source,
                  is_required, needs_original, quantity, status, sort_order)
-            values (:id, :scope, :hd, :sl, :ten, :nguon, :bb, false, 1, 'CHUA_CO', 100)
+            values (:id, :scope, :contract_id, :service_line_id, :name, :source, :required, false, 1, 'CHUA_CO', 100)
         """),
-        {"id": o, "scope": "SERVICE_LINE" if service_line_id else "CONTRACT",
-         "hd": contract_id, "sl": service_line_id, "ten": ten, "nguon": nguon, "bb": bat_buoc},
+        {
+            "id": slot_id,
+            "scope": "SERVICE_LINE" if service_line_id else "CONTRACT",
+            "contract_id": contract_id,
+            "service_line_id": service_line_id,
+            "name": name,
+            "source": source,
+            "required": required,
+        },
     )
-    return o
+    return slot_id
 
 
-def them_tep(db, *, contract_id: str, ten_tep: str = "giay.pdf") -> str:
+def insert_document(db, *, contract_id: str, file_name: str = "giay.pdf") -> str:
     """Một tài liệu trong kho nguồn của hợp đồng — CHƯA gắn vào ô nào."""
-    tep = _ma("D")
+    document_id = _ma("D")
     db.execute(
         text("""
             insert into public.dossier_documents
                 (id, contract_id, scope, stage, object_key, file_name,
                  content_type, size_bytes, doc_status)
-            values (:id, :hd, 'CONTRACT', 'ho-so-goc', :khoa, :ten,
+            values (:id, :contract_id, 'CONTRACT', 'ho-so-goc', :object_key, :file_name,
                     'application/pdf', 1024, 'DANG_DUNG')
         """),
-        {"id": tep, "hd": contract_id, "khoa": f"thu-nghiem/{tep}", "ten": ten_tep},
+        {
+            "id": document_id,
+            "contract_id": contract_id,
+            "object_key": f"thu-nghiem/{document_id}",
+            "file_name": file_name,
+        },
     )
-    return tep
+    return document_id
 
 
-def gan_tep_vao_o(db, *, contract_id: str, slot_id: str, document_id: str) -> None:
+def link_document_to_slot(db, *, contract_id: str, slot_id: str, document_id: str) -> None:
     db.execute(
         text("""
             insert into public.dossier_document_links
                 (id, contract_id, slot_id, document_id, link_status)
-            values (gen_random_uuid()::text, :hd, :o, :tep, 'DANG_DUNG')
+            values (gen_random_uuid()::text, :contract_id, :slot_id, :document_id, 'DANG_DUNG')
         """),
-        {"hd": contract_id, "o": slot_id, "tep": document_id},
+        {"contract_id": contract_id, "slot_id": slot_id, "document_id": document_id},
     )
 
 
-def nguoi_dung(db) -> str:
+def create_test_user(db) -> str:
     """Một user có sẵn — phiếu miễn có FK tới users."""
     uid = db.execute(text("select id from public.users limit 1")).scalar()
     if uid:
@@ -158,7 +179,7 @@ def nguoi_dung(db) -> str:
     return uid
 
 
-def them_buoc_k01(db, *, service_line_id: str, checklist=None) -> str:
+def insert_k01_node(db, *, service_line_id: str, checklist=None) -> str:
     """Một workflow_instance + task_node K01 tối thiểu.
 
     Cần cho các test chốt phiếu miễn theo quyết định nghiệm thu: helper đi từ
@@ -200,19 +221,19 @@ def them_buoc_k01(db, *, service_line_id: str, checklist=None) -> str:
     return node
 
 
-def giao_viec(db, *, task_node_id: str, user_id: str) -> str:
+def assign_node(db, *, task_node_id: str, user_id: str) -> str:
     """Gán một nhân viên vào bước — `submit_task_node_for_acceptance` đòi có
     phân công trước khi xét tới cổng giấy tờ."""
-    nv = db.execute(
+    employee_id = db.execute(
         text("select id from public.employees where user_id = :u limit 1"),
         {"u": user_id},
     ).scalar()
-    if not nv:
-        nv = _ma("E")
+    if not employee_id:
+        employee_id = _ma("E")
         db.execute(
             text("insert into public.employees (id, user_id, full_name, is_active) "
-                 "values (:id, :u, 'Nhân viên thử', true)"),
-            {"id": nv, "u": user_id},
+                 "values (:id, :user_id, 'Nhân viên thử', true)"),
+            {"id": employee_id, "user_id": user_id},
         )
     db.execute(
         text("""
@@ -220,27 +241,27 @@ def giao_viec(db, *, task_node_id: str, user_id: str) -> str:
                 (task_node_id, employee_id, role_code, assignment_status)
             values (:n, :e, 'MAIN', 'accepted')
         """),
-        {"n": task_node_id, "e": nv},
+        {"n": task_node_id, "e": employee_id},
     )
-    return nv
+    return employee_id
 
 
-def them_nhiem_vu(db, *, task_node_id: str, ten: str, trang_thai: str) -> str:
+def insert_checklist_item(db, *, task_node_id: str, name: str, status: str) -> str:
     """Một mục checklist của bước, đặt thẳng trạng thái muốn kiểm."""
     rid = _ma("CR")
     db.execute(
         text("""
             insert into public.task_node_checklist_results
                 (id, task_node_id, checklist_key, checklist_name, status, is_required)
-            values (:id, :n, :k, :ten, :tt, true)
+            values (:id, :node_id, :checklist_key, :name, :status, true)
         """),
-        {"id": rid, "n": task_node_id, "k": rid.lower(), "ten": ten, "tt": trang_thai},
+        {"id": rid, "node_id": task_node_id, "checklist_key": rid.lower(), "name": name, "status": status},
     )
     return rid
 
 
-def them_nhiem_vu_co_tai_lieu(db, *, task_node_id: str, ten: str, khoa: str,
-                              trang_thai: str = "pending_approval") -> str:
+def insert_checklist_item_with_document(db, *, task_node_id: str, name: str, checklist_key: str,
+                              status: str = "pending_approval") -> str:
     """Mục checklist khớp với khoá đã khai trong graph.
 
     ``_NODE_OUTPUT_STATE_QUERY`` nối graph với runtime bằng
@@ -252,8 +273,8 @@ def them_nhiem_vu_co_tai_lieu(db, *, task_node_id: str, ten: str, khoa: str,
         text("""
             insert into public.task_node_checklist_results
                 (id, task_node_id, checklist_key, checklist_name, status, is_required)
-            values (:id, :n, :k, :ten, :tt, true)
+            values (:id, :node_id, :checklist_key, :name, :status, true)
         """),
-        {"id": rid, "n": task_node_id, "k": khoa, "ten": ten, "tt": trang_thai},
+        {"id": rid, "node_id": task_node_id, "checklist_key": checklist_key, "name": name, "status": status},
     )
     return rid

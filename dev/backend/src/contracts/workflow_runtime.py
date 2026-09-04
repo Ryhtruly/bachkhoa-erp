@@ -751,20 +751,20 @@ def validate_workflow_graph(
             if dich in normalized_nodes and dich not in den_duoc:
                 hang_doi.append(dich)
 
-    mo_coi = sorted(set(normalized_nodes) - den_duoc) if require_connected else []
-    if mo_coi:
-        ten = ", ".join(
+    disconnected_nodes = sorted(set(normalized_nodes) - den_duoc) if require_connected else []
+    if disconnected_nodes:
+        disconnected_node_names = ", ".join(
             f"{normalized_nodes[k].get('name') or k} ({normalized_nodes[k].get('task_code') or '?'})"
-            for k in mo_coi
+            for k in disconnected_nodes
         )
         raise WorkflowValidationError(
-            f"Có {len(mo_coi)} bước chưa nối vào quy trình: {ten}. "
+            f"Có {len(disconnected_nodes)} bước chưa nối vào quy trình: {disconnected_node_names}. "
             "Nối chúng vào luồng hoặc xoá đi rồi kích hoạt lại."
         )
 
     # Mỗi bước vận hành phải có một trong hai cơ chế nhận việc: Bể việc theo
     # phòng ban/vai trò hoặc chỉ định thủ công cho trường hợp đặc biệt.
-    chua_giao = sorted(
+    unassigned_nodes = sorted(
         k for k, node in normalized_nodes.items()
         if not (node.get("assignments") or [])
         and not (
@@ -772,13 +772,13 @@ def validate_workflow_graph(
             and node.get("claim_roles")
         )
     ) if require_assignments else []
-    if chua_giao:
-        ten = ", ".join(
+    if unassigned_nodes:
+        unassigned_node_names = ", ".join(
             f"{normalized_nodes[k].get('name') or k} ({normalized_nodes[k].get('task_code') or '?'})"
-            for k in chua_giao
+            for k in unassigned_nodes
         )
         raise WorkflowValidationError(
-            f"Có {len(chua_giao)} bước chưa có cơ chế nhận việc: {ten}. "
+            f"Có {len(unassigned_nodes)} bước chưa có cơ chế nhận việc: {unassigned_node_names}. "
             "Chọn phòng ban/vai trò Bể việc hoặc chỉ định người phụ trách rồi kích hoạt lại."
         )
 
@@ -1120,7 +1120,11 @@ def _apply_workflow_amendment(
         # Vẫn cho đổi tên, mô tả, phân công và vị trí trên sơ đồ — những thứ đó
         # không đụng tới việc đang chạy.
         if runtime_node["started_at"] is not None:
-            _chan_sua_buoc_dang_chay(db, runtime_node=runtime_node, desired_node=desired_node)
+            _prevent_modifying_active_node(
+                db,
+                runtime_node=runtime_node,
+                desired_node=desired_node,
+            )
         active_assignments = db.execute(
             text("""
                 select employee_id, role_code, is_primary, notes
@@ -3490,7 +3494,7 @@ def submit_task_node_for_acceptance(
 
 
 
-def _chot_phieu_mien_theo_nghiem_thu(
+def _finalize_waivers_after_acceptance(
     db: Session, *, task_node_id: str, decision: str, actor_id: str, review_note: str | None
 ) -> list[str]:
     """Quyết định nghiệm thu chốt luôn số phận các phiếu xin miễn giấy đang chờ.
@@ -3503,7 +3507,7 @@ def _chot_phieu_mien_theo_nghiem_thu(
     Chỉ áp cho K01 — đó là bước rà soát giấy đầu vào; các bước sau không sinh
     phiếu miễn nên không có gì để chốt.
     """
-    hang_muc = db.execute(
+    service_line_id = db.execute(
         text("""
             select wi.service_line_id
             from public.task_nodes n
@@ -3512,20 +3516,20 @@ def _chot_phieu_mien_theo_nghiem_thu(
         """),
         {"task_node_id": task_node_id},
     ).scalar()
-    if not hang_muc:
+    if not service_line_id:
         return []
 
-    ket_qua = "approved" if decision == "accepted" else "rejected"
+    result_status = "approved" if decision == "accepted" else "rejected"
     # Từ chối thì BẮT BUỘC có lý do — nhân viên cầm câu này đi gọi khách. Giám
     # đốc không ghi thì ghi hộ một câu trung tính còn hơn để trống, vì cột
     # review_note rỗng khiến màn nhân viên không hiển thị được lý do nào cả.
-    ghi_chu = review_note or (
-        None if ket_qua == "approved" else "Giám đốc yêu cầu lấy bằng được giấy này."
+    note_text = review_note or (
+        None if result_status == "approved" else "Giám đốc yêu cầu lấy bằng được giấy này."
     )
-    ten = db.execute(
+    slot_names = db.execute(
         text("""
             update public.document_slot_change_requests r
-            set status = :ket_qua, reviewed_by = :actor, reviewed_at = now(),
+            set status = :result_status, reviewed_by = :actor, reviewed_at = now(),
                 review_note = :note, updated_at = now()
             from public.dossier_document_slots s
             where s.id = r.slot_id
@@ -3533,9 +3537,9 @@ def _chot_phieu_mien_theo_nghiem_thu(
               and r.service_line_id = :sl
             returning s.name
         """),
-        {"ket_qua": ket_qua, "actor": actor_id, "note": ghi_chu, "sl": hang_muc},
+        {"result_status": result_status, "actor": actor_id, "note": note_text, "sl": service_line_id},
     ).scalars().all()
-    return list(ten)
+    return list(slot_names)
 
 
 def review_task_node_acceptance(
@@ -3589,7 +3593,7 @@ def review_task_node_acceptance(
     # Nhận diện bằng cờ nghiệp vụ, không dò mã K06. Cần biết trước khi kiểm
     # checklist vì K06 là luồng duyệt theo gói: nhân viên nộp checklist ở trạng
     # thái chờ, Giám đốc duyệt Node sẽ duyệt toàn bộ các mục cùng một giao dịch.
-    hv = db.execute(
+    handover_context = db.execute(
         text("""
             select sl.contract_id, c.total_value,
                    coalesce((coalesce(r_act.graph, r_def.graph)
@@ -3604,7 +3608,7 @@ def review_task_node_acceptance(
         """),
         {"task_node_id": task_node_id},
     ).mappings().first()
-    is_handover = bool(hv and hv["is_handover"])
+    is_handover = bool(handover_context and handover_context["is_handover"])
 
     if decision == "accepted":
         # Duyệt theo GÓI cho mọi node, không còn là đặc quyền của K06. Một quyết
@@ -3627,14 +3631,17 @@ def review_task_node_acceptance(
                 f"Không thể nghiệm thu Node vì còn checklist chưa được nộp đủ: {names}"
             )
 
-        if is_handover and hv["contract_id"]:
+        if is_handover and handover_context["contract_id"]:
             from src.dossiers.handover import debt_summary
             debt = debt_summary(
-                db, hv["contract_id"], hv["total_value"], task_node_id=task_node_id
+                db,
+                handover_context["contract_id"],
+                handover_context["total_value"],
+                task_node_id=task_node_id,
             )
             if debt["remaining"] > 0.009 and not debt["gate_open"]:
                 raise WorkflowValidationError(
-                    f"Chặn bàn giao: Hợp đồng {hv['contract_id']} còn nợ "
+                    f"Chặn bàn giao: Hợp đồng {handover_context['contract_id']} còn nợ "
                     f"({debt['remaining']:,.0f}đ) và Node chưa được Giám đốc duyệt ngoại lệ."
                 )
 
@@ -3643,7 +3650,7 @@ def review_task_node_acceptance(
         # không nhân viên mở ra thấy checklist vẫn xanh và không biết sửa gì.
         # Ghi chú RIÊNG cho từng mục trước, rồi mới quét phần còn lại bằng ghi
         # chú chung. Làm ngược thứ tự là ghi chú riêng bị đè mất.
-        for muc_id, ghi_chu in (checklist_notes or {}).items():
+        for checklist_result_id, checklist_note in (checklist_notes or {}).items():
             db.execute(
                 text("""
                     update public.task_node_checklist_results
@@ -3652,8 +3659,8 @@ def review_task_node_acceptance(
                     where id = :id and task_node_id = :n
                       and status in ('pending_approval', 'late_pending_approval')
                 """),
-                {"id": muc_id, "n": task_node_id, "actor_id": actor_id,
-                 "note": (ghi_chu or "").strip() or review_note},
+                {"id": checklist_result_id, "n": task_node_id, "actor_id": actor_id,
+                 "note": (checklist_note or "").strip() or review_note},
             )
         db.execute(
             text("""
@@ -3696,14 +3703,14 @@ def review_task_node_acceptance(
                 "payload": json.dumps({"acceptance_id": acceptance_id, "review_note": review_note or ""}),
             },
         )
-        mien_bi_tu_choi = _chot_phieu_mien_theo_nghiem_thu(
+        rejected_waivers = _finalize_waivers_after_acceptance(
             db, task_node_id=task_node_id, decision="rework_required",
             actor_id=actor_id, review_note=review_note,
         )
         return {
             "task_node_id": task_node_id,
             "status": "rework_required",
-            "waivers_rejected": mien_bi_tu_choi,
+            "waivers_rejected": rejected_waivers,
         }
 
     graph_row = db.execute(
@@ -3874,12 +3881,12 @@ def review_task_node_acceptance(
             {"instance_id": acceptance["workflow_instance_id"]},
         ).first()
         completion_gate_open = True
-        if not remaining and hv and hv["contract_id"]:
+        if not remaining and handover_context and handover_context["contract_id"]:
             completion_gate_open = _workflow_handover_gate_open(
                 db,
                 workflow_instance_id=acceptance["workflow_instance_id"],
-                contract_id=hv["contract_id"],
-                total_value=hv["total_value"],
+                contract_id=handover_context["contract_id"],
+                total_value=handover_context["total_value"],
             )
         if not remaining and completion_gate_open:
             db.execute(
@@ -3891,7 +3898,7 @@ def review_task_node_acceptance(
                 {"instance_id": acceptance["workflow_instance_id"]},
             )
 
-    mien_duoc_duyet = _chot_phieu_mien_theo_nghiem_thu(
+    approved_waivers = _finalize_waivers_after_acceptance(
         db, task_node_id=task_node_id, decision="accepted",
         actor_id=actor_id, review_note=review_note,
     )
@@ -3901,7 +3908,7 @@ def review_task_node_acceptance(
         "unlocked_node_id": unlocked_node_id,
         "entitlement_count": entitlement_count,
         "entitlement_amount": entitlement_amount,
-        "waivers_approved": mien_duoc_duyet,
+        "waivers_approved": approved_waivers,
     }
 
 
@@ -3975,9 +3982,9 @@ def auto_finalize_node_if_ready(db: Session, *, task_node_id: str, actor_id: str
     if node["has_output_documents"]:
         from src.dossiers.documents import node_output_document_blockers
 
-        thieu = node_output_document_blockers(db, task_node_id)
-        if thieu:
-            return {"finalized": False, "reason": "tài liệu đầu ra chưa đủ: " + "; ".join(thieu)}
+        missing_documents = node_output_document_blockers(db, task_node_id)
+        if missing_documents:
+            return {"finalized": False, "reason": "tài liệu đầu ra chưa đủ: " + "; ".join(missing_documents)}
 
     if node["is_handover"] and not _workflow_handover_gate_open(
         db,
@@ -4249,8 +4256,8 @@ def request_workflow_rollback(
     Nguyên tắc bất biến của nghiệp vụ: không ai được tự lùi bước. Phiếu chỉ nằm
     chờ; đúng một chữ ký duyệt mới kích hoạt cascade.
     """
-    ly_do = (reason or "").strip()
-    if len(ly_do) < 5:
+    reason_text = (reason or "").strip()
+    if len(reason_text) < 5:
         raise WorkflowValidationError("Cần ghi rõ lý do quay lại (tối thiểu 5 ký tự)")
 
     affected = _rollback_affected_nodes(db, target_task_node_id=target_task_node_id)
@@ -4283,7 +4290,7 @@ def request_workflow_rollback(
             "instance_id": workflow_instance_id,
             "target": target_task_node_id,
             "requester": requester_user_id,
-            "reason": ly_do,
+            "reason": reason_text,
             "affected": json.dumps([node["id"] for node in affected]),
         },
     ).scalar()
@@ -4371,6 +4378,17 @@ def _generate_work_pay_entitlements(
     db: Session, *, task_node_id: str, workflow_instance_id: str, acceptance_id: str, actor_id: str
 ) -> tuple[int, float]:
     """Create idempotent pay entitlements for every approved payable checklist on this node."""
+    payroll_locked = db.execute(text("""
+        select status
+        from public.payroll_periods
+        where period_month = date_trunc('month', current_date)::date
+        limit 1
+    """)).scalar()
+    if str(payroll_locked or "").lower() in {"locked", "paid"}:
+        raise WorkflowValidationError(
+            "Kỳ lương hiện tại đã khóa; không thể phát sinh tiền khoán mới. "
+            "Hãy lập điều chỉnh ở kỳ sau hoặc mở lại kỳ có kiểm toán."
+        )
     payable = db.execute(
         text("""
             select r.id as checklist_result_id, r.checklist_name, r.work_item_id
@@ -4711,8 +4729,8 @@ def request_node_help(
     proposed_amount: float | None = None,
 ) -> dict[str, Any]:
     """Đẩy một bước đang giữ lên Bể việc để nhờ người khác làm hộ."""
-    ly_do = (reason or "").strip()
-    if len(ly_do) < 5:
+    reason_text = (reason or "").strip()
+    if len(reason_text) < 5:
         raise WorkflowValidationError("Cần ghi rõ lý do nhờ hỗ trợ (tối thiểu 5 ký tự)")
 
     _require_node_assignment(db, task_node_id=task_node_id, employee_id=employee_id)
@@ -4751,7 +4769,7 @@ def request_node_help(
         {
             "task_node_id": task_node_id,
             "employee_id": employee_id,
-            "reason": ly_do,
+            "reason": reason_text,
             "amount": proposed_amount,
         },
     ).scalar()
@@ -4770,7 +4788,7 @@ def request_node_help(
             "employee_id": employee_id,
             "payload": json.dumps({
                 "help_request_id": request_id,
-                "reason": ly_do,
+                "reason": reason_text,
                 "proposed_amount": float(proposed_amount) if proposed_amount else None,
             }, ensure_ascii=False),
         },

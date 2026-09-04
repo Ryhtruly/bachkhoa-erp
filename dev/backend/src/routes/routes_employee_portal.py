@@ -27,7 +27,9 @@ from src.core.auth import check_user_permission, get_current_user
 from src.core.redis_utils import invalidate_cache
 from src.db.database import get_db
 from src.db.models import Employee, User
+from src.finance import AdvanceRequestIn, FinanceService
 from src.employee_portal.service import EmployeePortalService
+from src.dossiers.actor_guard import assert_can_view_node
 from src.files.references import FileReference
 from src.services.storage_service import AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX, delete_file, ensure_bucket, get_file, upload_file
 from src.services.timeline_realtime import employee_task_event_stream, publish_timeline_change
@@ -267,6 +269,46 @@ def get_my_payroll(
     return EmployeePortalService.get_my_payroll(db, employee, selected_month=month)
 
 
+@router.post("/advance-requests")
+def create_my_advance_request(
+    payload: AdvanceRequestIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân sự.")
+    return FinanceService.create_advance_request(db, payload, employee, user.id)
+
+
+@router.get("/my-advance-requests")
+def list_my_advance_requests(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân sự.")
+    from src.db.models import AdvanceRequest
+
+    rows = db.query(AdvanceRequest).filter(
+        AdvanceRequest.employee_id == employee.id
+    ).order_by(AdvanceRequest.created_at.desc()).all()
+    return [
+        {
+            "id": row.id,
+            "amount": float(row.amount or 0),
+            "payment_method": row.payment_method,
+            "note": row.note,
+            "status": row.status,
+            "rejection_reason": row.rejection_reason,
+            "official_transaction_id": row.official_transaction_id,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        for row in rows
+    ]
+
+
 @router.get("/employees/{employee_id}")
 def get_employee_profile(
     employee_id: str,
@@ -463,21 +505,21 @@ def get_checklist_output_status(
 
     # 1. Mục checklist phải THUỘC đúng bước trong đường dẫn — nếu không thì chỉ
     #    cần đổi một trong hai id là soi được mục của bước khác.
-    thuoc_ve = db.execute(
+    checklist_belongs_to_task = db.execute(
         text("""
             select 1 from public.task_node_checklist_results
             where id = :checklist_result_id and task_node_id = :task_node_id
         """),
         {"checklist_result_id": checklist_result_id, "task_node_id": task_node_id},
     ).first()
-    if not thuoc_ve:
+    if not checklist_belongs_to_task:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục checklist của bước này.")
 
     # 2. Người gọi phải được giao việc ở bước đó, hoặc có quyền đọc hợp đồng
     #    (Giám đốc/quản lý). Nhân viên bộ phận khác không dò được.
     if not check_user_permission(db, user, "contracts", "read"):
         employee = _active_employee_for_user(db, user.id)
-        duoc_giao = employee and db.execute(
+        assignment_exists = employee and db.execute(
             text("""
                 select 1 from public.task_node_assignments
                 where task_node_id = :task_node_id and employee_id = :employee_id
@@ -492,7 +534,7 @@ def get_checklist_output_status(
             """),
             {"task_node_id": task_node_id, "employee_id": employee.id},
         ).first()
-        if not duoc_giao:
+        if not assignment_exists:
             raise HTTPException(status_code=403, detail="Bạn không được phân công cho công việc này.")
 
     return checklist_output_status(db, checklist_result_id)
@@ -560,6 +602,7 @@ def node_shortage(
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+    assert_can_view_node(db, task_node_id=task_node_id, user=user)
     return {"status": "success", "data": node_shortage_report(db, task_node_id)}
 
 

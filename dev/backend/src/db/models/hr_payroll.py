@@ -43,6 +43,9 @@ class PayrollPeriod(Base):
     locked_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), nullable=True)
     locked_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    # Immutable totals captured at lock time.  The employee portal uses this
+    # snapshot for closed periods so later HR changes cannot rewrite history.
+    snapshot = Column(JSONB, nullable=True)
 
 
 class Attendance(Base):

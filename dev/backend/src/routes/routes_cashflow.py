@@ -58,6 +58,11 @@ def create_transaction(
     try:
         canon_type = normalize_transaction_type(payload.transaction_type)
         canon_pm = normalize_payment_method(payload.payment_method)
+        if canon_type in (TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value):
+            raise HTTPException(
+                status_code=400,
+                detail="Tạm ứng và quyết toán phải đi qua quy trình phiếu chuyên biệt.",
+            )
         new_item = CashflowTransaction(
             id=f"PTC-{uuid.uuid4().hex[:8].upper()}",
             transaction_type=canon_type,
@@ -71,6 +76,8 @@ def create_transaction(
         db.commit()
         db.refresh(new_item)
         return {"message": "Transaction created successfully", "data": {"id": new_item.id}}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

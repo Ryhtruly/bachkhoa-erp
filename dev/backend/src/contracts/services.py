@@ -236,7 +236,7 @@ def build_current_contract_document_data(db: Session, contract_id: str) -> tuple
 CHE_DO_CHON_GIAY = ("DEFAULT", "CUSTOM", "NONE")
 
 
-def phan_giai_lua_chon_giay(mode, template_ids):
+def resolve_document_selection(mode, template_ids):
     """Đổi payload tường minh thành thứ tầng dưới hiểu, hoặc 422.
 
     Trả về ``TU_DONG_THEO_MAC_DINH`` (sentinel nội bộ) hoặc một danh sách mã mẫu.
@@ -385,7 +385,7 @@ def _create_initial_service_line(
         {"id": service_line.id},
     )
 
-    _materialize_so_giay_to(
+    _materialize_document_register(
         db,
         service_line_id=service_line.id,
         checklist_template_ids=checklist_template_ids,
@@ -394,7 +394,7 @@ def _create_initial_service_line(
     return service_line
 
 
-def _materialize_so_giay_to(
+def _materialize_document_register(
     db: Session,
     *,
     service_line_id: str,
@@ -412,18 +412,18 @@ def _materialize_so_giay_to(
     from src.dossiers.register import applicable_templates, materialize_service_line_register
 
     if isinstance(checklist_template_ids, _TuDongTheoMacDinh):
-        chon = [
-            muc["id"] for muc in applicable_templates(db, service_line_id)
-            if muc["is_default"]
+        selected_template_ids = [
+            template["id"] for template in applicable_templates(db, service_line_id)
+            if template["is_default"]
         ]
-        nguon_chon = "TU_DONG_MAC_DINH"
+        selection_source = "TU_DONG_MAC_DINH"
     else:
         # Kể cả danh sách rỗng — đó là một lựa chọn, không phải thiếu dữ liệu.
-        chon = list(checklist_template_ids)
-        nguon_chon = "NGUOI_DUNG_CHON"
+        selected_template_ids = list(checklist_template_ids)
+        selection_source = "NGUOI_DUNG_CHON"
 
-    so_o = materialize_service_line_register(
-        db, service_line_id, template_ids=chon, actor_id=actor_id
+    slot_count = materialize_service_line_register(
+        db, service_line_id, template_ids=selected_template_ids, actor_id=actor_id
     )
     log_action(
         db,
@@ -432,13 +432,13 @@ def _materialize_so_giay_to(
         "service_line",
         {
             "service_line_id": service_line_id,
-            "nguon_chon": nguon_chon,
-            "so_mau_chon": len(chon),
-            "so_o_tao": so_o,
+            "nguon_chon": selection_source,
+            "so_mau_chon": len(selected_template_ids),
+            "so_o_tao": slot_count,
             "document_register_version": 2,
         },
     )
-    return so_o
+    return slot_count
 
 
 class ContractService:
@@ -486,7 +486,7 @@ class ContractService:
                 price=contract_val,
                 # Đường tạo hợp đồng từ task (không qua màn soạn) — khai DEFAULT
                 # tường minh, đúng như đường CRM.
-                checklist_template_ids=phan_giai_lua_chon_giay("DEFAULT", None),
+                checklist_template_ids=resolve_document_selection("DEFAULT", None),
                 actor_id=actor_id,
             )
 
@@ -640,7 +640,7 @@ class ContractService:
         # đảm bằng thứ tự thực thi chứ không dựa vào rollback. Rollback vẫn có,
         # nhưng phụ thuộc vào nó nghĩa là mọi đường gọi mới đều phải nhớ bọc
         # try/except cho đúng, và sẽ có ngày ai đó quên.
-        lua_chon_giay = phan_giai_lua_chon_giay(
+        document_selection = resolve_document_selection(
             getattr(payload, "document_selection_mode", None),
             getattr(payload, "document_template_ids", None),
         )
@@ -726,7 +726,7 @@ class ContractService:
                 # Lựa chọn của người soạn hợp đồng neo vào HẠNG MỤC, không vào
                 # Hợp đồng: một Hợp đồng nhiều Hạng mục thì mỗi Hạng mục có bộ
                 # giấy riêng, chốt ở cấp Hợp đồng là sai phạm vi.
-                checklist_template_ids=lua_chon_giay,
+            checklist_template_ids=document_selection,
                 actor_id=actor_id_val,
                 priority=(getattr(payload, "priority", None) or "NORMAL"),
                 priority_reason=getattr(payload, "priority_reason", None),

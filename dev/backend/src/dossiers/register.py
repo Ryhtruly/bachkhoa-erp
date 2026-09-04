@@ -115,10 +115,13 @@ def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, An
             "is_default": bool(row["is_default"]),
             "_rank": hang,
         }
-    ket_qua = sorted(gop.values(), key=lambda x: (SOURCES.index(x["source"]) if x["source"] in SOURCES else 9, x["name"]))
-    for muc in ket_qua:
-        muc.pop("_rank", None)
-    return ket_qua
+    sorted_templates = sorted(
+        gop.values(),
+        key=lambda item: (SOURCES.index(item["source"]) if item["source"] in SOURCES else 9, item["name"]),
+    )
+    for template in sorted_templates:
+        template.pop("_rank", None)
+    return sorted_templates
 
 
 def checklist_options(db: Session) -> list[dict[str, Any]]:
@@ -161,13 +164,13 @@ def checklist_options(db: Session) -> list[dict[str, Any]]:
 _SCHEMA_CO_VERSION: dict[str, Any] = {}
 
 
-def co_so_giay_theo_hang_muc(db: Session) -> bool:
+def has_service_line_document_register(db: Session) -> bool:
     """Schema đã đủ để đọc phiếu xin miễn theo Hạng mục chưa?
 
     Công khai để các module khác (chuông thông báo) chọn được biến thể truy vấn
     thay vì tự dò lại — dò hai nơi là hai chỗ có thể lệch nhau.
     """
-    return _co_cot_waiver_service_line(db)
+    return _has_waiver_service_line_column(db)
 
 
 def reset_schema_cache() -> None:
@@ -190,7 +193,7 @@ def require_v2_schema(db: Session) -> None:
     503 chứ không phải 500: đây là "chưa migrate", một trạng thái tạm và biết
     trước, không phải lỗi bất ngờ của hệ thống.
     """
-    if not _co_cot_register_version(db):
+    if not _has_register_version_column(db):
         raise HTTPException(
             status_code=503,
             detail="Tính năng sổ giấy tờ theo Hạng mục chưa được migrate. "
@@ -213,7 +216,7 @@ def _has_column(db: Session, table_name: str, column_name: str) -> bool:
     """), {"tbl": table_name, "col": column_name}).first())
 
 
-def _co_cot_register_version(db: Session) -> bool:
+def _has_register_version_column(db: Session) -> bool:
     """Dò bằng information_schema — một câu hỏi thẳng, trả lời đúng/sai.
 
     KHÔNG bọc try/except quanh truy vấn nghiệp vụ rồi coi mọi lỗi là "thiếu cột":
@@ -231,7 +234,7 @@ def _co_cot_register_version(db: Session) -> bool:
     return _SCHEMA_CO_VERSION["value"]
 
 
-def _co_cot_waiver_service_line(db: Session) -> bool:
+def _has_waiver_service_line_column(db: Session) -> bool:
     if "waiver" not in _SCHEMA_CO_VERSION:
         _SCHEMA_CO_VERSION["waiver"] = _has_column(db, "document_slot_change_requests", "service_line_id")
     return _SCHEMA_CO_VERSION["waiver"]
@@ -244,15 +247,15 @@ def register_version(db: Session, service_line_id: str) -> int:
     hợp lệ hoàn toàn có thể chọn 0 loại giấy, lúc đó không có slot là kết quả
     đúng chứ không phải dấu hiệu của mô hình cũ.
     """
-    if not _co_cot_register_version(db):
+    if not _has_register_version_column(db):
         return 1
-    ban = db.execute(
+    register_version_value = db.execute(
         text("select document_register_version from service_lines where id = :id"),
         {"id": service_line_id},
     ).scalar()
-    if ban is None:
+    if register_version_value is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy Hạng mục.")
-    return int(ban)
+    return int(register_version_value)
 
 
 def materialize_service_line_register(
@@ -499,17 +502,17 @@ __WAIVER_JOIN__
 
 def _slots_query(db: Session):
     """Chọn biến thể truy vấn theo schema hiện có, và nhớ lại."""
-    co_cot = _co_cot_waiver_service_line(db)
-    khoa = "slots_sql_v2" if co_cot else "slots_sql_v1"
-    if khoa not in _SCHEMA_CO_VERSION:
-        cho_pending = _WAIVER_PENDING_SQL if co_cot else "false"
-        _SCHEMA_CO_VERSION[khoa] = text(
+    has_waiver_column = _has_waiver_service_line_column(db)
+    cache_key = "slots_sql_v2" if has_waiver_column else "slots_sql_v1"
+    if cache_key not in _SCHEMA_CO_VERSION:
+        waiver_pending_sql = _WAIVER_PENDING_SQL if has_waiver_column else "false"
+        _SCHEMA_CO_VERSION[cache_key] = text(
             _SLOTS_QUERY_TMPL
             .replace("__WAIVER_JOIN__",
-                     _ACTIVE_WAIVER_JOIN if co_cot else _ACTIVE_WAIVER_JOIN_LEGACY)
-            .replace("__WAIVER_PENDING__", cho_pending)
+                     _ACTIVE_WAIVER_JOIN if has_waiver_column else _ACTIVE_WAIVER_JOIN_LEGACY)
+            .replace("__WAIVER_PENDING__", waiver_pending_sql)
         )
-    return _SCHEMA_CO_VERSION[khoa]
+    return _SCHEMA_CO_VERSION[cache_key]
 
 
 def _serialize(row) -> dict[str, Any]:
@@ -555,7 +558,7 @@ def _serialize(row) -> dict[str, Any]:
     }
 
 
-def phan_bo_loai_giay_theo_buoc(db: Session, service_line_id: str) -> dict[str, str]:
+def map_document_templates_to_nodes(db: Session, service_line_id: str) -> dict[str, str]:
     """template_id → node_key nào đang nhận loại giấy đó.
 
     Đọc từ graph đang chạy của Hạng mục: mỗi mục checklist khai
@@ -566,7 +569,7 @@ def phan_bo_loai_giay_theo_buoc(db: Session, service_line_id: str) -> dict[str, 
     Loại nào không bước nào nhận thì không có trong dict — đó chính là nhóm
     "chưa phân bước" mà Giám đốc còn phải cấu hình.
     """
-    dong = db.execute(
+    rows = db.execute(
         text("""
             select k.key as node_key,
                    muc->'output_documents' as tai_lieu
@@ -586,13 +589,13 @@ def phan_bo_loai_giay_theo_buoc(db: Session, service_line_id: str) -> dict[str, 
         {"sl": service_line_id},
     ).mappings().all()
 
-    theo_mau: dict[str, str] = {}
-    for row in dong:
-        for muc in list(row["tai_lieu"] or []):
-            tpl = muc.get("template_id")
-            if tpl and tpl not in theo_mau:
-                theo_mau[tpl] = row["node_key"]
-    return theo_mau
+    template_node_map: dict[str, str] = {}
+    for row in rows:
+        for config in list(row["tai_lieu"] or []):
+            template_id = config.get("template_id")
+            if template_id and template_id not in template_node_map:
+                template_node_map[template_id] = row["node_key"]
+    return template_node_map
 
 
 def get_register(
@@ -626,7 +629,7 @@ def get_register(
         # template_id -> node_key. Giao diện dùng để dán nhãn "Bước này / Chưa
         # phân bước / Bước K0x" lên từng ô giấy, và đếm số loại chưa ai nhận.
         "phan_bo_theo_buoc": (
-            phan_bo_loai_giay_theo_buoc(db, service_line_id) if service_line_id else {}
+            map_document_templates_to_nodes(db, service_line_id) if service_line_id else {}
         ),
         "groups": [
             {
@@ -731,8 +734,8 @@ def slot_unlocked(db: Session, slot_id: str) -> bool:
 
 
 def request_slot_change(db: Session, slot_id: str, *, reason: str, requester_id: str) -> dict[str, Any]:
-    ly_do = (reason or "").strip()
-    if len(ly_do) < 5:
+    reason_text = (reason or "").strip()
+    if len(reason_text) < 5:
         raise HTTPException(status_code=422, detail="Cần ghi rõ lý do xin sửa (tối thiểu 5 ký tự).")
     row = db.execute(
         text("select id, name from dossier_document_slots where id = :id"),
@@ -755,12 +758,12 @@ def request_slot_change(db: Session, slot_id: str, *, reason: str, requester_id:
             values (:slot_id, :requester, :reason)
             returning id
         """),
-        {"slot_id": slot_id, "requester": requester_id, "reason": ly_do},
+        {"slot_id": slot_id, "requester": requester_id, "reason": reason_text},
     ).scalar()
     return {"id": request_id, "slot_id": slot_id, "slot_name": row["name"], "status": "pending"}
 
 
-def _duoc_lam_hang_muc(db: Session, service_line_id: str, user_id: str) -> bool:
+def _can_work_on_service_line(db: Session, service_line_id: str, user_id: str) -> bool:
     """Người này có đang thực sự làm Hạng mục đó không.
 
     Xin miễn giấy là một QUYẾT ĐỊNH NGHIỆP VỤ trên hồ sơ của người khác, không
@@ -786,7 +789,7 @@ def _duoc_lam_hang_muc(db: Session, service_line_id: str, user_id: str) -> bool:
 
 def request_slot_waiver(
     db: Session, slot_id: str, *, service_line_id: str, reason: str,
-    requester_id: str, la_quan_tri: bool = False,
+    requester_id: str, is_admin: bool = False,
 ) -> dict[str, Any]:
     """Nhân viên xin bỏ một loại giấy khỏi hồ sơ này vì thực tế không có.
 
@@ -795,8 +798,8 @@ def request_slot_waiver(
     vắng; trước đây bí quá không có đường nào nên người ta tải đại một tệp vào
     cho qua cổng, và sổ ghi nhận một thứ không có thật.
     """
-    ly_do = (reason or "").strip()
-    if len(ly_do) < 5:
+    reason_text = (reason or "").strip()
+    if len(reason_text) < 5:
         raise HTTPException(
             status_code=422,
             detail="Cần ghi rõ vì sao hồ sơ này không cần loại giấy đó (tối thiểu 5 ký tự).",
@@ -813,13 +816,13 @@ def request_slot_waiver(
 
     # Hạng mục do SERVER xác thực, không tin id frontend gửi lên: nếu tin, một
     # request nặn tay có thể miễn giấy cho Hạng mục thuộc hợp đồng khác.
-    line = db.execute(
+    service_line = db.execute(
         text("select id, contract_id from service_lines where id = :id"),
         {"id": service_line_id},
     ).mappings().first()
-    if not line:
+    if not service_line:
         raise HTTPException(status_code=404, detail="Không tìm thấy Hạng mục.")
-    if line["contract_id"] != row["contract_id"]:
+    if service_line["contract_id"] != row["contract_id"]:
         raise HTTPException(
             status_code=409,
             detail="Ô giấy này không thuộc hợp đồng của Hạng mục đang mở.",
@@ -830,7 +833,7 @@ def request_slot_waiver(
             detail="Ô giấy này thuộc Hạng mục khác.",
         )
 
-    if not la_quan_tri and not _duoc_lam_hang_muc(db, service_line_id, requester_id):
+    if not is_admin and not _can_work_on_service_line(db, service_line_id, requester_id):
         raise HTTPException(
             status_code=403,
             detail="Chỉ người đang làm Hạng mục này mới xin miễn giấy được.",
@@ -844,7 +847,7 @@ def request_slot_waiver(
             status_code=409,
             detail=f"“{row['name']}” không bắt buộc nên không cần xin miễn.",
         )
-    da_co_tep = db.execute(
+    existing_document = db.execute(
         text("""
             select 1 from dossier_document_links l
             join dossier_documents d on d.id = l.document_id
@@ -854,13 +857,13 @@ def request_slot_waiver(
         """),
         {"id": slot_id},
     ).first()
-    if da_co_tep:
+    if existing_document:
         raise HTTPException(
             status_code=409,
             detail=f"“{row['name']}” đã có tài liệu — không còn lý do để miễn.",
         )
 
-    dang_co = db.execute(
+    existing_request_status = db.execute(
         text("""
             select status from document_slot_change_requests
             where slot_id = :id and kind = 'WAIVE'
@@ -870,9 +873,9 @@ def request_slot_waiver(
         """),
         {"id": slot_id, "sl": service_line_id},
     ).scalar()
-    if dang_co == "pending":
+    if existing_request_status == "pending":
         raise HTTPException(status_code=409, detail=f"“{row['name']}” đang có phiếu xin bỏ chờ Giám đốc duyệt.")
-    if dang_co == "approved":
+    if existing_request_status == "approved":
         raise HTTPException(status_code=409, detail=f"“{row['name']}” đã được miễn cho hồ sơ này rồi.")
 
     # Chỉ số uq_document_slot_change_one_pending còn khoá theo slot_id KHÔNG kèm
@@ -882,7 +885,7 @@ def request_slot_waiver(
     # đúng bản chất thay vì ném lỗi hệ thống vào mặt nhân viên.
     # Lấy cả cờ tồn tại lẫn tên: service_type có thể rỗng, nên KHÔNG được dùng
     # chính giá trị tên làm điều kiện kiểm tra.
-    khac = db.execute(
+    pending_request = db.execute(
         text("""
             select r.kind, coalesce(nullif(sl.service_type, ''), 'khác') as ten
             from document_slot_change_requests r
@@ -892,18 +895,18 @@ def request_slot_waiver(
         """),
         {"id": slot_id},
     ).mappings().first()
-    if khac:
+    if pending_request:
         # Nói ĐÚNG loại phiếu đang chặn. Bản trước gộp mọi kind lại rồi báo
         # "Hạng mục khác đang xin bỏ" — trong khi thực tế là phiếu xin mở khoá
         # của chính Hạng mục này. Người dùng đi tìm một Hạng mục không tồn tại.
-        if khac["kind"] == "WAIVE":
-            ly_do = f"Hạng mục “{khac['ten']}” đang có phiếu xin bỏ chờ duyệt"
+        if pending_request["kind"] == "WAIVE":
+            conflict_reason = f"Hạng mục “{pending_request['ten']}” đang có phiếu xin bỏ chờ duyệt"
         else:
-            ly_do = "ô này đang có phiếu xin sửa/mở khoá chờ duyệt"
+            conflict_reason = "ô này đang có phiếu xin sửa/mở khoá chờ duyệt"
         raise HTTPException(
             status_code=409,
             detail=(
-                f"“{row['name']}”: {ly_do}. Mỗi ô giấy chỉ được có một phiếu chờ "
+                f"“{row['name']}”: {conflict_reason}. Mỗi ô giấy chỉ được có một phiếu chờ "
                 "duyệt tại một thời điểm — đợi phiếu đó được quyết rồi gửi lại."
             ),
         )
@@ -915,7 +918,7 @@ def request_slot_waiver(
             values (gen_random_uuid()::text, :slot_id, :sl, :requester, :reason, 'WAIVE', 'pending')
             returning id
         """),
-        {"slot_id": slot_id, "sl": service_line_id, "requester": requester_id, "reason": ly_do},
+        {"slot_id": slot_id, "sl": service_line_id, "requester": requester_id, "reason": reason_text},
     ).scalar()
     return {"id": request_id, "slot_id": slot_id, "slot_name": row["name"],
             "service_line_id": service_line_id, "kind": "WAIVE", "status": "pending"}
@@ -1355,16 +1358,16 @@ __WAIVER_JOIN__
 
 def _k01_slots_query(db: Session):
     """Cùng một nguồn sự thật với màn hiển thị, và cùng chịu được hai schema."""
-    co_cot = _co_cot_waiver_service_line(db)
-    khoa = "k01_sql_v2" if co_cot else "k01_sql_v1"
-    if khoa not in _SCHEMA_CO_VERSION:
-        _SCHEMA_CO_VERSION[khoa] = text(
+    has_waiver_column = _has_waiver_service_line_column(db)
+    cache_key = "k01_sql_v2" if has_waiver_column else "k01_sql_v1"
+    if cache_key not in _SCHEMA_CO_VERSION:
+        _SCHEMA_CO_VERSION[cache_key] = text(
             _K01_SLOTS_TMPL
             .replace("__WAIVER_JOIN__",
-                     _ACTIVE_WAIVER_JOIN if co_cot else _ACTIVE_WAIVER_JOIN_LEGACY)
-            .replace("__WAIVER_PENDING__", _WAIVER_PENDING_SQL if co_cot else "false")
+                     _ACTIVE_WAIVER_JOIN if has_waiver_column else _ACTIVE_WAIVER_JOIN_LEGACY)
+            .replace("__WAIVER_PENDING__", _WAIVER_PENDING_SQL if has_waiver_column else "false")
         )
-    return _SCHEMA_CO_VERSION[khoa]
+    return _SCHEMA_CO_VERSION[cache_key]
 
 
 def k01_blockers(db: Session, service_line_id: str) -> dict[str, Any]:
@@ -1418,17 +1421,17 @@ def k01_blockers(db: Session, service_line_id: str) -> dict[str, Any]:
     # treo cả bước — trong khi người quyết được việc đó chính là Giám đốc ở cổng
     # nghiệm thu ngay sau đây. Đổi lại, cả hai danh sách phải được đưa tận mắt
     # Giám đốc lúc nghiệm thu, nếu không thì đây thành cửa sau bỏ giấy im lặng.
-    def _duoc_bo_qua(row) -> bool:
+    def _is_waived(row) -> bool:
         return bool(row["is_waived"]) or bool(row.get("waiver_pending"))
 
     waived = [row["name"] for row in slots if bool(row["is_waived"])]
     waiver_pending = [row["name"] for row in slots
                       if bool(row.get("waiver_pending")) and not bool(row["is_waived"])]
     required_missing = [row["name"] for row in slots
-                        if row["is_required"] and not _duoc_bo_qua(row)
+                        if row["is_required"] and not _is_waived(row)
                         and not int(row["active_link_count"] or 0)]
     optional_missing = [row["name"] for row in slots
-                        if not row["is_required"] and not _duoc_bo_qua(row)
+                        if not row["is_required"] and not _is_waived(row)
                         and not int(row["active_link_count"] or 0)]
     superseded_in_use = [
         {"slot_id": row["id"], "slot_name": row["name"]}
@@ -1436,7 +1439,7 @@ def k01_blockers(db: Session, service_line_id: str) -> dict[str, Any]:
     ]
     required_superseded = [
         row["name"] for row in slots
-        if row["is_required"] and not _duoc_bo_qua(row) and bool(row["has_superseded"])
+        if row["is_required"] and not _is_waived(row) and bool(row["has_superseded"])
     ]
     blockers = []
     if required_missing:
@@ -1627,8 +1630,8 @@ def add_slot(
     chính mình không lấp được là tự khoá đường nộp nghiệm thu của mình.
     Muốn thành bắt buộc thì đưa vào mẫu — đó là việc của Giám đốc.
     """
-    ten = (name or "").strip()
-    if len(ten) < 3:
+    name_text = (name or "").strip()
+    if len(name_text) < 3:
         raise HTTPException(status_code=422, detail="Tên giấy tờ quá ngắn.")
     if source not in SOURCES:
         raise HTTPException(status_code=422, detail="Nguồn giấy tờ không hợp lệ.")
@@ -1643,10 +1646,10 @@ def add_slot(
                    or service_line_id = :service_line_id)
             limit 1
         """),
-        {"contract_id": contract_id, "service_line_id": service_line_id, "name": ten},
+        {"contract_id": contract_id, "service_line_id": service_line_id, "name": name_text},
     ).first()
     if trung:
-        raise HTTPException(status_code=409, detail=f"Sổ đã có mục “{ten}”.")
+        raise HTTPException(status_code=409, detail=f"Sổ đã có mục “{name_text}”.")
 
     slot_id = db.execute(
         text("""
@@ -1661,7 +1664,7 @@ def add_slot(
             "scope": "SERVICE_LINE" if service_line_id else "CONTRACT",
             "contract_id": contract_id,
             "service_line_id": service_line_id,
-            "name": ten,
+            "name": name_text,
             "source": source,
             "needs_original": bool(needs_original),
             "quantity": max(1, int(quantity or 1)),
@@ -1669,7 +1672,7 @@ def add_slot(
             "actor": actor_id,
         },
     ).scalar()
-    return {"id": slot_id, "name": ten, "source": source, "is_custom": True}
+    return {"id": slot_id, "name": name_text, "source": source, "is_custom": True}
 
 
 def remove_slot(db: Session, slot_id: str, *, actor_id: str) -> dict[str, Any]:
@@ -1866,8 +1869,8 @@ def upsert_template(
     note: str | None,
     is_active: bool,
 ) -> dict[str, Any]:
-    ten = (name or "").strip()
-    if len(ten) < 3:
+    name_text = (name or "").strip()
+    if len(name_text) < 3:
         raise HTTPException(status_code=422, detail="Tên giấy tờ quá ngắn.")
     if source not in SOURCES:
         raise HTTPException(status_code=422, detail="Nguồn giấy tờ không hợp lệ.")
@@ -1875,7 +1878,7 @@ def upsert_template(
     params = {
         "id": template_id,
         "task_type_id": task_type_id or None,
-        "name": ten,
+        "name": name_text,
         "source": source,
         "is_required": bool(is_required),
         "needs_original": bool(needs_original),
@@ -1896,7 +1899,7 @@ def upsert_template(
             """),
             params,
         )
-        return {"id": template_id, "name": ten}
+        return {"id": template_id, "name": name_text}
 
     new_id = db.execute(
         text("""
@@ -1914,7 +1917,7 @@ def upsert_template(
         """),
         params,
     ).scalar()
-    return {"id": new_id, "name": ten}
+    return {"id": new_id, "name": name_text}
 
 
 def deactivate_template(db: Session, template_id: str) -> dict[str, Any]:
@@ -1963,13 +1966,13 @@ def upsert_storage_location(
     db: Session, *, location_id: str | None, name: str, kind: str, sort_order: int,
     implies_status: str | None = None,
 ) -> dict[str, Any]:
-    ten = (name or "").strip()
-    if len(ten) < 2:
+    name_text = (name or "").strip()
+    if len(name_text) < 2:
         raise HTTPException(status_code=422, detail="Tên nơi lưu quá ngắn.")
     if kind not in ("TAI_CHO", "BEN_NGOAI"):
         raise HTTPException(status_code=422, detail="Loại nơi lưu không hợp lệ.")
-    ngu_y = (implies_status or "").strip() or None
-    if ngu_y and ngu_y not in SLOT_STATUSES:
+    implied_status = (implies_status or "").strip() or None
+    if implied_status and implied_status not in SLOT_STATUSES:
         raise HTTPException(status_code=422, detail="Trạng thái ngụ ý không hợp lệ.")
 
     if location_id:
@@ -1980,10 +1983,10 @@ def upsert_storage_location(
                     implies_status = :implies_status, updated_at = now()
                 where id = :id
             """),
-            {"id": location_id, "name": ten, "kind": kind,
-             "sort_order": sort_order, "implies_status": ngu_y},
+            {"id": location_id, "name": name_text, "kind": kind,
+             "sort_order": sort_order, "implies_status": implied_status},
         )
-        return {"id": location_id, "name": ten}
+        return {"id": location_id, "name": name_text}
 
     new_id = db.execute(
         text("""
@@ -1996,9 +1999,9 @@ def upsert_storage_location(
                                              updated_at = now()
             returning id
         """),
-        {"name": ten, "kind": kind, "sort_order": sort_order, "implies_status": ngu_y},
+        {"name": name_text, "kind": kind, "sort_order": sort_order, "implies_status": implied_status},
     ).scalar()
-    return {"id": new_id, "name": ten}
+    return {"id": new_id, "name": name_text}
 
 
 def deactivate_storage_location(db: Session, location_id: str) -> dict[str, Any]:

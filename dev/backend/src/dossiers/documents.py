@@ -529,11 +529,11 @@ def checklist_output_status(db: Session, checklist_result_id: str) -> dict[str, 
     Một nguồn sự thật: nút nộp trên giao diện và hàng rào phía máy chủ đọc cùng
     hàm này, nên không có cảnh UI báo nộp được mà backend chặn.
     """
-    cau_hinh, ngu_canh = _output_config(db, checklist_result_id)
-    if not cau_hinh:
+    output_config, checklist_context = _output_config(db, checklist_result_id)
+    if not output_config:
         return {"can_submit": True, "missing": [], "documents": []}
 
-    da_co = {
+    existing_by_template = {
         row["template_id"]: row
         for row in db.execute(
             _CHECKLIST_OUTPUT_COUNT_QUERY, {"checklist_result_id": checklist_result_id}
@@ -542,34 +542,34 @@ def checklist_output_status(db: Session, checklist_result_id: str) -> dict[str, 
 
     documents: list[dict[str, Any]] = []
     missing: list[str] = []
-    for muc in cau_hinh:
-        template_id = muc.get("template_id")
-        hien_co = da_co.get(template_id) or {}
-        so_ban = int(hien_co.get("so_ban") or 0)
-        can = int(muc.get("min_count") or 1)
-        ten = hien_co.get("slot_name")
-        if not ten:
+    for config in output_config:
+        template_id = config.get("template_id")
+        existing = existing_by_template.get(template_id) or {}
+        current_count = int(existing.get("so_ban") or 0)
+        required_count = int(config.get("min_count") or 1)
+        resolved_name = existing.get("slot_name")
+        if not resolved_name:
             try:
-                ten = resolve_output_slot(
+                resolved_name = resolve_output_slot(
                     db,
                     template_id=template_id,
-                    service_line_id=ngu_canh.get("service_line_id"),
-                    contract_id=ngu_canh.get("contract_id"),
+                    service_line_id=checklist_context.get("service_line_id"),
+                    contract_id=checklist_context.get("contract_id"),
                 )["name"]
             except HTTPException:
                 # Chưa có ô giấy là lỗi CẤU HÌNH, không phải lỗi của nhân viên —
                 # vẫn hiện ra để họ biết mà báo, thay vì thấy một dòng trống.
-                ten = template_id
+                resolved_name = template_id
         documents.append({
             "template_id": template_id,
-            "slot_name": ten,
-            "min_count": can,
-            "current_count": so_ban,
-            "required_before_submit": bool(muc.get("required_before_submit", True)),
-            "needs_director_approval": bool(muc.get("needs_director_approval")),
+            "slot_name": resolved_name,
+            "min_count": required_count,
+            "current_count": current_count,
+            "required_before_submit": bool(config.get("required_before_submit", True)),
+            "needs_director_approval": bool(config.get("needs_director_approval")),
         })
-        if muc.get("required_before_submit") and so_ban < can:
-            missing.append(f"{ten} (cần {can}, đang có {so_ban})")
+        if config.get("required_before_submit") and current_count < required_count:
+            missing.append(f"{resolved_name} (cần {required_count}, đang có {current_count})")
 
     return {"can_submit": not missing, "missing": missing, "documents": documents}
 
@@ -636,20 +636,20 @@ def node_output_document_blockers(db: Session, task_node_id: str) -> list[str]:
     ``KHONG_HOP_LE``, hoặc tệp bị thay bởi bản mới, hoặc bị gỡ nối. Lúc đó
     checklist vẫn "đã duyệt" nhưng hồ sơ đã hụt — bước không được đóng.
     """
-    thieu: list[str] = []
+    missing_messages: list[str] = []
     for row in db.execute(
         _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
     ).mappings().all():
-        dang_co = dict(row["dang_co"] or {})
-        for muc in list(row["output_documents"] or []):
-            can = int(muc.get("min_count") or 1)
-            co = int(dang_co.get(muc.get("template_id")) or 0)
-            if co < can:
-                thieu.append(
+        existing_counts = dict(row["dang_co"] or {})
+        for config in list(row["output_documents"] or []):
+            required_count = int(config.get("min_count") or 1)
+            current_count = int(existing_counts.get(config.get("template_id")) or 0)
+            if current_count < required_count:
+                missing_messages.append(
                     f"“{row['checklist_name']}” thiếu tài liệu đầu ra "
-                    f"(cần {can}, còn hợp lệ {co})"
+                    f"(cần {required_count}, còn hợp lệ {current_count})"
                 )
-    return thieu
+    return missing_messages
 
 
 def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]:
@@ -663,46 +663,46 @@ def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]
     Khác ``node_output_document_blockers``: hàm kia trả câu chữ để chặn, hàm này
     trả dữ liệu có cấu trúc để hiển thị và lưu vết.
     """
-    ten_mau = dict(
+    template_names = dict(
         db.execute(
             text("select id, name from public.document_checklist_templates")
         ).all()
     )
-    ket: list[dict[str, Any]] = []
+    report: list[dict[str, Any]] = []
     for row in db.execute(
         _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
     ).mappings().all():
-        dang_co = dict(row["dang_co"] or {})
-        thieu = []
-        for muc in list(row["output_documents"] or []):
+        existing_counts = dict(row["dang_co"] or {})
+        missing_items = []
+        for config in list(row["output_documents"] or []):
             # required_before_submit=false nghĩa là loại này không bắt buộc lúc
             # nộp — không đưa vào danh sách thiếu, nếu không Giám đốc phải đọc
             # một danh sách toàn thứ vốn dĩ không cần.
-            if not muc.get("required_before_submit", True):
+            if not config.get("required_before_submit", True):
                 continue
-            template_id = muc.get("template_id")
-            can = int(muc.get("min_count") or 1)
-            co = int(dang_co.get(template_id) or 0)
-            if co < can:
-                thieu.append({
+            template_id = config.get("template_id")
+            required_count = int(config.get("min_count") or 1)
+            current_count = int(existing_counts.get(template_id) or 0)
+            if current_count < required_count:
+                missing_items.append({
                     "template_id": template_id,
-                    "name": ten_mau.get(template_id, template_id),
-                    "can": can,
-                    "da_co": co,
-                    "con_thieu": can - co,
+                    "name": template_names.get(template_id, template_id),
+                    "can": required_count,
+                    "da_co": current_count,
+                    "con_thieu": required_count - current_count,
                 })
-        if thieu:
-            ket.append({
+        if missing_items:
+            report.append({
                 "checklist_result_id": row["checklist_result_id"],
                 "checklist_name": row["checklist_name"],
-                "thieu": thieu,
+                "thieu": missing_items,
             })
 
     # Bước K01 còn một nguồn thiếu thứ hai: ô giấy bắt buộc trong SỔ TÀI LIỆU
     # của Hạng mục mà chưa ai gắn tệp vào. Nó không đi qua output_documents nên
     # phải gộp riêng — nếu không, Giám đốc duyệt K01 mà không biết hồ sơ đang
     # khuyết sổ đỏ.
-    ngu_canh = db.execute(
+    node_context = db.execute(
         text("""
             select n.node_code, wi.service_line_id
             from public.task_nodes n
@@ -711,26 +711,26 @@ def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]
         """),
         {"n": task_node_id},
     ).mappings().first()
-    if ngu_canh and ngu_canh["node_code"] == "K01" and ngu_canh["service_line_id"]:
+    if node_context and node_context["node_code"] == "K01" and node_context["service_line_id"]:
         from src.dossiers.register import k01_blockers
 
-        chan = k01_blockers(db, ngu_canh["service_line_id"])
+        blockers = k01_blockers(db, node_context["service_line_id"])
         # Khử trùng: loại nào checklist đã đòi rồi thì thôi kể lại. Cùng một tờ
         # giấy hiện hai lần chỉ làm Giám đốc đọc nhiễu, trong khi nạp một tệp là
         # cả hai chỗ cùng hết thiếu (submit_output_document nối vào chính ô đó).
-        da_ke = {t["name"] for muc in ket for t in muc["thieu"]}
-        thieu_so = [
-            {"template_id": None, "name": ten, "can": 1, "da_co": 0, "con_thieu": 1}
-            for ten in chan.get("required_missing", []) if ten not in da_ke
+        already_reported = {item["name"] for group in report for item in group["thieu"]}
+        missing_slots = [
+            {"template_id": None, "name": slot_name, "can": 1, "da_co": 0, "con_thieu": 1}
+            for slot_name in blockers.get("required_missing", []) if slot_name not in already_reported
         ]
-        if thieu_so:
-            ket.append({
+        if missing_slots:
+            report.append({
                 "checklist_result_id": None,
                 "checklist_name": "Sổ giấy tờ khách cung cấp",
-                "thieu": thieu_so,
+                "thieu": missing_slots,
             })
 
-    return ket
+    return report
 
 
 def submit_output_document(
@@ -757,7 +757,7 @@ def submit_output_document(
     """
     _validate_upload(file_name, content_type, data)
 
-    ngu_canh = db.execute(
+    context_row = db.execute(
         text("""
             select r.id, r.task_node_id, r.evidence_data,
                    n.node_code, wi.service_line_id, sl.contract_id
@@ -769,20 +769,20 @@ def submit_output_document(
         """),
         {"id": checklist_result_id},
     ).mappings().first()
-    if not ngu_canh:
+    if not context_row:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục checklist.")
 
     # Loại tài liệu phải nằm trong cấu hình CỦA CHÍNH checklist này. Không kiểm
     # thì nhân viên nộp một tệp gắn nhãn bất kỳ và nó vẫn chui vào hồ sơ — chỗ
     # kiểm này phải đứng TRƯỚC upload, để tệp sai không kịp chạm tới kho lưu trữ.
-    cau_hinh, _ = _output_config(db, checklist_result_id)
-    duoc_phep = {muc.get("template_id") for muc in cau_hinh}
-    if template_id not in duoc_phep:
+    output_config, _ = _output_config(db, checklist_result_id)
+    allowed_template_ids = {config.get("template_id") for config in output_config}
+    if template_id not in allowed_template_ids:
         raise HTTPException(
             status_code=409,
             detail=(
                 "Mục checklist này không nhận loại tài liệu đó."
-                if duoc_phep
+                if allowed_template_ids
                 else "Mục checklist này không yêu cầu tài liệu đầu ra nào."
             ),
         )
@@ -790,17 +790,17 @@ def submit_output_document(
     slot = resolve_output_slot(
         db,
         template_id=template_id,
-        service_line_id=ngu_canh["service_line_id"],
-        contract_id=ngu_canh["contract_id"],
+        service_line_id=context_row["service_line_id"],
+        contract_id=context_row["contract_id"],
     )
 
     # Giai đoạn suy từ mã bước, không ghi cứng theo K02/K03: quy trình tự do không
     # có mã K nào thì rơi về kho hồ sơ gốc thay vì vỡ.
-    stage = STAGE_BY_NODE_CODE.get(ngu_canh["node_code"] or "") or "ho-so-goc"
+    stage = STAGE_BY_NODE_CODE.get(context_row["node_code"] or "") or "ho-so-goc"
 
     document_id = uuid.uuid4().hex
     reference = DossierFileReference.build(
-        contract_id=ngu_canh["contract_id"], document_id=document_id, filename=file_name,
+        contract_id=context_row["contract_id"], document_id=document_id, filename=file_name,
     )
     ensure_bucket()
     upload_file(io.BytesIO(data), reference.object_key)
@@ -817,10 +817,10 @@ def submit_output_document(
             """),
             {
                 "id": document_id,
-                "service_line_id": ngu_canh["service_line_id"],
-                "contract_id": ngu_canh["contract_id"],
+                "service_line_id": context_row["service_line_id"],
+                "contract_id": context_row["contract_id"],
                 "stage": stage,
-                "task_node_id": ngu_canh["task_node_id"],
+                "task_node_id": context_row["task_node_id"],
                 "slot_id": slot["id"],
                 "object_key": reference.object_key,
                 "file_name": file_name,
@@ -837,7 +837,7 @@ def submit_output_document(
                 on conflict (document_id, slot_id) do nothing
             """),
             {
-                "contract_id": ngu_canh["contract_id"],
+                "contract_id": context_row["contract_id"],
                 "document_id": document_id,
                 "slot_id": slot["id"],
                 "actor": actor_id,
@@ -851,7 +851,7 @@ def submit_output_document(
                 on conflict (checklist_result_id, document_id) do nothing
             """),
             {
-                "contract_id": ngu_canh["contract_id"],
+                "contract_id": context_row["contract_id"],
                 "checklist_result_id": checklist_result_id,
                 "document_id": document_id,
                 "actor": actor_id,
@@ -860,7 +860,7 @@ def submit_output_document(
 
         # Minh chứng chỉ TRỎ tới tài liệu. Không lưu URL: URL tạm hết hạn, và đổi
         # MinIO sang R2 thì mọi dòng cũ thành rác.
-        evidence = dict(ngu_canh["evidence_data"] or {})
+        evidence = dict(context_row["evidence_data"] or {})
         files = list(evidence.get("files") or [])
         files.append({"document_id": document_id, "name": file_name})
         evidence["files"] = files
@@ -932,7 +932,7 @@ def attach_existing_document(
     Không chạm tới kho lưu trữ: tệp vẫn là tệp cũ, chỉ thêm một dòng quan hệ.
     Đây là cách K03 dùng lại bản kỹ thuật gốc của K02 mà không sinh object thứ hai.
     """
-    ngu_canh = db.execute(
+    context_row = db.execute(
         text("""
             select r.id, wi.service_line_id, sl.contract_id
             from public.task_node_checklist_results r
@@ -943,21 +943,21 @@ def attach_existing_document(
         """),
         {"id": checklist_result_id},
     ).mappings().first()
-    if not ngu_canh:
+    if not context_row:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục checklist.")
 
     # Tài liệu phải thuộc ĐÚNG Hợp đồng. Khoá ngoại ghép cũng chặn, nhưng bắt ở
     # đây thì người dùng nhận được câu tiếng Việt thay vì lỗi ràng buộc thô.
-    tai_lieu = db.execute(
+    document = db.execute(
         text("""
             select id, slot_id, doc_status from public.dossier_documents
             where id = :id and contract_id = :contract_id
         """),
-        {"id": document_id, "contract_id": ngu_canh["contract_id"]},
+        {"id": document_id, "contract_id": context_row["contract_id"]},
     ).mappings().first()
-    if not tai_lieu:
+    if not document:
         raise HTTPException(status_code=409, detail="Tài liệu không thuộc hợp đồng này.")
-    if tai_lieu["doc_status"] != "DANG_DUNG":
+    if document["doc_status"] != "DANG_DUNG":
         raise HTTPException(status_code=409, detail="Tài liệu này không còn hiệu lực.")
 
     # Tệp còn nằm trong một đề xuất chưa duyệt thì chưa phải tài liệu chính thức.
@@ -969,6 +969,6 @@ def attach_existing_document(
         db,
         checklist_result_id=checklist_result_id,
         document_id=document_id,
-        contract_id=ngu_canh["contract_id"],
+        contract_id=context_row["contract_id"],
         actor_id=actor_id,
     )

@@ -381,9 +381,9 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
     is_assigned = False
     can_collect_payment = False
     if user_id:
-        nv = employee_of(db, user_id)
-        is_assigned = bool(nv) and is_assigned_to_node(
-            db, task_node_id=task_node_id, employee_id=nv["id"]
+        employee_record = employee_of(db, user_id)
+        is_assigned = bool(employee_record) and is_assigned_to_node(
+            db, task_node_id=task_node_id, employee_id=employee_record["id"]
         )
         u = db.query(User).filter(User.id == user_id).first()
         can_collect_payment = bool(u) and check_user_permission(db, u, "finance", "create")

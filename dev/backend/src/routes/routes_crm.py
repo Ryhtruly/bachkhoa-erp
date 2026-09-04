@@ -191,7 +191,7 @@ def update_lead_status(
         # không được ra đời. Đường tự động này không đi qua màn chọn giấy nên
         # truyền None — dựng theo bộ gợi ý mặc định của gói/hạng mục.
         db.flush()
-        from src.contracts.services import _materialize_so_giay_to, phan_giai_lua_chon_giay
+        from src.contracts.services import _materialize_document_register, resolve_document_selection
         from src.dossiers.register import require_v2_schema
 
         # Cùng mô hình sổ v2 với đường soạn hợp đồng tay. Đường tự động này đúng
@@ -203,14 +203,14 @@ def update_lead_status(
             {"id": new_service_line.id},
         )
 
-        _materialize_so_giay_to(
+        _materialize_document_register(
             db,
             service_line_id=new_service_line.id,
             # Luồng tự động, chưa có màn chọn giấy. Khai chế độ DEFAULT TƯỜNG
             # MINH ngay tại đây thay vì dựa vào giá trị mặc định của tham số —
             # để đọc code là thấy ngay ý định, và đổi mặc định ở nơi khác không
             # âm thầm đổi hành vi của đường này.
-            checklist_template_ids=phan_giai_lua_chon_giay("DEFAULT", None),
+            checklist_template_ids=resolve_document_selection("DEFAULT", None),
             actor_id=user.id,
         )
         contract_created = True

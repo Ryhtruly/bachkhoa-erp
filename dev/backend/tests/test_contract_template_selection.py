@@ -48,7 +48,7 @@ def _bo_qua_dung_so_giay_to():
     register.reset_schema_cache()
     register._SCHEMA_CO_VERSION.update({"value": True, "waiver": True})
     try:
-        with patch("src.contracts.services._materialize_so_giay_to", return_value=0):
+        with patch("src.contracts.services._materialize_document_register", return_value=0):
             yield
     finally:
         register.reset_schema_cache()

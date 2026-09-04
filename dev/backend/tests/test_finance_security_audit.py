@@ -54,10 +54,20 @@ def test_finance_security_audit(db):
     
     res = FinanceService.create_cashflow(db, create_payload, actor_id=admin.id if admin else "admin")
     tx_id = res["id"]
-    
+
     bal_after_create = FinanceRepository.get_running_balance(db, "Tiền mặt")
-    assert bal_after_create == initial_cash + 5000000.0, f"Expected {initial_cash + 5000000}, got {bal_after_create}"
-    print("  ✓ Income creation increased balance by 5M: PASS")
+    assert bal_after_create == initial_cash, (
+        "A newly created voucher must remain pending until it is explicitly approved"
+    )
+
+    approve_res = FinanceService.approve_cashflow(db, tx_id, actor_id=admin.id if admin else "admin")
+    assert approve_res["new_status"] == "COMPLETED"
+
+    bal_after_approval = FinanceRepository.get_running_balance(db, "Tiền mặt")
+    assert bal_after_approval == initial_cash + 5000000.0, (
+        f"Expected {initial_cash + 5000000}, got {bal_after_approval}"
+    )
+    print("  ✓ Income voucher posted only after approval: PASS")
 
     void_res = FinanceService.void_cashflow(db, tx_id, reason="Lập sai số tiền", actor_id=admin.id if admin else "admin")
     assert void_res["status"] == "success"

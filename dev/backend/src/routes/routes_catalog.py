@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/catalog", tags=["01. Catalog"])
 CACHE_KEY = "bachkhoa:catalog:service_packages"
 
 
-def _doc_cay_danh_muc(db: Session) -> list[dict]:
+def _build_catalog_tree(db: Session) -> list[dict]:
     """Cây Gói → Hạng mục, sắp theo thứ tự hiển thị của gói rồi tên hạng mục."""
     rows = db.execute(
         text("""
@@ -31,26 +31,26 @@ def _doc_cay_danh_muc(db: Session) -> list[dict]:
         """)
     ).mappings().all()
 
-    goi_theo_id: dict[str, dict] = {}
-    thu_tu: list[str] = []
+    packages_by_id: dict[str, dict] = {}
+    package_order: list[str] = []
     for r in rows:
         pid = r["package_id"]
-        if pid not in goi_theo_id:
-            goi_theo_id[pid] = {
+        if pid not in packages_by_id:
+            packages_by_id[pid] = {
                 "id": pid,
                 "name": r["package_name"],
                 "display_order": r["display_order"],
                 "task_types": [],
             }
-            thu_tu.append(pid)
+            package_order.append(pid)
         # Gói chưa có hạng mục nào vẫn hiện (LEFT JOIN cho task_type_id = null).
         if r["task_type_id"]:
-            goi_theo_id[pid]["task_types"].append({
+            packages_by_id[pid]["task_types"].append({
                 "id": r["task_type_id"],
                 "code": r["task_type_code"],
                 "name": r["task_type_name"],
             })
-    return [goi_theo_id[pid] for pid in thu_tu]
+    return [packages_by_id[pid] for pid in package_order]
 
 
 def catalog_tree(db: Session) -> list[dict]:
@@ -58,7 +58,7 @@ def catalog_tree(db: Session) -> list[dict]:
     cached = get_cached_json(CACHE_KEY)
     if cached is not None:
         return cached
-    tree = _doc_cay_danh_muc(db)
+    tree = _build_catalog_tree(db)
     set_cached_json(CACHE_KEY, tree, ttl_seconds=3600)
     return tree
 

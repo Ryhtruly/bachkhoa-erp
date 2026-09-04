@@ -26,11 +26,11 @@ class MienGiayToTests(unittest.TestCase):
         from src.db.database import SessionLocal
 
         from tests.fixtures_so_giay_to import (
-            dung_boi_canh, nguoi_dung, them_o_giay, thieu_bang,
+            build_test_context, create_test_user, insert_document_slot, get_missing_documents,
         )
 
         self.db = SessionLocal()
-        thieu = thieu_bang(self.db)
+        thieu = get_missing_documents(self.db)
         if thieu:
             self.db.close()
             self.skipTest(
@@ -41,14 +41,14 @@ class MienGiayToTests(unittest.TestCase):
         # Tự dựng bối cảnh thay vì đi tìm dữ liệu có sẵn: mượn dữ liệu môi
         # trường thì test phụ thuộc vào việc ai đó đã bấm gì, chạy hôm nay xanh
         # mai đỏ mà không ai hiểu vì sao.
-        boi_canh = dung_boi_canh(self.db)
+        boi_canh = build_test_context(self.db)
         self.hd_id = boi_canh["contract_id"]
         self.sl_id = boi_canh["hang_muc"][0]["id"]
-        self.nv = nguoi_dung(self.db)
+        self.nv = create_test_user(self.db)
         self.gd = self.nv
-        self.o = them_o_giay(
+        self.o = insert_document_slot(
             self.db, contract_id=self.hd_id, service_line_id=self.sl_id,
-            ten="THU-NGHIEM giấy hôn nhân", bat_buoc=True,
+            name="THU-NGHIEM giấy hôn nhân", required=True,
         )
 
     def tearDown(self):
@@ -65,7 +65,7 @@ class MienGiayToTests(unittest.TestCase):
 
         return request_slot_waiver(
             self.db, self.o, service_line_id=self.sl_id, reason=ly_do,
-            requester_id=self.nv, la_quan_tri=True)
+            requester_id=self.nv, is_admin=True)
 
     def test_chua_xin_mien_thi_van_doi_giay(self):
         self.assertTrue(self._con_doi())

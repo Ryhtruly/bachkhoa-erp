@@ -220,7 +220,7 @@ def list_pending_change_requests(
     # ``kind`` và ``service_line_id`` trên phiếu cùng xuất hiện ở đợt EXPAND
     # của Sổ V2. Giữ đường đọc tương thích schema cũ để danh sách duyệt tài
     # liệu legacy không bị 500 trước cửa sổ triển khai.
-    co_v2 = register._co_cot_waiver_service_line(db)
+    co_v2 = register._has_waiver_service_line_column(db)
     thong_tin_phieu = (
         "r.kind, coalesce(r.service_line_id, s.service_line_id) as service_line_id"
         if co_v2
@@ -292,7 +292,7 @@ def request_slot_waiver(
         service_line_id=payload.service_line_id,
         reason=payload.reason,
         requester_id=user.id,
-        la_quan_tri=check_user_permission(db, user, "task_node", "approve"),
+        is_admin=check_user_permission(db, user, "task_node", "approve"),
     )
     db.commit()
     publish_timeline_change("document_slot_waiver_requested", entity_id=slot_id)

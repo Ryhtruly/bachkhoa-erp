@@ -73,7 +73,7 @@ def _require_assigned(db: Session, user: User, checklist_result_id: str) -> None
     sơ của Hạng mục người khác.
     """
     employee = _employee(db, user)
-    duoc_giao = db.execute(
+    assignment_exists = db.execute(
         text("""
             select 1
             from public.task_node_checklist_results r
@@ -89,7 +89,7 @@ def _require_assigned(db: Session, user: User, checklist_result_id: str) -> None
         """),
         {"id": checklist_result_id, "employee_id": employee.id},
     ).first()
-    if not duoc_giao:
+    if not assignment_exists:
         raise HTTPException(status_code=403, detail="Bạn không được phân công cho công việc này.")
 
 
@@ -298,10 +298,10 @@ def list_slot_requests(
     chờ duyệt toàn hệ thống. Không truyền gì mà không phải Giám đốc thì chỉ thấy
     đề xuất của chính mình — không có cửa dò đề xuất người khác.
     """
-    la_giam_doc = check_user_permission(db, user, "task_node", "approve")
+    is_director = check_user_permission(db, user, "task_node", "approve")
     if checklist_result_id:
-        _require_assigned(db, user, checklist_result_id) if not la_giam_doc else None
-    elif not la_giam_doc:
+        _require_assigned(db, user, checklist_result_id) if not is_director else None
+    elif not is_director:
         checklist_result_id = None
 
     return {
@@ -310,7 +310,7 @@ def list_slot_requests(
             db,
             checklist_result_id=checklist_result_id,
             status=status_filter,
-            only_requested_by=None if la_giam_doc else user.id,
+            only_requested_by=None if is_director else user.id,
         ),
     }
 

@@ -274,6 +274,8 @@ export default function PrintVoucherScreen({ month, user }) {
   const [printSearch, setPrintSearch] = useState('');
   const [activeAdvances, setActiveAdvances] = useState([]);
   const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
+  const [approvedAdvanceRequests, setApprovedAdvanceRequests] = useState([]);
+  const [selectedAdvanceRequestId, setSelectedAdvanceRequestId] = useState('');
 
   const currentUserName = user?.full_name || user?.name || user?.username || '';
   const [form, setForm] = useState({ ...emptyForm, created_by: currentUserName });
@@ -289,15 +291,19 @@ export default function PrintVoucherScreen({ month, user }) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
-      const [rTx, rAdv, rC, rP, rDept] = await Promise.allSettled([
+      const [rTx, rAdv, rAdvReq, rC, rP, rDept] = await Promise.allSettled([
         apiFetch(`${API}/api/finance/cashflow`),
         apiFetch(`${API}/api/finance/advance`),
+        apiFetch(`${API}/api/finance/advance/requests`),
         apiFetch(`${API}/api/finance/contracts`),
         apiFetch(`${API}/api/finance/projects`),
         apiFetch(`${API}/api/finance/departments`)
       ]);
       if (rTx.status === 'fulfilled' && Array.isArray(rTx.value)) setTransactions(rTx.value);
       if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) setActiveAdvances(rAdv.value);
+      if (rAdvReq.status === 'fulfilled' && Array.isArray(rAdvReq.value)) {
+        setApprovedAdvanceRequests(rAdvReq.value.filter(request => request.status === 'DIRECTOR_APPROVED'));
+      }
       if (rC.status === 'fulfilled') setContracts(Array.isArray(rC.value) ? rC.value : rC.value?.data || []);
       if (rP.status === 'fulfilled') setProjects(Array.isArray(rP.value) ? rP.value : rP.value?.data || []);
       if (rDept.status === 'fulfilled' && Array.isArray(rDept.value)) setDepartments(rDept.value);
@@ -451,6 +457,14 @@ export default function PrintVoucherScreen({ month, user }) {
     });
   }, [activeAdvances, month]);
 
+  const availableAdvanceRequests = useMemo(() => {
+    if (!month) return approvedAdvanceRequests;
+    return approvedAdvanceRequests.filter(request => {
+      const requestMonth = request.created_at ? request.created_at.slice(0, 7) : null;
+      return !requestMonth || requestMonth === month;
+    });
+  }, [approvedAdvanceRequests, month]);
+
   const amountInWords = useMemo(() => {
     const n = Number(form.amount);
     if (!n || n <= 0) return '';
@@ -506,6 +520,10 @@ export default function PrintVoucherScreen({ month, user }) {
       addToast('Vui lòng chọn chứng từ tạm ứng cần quyết toán', 'warning');
       return;
     }
+    if (txType === 'Tạm ứng' && !selectedAdvanceRequestId) {
+      addToast('Vui lòng chọn yêu cầu tạm ứng đã được Giám đốc duyệt', 'warning');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -519,6 +537,7 @@ export default function PrintVoucherScreen({ month, user }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            request_id: selectedAdvanceRequestId,
             project_id: form.project_id || null,
             amount: Number(form.amount),
             payer_payee: form.payer_payee,
@@ -735,6 +754,50 @@ export default function PrintVoucherScreen({ month, user }) {
                   Tiền tố: {TX_TYPE_META[txType].prefix}
                 </div>
               </div>
+
+              {/* Chọn yêu cầu tạm ứng đã được duyệt */}
+              {txType === 'Tạm ứng' && (
+                <div style={{
+                  marginBottom: 24,
+                  padding: '16px 20px',
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  borderRadius: 12,
+                  border: '1.5px solid rgba(245, 158, 11, 0.35)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#b45309', fontWeight: 800, fontSize: '0.9rem' }}>
+                    <AlertTriangle size={18} />
+                    <span>CHỌN YÊU CẦU TẠM ỨNG ĐÃ ĐƯỢC GIÁM ĐỐC DUYỆT:</span>
+                  </div>
+                  <Select
+                    value={selectedAdvanceRequestId}
+                    onChange={(requestId) => {
+                      setSelectedAdvanceRequestId(requestId);
+                      const request = availableAdvanceRequests.find(item => item.id === requestId);
+                      if (request) {
+                        setForm(prev => ({
+                          ...prev,
+                          amount: String(request.amount || ''),
+                          payment_method: request.payment_method || 'CASH',
+                          project_id: request.project_id || '',
+                          contract_id: request.contract_id || '',
+                          description: request.note || '',
+                        }));
+                      }
+                    }}
+                    options={[
+                      { value: '', label: '-- Chọn yêu cầu đã duyệt --' },
+                      ...availableAdvanceRequests.map(request => ({
+                        value: request.id,
+                        label: `${request.id} — ${Number(request.amount || 0).toLocaleString('vi-VN')}₫ — ${request.note || 'Không có ghi chú'}`
+                      }))
+                    ]}
+                    placeholder="-- Chọn yêu cầu đã duyệt --"
+                  />
+                  <div style={{ marginTop: 8, color: 'var(--text-tertiary, #64748b)', fontSize: '0.8rem' }}>
+                    Phiếu chính thức sẽ lấy số tiền, người nhận và nội dung từ yêu cầu đã duyệt.
+                  </div>
+                </div>
+              )}
 
               {/* Quyết toán Hoàn ứng Banner */}
               {txType === 'Hoàn ứng' && (

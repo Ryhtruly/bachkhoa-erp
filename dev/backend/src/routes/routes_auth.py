@@ -68,7 +68,7 @@ def _build_user_profile(user: User, db: Session) -> dict:
     user_roles = (
         db.query(Role)
         .join(UserRole, UserRole.role_id == Role.id)
-        .filter(UserRole.user_id == user.id)
+        .filter(UserRole.user_id == user.id, Role.is_active.is_(True))
         .all()
     )
     is_admin = bool(user.username == "admin" or any(r.role_name.lower() == "admin" for r in user_roles))
@@ -118,7 +118,7 @@ def _build_user_profile(user: User, db: Session) -> dict:
         "employee_id": employee.id if employee else None,
         "full_name": employee.full_name if employee else user.username,
         "avatar_url": employee.avatar_url if employee else None,
-        "role_name": role_row.role_name if role_row else "employee",
+        "role_name": role_row.role_name if role_row else None,
         "role_display_name": role_row.display_name if role_row else None,
         "is_director": is_director,
         "default_workspace": default_workspace,

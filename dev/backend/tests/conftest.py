@@ -192,9 +192,18 @@ def init_test_db():
         dung_tu_dump = bool(
             conn.execute(text("select to_regclass('public.dossier_document_slots')")).scalar()
         )
-    if dung_tu_dump:
-        return
-    Base.metadata.drop_all(bind=engine)
+        if dung_tu_dump:
+            return
+    # PostgreSQL tự xoá sequence có ``OWNED BY audit_log.id`` khi drop bảng.
+    # Nếu để SQLAlchemy drop sequence lần nữa sau đó, teardown sẽ fail với
+    # UndefinedTable. Tạm tách các sequence khỏi visitor; metadata được khôi
+    # phục ngay cả khi việc dọn schema gặp lỗi.
+    metadata_sequences = dict(Base.metadata._sequences)
+    Base.metadata._sequences.clear()
+    try:
+        Base.metadata.drop_all(bind=engine)
+    finally:
+        Base.metadata._sequences.update(metadata_sequences)
 
 
 @pytest.fixture(scope="session")

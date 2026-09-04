@@ -11,8 +11,8 @@ import unittest
 from sqlalchemy import text
 
 from tests.fixtures_so_giay_to import (
-    dung_boi_canh, giao_viec, nguoi_dung, them_buoc_k01, them_mau,
-    them_nhiem_vu_co_tai_lieu, them_o_giay, thieu_bang,
+    build_test_context, assign_node, create_test_user, insert_k01_node, insert_template,
+    insert_checklist_item_with_document, insert_document_slot, get_missing_documents,
 )
 
 
@@ -21,7 +21,7 @@ class NopNghiemThuThieuTaiLieuTests(unittest.TestCase):
         from src.db.database import SessionLocal
 
         self.db = SessionLocal()
-        thieu = thieu_bang(self.db)
+        thieu = get_missing_documents(self.db)
         if thieu:
             self.db.close()
             self.skipTest("DB thiếu bảng: " + ", ".join(thieu))
@@ -39,22 +39,22 @@ class NopNghiemThuThieuTaiLieuTests(unittest.TestCase):
 
     def _boi_canh(self, *, min_count=2):
         """Một bước K01 có đúng một mục checklist đòi `min_count` bản của một loại."""
-        bc = dung_boi_canh(self.db)
+        bc = build_test_context(self.db)
         sl = bc["hang_muc"][0]["id"]
-        mau = them_mau(self.db, ten="Bản vẽ kỹ thuật thử")
-        them_o_giay(self.db, contract_id=bc["contract_id"], service_line_id=sl,
-                    ten="Bản vẽ kỹ thuật thử")
-        node = them_buoc_k01(self.db, service_line_id=sl, checklist=[{
+        mau = insert_template(self.db, name="Bản vẽ kỹ thuật thử")
+        insert_document_slot(self.db, contract_id=bc["contract_id"], service_line_id=sl,
+                    name="Bản vẽ kỹ thuật thử")
+        node = insert_k01_node(self.db, service_line_id=sl, checklist=[{
             "key": "cl1", "name": "Chuẩn hoá bản vẽ",
             "output_documents": [{
                 "template_id": mau, "min_count": min_count,
                 "required_before_submit": True, "needs_director_approval": False,
             }],
         }])
-        muc = them_nhiem_vu_co_tai_lieu(
-            self.db, task_node_id=node, ten="Chuẩn hoá bản vẽ", khoa="cl1")
-        nv = nguoi_dung(self.db)
-        emp = giao_viec(self.db, task_node_id=node, user_id=nv)
+        muc = insert_checklist_item_with_document(
+            self.db, task_node_id=node, name="Chuẩn hoá bản vẽ", checklist_key="cl1")
+        nv = create_test_user(self.db)
+        emp = assign_node(self.db, task_node_id=node, user_id=nv)
         self.db.execute(
             text("update public.task_nodes set status='in_progress' where id=:i"),
             {"i": node})
@@ -196,8 +196,8 @@ class NopNghiemThuThieuTaiLieuTests(unittest.TestCase):
     def test_tra_lai_ghi_chu_rieng_tung_muc(self):
         """Một câu chung cho năm mục là bắt nhân viên đoán mục nào sai."""
         bc = self._boi_canh()
-        muc2 = them_nhiem_vu_co_tai_lieu(
-            self.db, task_node_id=bc["node"], ten="Mục thứ hai", khoa="cl2")
+        muc2 = insert_checklist_item_with_document(
+            self.db, task_node_id=bc["node"], name="Mục thứ hai", checklist_key="cl2")
         self._nop(bc)
 
         self.wr.review_task_node_acceptance(

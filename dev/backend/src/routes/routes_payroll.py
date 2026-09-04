@@ -7,7 +7,7 @@ from typing import Optional, List, Dict, Any
 from decimal import Decimal
 
 from src.db.database import get_db
-from src.core.auth import require_permission, User
+from src.core.auth import require_permission, get_current_user, assert_payroll_employee_access, is_payroll_all_user, User
 from src.db.models import Employee, Department, PayrollPeriod
 from src.finance.repository import FinanceRepository
 from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
@@ -24,6 +24,8 @@ def get_payroll_options(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payroll", "read"))
 ):
+    if not is_payroll_all_user(db, user):
+        raise HTTPException(status_code=403, detail="Chỉ Kế toán hoặc Giám đốc được xem danh sách lương.")
     cache_key = "bachkhoa:payroll:options"
     cached = get_cached_json(cache_key)
     if cached is not None:
@@ -101,13 +103,29 @@ def get_employee_ledger(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "read"))
+    user: User = Depends(get_current_user)
 ):
     curr_year = datetime.now().year
     curr_month = datetime.now().month
     year_val = year if isinstance(year, int) else curr_year
     month_val = month if isinstance(month, int) else curr_month
     emp_id_val = employee_id if (employee_id and isinstance(employee_id, str)) else None
+
+    # Không cho phép dùng employee_id để đọc lương người khác.  Với nhân viên
+    # thường, bỏ employee_id cũng phải tự rơi về hồ sơ của chính họ, không được
+    # chọn nhân viên đầu tiên trong bảng như logic legacy trước đây.
+    actor_employee = db.query(Employee).filter(
+        Employee.user_id == user.id, Employee.is_active == True
+    ).first()
+    if not is_payroll_all_user(db, user):
+        if not actor_employee:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân sự.")
+        if emp_id_val and emp_id_val != actor_employee.id:
+            raise HTTPException(status_code=403, detail="Bạn chỉ được xem bảng lương của chính mình.")
+        emp_id_val = actor_employee.id
+
+    if emp_id_val:
+        assert_payroll_employee_access(db, user, emp_id_val)
 
     if emp_id_val:
         ledger_cache_key = f"bachkhoa:payroll:ledger:{emp_id_val}:{year_val}:{month_val}"
@@ -202,6 +220,7 @@ def get_employee_ledger(
         select id, adjustment_type as type, amount, reason, source_reference as task_id, status, effective_date
         from employee_pay_adjustments
         where employee_id = :emp_id
+          and status in ('approved', 'locked')
         order by effective_date desc
     """)
     adj_rows = db.execute(adj_query, {"emp_id": emp_id_val}).mappings().all()
@@ -267,7 +286,8 @@ def get_employee_ledger(
 
         is_completed = (r["node_status"] in ("accepted", "completed"))
         is_paid = (r["entitlement_status"] == "paid")
-        is_approved = (r["entitlement_status"] == "approved")
+        is_locked = (r["entitlement_status"] == "locked")
+        is_approved = (r["entitlement_status"] in ("approved", "locked"))
 
         # Filter strictly by the configured date range [start_date, end_date]:
         if is_completed or is_paid or is_approved:
@@ -296,8 +316,8 @@ def get_employee_ledger(
             paid_total += net_amount
             recorded_total += net_amount
         elif is_approved:
-            status_code = "approved"
-            payment_status = "Đã ghi nhận"
+            status_code = "locked" if is_locked else "approved"
+            payment_status = "Đã chốt" if is_locked else "Đã ghi nhận"
             is_recorded = True
             is_closable = False
             recorded_total += net_amount
@@ -427,6 +447,11 @@ def close_employee_period(
         period_info = FinanceRepository.get_payroll_date_range(db, payload.year, payload.month)
         start_date = period_info["start_date"]
         end_date = period_info["end_date"]
+        locked_period = db.query(PayrollPeriod).filter(
+            PayrollPeriod.period_month == start_date.replace(day=1)
+        ).first()
+        if locked_period and (locked_period.status or "").lower() in {"locked", "paid"}:
+            raise HTTPException(status_code=409, detail="Kỳ lương đã khóa; không thể ghi sửa trực tiếp. Hãy tạo điều chỉnh kỳ sau hoặc mở lại có kiểm toán.")
 
         completed_nodes = db.execute(text("""
             select n.id as task_node_id, a.role_code, n.node_code, wi.id as workflow_id,

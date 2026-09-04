@@ -12,12 +12,12 @@ import logging
 
 from src.core.auth import hash_password, verify_password
 from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+from src.core.roles import validate_assignable_role_name
 from src.db.models import Employee, Role, User, UserRole
 from src.services.email_service import EmailSendError, send_email
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ACCOUNT_ROLE = "employee"
 INVITE_TOKEN_TTL_HOURS = 48
 OTP_TTL_MINUTES = 10
 MAX_OTP_ATTEMPTS = 5
@@ -78,8 +78,13 @@ def create_employee_account(
     employee_id: str,
     username: str,
     email: str,
-    role_name: str = DEFAULT_ACCOUNT_ROLE,
+    role_name: str,
 ) -> dict:
+    try:
+        role_name = validate_assignable_role_name(role_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
@@ -97,7 +102,7 @@ def create_employee_account(
     if db.query(User.id).filter(User.email == email).first():
         raise HTTPException(status_code=409, detail="Email đã được sử dụng bởi tài khoản khác.")
 
-    role = db.query(Role).filter(Role.role_name == role_name).first()
+    role = db.query(Role).filter(Role.role_name == role_name, Role.is_active.is_(True)).first()
     if not role:
         raise HTTPException(status_code=500, detail=f"Vai trò mặc định '{role_name}' chưa tồn tại trong hệ thống.")
 

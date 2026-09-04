@@ -119,7 +119,9 @@ class AuditLog(Base):
     id = Column(
         Integer().with_variant(BigInteger, "postgresql"),
         primary_key=True,
-        autoincrement=True,
+        # PostgreSQL cấp ID qua audit_log_id_seq; không để SQLAlchemy sinh
+        # thêm một BIGSERIAL sequence implicit bên cạnh server_default.
+        autoincrement=False,
         server_default=audit_log_id_seq.next_value(),
     )
     actor_id = Column(String, ForeignKey("users.id"), nullable=True)

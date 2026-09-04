@@ -552,7 +552,7 @@ class ChotSoTruocKhiGuiChecklistTests(unittest.TestCase):
 
         bao_cao = inspect.getsource(documents.node_shortage_report)
         self.assertIn("k01_blockers", bao_cao)
-        self.assertIn('chan.get("required_missing"', bao_cao)
+        self.assertIn('blockers.get("required_missing"', bao_cao)
         self.assertNotIn("dossier_document_slots", bao_cao)
 
 

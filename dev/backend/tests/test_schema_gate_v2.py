@@ -53,16 +53,16 @@ class CongV2Tests(unittest.TestCase):
         db = MagicMock()
         db.execute.side_effect = RuntimeError("mất kết nối")
         with self.assertRaises(RuntimeError):
-            self.register._co_cot_register_version(db)
+            self.register._has_register_version_column(db)
 
     def test_cache_xoa_duoc(self):
         """Sau khi apply EXPAND phải restart backend. Tiến trình giữ kết quả
         'chưa có cột' trong bộ nhớ là tiếp tục chạy legacy dù CSDL đã sẵn sàng."""
-        self.register._co_cot_register_version(self._db(False))
+        self.register._has_register_version_column(self._db(False))
         self.assertFalse(self.register._SCHEMA_CO_VERSION["value"])
         self.register.reset_schema_cache()
         self.assertEqual(self.register._SCHEMA_CO_VERSION, {})
-        self.register._co_cot_register_version(self._db(True))
+        self.register._has_register_version_column(self._db(True))
         self.assertTrue(self.register._SCHEMA_CO_VERSION["value"])
 
 
@@ -155,7 +155,7 @@ class QuyenXinMienTests(unittest.TestCase):
         self.assertEqual(ket_qua["service_line_id"], "SL-1")
 
     def test_giam_doc_khong_can_phan_cong(self):
-        ket_qua = self._xin(self._db(duoc_giao=False), la_quan_tri=True)
+        ket_qua = self._xin(self._db(duoc_giao=False), is_admin=True)
         self.assertEqual(ket_qua["status"], "pending")
 
     def test_hang_muc_khac_dang_co_phieu_cho_tren_o_dung_chung_thi_409(self):
@@ -220,9 +220,9 @@ class GiaoThucChonGiayTests(unittest.TestCase):
     """
 
     def _giai(self, mode, ids=None):
-        from src.contracts.services import phan_giai_lua_chon_giay
+        from src.contracts.services import resolve_document_selection
 
-        return phan_giai_lua_chon_giay(mode, ids)
+        return resolve_document_selection(mode, ids)
 
     def test_thieu_mode_thi_422(self):
         with self.assertRaises(HTTPException) as treo:
@@ -274,7 +274,7 @@ class GiaoThucChonGiayTests(unittest.TestCase):
                       ROOT_SRC / "contracts/services.py"):
             src = open(duong, encoding="utf-8").read()
             self.assertTrue(
-                re.search(r'phan_giai_lua_chon_giay\(\s*"DEFAULT"', src),
+                re.search(r'resolve_document_selection\(\s*"DEFAULT"', src),
                 f"{duong} phải khai DEFAULT tường minh",
             )
 

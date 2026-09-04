@@ -63,12 +63,9 @@ class FinanceRepository:
             start_date = None
 
         # Only count approved/completed transactions for actual cash/bank ledger
-        approved_cond = or_(
-            CashflowTransaction.status.is_(None),
-            CashflowTransaction.status.in_([
-                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán", ""
-            ])
-        )
+        approved_cond = CashflowTransaction.status.in_([
+            TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+        ])
 
         query_income = db.query(func.sum(CashflowTransaction.amount)).filter(
             CashflowTransaction.transaction_type.in_([TransactionType.INCOME.value, "Thu"]),
@@ -126,12 +123,9 @@ class FinanceRepository:
             start_bal_bank = FinanceRepository.get_setting_value(db, "initial_bank_balance", 0.0)
             start_date_bank = None
 
-        approved_cond = or_(
-            CashflowTransaction.status.is_(None),
-            CashflowTransaction.status.in_([
-                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán", ""
-            ])
-        )
+        approved_cond = CashflowTransaction.status.in_([
+            TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+        ])
         
         up_to_date = (up_to_datetime.astimezone(tz_vn).date() if up_to_datetime.tzinfo else up_to_datetime.replace(tzinfo=timezone.utc).astimezone(tz_vn).date()) if up_to_datetime else None
 
@@ -273,11 +267,14 @@ class FinanceRepository:
             return None
 
         rows = db.query(CashflowTransaction).filter(
-            CashflowTransaction.contract_id == contract_id
+            CashflowTransaction.contract_id == contract_id,
+            CashflowTransaction.status.in_([
+                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+            ])
         ).order_by(CashflowTransaction.created_at.desc()).all()
 
         total_income = sum(float(r.amount or 0) for r in rows if r.transaction_type in (TransactionType.INCOME.value, "Thu", "INCOME"))
-        total_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type in (TransactionType.EXPENSE.value, "Chi", "EXPENSE"))
+        total_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type in (TransactionType.EXPENSE.value, "Chi", "EXPENSE", TransactionType.ADVANCE.value, "Tạm ứng"))
         customer = db.query(Customer).filter(Customer.id == contract.customer_id).first()
 
         return {
@@ -295,11 +292,14 @@ class FinanceRepository:
             return None
 
         rows = db.query(CashflowTransaction).filter(
-            CashflowTransaction.project_id == project_id
+            CashflowTransaction.project_id == project_id,
+            CashflowTransaction.status.in_([
+                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+            ])
         ).order_by(CashflowTransaction.created_at.desc()).all()
 
         total_income = sum(float(r.amount or 0) for r in rows if r.transaction_type in (TransactionType.INCOME.value, "Thu", "INCOME"))
-        total_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type in (TransactionType.EXPENSE.value, "Chi", "EXPENSE"))
+        total_expenditure = sum(float(r.amount or 0) for r in rows if r.transaction_type in (TransactionType.EXPENSE.value, "Chi", "EXPENSE", TransactionType.ADVANCE.value, "Tạm ứng"))
 
         return {
             "project_id": project_id,
@@ -381,7 +381,13 @@ class FinanceRepository:
         # Batch pre-aggregate payments by contract in 1 single query
         paid_map = dict(
             db.query(CashflowTransaction.contract_id, func.sum(CashflowTransaction.amount))
-            .filter(CashflowTransaction.transaction_type.in_([TransactionType.INCOME.value, "Thu", "INCOME"]), CashflowTransaction.contract_id.isnot(None))
+            .filter(
+                CashflowTransaction.transaction_type.in_([TransactionType.INCOME.value, "Thu", "INCOME"]),
+                CashflowTransaction.contract_id.isnot(None),
+                CashflowTransaction.status.in_([
+                    TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+                ])
+            )
             .group_by(CashflowTransaction.contract_id)
             .all()
         )
@@ -489,7 +495,10 @@ class FinanceRepository:
         rows = db.query(CashflowTransaction).filter(
             CashflowTransaction.transaction_type.in_([TransactionType.EXPENSE.value, "Chi", "EXPENSE"]),
             CashflowTransaction.payment_method.in_([PaymentMethod.BANK_TRANSFER.value, "Chuyển khoản", "BANK_TRANSFER"]),
-            CashflowTransaction.contract_id.is_(None)
+            CashflowTransaction.contract_id.is_(None),
+            CashflowTransaction.status.in_([
+                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+            ])
         ).order_by(CashflowTransaction.created_at.desc()).all()
         total = sum(float(r.amount or 0) for r in rows)
         from src.finance.serializers import serialize_cashflow_bulk
@@ -506,7 +515,11 @@ class FinanceRepository:
             ),
             CashflowTransaction.category_code.notin_(["Chi thực tế từ tạm ứng", "Quyết toán hoàn ứng"]),
             ~CashflowTransaction.description.ilike("Quyết toán chi thực tế%"),
-            ~CashflowTransaction.status.in_([TransactionStatus.COMPLETED.value, "Đã quyết toán", "COMPLETED"])
+            CashflowTransaction.status.in_([
+                TransactionStatus.PENDING.value, "Chờ duyệt", "PENDING",
+                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED"
+            ])
+            , ~CashflowTransaction.description.ilike("%Quyết toán ngày%")
         ).order_by(CashflowTransaction.created_at.desc()).all()
         from src.finance.serializers import serialize_cashflow_bulk
         return serialize_cashflow_bulk(rows, db)
@@ -562,14 +575,14 @@ class FinanceRepository:
               select employee_id, count(*) as tasks_completed,
                      coalesce(sum(amount), 0) as piece_amount
               from public.work_pay_entitlements, period
-              where status in ('eligible', 'approved', 'paid')
+              where status in ('eligible', 'approved', 'locked', 'paid')
                 and earned_at >= period.start_date
                 and earned_at < period.end_date
               group by employee_id
             ), adjustments as (
               select employee_id, coalesce(sum(amount), 0) as adjustment_amount
               from public.employee_pay_adjustments, period
-              where status = 'approved'
+              where status in ('approved', 'locked')
                 and effective_date >= period.start_date
                 and effective_date < period.end_date
               group by employee_id
@@ -649,6 +662,9 @@ class FinanceRepository:
     def get_summary_report(db: Session) -> Dict:
         cash_balance = FinanceRepository.get_running_balance(db, "CASH")
         bank_balance = FinanceRepository.get_running_balance(db, "BANK_TRANSFER")
+        posted_statuses = [
+            TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "approved", "COMPLETED", "Đã quyết toán"
+        ]
         net_advance = float(db.query(func.sum(CashflowTransaction.amount)).filter(
             CashflowTransaction.transaction_type.in_([TransactionType.EXPENSE.value, "Chi", "EXPENSE", TransactionType.ADVANCE.value, "Tạm ứng"]),
             or_(CashflowTransaction.category_code.ilike("%tạm ứng%"),
@@ -667,7 +683,8 @@ class FinanceRepository:
         ).filter(
             CashflowTransaction.scope.in_([TransactionScope.COMPANY.value, "Công ty", "COMPANY"]),
             CashflowTransaction.category_code != "Chi phí tạm ứng",
-            CashflowTransaction.category_code != "Quyết toán hoàn ứng"
+            CashflowTransaction.category_code != "Quyết toán hoàn ứng",
+            CashflowTransaction.status.in_(posted_statuses)
         ).group_by("yr", "mo", CashflowTransaction.transaction_type).order_by("yr", "mo").all()
 
         mm: dict = {}
@@ -688,7 +705,8 @@ class FinanceRepository:
             func.sum(CashflowTransaction.amount).label("t")
         ).filter(CashflowTransaction.transaction_type.in_([TransactionType.INCOME.value, "Thu", "INCOME"]),
                  CashflowTransaction.contract_id.isnot(None),
-                 CashflowTransaction.scope.in_([TransactionScope.COMPANY.value, "Công ty", "COMPANY"])
+                 CashflowTransaction.scope.in_([TransactionScope.COMPANY.value, "Công ty", "COMPANY"]),
+                 CashflowTransaction.status.in_(posted_statuses)
         ).group_by(CashflowTransaction.contract_id).all()
 
         expense_by_p = db.query(
@@ -699,7 +717,8 @@ class FinanceRepository:
             CashflowTransaction.project_id.isnot(None),
             CashflowTransaction.scope.in_([TransactionScope.COMPANY.value, "Công ty", "COMPANY"]),
             CashflowTransaction.category_code != "Chi phí tạm ứng",
-            CashflowTransaction.category_code != "Quyết toán hoàn ứng"
+            CashflowTransaction.category_code != "Quyết toán hoàn ứng",
+            CashflowTransaction.status.in_(posted_statuses)
         ).group_by(CashflowTransaction.project_id).all()
 
         pc_map = {p.id: p.contract_id for p in
@@ -718,7 +737,8 @@ class FinanceRepository:
         ).filter(CashflowTransaction.transaction_type.in_([TransactionType.EXPENSE.value, "Chi", "EXPENSE"]),
                  or_(CashflowTransaction.category_code.ilike("%lương khoán%"),
                      CashflowTransaction.description.ilike("%lương khoán%")),
-                 CashflowTransaction.project_id.isnot(None)
+                 CashflowTransaction.project_id.isnot(None),
+                 CashflowTransaction.status.in_(posted_statuses)
         ).group_by(CashflowTransaction.project_id).all()
         wage_map: dict = {}
         for r in wage_by_p:
@@ -846,12 +866,9 @@ class FinanceRepository:
         except Exception:
             raise HTTPException(status_code=400, detail="Tháng không hợp lệ. Format phải là YYYY-MM")
 
-        approved_cond = or_(
-            CashflowTransaction.status.is_(None),
-            CashflowTransaction.status.in_([
-                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán", ""
-            ])
-        )
+        approved_cond = CashflowTransaction.status.in_([
+            TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán"
+        ])
 
         # Filter transactions in this month
         txs = db.query(CashflowTransaction).filter(

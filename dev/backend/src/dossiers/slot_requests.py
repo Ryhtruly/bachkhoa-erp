@@ -132,19 +132,19 @@ def create_request(
     kind: str = "OUTPUT",
 ) -> dict[str, Any]:
     """Mở một đề xuất ở trạng thái ``draft`` — chưa đụng gì tới hồ sơ."""
-    ten = (proposed_name or "").strip()
-    ly_do = (reason or "").strip()
-    if len(ten) < 3:
+    proposed_name_text = (proposed_name or "").strip()
+    reason_text = (reason or "").strip()
+    if len(proposed_name_text) < 3:
         raise HTTPException(status_code=422, detail="Tên loại tài liệu quá ngắn.")
-    if len(ly_do) < 5:
+    if len(reason_text) < 5:
         raise HTTPException(status_code=422, detail="Cần ghi rõ lý do phát sinh (tối thiểu 5 ký tự).")
     if source not in SOURCES:
         raise HTTPException(status_code=422, detail="Nguồn tài liệu không hợp lệ.")
-    loai_de_xuat = str(kind or "").upper()
-    if loai_de_xuat not in ("INPUT", "OUTPUT"):
+    request_kind = str(kind or "").upper()
+    if request_kind not in ("INPUT", "OUTPUT"):
         raise HTTPException(status_code=422, detail="Loại đề xuất phải là INPUT hoặc OUTPUT.")
 
-    ngu_canh = _checklist_context(db, checklist_result_id)
+    checklist_context = _checklist_context(db, checklist_result_id)
     request_id = db.execute(
         text("""
             insert into public.document_slot_creation_requests
@@ -155,20 +155,20 @@ def create_request(
             returning id
         """),
         {
-            "contract_id": ngu_canh["contract_id"],
-            "service_line_id": ngu_canh["service_line_id"],
-            "task_node_id": ngu_canh["task_node_id"],
+            "contract_id": checklist_context["contract_id"],
+            "service_line_id": checklist_context["service_line_id"],
+            "task_node_id": checklist_context["task_node_id"],
             "checklist_result_id": checklist_result_id,
-            "name": ten,
+            "name": proposed_name_text,
             "description": (description or "").strip() or None,
-            "reason": ly_do,
+            "reason": reason_text,
             "source": source,
             "quantity": max(1, int(quantity or 1)),
-            "kind": loai_de_xuat,
+            "kind": request_kind,
             "actor": actor_id,
         },
     ).scalar()
-    return {"id": request_id, "status": "draft", "proposed_name": ten}
+    return {"id": request_id, "status": "draft", "proposed_name": proposed_name_text}
 
 
 def update_request(
@@ -192,11 +192,11 @@ def update_request(
     if request["status"] not in ("draft", "rejected", "needs_more"):
         raise HTTPException(status_code=409, detail="Đề xuất đang chờ duyệt hoặc đã duyệt — không sửa được.")
 
-    ten = (proposed_name or "").strip()
-    ly_do = (reason or "").strip()
-    if len(ten) < 3:
+    proposed_name_text = (proposed_name or "").strip()
+    reason_text = (reason or "").strip()
+    if len(proposed_name_text) < 3:
         raise HTTPException(status_code=422, detail="Tên loại tài liệu quá ngắn.")
-    if len(ly_do) < 5:
+    if len(reason_text) < 5:
         raise HTTPException(status_code=422, detail="Cần ghi rõ lý do phát sinh (tối thiểu 5 ký tự).")
     if source not in SOURCES:
         raise HTTPException(status_code=422, detail="Nguồn tài liệu không hợp lệ.")
@@ -210,14 +210,14 @@ def update_request(
         """),
         {
             "id": request_id,
-            "name": ten,
+            "name": proposed_name_text,
             "description": (description or "").strip() or None,
-            "reason": ly_do,
+            "reason": reason_text,
             "source": source,
             "quantity": max(1, int(quantity or 1)),
         },
     )
-    return {"id": request_id, "status": request["status"], "proposed_name": ten}
+    return {"id": request_id, "status": request["status"], "proposed_name": proposed_name_text}
 
 
 def _open_request(db: Session, request_id: str, *, lock: bool = False) -> dict[str, Any]:
@@ -367,11 +367,11 @@ def submit_request(db: Session, request_id: str, *, actor_id: str) -> dict[str, 
     return {"id": request_id, "status": "pending", "file_count": int(so_tep)}
 
 
-_PHAM_VI_PROMOTION = ("HANG_MUC_NAY", "TASK_TYPE", "PACKAGE", "GLOBAL")
+_PROMOTION_SCOPES = ("HANG_MUC_NAY", "TASK_TYPE", "PACKAGE", "GLOBAL")
 
 
-def _so_cau_hinh_mau(
-    mau, *, nguon: str, so_luong: int, bat_buoc: bool, can_ban_chinh: bool,
+def _compare_template_configuration(
+    template, *, source: str, quantity: int, required: bool, needs_original: bool,
 ) -> list[str]:
     """Liệt kê những chỗ mẫu sẵn có KHÁC với thứ Giám đốc vừa chốt.
 
@@ -393,43 +393,43 @@ def _so_cau_hinh_mau(
     """
     from src.dossiers.register import SOURCE_LABELS
 
-    khac_biet: list[str] = []
-    if not mau["is_active"]:
-        khac_biet.append("mẫu đã tắt")
-    if mau["source"] != nguon:
-        khac_biet.append(
-            f"nguồn {SOURCE_LABELS.get(mau['source'], mau['source'])} "
-            f"≠ {SOURCE_LABELS.get(nguon, nguon)}"
+    differences: list[str] = []
+    if not template["is_active"]:
+        differences.append("mẫu đã tắt")
+    if template["source"] != source:
+        differences.append(
+            f"nguồn {SOURCE_LABELS.get(template['source'], template['source'])} "
+            f"≠ {SOURCE_LABELS.get(source, source)}"
         )
-    if bool(mau["is_required"]) != bool(bat_buoc):
-        khac_biet.append(
-            f"mặc định {'bắt buộc' if mau['is_required'] else 'không bắt buộc'} "
-            f"≠ {'bắt buộc' if bat_buoc else 'không bắt buộc'}"
+    if bool(template["is_required"]) != bool(required):
+        differences.append(
+            f"mặc định {'bắt buộc' if template['is_required'] else 'không bắt buộc'} "
+            f"≠ {'bắt buộc' if required else 'không bắt buộc'}"
         )
-    if bool(mau["needs_original"]) != bool(can_ban_chinh):
-        khac_biet.append(
-            f"{'cần' if mau['needs_original'] else 'không cần'} bản chính "
-            f"≠ {'cần' if can_ban_chinh else 'không cần'}"
+    if bool(template["needs_original"]) != bool(needs_original):
+        differences.append(
+            f"{'cần' if template['needs_original'] else 'không cần'} bản chính "
+            f"≠ {'cần' if needs_original else 'không cần'}"
         )
-    if int(mau["default_quantity"] or 1) != int(so_luong or 1):
-        khac_biet.append(f"số lượng mặc định {mau['default_quantity']} ≠ {so_luong}")
-    mo_ta_cu = (mau["note"] or "").strip()
-    mo_ta_moi = ""  # đề xuất hiện chưa mang mô tả riêng cho mẫu
-    if mo_ta_cu and mo_ta_moi and mo_ta_cu != mo_ta_moi:
-        khac_biet.append("mô tả khác")
-    return khac_biet
+    if int(template["default_quantity"] or 1) != int(quantity or 1):
+        differences.append(f"số lượng mặc định {template['default_quantity']} ≠ {quantity}")
+    old_description = (template["note"] or "").strip()
+    new_description = ""  # đề xuất hiện chưa mang mô tả riêng cho mẫu
+    if old_description and new_description and old_description != new_description:
+        differences.append("mô tả khác")
+    return differences
 
 
-def _promote_theo_pham_vi(
+def _promote_template_by_scope(
     db: Session,
     *,
     request: dict[str, Any],
     promotion_scope: str | None,
-    ten_chinh_thuc: str,
-    nguon: str,
-    so_luong: int,
-    bat_buoc: bool,
-    can_ban_chinh: bool,
+    official_name: str,
+    source: str,
+    quantity: int,
+    required: bool,
+    needs_original: bool,
     actor_id: str,
     request_id: str,
 ) -> None:
@@ -442,13 +442,13 @@ def _promote_theo_pham_vi(
         return
     from src.dossiers.register import SOURCE_LABELS
 
-    if promotion_scope not in _PHAM_VI_PROMOTION:
+    if promotion_scope not in _PROMOTION_SCOPES:
         raise HTTPException(
             status_code=422,
-            detail=f"Phạm vi không hợp lệ. Chọn một trong: {', '.join(_PHAM_VI_PROMOTION)}.",
+            detail=f"Phạm vi không hợp lệ. Chọn một trong: {', '.join(_PROMOTION_SCOPES)}.",
         )
 
-    boi_canh = db.execute(
+    service_line_context = db.execute(
         text("""
             select sl.task_type_id,
                    coalesce(sl.service_package_id, tt.service_package_id) as service_package_id
@@ -458,15 +458,15 @@ def _promote_theo_pham_vi(
         """),
         {"sl": request["service_line_id"]},
     ).mappings().first()
-    if not boi_canh:
+    if not service_line_context:
         raise HTTPException(status_code=404, detail="Không tìm thấy Hạng mục của đề xuất.")
 
-    if promotion_scope == "TASK_TYPE" and not boi_canh["task_type_id"]:
+    if promotion_scope == "TASK_TYPE" and not service_line_context["task_type_id"]:
         raise HTTPException(
             status_code=409,
             detail="Hạng mục này chưa gắn Dạng hồ sơ nên không đặt mặc định theo loại được.",
         )
-    if promotion_scope == "PACKAGE" and not boi_canh["service_package_id"]:
+    if promotion_scope == "PACKAGE" and not service_line_context["service_package_id"]:
         raise HTTPException(
             status_code=409,
             detail="Hạng mục này chưa gắn Gói dịch vụ nên không đặt mặc định theo gói được.",
@@ -480,34 +480,34 @@ def _promote_theo_pham_vi(
     # Chỉ dùng lại khi khớp: tên đã chuẩn hoá + nguồn + đang hoạt động. Khác
     # nguồn thì TỪ CHỐI tường minh để Giám đốc tự quyết, không tự nối và cũng
     # tuyệt đối không sửa mẫu cũ cho khớp.
-    trung_ten = db.execute(
+    same_name_templates = db.execute(
         text("""
             select id, name, source, is_active, is_required, needs_original,
                    default_quantity, note
             from public.document_checklist_templates
-            where lower(trim(name)) = lower(trim(:ten))
+            where lower(trim(name)) = lower(trim(:official_name))
             order by is_active desc
         """),
-        {"ten": ten_chinh_thuc},
+        {"official_name": official_name},
     ).mappings().all()
 
-    khop, lech = [], []
-    for mau in trung_ten:
-        khac_biet = _so_cau_hinh_mau(
-            mau, nguon=nguon, so_luong=so_luong,
-            bat_buoc=bat_buoc, can_ban_chinh=can_ban_chinh,
+    matching_templates, mismatched_templates = [], []
+    for template in same_name_templates:
+        differences = _compare_template_configuration(
+            template, source=source, quantity=quantity,
+            required=required, needs_original=needs_original,
         )
-        (khop if not khac_biet else lech).append((mau, khac_biet))
+        (matching_templates if not differences else mismatched_templates).append((template, differences))
 
-    if khop:
-        template_id = khop[0][0]["id"]
-    elif lech:
-        mau, khac_biet = lech[0]
+    if matching_templates:
+        template_id = matching_templates[0][0]["id"]
+    elif mismatched_templates:
+        template, differences = mismatched_templates[0]
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Đã có mẫu tên “{ten_chinh_thuc}” nhưng cấu hình khác: "
-                + "; ".join(khac_biet)
+                f"Đã có mẫu tên “{official_name}” nhưng cấu hình khác: "
+                + "; ".join(differences)
                 + ". Chọn mẫu sẵn có hoặc đặt tên chính thức khác."
             ),
         )
@@ -520,12 +520,12 @@ def _promote_theo_pham_vi(
                 insert into public.document_checklist_templates
                     (id, task_type_id, name, source, is_required, needs_original,
                      default_quantity, sort_order, is_active)
-                values (gen_random_uuid()::text, null, :ten, :nguon, :bat_buoc,
-                        :ban_chinh, :so_luong, 900, true)
+                values (gen_random_uuid()::text, null, :official_name, :source, :required,
+                        :needs_original, :quantity, 900, true)
                 returning id
             """),
-            {"ten": ten_chinh_thuc, "nguon": nguon, "bat_buoc": bat_buoc,
-             "ban_chinh": can_ban_chinh, "so_luong": so_luong},
+            {"official_name": official_name, "source": source, "required": required,
+             "needs_original": needs_original, "quantity": quantity},
         ).scalar()
 
     db.execute(
@@ -539,14 +539,14 @@ def _promote_theo_pham_vi(
         {
             "tpl": template_id,
             "loai": promotion_scope,
-            "goi": boi_canh["service_package_id"] if promotion_scope == "PACKAGE" else None,
-            "dang": boi_canh["task_type_id"] if promotion_scope == "TASK_TYPE" else None,
+            "goi": service_line_context["service_package_id"] if promotion_scope == "PACKAGE" else None,
+            "dang": service_line_context["task_type_id"] if promotion_scope == "TASK_TYPE" else None,
             "actor": actor_id,
         },
     )
     _audit(
         db, request_id, "DOCUMENT_TEMPLATE_PROMOTED", actor_id,
-        f"phạm vi={promotion_scope} · mẫu={ten_chinh_thuc}",
+        f"phạm vi={promotion_scope} · mẫu={official_name}",
     )
 
 
@@ -625,16 +625,16 @@ def review_request(
         _audit(db, request_id, "DOCUMENT_SLOT_REQUEST_REJECTED", actor_id, note)
         return {"id": request_id, "status": "rejected", "slot_id": None, "linked": 0}
 
-    ten = (approved_name or "").strip() or request["proposed_name"]
-    so_luong = int(approved_quantity or request["quantity"] or 1)
+    approved_name_text = (approved_name or "").strip() or request["proposed_name"]
+    approved_quantity_value = int(approved_quantity or request["quantity"] or 1)
 
     # Nguồn chính thức: Giám đốc chốt, mặc định suy từ MÃ BƯỚC chứ không lấy giá
     # trị nhân viên đề xuất. Nguồn quyết định tài liệu nằm ngăn nào của hồ sơ nên
     # không thể để người nộp tự quyết.
-    nguon = (approved_source or "").strip() or default_source_for_node(
+    approved_source_value = (approved_source or "").strip() or default_source_for_node(
         db, request["task_node_id"]
     )
-    if nguon not in SOURCES:
+    if approved_source_value not in SOURCES:
         raise HTTPException(status_code=422, detail="Nguồn tài liệu không hợp lệ.")
 
     slot_id = db.execute(
@@ -649,10 +649,10 @@ def review_request(
         {
             "contract_id": request["contract_id"],
             "service_line_id": request["service_line_id"],
-            "name": ten,
-            "source": nguon,
+            "name": approved_name_text,
+            "source": approved_source_value,
             "is_required": bool(required_before_submit),
-            "quantity": max(1, so_luong),
+            "quantity": max(1, approved_quantity_value),
             "note": "Phát sinh trong quá trình làm việc, Giám đốc đã duyệt.",
             "actor": actor_id,
         },
@@ -696,15 +696,15 @@ def review_request(
     #
     # Không tự học, không tự lan. Một loại giấy xuất hiện nhiều lần chỉ là tín
     # hiệu để gợi ý cho người duyệt, không phải sự đồng ý của họ.
-    _promote_theo_pham_vi(
+    _promote_template_by_scope(
         db,
         request=request,
         promotion_scope=promotion_scope,
-        ten_chinh_thuc=ten,
-        nguon=nguon,
-        so_luong=so_luong,
-        bat_buoc=bool(required_before_submit),
-        can_ban_chinh=False,
+        official_name=approved_name_text,
+        source=approved_source_value,
+        quantity=approved_quantity_value,
+        required=bool(required_before_submit),
+        needs_original=False,
         actor_id=actor_id,
         request_id=request_id,
     )
@@ -726,8 +726,8 @@ def review_request(
             where id = :id
         """),
         {
-            "slot_id": slot_id, "name": ten, "quantity": max(1, so_luong),
-            "source": nguon,
+            "slot_id": slot_id, "name": approved_name_text, "quantity": max(1, approved_quantity_value),
+            "source": approved_source_value,
             "required": bool(required_before_submit),
             "needs": bool(needs_director_approval),
             "actor": actor_id, "note": note, "id": request_id,
@@ -737,7 +737,7 @@ def review_request(
 
     return {
         "id": request_id, "status": "approved", "slot_id": slot_id,
-        "source": nguon, "linked": len(linked), "idempotent": False,
+        "source": approved_source_value, "linked": len(linked), "idempotent": False,
     }
 
 
@@ -858,7 +858,7 @@ _LIST_QUERY_TMPL = """
 _CACHE_CO_KIND: dict[str, bool] = {}
 
 
-def _co_cot_kind(db: Session) -> bool:
+def _has_kind_column(db: Session) -> bool:
     """``kind`` trên bảng đề xuất chỉ có từ đợt EXPAND.
 
     Đọc thẳng khi chưa có cột thì Hàng chờ duyệt của Giám đốc 500 toàn bộ —
@@ -892,7 +892,7 @@ def _list_query(db: Session) -> str:
     # trước khi luồng INPUT ra đời.
     return _LIST_QUERY_TMPL.replace(
         "__KIND__",
-        "r.kind" if _co_cot_kind(db) else "'OUTPUT'::varchar as kind",
+        "r.kind" if _has_kind_column(db) else "'OUTPUT'::varchar as kind",
     )
 
 
