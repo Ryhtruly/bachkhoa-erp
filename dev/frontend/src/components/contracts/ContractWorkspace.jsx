@@ -104,7 +104,7 @@ function DocumentsTab({ workspace }) {
 
 const workspaceMemoryCache = new Map();
 
-export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce }) {
+export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce, isDirector = false }) {
   const contractId = getContractId(contract);
   const contextKey = `${contractId}:${tab}`;
   const [workspace, setWorkspace] = useState(() => workspaceMemoryCache.get(contextKey) || null);
@@ -192,7 +192,7 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
       refreshTimer = window.setTimeout(() => loadWorkspace(false), 120);
     };
     const subscribe = async () => {
-      if (cancelled) return;
+      if (cancelled || !isDirector) return;
       const token = getAccessToken();
       if (!token) return;
       streamAbort = new AbortController();
@@ -238,7 +238,7 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
       document.removeEventListener('visibilitychange', refreshWhenVisible);
       window.removeEventListener('focus', refreshWhenVisible);
     };
-  }, [contractId, contextKey, tab, refreshKey, targetServiceLineId]);
+  }, [contractId, contextKey, tab, refreshKey, targetServiceLineId, isDirector]);
 
   const selectedServiceLine = useMemo(
     () => workspace?.service_lines.find(item => item.id === selectedServiceLineId) || workspace?.service_lines[0],

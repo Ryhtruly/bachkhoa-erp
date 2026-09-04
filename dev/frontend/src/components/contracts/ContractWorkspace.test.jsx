@@ -44,6 +44,7 @@ describe('ContractWorkspace realtime subscription', () => {
         tab="workflow"
         contract={{ id: 'HD-1' }}
         addToast={vi.fn()}
+        isDirector
       />,
     )
 
@@ -60,5 +61,22 @@ describe('ContractWorkspace realtime subscription', () => {
     unmount()
     expect(abortSpy).toHaveBeenCalled()
     expect(apiFetch).toHaveBeenCalled()
+  })
+
+  it('does not open the director-only realtime stream for staff', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { unmount } = render(
+      <ContractWorkspace
+        tab="workflow"
+        contract={{ id: 'HD-1' }}
+        addToast={vi.fn()}
+        isDirector={false}
+      />,
+    )
+
+    await waitFor(() => expect(fetchSpy).not.toHaveBeenCalled())
+    unmount()
   })
 })

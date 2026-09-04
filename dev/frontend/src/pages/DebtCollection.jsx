@@ -101,6 +101,8 @@ export default function DebtCollection({ user = null, isDirector = false, initia
   }, [load])
 
   useEffect(() => {
+    if (!effectiveIsDirector) return undefined
+
     let disposed = false
     let abortController = null
 
@@ -148,7 +150,7 @@ export default function DebtCollection({ user = null, isDirector = false, initia
       window.clearTimeout(realtimeRefreshRef.current)
       abortController?.abort()
     }
-  }, [load])
+  }, [load, effectiveIsDirector])
 
   useEffect(() => {
     if (initialSearch) setSearch(initialSearch)

@@ -35,8 +35,11 @@ def get_dashboard(
               and status not in ('accepted', 'skipped', 'cancelled')
         """)).scalar_one()
         
-        total_val = db.query(func.sum(Contract.total_value)).scalar() or 0.0
-        total_collected = db.query(func.sum(Receivable.paid_amount)).scalar() or 0.0
+        # PostgreSQL Numeric values arrive as Decimal while the empty SUM
+        # fallback used to be a float. Normalize both aggregates before doing
+        # arithmetic so an empty receivables table cannot break the dashboard.
+        total_val = float(db.query(func.sum(Contract.total_value)).scalar() or 0)
+        total_collected = float(db.query(func.sum(Receivable.paid_amount)).scalar() or 0)
         debt = total_val - total_collected
 
         recent_tasks = [dict(row) for row in db.execute(text("""

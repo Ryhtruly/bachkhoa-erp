@@ -586,6 +586,7 @@ export default function Contracts({ isDirector = false }) {
           targetNodeKey={navTarget?.nodeKey}
           targetType={navTarget?.type}
           targetNonce={navTarget?.nonce}
+          isDirector={isDirector}
         />
       )}
 
