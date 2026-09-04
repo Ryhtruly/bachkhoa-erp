@@ -1,5 +1,10 @@
 drop index if exists public.ux_tpl_app_combo;
 
+-- COMBO has no lossless representation in the previous applicability shape.
+-- Remove only feature-specific rows before restoring the legacy constraint.
+delete from public.document_template_applicabilities
+where applicability_type = 'COMBO';
+
 alter table public.document_template_applicabilities
   drop constraint if exists document_template_applicabilities_shape_check;
 alter table public.document_template_applicabilities
