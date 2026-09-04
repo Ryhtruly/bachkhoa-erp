@@ -1,3 +1,4 @@
+import json
 import unittest
 from contextlib import nullcontext
 from pathlib import Path
@@ -323,6 +324,46 @@ class ChecklistDocumentTypeFileTests(unittest.TestCase):
             2,
         )
 
+    def test_db_failure_after_upload_deletes_only_failed_object_without_masking_error(self):
+        add_files = required_function(self, "add_files")
+
+        class FailSecondDocumentInsertDb(DocumentTypeDb):
+            def execute(self, query, params=None):
+                sql = " ".join(str(query).lower().split())
+                if (
+                    "insert into public.dossier_documents" in sql
+                    and (params or {}).get("file_name") == "two.pdf"
+                ):
+                    self.calls.append((sql, params or {}))
+                    raise RuntimeError("document insert failed")
+                return super().execute(query, params)
+
+        db = FailSecondDocumentInsertDb(dict(self.type_row))
+        with patch.object(checklist_document_types, "ensure_bucket"), \
+             patch.object(checklist_document_types, "upload_file", return_value="stored") as upload, \
+             patch.object(checklist_document_types, "delete_file", side_effect=RuntimeError("cleanup failed")) as delete, \
+             self.assertLogs(checklist_document_types.logger, level="WARNING") as logs:
+            result = add_files(
+                db, document_type_id="DT-1",
+                uploads=[
+                    ("one.pdf", "application/pdf", b"1"),
+                    ("two.pdf", "application/pdf", b"2"),
+                ], actor_id="NV-1",
+            )
+
+        first_key = upload.call_args_list[0].args[1]
+        failed_key = upload.call_args_list[1].args[1]
+        self.assertEqual([item["status"] for item in result], ["success", "failed"])
+        self.assertEqual(result[1]["error"], "document insert failed")
+        self.assertEqual(result[0]["file_count"], 1)
+        delete.assert_called_once_with(failed_key)
+        self.assertIn("Could not compensate failed checklist document upload", logs.output[0])
+        self.assertNotEqual(first_key, failed_key)
+        self.assertEqual(
+            sum("insert into public.checklist_result_document_type_files" in sql for sql, _ in db.calls),
+            1,
+        )
+
     def test_invalid_extension_and_oversized_file_are_reported_per_file(self):
         add_files = required_function(self, "add_files")
         db = DocumentTypeDb(dict(self.type_row))
@@ -427,6 +468,44 @@ class AttachExistingRawDocumentTests(unittest.TestCase):
         self.assertIn("set scope = 'service_line'", all_sql)
         self.assertNotIn("insert into public.dossier_document_links", all_sql)
         self.assertNotIn("insert into public.checklist_result_document_links", all_sql)
+
+    def test_raw_attachment_writes_legacy_link_audit_with_document_actor_and_context(self):
+        attach_existing_file = required_function(self, "attach_existing_file")
+        type_row = {
+            "id": "DT-CCCD", "checklist_result_id": "CR-1", "template_id": "TPL-CCCD",
+            "name": "CCCD", "source": "KHACH_HANG", "status": "draft",
+            "contract_id": "HD-1", "service_line_id": "SL-1", "task_node_id": "NODE-1",
+            "node_code": "K01", "file_count": 0,
+        }
+        document_row = {
+            "id": "D-RAW", "file_name": "cccd.jpg", "doc_status": "DANG_DUNG",
+            "scope": "CONTRACT", "slot_id": None, "has_active_links": False,
+            "has_active_type_link": False,
+        }
+        db = DocumentTypeDb(type_row, document_row=document_row)
+
+        with patch("src.dossiers.slot_requests.assert_document_not_reserved"):
+            attach_existing_file(
+                db, document_type_id="DT-CCCD", document_id="D-RAW", actor_id="NV-1",
+            )
+
+        audit_calls = [
+            (sql, params) for sql, params in db.calls
+            if "insert into public.audit_log" in sql
+        ]
+        self.assertEqual(len(audit_calls), 1)
+        audit_sql, audit_params = audit_calls[0]
+        self.assertIn("'dossier_document'", audit_sql)
+        self.assertEqual(audit_params["action"], "LINK_SOURCE_DOCUMENT")
+        self.assertEqual(audit_params["document_id"], "D-RAW")
+        self.assertEqual(audit_params["actor"], "NV-1")
+        self.assertEqual(json.loads(audit_params["payload"]), {
+            "document_type_id": "DT-CCCD",
+            "checklist_result_id": "CR-1",
+            "contract_id": "HD-1",
+            "service_line_id": "SL-1",
+            "task_node_id": "NODE-1",
+        })
 
     def test_raw_document_cannot_target_company_type(self):
         attach_existing_file = required_function(self, "attach_existing_file")

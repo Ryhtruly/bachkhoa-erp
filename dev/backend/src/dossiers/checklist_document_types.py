@@ -1,6 +1,8 @@
 """Runtime document types attached to workflow checklist results."""
 
 import io
+import json
+import logging
 import uuid
 from enum import Enum
 from typing import Any
@@ -10,7 +12,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.files.references import DossierFileReference
-from src.services.storage_service import ensure_bucket, upload_file
+from src.services.storage_service import delete_file, ensure_bucket, upload_file
+
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentTypeStatus(str, Enum):
@@ -303,10 +308,12 @@ def add_files(
             document_id=document_id,
             filename=file_name,
         )
+        uploaded_object_key: str | None = None
         try:
             with db.begin_nested():
                 ensure_bucket()
                 upload_file(io.BytesIO(data), reference.object_key)
+                uploaded_object_key = reference.object_key
                 db.execute(
                     text("""
                         insert into public.dossier_documents
@@ -344,6 +351,15 @@ def add_files(
                 )
                 _reset_rejected_type(db, document_type)
         except Exception as exc:
+            if uploaded_object_key:
+                try:
+                    delete_file(uploaded_object_key)
+                except Exception:
+                    logger.warning(
+                        "Could not compensate failed checklist document upload %s",
+                        uploaded_object_key,
+                        exc_info=True,
+                    )
             results.append(_failure(file_name, exc))
             continue
 
@@ -478,6 +494,34 @@ def attach_existing_file(
             "service_line_id": document_type["service_line_id"],
             "task_node_id": document_type["task_node_id"],
             "document_id": document_id,
+        },
+    )
+    db.execute(
+        text("""
+            insert into public.audit_log
+                (actor_id, action, object_type, object_id, payload_json, created_at)
+            select
+                (select u.id from users u where u.id = :actor),
+                :action, 'dossier_document', :document_id,
+                case
+                  when :actor is not null
+                   and not exists (select 1 from users u where u.id = :actor)
+                  then cast(:payload as jsonb) || jsonb_build_object('actor_id_missing', :actor)
+                  else cast(:payload as jsonb)
+                end,
+                now()
+        """),
+        {
+            "actor": actor_id,
+            "action": "LINK_SOURCE_DOCUMENT",
+            "document_id": document_id,
+            "payload": json.dumps({
+                "document_type_id": document_type_id,
+                "checklist_result_id": document_type["checklist_result_id"],
+                "contract_id": document_type["contract_id"],
+                "service_line_id": document_type["service_line_id"],
+                "task_node_id": document_type["task_node_id"],
+            }, ensure_ascii=False),
         },
     )
     _reset_rejected_type(db, document_type)
