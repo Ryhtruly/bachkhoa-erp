@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Check, FileCheck2, Link2, Plus, Upload } from 'lucide-react'
+import { AlertTriangle, Check, FileCheck2, Link2, Plus, Upload, X } from 'lucide-react'
 
 import { apiFetch } from '../../lib/api'
+import { mergeDocumentVerdicts } from './nodeWorkFormat'
 import SlotRequestModal from './SlotRequestModal'
 
 /**
@@ -12,11 +13,17 @@ import SlotRequestModal from './SlotRequestModal'
  * cả hai vai, nhưng chỉ nằm MỘT bản trên kho lưu trữ — mọi thứ khác là quan hệ.
  *
  * Chỉ hiện khi mục checklist có cấu hình; mục thường không thấy khu này.
+ *
+ * ── Trạng thái từng tờ ──────────────────────────────────────────────────────
+ * approved: đã duyệt · rejected: bị từ chối (kèm lý do) · pending: chờ duyệt ·
+ * missing: chưa nộp. Tờ đã duyệt ẩn nút tải lên/dùng lại — nhân viên không thể
+ * tự thay tờ đã duyệt, backend trả 409 nếu cố.
  */
 export default function ChecklistOutputDocuments({
   taskNodeId,
   checklistResultId,
   outputDocuments = [],
+  reviewByTemplate = {},
   contractId,
   editable = true,
   addToast = () => {},
@@ -102,10 +109,19 @@ export default function ChecklistOutputDocuments({
   }
 
   const missingText = (status?.missing || []).join('; ')
-  // Cấu hình đến từ graph (loại nào, cần mấy bản); tên ô giấy và số đã nộp đến
-  // từ máy chủ. Ghép lại theo template_id để hiển thị đúng cả hai nửa.
+  // Phán quyết từng tờ (approved/rejected/pending/missing) đến từ caller qua
+  // reviewByTemplate — KHÔNG từ API output-status. Server chỉ trả số đếm và
+  // cờ bổ sung; gộp lại theo template_id để hiển thị đúng cả hai nửa.
   const theoTemplate = new Map((status?.documents || []).map(d => [d.template_id, d]))
-  const danhSach = outputDocuments.map(doc => ({ ...doc, ...(theoTemplate.get(doc.template_id) || {}) }))
+  const danhSach = mergeDocumentVerdicts({ output_documents: outputDocuments, review_by_template: reviewByTemplate })
+    .map(doc => ({ ...doc, ...(theoTemplate.get(doc.template_id) || {}) }))
+
+  const docState = (doc) => {
+    if (doc.review_status === 'approved') return 'approved'
+    if (doc.review_status === 'rejected') return 'rejected'
+    if (doc.document_id) return 'pending'
+    return 'missing'
+  }
 
   return <div className="cod" aria-label="Tài liệu đầu ra cần nộp">
     <div className="cod__head">
@@ -122,7 +138,10 @@ export default function ChecklistOutputDocuments({
         const daCo = Number(doc.current_count ?? 0)
         const can = Number(doc.min_count ?? 1)
         const du = daCo >= can
-        return <li key={doc.template_id} className={du ? 'is-done' : ''}>
+        const state = docState(doc)
+        const isApproved = state === 'approved'
+        const isRejected = state === 'rejected'
+        return <li key={doc.template_id} className={`${du ? 'is-done' : ''} is-${state}`}>
           <div className="cod__row">
             <span className="cod__name">{ten}</span>
             {doc.required_before_submit !== false && <em className="cod__req">Bắt buộc</em>}
@@ -131,10 +150,20 @@ export default function ChecklistOutputDocuments({
                 Chờ Giám đốc duyệt
               </em>
             )}
-            <span className="cod__count">{daCo}/{can}</span>
+            <span className={`cod__status cod__status--${state}`}>
+              {isApproved && <><Check size={11} /> Đã duyệt</>}
+              {isRejected && <><X size={11} /> Bị từ chối</>}
+              {!isApproved && !isRejected && <span className="cod__count">{daCo}/{can}</span>}
+            </span>
           </div>
 
-          {editable && (
+          {isRejected && doc.rejection_reason && (
+            <p className="cod__reason">
+              <b>Lý do:</b> {doc.rejection_reason}
+            </p>
+          )}
+
+          {editable && !isApproved && (
             <div className="cod__actions">
               <input
                 type="file"
@@ -159,6 +188,12 @@ export default function ChecklistOutputDocuments({
                 <Link2 size={12} /> Dùng lại
               </button>
             </div>
+          )}
+
+          {isApproved && (
+            <p className="cod__approved">
+              <Check size={12} /> Đã duyệt — không thể thay thế
+            </p>
           )}
 
           {reusing === doc.template_id && (

@@ -4259,6 +4259,31 @@ def submit_task_node_for_acceptance(
         names = ", ".join(row["checklist_name"] for row in unresolved)
         raise WorkflowValidationError(f"Còn nhiệm vụ chưa điền xong: {names}")
 
+    # CÒN TỜ ĐẦU RA BỊ TRẢ LẠI THÌ CHẶN NỘP — không cho "nộp lại y nguyên bài đã
+    # bị trả". Cổng /shortage đã bày blocker 'rejected_documents' để nút xám đi,
+    # nhưng đó chỉ là cảnh báo trên giao diện: gọi thẳng POST .../submit là qua
+    # mặt được. Còn MỘT tờ đầu ra mang phán quyết 'rejected' của Giám đốc mà chưa
+    # nộp tệp thay thì bước phải nằm lại trong tay nhân viên tới khi tờ đó được thay.
+    #
+    # Dùng LẠI chính node_document_review_summary — đúng hàm /shortage đếm
+    # rejected_count — để cổng nộp và cổng cảnh báo không bao giờ nói khác nhau.
+    # Hàm đó chỉ tính TỆP HIỆN HÀNH của mỗi ô giấy (xem _CURRENT_DOCUMENT_LINKS_CTE)
+    # nên tờ cũ đã bị thay KHÔNG bị kể lại — vòng sửa bài vẫn đóng được.
+    #
+    # Chỉ 'rejected' mới chặn: thiếu giấy (missing) vẫn mềm và tờ chờ duyệt
+    # (pending_review) vẫn nộp được — Giám đốc duyệt trọn gói lúc nghiệm thu.
+    review = node_document_review_summary(db, task_node_id=task_node_id)
+    if review["rejected_count"] > 0:
+        chi_tiet = "; ".join(
+            f"{item['document_name']} ({item['checklist_name']})"
+            + (f": {item['reason']}" if item.get("reason") else "")
+            for item in review["rejected_items"]
+        )
+        raise WorkflowValidationError(
+            f"Còn {review['rejected_count']} tài liệu đầu ra bị Giám đốc trả lại "
+            f"chưa được thay nên chưa thể nộp lại: {chi_tiet}. "
+            "Hãy tải tệp sửa lên cho đúng những tờ đó rồi nộp lại."
+        )
 
     # THIẾU TÀI LIỆU KHÔNG CHẶN NỘP.
     #

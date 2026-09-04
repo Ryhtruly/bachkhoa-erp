@@ -86,9 +86,12 @@ export function documentCounter(documents = [], nodeStatus) {
   const total = documents.length
   const uploaded = documents.filter(doc => doc.document_id).length
   const approved = documents.filter(doc => doc.review_status === 'approved').length
+  const rejected = documents.filter(doc => doc.review_status === 'rejected').length
+  const pending = documents.filter(doc => doc.document_id && doc.review_status !== 'approved' && doc.review_status !== 'rejected').length
+  const missing = documents.filter(doc => !doc.document_id).length
 
   if (nodeStatus === 'submitted' || nodeStatus === 'accepted' || nodeStatus === 'completed') {
-    return { primary: `${approved}/${total}`, note: 'đã duyệt', total, uploaded, approved }
+    return { primary: `${approved}/${total}`, note: 'đã duyệt', total, uploaded, approved, rejected, pending, missing }
   }
   return {
     primary: `${uploaded}/${total}`,
@@ -96,6 +99,9 @@ export function documentCounter(documents = [], nodeStatus) {
     total,
     uploaded,
     approved,
+    rejected,
+    pending,
+    missing,
   }
 }
 

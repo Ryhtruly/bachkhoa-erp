@@ -197,6 +197,150 @@ describe('EmployeeWorkspaceCalendar', () => {
     expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/submit'))).toHaveLength(0)
   })
 
+  // ── Task 3: cổng CỨNG (paused / rejected_documents) vs cổng MỀM (missing) ──
+  // NodeActionBar nhận payload /shortage đã nạp sẵn qua prop `gate` khi nhúng
+  // trong EmployeeItemWorkspace. paused và rejected_documents khoá nút và nêu
+  // đúng câu máy chủ; missing_documents thì KHÔNG khoá — vẫn qua Modal xác nhận.
+  describe('cổng cứng/mềm theo blocker máy chủ (gate)', () => {
+    it('cổng cứng paused (gate ban đầu) khoá nút và nêu đúng câu chặn của máy chủ', () => {
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{
+              id: 'k01', node_code: 'K01', status: 'in_progress',
+              pause_reason_type: 'AGENCY', checklist: [],
+            }}
+            gate={{ blockers: [{ kind: 'paused', message: 'Bước đang tạm dừng chờ cơ quan.' }] }}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      expect(screen.getByRole('button', { name: /Nộp nghiệm thu/i })).toBeDisabled()
+      expect(screen.getByText('Bước đang tạm dừng chờ cơ quan.')).toBeInTheDocument()
+    })
+
+    it('cổng cứng rejected_documents (gate ban đầu) khoá nút, nêu câu máy chủ, không gọi /submit', () => {
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{ id: 'k01', node_code: 'K01', status: 'in_progress', checklist: [] }}
+            gate={{ blockers: [{ kind: 'rejected_documents', message: 'Còn 1 tờ bị Giám đốc trả lại chưa sửa.' }] }}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      expect(screen.getByRole('button', { name: /Nộp nghiệm thu/i })).toBeDisabled()
+      expect(screen.getByText(/Còn 1 tờ bị Giám đốc trả lại/)).toBeInTheDocument()
+      expect(apiFetch.mock.calls.filter(([url]) => String(url).includes('/submit'))).toHaveLength(0)
+    })
+
+    it('gate ban đầu sạch nhưng /shortage lúc bấm trả cổng cứng thì DỪNG, tuyệt đối không gọi /submit', async () => {
+      apiFetch.mockImplementation(async (url) => {
+        if (String(url).includes('/shortage')) {
+          return {
+            status: 'success',
+            data: [],
+            blockers: [{ kind: 'rejected_documents', message: 'Còn 1 tờ bị Giám đốc trả lại chưa sửa.' }],
+          }
+        }
+        return {}
+      })
+
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{ id: 'k01', node_code: 'K01', status: 'in_progress', checklist: [] }}
+            gate={null}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      const nut = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+      expect(nut).toBeEnabled()
+      fireEvent.click(nut)
+
+      // Câu chặn mới phải hiện ra (toast), và KHÔNG được có lượt /submit nào.
+      expect(await screen.findByText(/Còn 1 tờ bị Giám đốc trả lại/)).toBeInTheDocument()
+      await vi.waitFor(() =>
+        expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/shortage')).length).toBeGreaterThan(0))
+      expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/submit'))).toHaveLength(0)
+    })
+
+    it('missing_documents là cổng MỀM: không khoá nút, vẫn mở Modal xác nhận rồi mới gửi', async () => {
+      apiFetch.mockImplementation(async (url) => {
+        if (String(url).includes('/shortage')) {
+          return {
+            status: 'success',
+            data: [{
+              checklist_result_id: 'CR-1', checklist_name: 'Chuẩn hoá bản vẽ',
+              thieu: [{ template_id: 'T-1', name: 'Bản vẽ kỹ thuật', can: 2, da_co: 0, con_thieu: 2 }],
+            }],
+            blockers: [{ kind: 'missing_documents', message: 'Còn thiếu giấy tờ đầu ra ở 1 mục checklist.' }],
+          }
+        }
+        return {}
+      })
+
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{ id: 'k01', node_code: 'K01', status: 'in_progress', checklist: [] }}
+            gate={{ blockers: [{ kind: 'missing_documents', message: 'Còn thiếu giấy tờ đầu ra ở 1 mục checklist.' }] }}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      const nut = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+      expect(nut).toBeEnabled()
+      fireEvent.click(nut)
+
+      expect(await screen.findByText(/Hồ sơ còn thiếu tài liệu/)).toBeInTheDocument()
+      expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/submit'))).toHaveLength(0)
+
+      fireEvent.click(screen.getByRole('button', { name: /Vẫn nộp nghiệm thu/ }))
+      await vi.waitFor(() =>
+        expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/submit'))).toHaveLength(1))
+    })
+
+    it('pending_approval là trạng thái đã-làm-xong chờ Giám đốc, KHÔNG bị coi là chặn', () => {
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{
+              id: 'k03', node_code: 'K03', status: 'in_progress', pause_reason_type: null,
+              checklist: [
+                { id: 'c1', checklist_name: 'Ảnh hiện trạng', status: 'pending_approval' },
+                { id: 'c2', checklist_name: 'Biên bản mốc', status: 'late_pending_approval' },
+              ],
+            }}
+            gate={{ blockers: [] }}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      expect(screen.getByRole('button', { name: /Nộp nghiệm thu/i })).toBeEnabled()
+    })
+
+    it('K06 giữ đường bàn giao chuyên biệt: không mọc nút Nộp nghiệm thu dù gate có cổng cứng', () => {
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{ id: 'k06', node_code: 'K06', status: 'in_progress', checklist: [] }}
+            gate={{ blockers: [{ kind: 'rejected_documents', message: 'Còn tờ bị trả lại.' }] }}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      expect(screen.queryByRole('button', { name: /Nộp nghiệm thu/i })).not.toBeInTheDocument()
+    })
+  })
+
   it('renders the shared task pool and claims the selected role', () => {
     const onClaim = vi.fn()
     render(
@@ -222,6 +366,19 @@ describe('EmployeeWorkspaceCalendar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Nhận việc chính/i }))
     expect(onClaim).toHaveBeenCalledWith('pool-k02', 'MAIN')
+  })
+
+  it('can hide the task pool when embedded beside the legacy dashboard pool', () => {
+    render(
+      <ToastProvider>
+        <EmployeeWorkspaceCalendar
+          taskPool={{ items: [{ id: 'pool-1', available_roles: ['MAIN'], name: 'Việc trùng' }] }}
+          hidePool
+        />
+      </ToastProvider>,
+    )
+
+    expect(screen.queryByRole('region', { name: 'Bể việc chờ nhận' })).not.toBeInTheDocument()
   })
 
   it('drawing task mounts none of legal/submission/handover panels', () => {

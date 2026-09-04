@@ -62,6 +62,18 @@ class EmployeePortalQueriesRunTests(unittest.TestCase):
         ).mappings().all()
         self.assertEqual(rows, [])
 
+    def test_review_json_keeps_the_uploaded_filename(self):
+        """Employee checklist and node-output payloads expose the real file name."""
+        checklist_sql = str(self.service._TASK_CHECKLIST_QUERY)
+        self.assertIn("'file_name'", checklist_sql)
+        self.assertIn("d.file_name", checklist_sql)
+
+        from src.dossiers import documents
+
+        output_sql = str(documents._NODE_OUTPUT_STATE_QUERY)
+        self.assertIn("'file_name'", output_sql)
+        self.assertIn("d.file_name", output_sql)
+
     def test_the_node_detail_query_runs(self):
         rows = self.db.execute(
             self.service._ITEM_NODE_DETAIL_QUERY,

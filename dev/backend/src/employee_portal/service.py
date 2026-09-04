@@ -664,13 +664,14 @@ _TASK_CHECKLIST_QUERY = text(
            coalesce(rv.review_by_template, '{}'::jsonb) as review_by_template
     from public.task_node_checklist_results r
     left join lateral (
-      select jsonb_object_agg(t.template_id, jsonb_build_object(
-               'document_id',      t.document_id,
-               'review_status',    t.review_status,
-               'rejection_reason', t.rejection_reason)) as review_by_template
+       select jsonb_object_agg(t.template_id, jsonb_build_object(
+                'document_id',      t.document_id,
+                'file_name',        t.file_name,
+                'review_status',    t.review_status,
+                'rejection_reason', t.rejection_reason)) as review_by_template
       from (
         select distinct on (s.template_id)
-               s.template_id, l.document_id, l.review_status, l.rejection_reason
+               s.template_id, l.document_id, d.file_name, l.review_status, l.rejection_reason
         from public.checklist_result_document_links l
         join public.dossier_documents d on d.id = l.document_id
         join public.dossier_document_slots s on s.id = d.slot_id

@@ -303,6 +303,7 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
         taskNodeId={taskNodeId}
         checklistResultId={item.id}
         outputDocuments={outputDocuments}
+        reviewByTemplate={item.review_by_template}
         contractId={contractId}
         editable={canSubmit}
         addToast={addToast}
@@ -364,7 +365,21 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
   </li>
 }
 
-export function NodeActionBar({ task, onChanged }) {
+// Cổng CỨNG của máy chủ: đang tạm dừng, hoặc còn tờ bị Giám đốc trả lại chưa
+// sửa — hai thứ này khoá nút nộp. `missing_documents` KHÔNG nằm đây: giấy khách
+// không có thật thì khoá là treo bước vĩnh viễn, nên nó là cảnh báo mềm (Modal
+// xác nhận). Xem node_shortage() trong routes_employee_portal.py.
+const HARD_BLOCKER_KINDS = new Set(['paused', 'rejected_documents'])
+
+// Rút blocker cứng đầu tiên từ payload /shortage (đã xếp sẵn theo thứ tự máy chủ
+// muốn nhân viên xử: tạm dừng trước, rồi tờ bị trả). Trả null nếu không có.
+const hardBlockerFrom = (gate) =>
+  (gate?.blockers || []).find(blocker => HARD_BLOCKER_KINDS.has(blocker?.kind)) || null
+
+// gate là payload /shortage đã nạp sẵn (do EmployeeItemWorkspace truyền vào).
+// Người gọi không truyền gate (lịch/modal) thì vẫn dựa vào lượt hỏi /shortage
+// lúc bấm — cổng cứng vẫn được kiểm ngay trước khi gọi /submit.
+export function NodeActionBar({ task, onChanged, gate = null }) {
   // Bối cảnh Toast có thể vắng mặt (component dựng đơn lẻ trong test) — thiếu
   // hàm báo lỗi không được phép làm sập cả màn làm việc.
   const { addToast = () => {} } = useToast() || {}
@@ -435,6 +450,15 @@ export function NodeActionBar({ task, onChanged }) {
       ? `Còn ${chuaDien.length} nhiệm vụ chưa điền xong: ${chuaDien.map(i => i.checklist_name || i.name).filter(Boolean).join(' · ')}`
       : ''
 
+    // Cổng cứng từ máy chủ (gate đã nạp) hoặc cờ tạm dừng của bước → khoá nút và
+    // nêu ĐÚNG câu máy chủ trả về. `pending_approval` là "đã làm xong chờ Giám
+    // đốc", KHÔNG phải chưa điền — nên không rơi vào chuaDien ở trên.
+    const chanCung = hardBlockerFrom(gate)
+    const lyDoCung = chanCung?.message
+      || (task.pause_reason_type ? 'Bước đang tạm dừng — bấm “Chạy tiếp” rồi mới nộp được.' : '')
+    // Ưu tiên bày cổng cứng trước (tạm dừng/tờ bị trả), rồi tới nhiệm vụ chưa điền.
+    const lyDoKhoa = lyDoCung || lyDoChan
+
     const guiThat = async () => {
       setBusy(true)
       try {
@@ -457,9 +481,17 @@ export function NodeActionBar({ task, onChanged }) {
       setBusy(true)
       try {
         const ket = await apiFetch(`/api/employee-portal/tasks/${task.id}/shortage`)
+        // Cổng cứng MỚI (tờ vừa bị trả, bước vừa bị dừng) phải chặn tại đây, kể
+        // cả khi gate ban đầu còn sạch/null — không được để lọt xuống /submit.
+        const chanCungMoi = hardBlockerFrom(ket)
+        if (chanCungMoi) {
+          addToast(chanCungMoi.message, 'error')
+          setBusy(false)
+          return
+        }
         const danhSach = ket?.data || []
         if (danhSach.length) {
-          // Còn thiếu → hỏi trước, không gửi ngay.
+          // Còn thiếu (mềm) → hỏi trước, không gửi ngay.
           setThieu(danhSach)
           setBusy(false)
           return
@@ -475,14 +507,14 @@ export function NodeActionBar({ task, onChanged }) {
       <button
         type="button"
         className="btn btn-primary btn-sm"
-        disabled={busy || Boolean(lyDoChan)}
-        title={lyDoChan || undefined}
+        disabled={busy || Boolean(lyDoKhoa)}
+        title={lyDoKhoa || undefined}
         onClick={bamNop}
       >
         <CheckCircle2 size={14} /> Nộp nghiệm thu
       </button>
       <small style={{ marginTop: 6, display: 'block', opacity: 0.7 }}>
-        {lyDoChan || 'Nộp một lần cả nhiệm vụ, minh chứng và sổ giấy tờ — Giám đốc duyệt một lần.'}
+        {lyDoKhoa || 'Nộp một lần cả nhiệm vụ, minh chứng và sổ giấy tờ — Giám đốc duyệt một lần.'}
       </small>
 
       <ModalThieuTaiLieu
@@ -717,6 +749,7 @@ export default function EmployeeWorkspaceCalendar({
   claimingKey = '',
   onRefresh,
   isDirector = false,
+  hidePool = false,
 }) {
   // Bối cảnh Toast có thể vắng mặt (ví dụ trong test dựng component đơn lẻ),
   // nên không phá vỡ cả màn hình chỉ vì thiếu một hàm báo lỗi.
@@ -802,7 +835,7 @@ export default function EmployeeWorkspaceCalendar({
 
   return <div className="employee-workspace__main">
   <div className="employee-workspace-operations">
-    <TaskPoolPanel taskPool={taskPool} onClaim={onClaim} claimingKey={claimingKey} now={now} />
+    {!hidePool && <TaskPoolPanel taskPool={taskPool} onClaim={onClaim} claimingKey={claimingKey} now={now} />}
     <ActiveWorkStrip tasks={tasks} now={now} />
     {dailySummary && <section className="employee-daily-summary" aria-label="Thành tích hôm nay">
       <span><CheckCircle2 size={14} /> {dailySummary.submitted_count || 0} ca đã nộp</span>

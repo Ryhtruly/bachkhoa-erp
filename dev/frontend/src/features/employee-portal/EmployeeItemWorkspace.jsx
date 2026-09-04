@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FolderOpen, Lock, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, getAccessToken } from '../../lib/api'
+import DocumentPreviewModal from './DocumentPreviewModal'
 import { ChecklistEvidenceItem, NodeActionBar } from './EmployeeWorkspaceCalendar'
+
 import NodeBusinessSlot from './NodeBusinessSlot'
 import NodeChain from './NodeChain'
 import NodeOutputList from './NodeOutputList'
@@ -12,6 +14,7 @@ import PriorDocumentsDrawer from './PriorDocumentsDrawer'
 import SlotRequestModal from './SlotRequestModal'
 import RollbackPickerModal from './RollbackPickerModal'
 import { countdown, effectiveDeadline, formatMoney } from './nodeWorkFormat'
+
 
 /**
  * Màn làm việc của MỘT bước, phía nhân viên. Bốn tầng, đọc từ trên xuống:
@@ -52,7 +55,23 @@ const PAUSE_LABEL = {
   INTERNAL: 'Chờ nội bộ',
 }
 
+const humanizeOpenError = (err) => {
+  const s = Number(err?.status)
+  if (s === 401) return 'Phiên đăng nhập đã hết hạn. Vui lòng tải lại trang.'
+  if (s === 403) return 'Bạn không có quyền xem tệp của bước này.'
+  if (s === 404) return 'Không tìm thấy tệp trên hệ thống lưu trữ.'
+  return err?.message || 'Không thể mở tệp.'
+}
+
+const dispatchUnauthorized = () => {
+  try {
+    window.dispatchEvent(new CustomEvent('bachkhoa:unauthorized'))
+  } catch {}
+}
+
+
 export default function EmployeeItemWorkspace({
+
   item,
   tasks = [],
   onBack,
@@ -68,9 +87,16 @@ export default function EmployeeItemWorkspace({
   const [pauseOpen, setPauseOpen] = useState(false)
   const [rollbackOpen, setRollbackOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState(null)
+  const [openError, setOpenError] = useState(null)
+  const objectUrlRef = useRef(null)
+  // Số thứ tự lượt đọc /shortage: chỉ lượt MỚI NHẤT được ghi vào state, nên lượt
+  // cũ về muộn (hay về sau khi component đã rời) không đạp lên kết quả mới.
+  const gateReqRef = useRef(0)
   // Mục checklist đang xin thêm loại giấy. Nhân viên chỉ ĐỀ XUẤT —
   // Giám đốc duyệt thì ô giấy mới được tạo.
   const [proposeFor, setProposeFor] = useState(null)
+
 
   const nodes = item.nodes || []
   const activeNodeId = pickedNodeId || item.current_task_node_id
@@ -96,14 +122,21 @@ export default function EmployeeItemWorkspace({
   // Vì sao chưa nộp được — máy chủ trả đủ ba lý do trong một lượt hỏi. Bày ra
   // thay vì để nút xám câm: nút không nói lý do là bắt nhân viên đoán rồi gọi
   // điện hỏi.
-  useEffect(() => {
-    if (!task?.id) { setGate(null); return undefined }
-    let huy = false
-    apiFetch(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
-      .then(res => { if (!huy) setGate(res) })
-      .catch(() => { if (!huy) setGate(null) })
-    return () => { huy = true }
-  }, [task?.id, task?.status, task?.pause_reason_type])
+  //
+  // Một helper DÙNG CHUNG cho cả hai đường đọc cổng: effect lúc đổi bước, và
+  // sau khi nộp tệp thành công (tờ vừa thay có thể vừa gỡ blocker 'rejected'
+  // đang treo). An toàn khi huỷ nhờ gateReqRef: mỗi lượt LẤY một số thứ tự mới
+  // ngay từ đầu — kể cả nhánh không còn task — nên chỉ lượt mới nhất được ghi
+  // state; kết quả cũ về muộn không đạp lên trạng thái mới.
+  const refreshGate = useCallback(() => {
+    const seq = ++gateReqRef.current
+    if (!task?.id) { setGate(null); return Promise.resolve() }
+    return apiFetch(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
+      .then(res => { if (gateReqRef.current === seq) setGate(res) })
+      .catch(() => { if (gateReqRef.current === seq) setGate(null) })
+  }, [task?.id])
+
+  useEffect(() => { refreshGate() }, [refreshGate, task?.status, task?.pause_reason_type])
 
   // Tạm dừng. Chọn SURVEYOR thì KHÔNG dừng ngay: bản vẽ sai ranh nghĩa là phải
   // kéo bước đo vẽ về sửa, mà đó là việc nặng nên đi tiếp một nhịp chọn bước.
@@ -163,10 +196,92 @@ export default function EmployeeItemWorkspace({
     }
   }, [addToast, onRefresh])
 
-  const openDocument = useCallback((doc) => {
-    // Link mở tệp xin theo từng tờ, đúng lúc bấm — xem PriorDocumentsDrawer.
-    addToast?.(`Đang mở “${doc.name || doc.template_id}”…`, 'success')
-  }, [addToast])
+  // Nộp/thay tệp cho ĐÚNG một tờ đầu ra, dùng API multipart có sẵn. Danh tính
+  // đi theo checklistResultId + templateId do NodeOutputList gửi lên — không
+  // đoán theo chỉ số hàng, tờ đầu, hay tên tệp. Chỉ báo thành công SAU khi máy
+  // chủ trả về, rồi để onRefresh nạp lại trạng thái thật thay cho state cục bộ.
+  const handleUploadDocument = useCallback(async ({ checklistResultId, templateId, file }) => {
+    if (!task?.id || !checklistResultId || !templateId || !file) return
+    const body = new FormData()
+    body.append('template_id', templateId)
+    body.append('file', file)
+    try {
+      await apiFetch(
+        `/api/employee-portal/tasks/${encodeURIComponent(task.id)}/checklist/${encodeURIComponent(checklistResultId)}/output-documents`,
+        { method: 'POST', body },
+      )
+      // NỘP XONG THÌ ĐỌC LẠI CỔNG: tờ vừa thay có thể vừa gỡ đúng blocker
+      // 'rejected_documents' đang treo cạnh nút. Effect /shortage chỉ chạy lại
+      // khi task.id/status/pause đổi — nộp tệp không đổi mấy thứ đó — nên phải
+      // tự gọi, nếu không cảnh báo cũ đứng hình và nút vẫn xám dù đã sửa.
+      //
+      // refreshGate KHÔNG được await và tự nuốt lỗi bên trong: POST đã THÀNH
+      // CÔNG rồi, nên một lượt đọc cổng hỏng cũng không được biến thành "nộp
+      // lỗi". Giữ nguyên báo thành công và để onRefresh của cha nạp lại thật.
+      addToast?.('Đã nộp tài liệu vào hồ sơ', 'success')
+      refreshGate()
+      onRefresh?.()
+    } catch (error) {
+      // Nộp hỏng thì KHÔNG đọc lại cổng, KHÔNG gọi onRefresh, KHÔNG báo thành
+      // công — chỉ nêu đúng lỗi của máy chủ.
+      addToast?.(error?.message || 'Không nộp được tài liệu', 'error')
+    }
+  }, [task?.id, addToast, onRefresh, refreshGate])
+
+  const closePreview = useCallback(() => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
+    }
+    setPreview(null)
+  }, [])
+
+  const openDocument = useCallback(async (doc) => {
+    if (!doc) return
+    const docName = doc.file_name || doc.fileName || doc.name || 'Tài liệu'
+    setOpenError(null)
+
+    if (task?.id && doc.document_id) {
+      try {
+        const token = getAccessToken()
+        const res = await fetch(
+          `/api/employee-portal/tasks/${encodeURIComponent(task.id)}/documents/${encodeURIComponent(doc.document_id)}/file`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        )
+        if (!res.ok) {
+          if (res.status === 401) dispatchUnauthorized()
+          const body = await res.json().catch(() => null)
+          const err = new Error(body?.detail || `HTTP ${res.status}`)
+          err.status = res.status
+          throw err
+        }
+        const blob = await res.blob()
+        if (blob.size === 0) {
+          throw new Error('Tệp rỗng.')
+        }
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+        const url = URL.createObjectURL(blob)
+        objectUrlRef.current = url
+        setPreview({ fileName: docName, mimeType: blob.type || '', url, blob, doc })
+        return
+      } catch (err) {
+        setOpenError(humanizeOpenError(err))
+        return
+      }
+    }
+
+    // Nếu chưa có document_id trên server (ví dụ: tài liệu mẫu, chưa nộp tệp):
+    // Vẫn mở DocumentPreviewModal để người dùng xem chi tiết thông tin tài liệu
+    setPreview({
+      fileName: docName,
+      mimeType: doc.mimeType || doc.fileType || 'application/acad',
+      url: doc.url || '',
+      blob: null,
+      doc,
+    })
+  }, [task?.id])
+
+
 
   const money = {
     base: Number(activeNode?.amount || 0),
@@ -219,9 +334,13 @@ export default function EmployeeItemWorkspace({
         <div className="eiw-grid">
           {/* ── CỘT TRÁI ────────────────────────────────────────────── */}
           <div className="eiw-col eiw-col--left">
-            <h2 className="eiw-band eiw-band--name">
-              {task.node_code}: {task.name}
-            </h2>
+            <section className="eiw-node-banner" aria-label="Node hiện tại">
+              <h2 className="eiw-band eiw-band--name">
+                {task.node_code} · {task.name}
+              </h2>
+            </section>
+
+
 
             <div className="eiw-clock">
               <span className="eiw-clock__label">Thời gian còn lại</span>
@@ -235,13 +354,18 @@ export default function EmployeeItemWorkspace({
               {task.description || 'Bước này chưa có mô tả công việc.'}
             </div>
 
-            <button
-              type="button"
-              className="eiw-band eiw-band--cabinet"
-              onClick={() => setCabinetOpen(true)}
-            >
-              <FolderOpen size={16} /> Tủ hồ sơ
-            </button>
+            <section className="eiw-card eiw-attachments-card" aria-label="Tủ hồ sơ đính kèm">
+              <button
+                type="button"
+                className="eiw-band eiw-band--cabinet"
+                aria-label="Mở tủ hồ sơ theo bước"
+                onClick={() => setCabinetOpen(true)}
+              >
+                <FolderOpen size={16} /> Mở tủ hồ sơ theo bước
+              </button>
+            </section>
+
+
 
             <dl className="eiw-money">
               <div className="eiw-money__row">
@@ -294,6 +418,7 @@ export default function EmployeeItemWorkspace({
                   canPropose={!isDirector}
                   onProposeDocument={(muc) => setProposeFor(muc.id)}
                   onOpenDocument={openDocument}
+                  onUploadDocument={handleUploadDocument}
                 />
               ) : (
                 <ChecklistEvidenceItem
@@ -310,8 +435,14 @@ export default function EmployeeItemWorkspace({
 
             {/* ── Thông báo của riêng bước này ──
                 Đứng ngay trên nút, vì nó nói VÌ SAO nút chưa bấm được. */}
-            {(gate?.blockers?.length > 0 || paused) && (
+            {(gate?.blockers?.length > 0 || paused || openError) && (
               <div className="eiw-alerts" role="status">
+                {openError && (
+                  <p className="eiw-alert is-blocked" role="alert">
+                    <TriangleAlert size={16} />
+                    <span>{openError}</span>
+                  </p>
+                )}
                 {paused && (
                   <p className="eiw-alert is-paused">
                     <TriangleAlert size={16} />
@@ -331,6 +462,7 @@ export default function EmployeeItemWorkspace({
                   ))}
               </div>
             )}
+
           </div>
 
           {/* ── TẦNG 4 · Chân trang ─────────────────────────────────── */}
@@ -354,7 +486,7 @@ export default function EmployeeItemWorkspace({
                 </button>
               )
             )}
-            <NodeActionBar task={task} onChanged={onRefresh} />
+            <NodeActionBar task={task} onChanged={onRefresh} gate={gate} />
           </footer>
         </div>
       )}
@@ -393,6 +525,20 @@ export default function EmployeeItemWorkspace({
         onClose={() => setRollbackOpen(false)}
         onSubmit={handleRollback}
       />
+
+      <DocumentPreviewModal
+        open={Boolean(preview)}
+        fileName={preview?.fileName || ''}
+        mimeType={preview?.mimeType || ''}
+        url={preview?.url || ''}
+        blob={preview?.blob || null}
+        doc={preview?.doc || null}
+        checklistItem={preview?.checklistItem || null}
+        nodeId={task?.node_code || 'K01'}
+        onClose={closePreview}
+      />
+
     </main>
   )
 }
+

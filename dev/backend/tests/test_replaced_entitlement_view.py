@@ -17,6 +17,8 @@ from src.db.database import SessionLocal
 
 
 def _has_migration_a(db) -> bool:
+    if db.bind.dialect.name != "postgresql":
+        return False
     return bool(db.execute(text("""
         select 1 from information_schema.columns
         where table_schema = 'public'

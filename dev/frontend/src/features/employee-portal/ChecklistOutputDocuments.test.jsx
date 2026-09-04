@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiFetch } from '../../lib/api'
 import ChecklistOutputDocuments from './ChecklistOutputDocuments'
@@ -17,6 +17,21 @@ const CAU_HINH = [{
   required_before_submit: true,
   needs_director_approval: true,
 }]
+
+const CAU_HINH_FLAT = [
+  {
+    template_id: 'TPL_BAN_KY_THUAT_GOC',
+    min_count: 1,
+    required_before_submit: true,
+    needs_director_approval: false,
+  },
+  {
+    template_id: 'TPL_ANH_CHUP',
+    min_count: 1,
+    required_before_submit: true,
+    needs_director_approval: false,
+  },
+]
 
 const mockApi = ({ documents, missing = [], sourceDocs = [] } = {}) => {
   apiFetch.mockImplementation((url) => {
@@ -50,7 +65,6 @@ it('mục checklist thường không hiện khu tài liệu đầu ra', () => {
   mockApi()
   const { container } = dung({ outputDocuments: [] })
   expect(container).toBeEmptyDOMElement()
-  // Không cấu hình thì cũng không gọi máy chủ.
   expect(apiFetch).not.toHaveBeenCalled()
 })
 
@@ -97,14 +111,13 @@ it('dùng lại tài liệu cũ KHÔNG gọi upload — chỉ tạo quan hệ', 
     )
     expect(gan).toHaveLength(1)
   })
-  // Không có lời gọi upload nào (endpoint upload kết thúc bằng /output-documents).
   const uploads = apiFetch.mock.calls.filter(
     ([url, opts]) => url.endsWith('/output-documents') && opts?.method === 'POST'
   )
   expect(uploads).toHaveLength(0)
 })
 
-it('đã đủ tài liệu thì hiện “Đã đủ”, không hiện dòng còn thiếu', async () => {
+it('đã đủ tài liệu thì hiện "Đã đủ", không hiện dòng còn thiếu', async () => {
   mockApi({
     documents: [{
       template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
@@ -138,4 +151,237 @@ it('chỉ xem thì không có nút tải lên', async () => {
 
   await screen.findByText('Bản kỹ thuật gốc')
   expect(screen.queryByRole('button', { name: /Tải lên/ })).not.toBeInTheDocument()
+})
+
+describe('Trạng thái tài liệu từ reviewByTemplate', () => {
+  it('tờ đã duyệt hiển thị nhãn "Đã duyệt" và ẩn nút tải lên', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'approved' } } })
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument()
+    expect(screen.getByText('Đã duyệt')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Tải lên/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Dùng lại/ })).not.toBeInTheDocument()
+  })
+
+  it('tờ đã duyệt hiển thị thông báo bảo vệ', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'approved' } } })
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument()
+    expect(screen.getByText(/Đã duyệt — không thể thay thế/)).toBeInTheDocument()
+  })
+
+  it('tờ bị từ chối hiển thị nhãn "Bị từ chối" và lý do', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'rejected', rejection_reason: 'Ảnh mờ không đọc được' } } })
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument()
+    expect(screen.getByText('Bị từ chối')).toBeInTheDocument()
+    expect(screen.getByText(/Ảnh mờ không đọc được/)).toBeInTheDocument()
+  })
+
+  it('tờ chờ duyệt hiển thị nhãn "Chờ duyệt" và số đếm', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'pending_review' } } })
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument()
+    expect(screen.getByText('1/1')).toBeInTheDocument()
+  })
+
+  it('tờ chưa nộp hiển thị số đếm 0/n', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 0,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung()
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument()
+    expect(screen.getByText('0/1')).toBeInTheDocument()
+  })
+})
+
+describe('Bảo vệ tờ đã duyệt', () => {
+  it('tờ đã duyệt ẩn nút tải lên và dùng lại', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'approved' } } })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.queryByRole('button', { name: /Tải lên/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Dùng lại/ })).not.toBeInTheDocument()
+  })
+
+  it('tờ bị từ chối VẪN hiện nút tải lên (có thể nộp lại)', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'rejected', rejection_reason: 'Ảnh mờ' } } })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.getByRole('button', { name: /Tải lên/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Dùng lại/ })).toBeInTheDocument()
+  })
+})
+
+describe('Cổng quyền — chỉ xem', () => {
+  it('chỉ xem ẩn tất cả nút hành động cho mọi tờ', async () => {
+    mockApi({
+      documents: [
+        {
+          template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+          min_count: 1, current_count: 1,
+          required_before_submit: true, needs_director_approval: false,
+        },
+        {
+          template_id: 'TPL_ANH_CHUP', slot_name: 'Ảnh chụp',
+          min_count: 1, current_count: 0,
+          required_before_submit: true, needs_director_approval: false,
+        },
+      ],
+    })
+    dung({ editable: false })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.queryByRole('button', { name: /Tải lên/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Dùng lại/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Đề xuất loại tài liệu/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('Xáo trộn lý do từ chối khi nộp lại', () => {
+  it('tờ đã duyệt trước đó, bị trả, rồi nộp lại → hiện "Chờ duyệt", không hiện lý do cũ', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1,
+        required_before_submit: true, needs_director_approval: false,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1-new', review_status: 'pending_review' } } })
+
+    expect(await screen.findByText('Bản kỹ thuật gốc')).toBeInTheDocument()
+    expect(screen.queryByText(/Ảnh mờ/)).not.toBeInTheDocument()
+  })
+})
+
+describe('Phán quyết từ caller qua reviewByTemplate', () => {
+  const CAU_HINH_2 = [
+    { template_id: 'TPL_BAN_KY_THUAT_GOC', min_count: 1, required_before_submit: true, needs_director_approval: false },
+    { template_id: 'TPL_ANH_CHUP', min_count: 1, required_before_submit: true, needs_director_approval: false },
+  ]
+
+  it('cả bốn trạng thái approved/rejected/pending/missing hiển thị đúng trên cùng một danh sách', async () => {
+    mockApi({
+      documents: [
+        { template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc', min_count: 1, current_count: 1, required_before_submit: true },
+        { template_id: 'TPL_ANH_CHUP', slot_name: 'Ảnh chụp', min_count: 1, current_count: 0, required_before_submit: true },
+      ],
+    })
+    dung({
+      outputDocuments: CAU_HINH_2,
+      reviewByTemplate: {
+        TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'approved' },
+        TPL_ANH_CHUP: { document_id: 'd2', review_status: 'rejected', rejection_reason: 'Ảnh mờ' },
+      },
+    })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.getByText('Đã duyệt')).toBeInTheDocument()
+    expect(screen.getByText('Bị từ chối')).toBeInTheDocument()
+    expect(screen.getByText(/Ảnh mờ/)).toBeInTheDocument()
+  })
+
+  it('tờapproved bảo vệ: ẩn nút tải lên/dùng lại, hiện thông báo không thể thay thế', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1, required_before_submit: true,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'approved' } } })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.queryByRole('button', { name: /Tải lên/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Dùng lại/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/Đã duyệt — không thể thay thế/)).toBeInTheDocument()
+  })
+
+  it('tờrejected: hiện nút tải lên và dùng lại (có thể nộp lại)', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1, required_before_submit: true,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'rejected', rejection_reason: 'Sai định dạng' } } })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.getByRole('button', { name: /Tải lên/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Dùng lại/ })).toBeInTheDocument()
+  })
+
+  it('tờpending: hiện số đếm và nút hành động', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 1, required_before_submit: true,
+      }],
+    })
+    dung({ reviewByTemplate: { TPL_BAN_KY_THUAT_GOC: { document_id: 'd1', review_status: 'pending_review' } } })
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.getByText('1/1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Tải lên/ })).toBeInTheDocument()
+  })
+
+  it('tờmissing: hiện 0/n và nút hành động', async () => {
+    mockApi({
+      documents: [{
+        template_id: 'TPL_BAN_KY_THUAT_GOC', slot_name: 'Bản kỹ thuật gốc',
+        min_count: 1, current_count: 0, required_before_submit: true,
+      }],
+    })
+    dung()
+
+    await screen.findByText('Bản kỹ thuật gốc')
+    expect(screen.getByText('0/1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Tải lên/ })).toBeInTheDocument()
+  })
 })

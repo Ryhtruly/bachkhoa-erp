@@ -1,10 +1,20 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { apiFetch } from '../../lib/api'
 import EmployeePortalDashboard from './EmployeePortalDashboard'
 
 vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), getAccessToken: vi.fn(() => null) }))
+vi.mock('@fullcalendar/react', () => ({
+  default: (props) => <div
+    data-testid="calendar"
+    data-event-count={props.events.length}
+  >
+    {props.events.map((event) => (
+      <div key={event.id} data-testid={`event-${event.id}`} />
+    ))}
+  </div>,
+}))
 
 afterEach(() => {
   cleanup()
@@ -201,7 +211,7 @@ it('bể việc hiện thẻ trọn chuỗi kèm tổng khoán, và đổi sang 
   // Suất thợ phụ là cam kết khác hẳn: khoán cố định, chỉ ở bước đo hiện trường.
   fireEvent.click(screen.getByRole('tab', { name: /Thợ phụ/ }))
   expect(await screen.findByRole('button', { name: /Nhận làm phụ/ })).toBeInTheDocument()
-  expect(screen.getByText('100.000đ')).toBeInTheDocument()
+  expect(screen.getAllByText('100.000đ').length).toBeGreaterThan(0)
 })
 
 it('bấm Chi tiết mở bảng kê: từng bước, thời lượng, checklist nào có tiền, tổng khoán', async () => {
@@ -243,7 +253,7 @@ it('đủ tải thì khoá nút nhận trọn chuỗi và nói rõ vì sao', asy
   render(<EmployeePortalDashboard />)
 
   expect(await screen.findByRole('button', { name: /Nhận trọn/ })).toBeDisabled()
-  expect(screen.getByRole('status')).toHaveTextContent(/tối đa 3 hạng mục dở dang/i)
+  expect(screen.getAllByRole('status').some((node) => /tối đa 3 hạng mục dở dang/i.test(node.textContent))).toBe(true)
   expect(screen.getByText(/Đủ tải/)).toBeInTheDocument()
   // Đủ tải thì không còn ô trống nào mời nhận thêm.
   expect(screen.queryByText(/slot trống/)).not.toBeInTheDocument()
@@ -281,7 +291,8 @@ it('mở một hạng mục ra là thấy cả sơ đồ chuỗi và bước đa
   expect(within(chain).getByRole('button', { current: 'step' })).toHaveTextContent('K02')
 
   // Tầng 2: tên bước và đồng hồ.
-  expect(screen.getByRole('heading', { name: /K02: Khảo sát & đo hiện trường/ })).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'Node hiện tại' }))
+    .toHaveTextContent('K02 · Khảo sát & đo hiện trường')
   expect(screen.getByText('Thời gian còn lại')).toBeInTheDocument()
 
   // Tầng 3 cột trái: mô tả và bảng tiền ba dòng.
@@ -315,16 +326,66 @@ it('bước chưa tới lượt thì mở ra chỉ báo chờ, không cho thao t
   expect(screen.queryByRole('button', { name: /Chọn file minh chứng/ })).not.toBeInTheDocument()
 })
 
-it('không còn dấu vết của bố cục cũ: lịch tuần và cột thông tin bên phải', async () => {
+it('bố cục mới: lịch tuần tích hợp, cột thông tin nghỉ phép và check-out đã loại bỏ', async () => {
   mockApi()
 
-  await screen.findByText || null
   render(<EmployeePortalDashboard />)
 
   expect(await screen.findByRole('heading', { name: 'Hạng mục bạn đã nhận' })).toBeInTheDocument()
-  expect(screen.queryByRole('heading', { name: /^Lịch làm việc/ })).not.toBeInTheDocument()
+  // Calendar is now the main work view — its heading must be present
+  expect(screen.getAllByRole('heading', { name: /Lịch làm việc/ }).length).toBeGreaterThan(0)
+  // Old unrelated widgets remain absent
   expect(screen.queryByRole('heading', { name: 'Thông tin nghỉ phép' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Check-out / Đã Check-in' })).not.toBeInTheDocument()
+})
+
+it('live dashboard renders the calendar as the main work view', async () => {
+  mockApi()
+
+  render(<EmployeePortalDashboard />)
+
+  await waitFor(() => {
+    expect(screen.getAllByRole('heading', { name: /Lịch làm việc/ }).length).toBeGreaterThan(0)
+  })
+  // Calendar mock renders a div with data-testid="calendar" (may be double-rendered in Strict Mode)
+  expect(screen.getAllByTestId('calendar').length).toBeGreaterThan(0)
+  // Held items are still present below the calendar
+  expect(screen.getByText('Tải của bạn')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Hạng mục bạn đã nhận' })).toBeInTheDocument()
+})
+
+it('notification deep-link dispatch opens the correct task in calendar modal', async () => {
+  mockApi({
+    tasks: [{
+      id: 'n2',
+      node_code: 'K02',
+      name: 'Khảo sát & đo hiện trường',
+      status: 'in_progress',
+      started_at: '2026-09-01T08:00:00Z',
+      checklist: [],
+      assignees: [],
+    }],
+  })
+
+  render(<EmployeePortalDashboard />)
+
+  // Wait for dashboard to load — use getAllByRole because React Strict Mode double-renders
+  await waitFor(() => {
+    expect(screen.getAllByRole('heading', { name: /Lịch làm việc/ }).length).toBeGreaterThan(0)
+  })
+
+  // Dispatch the notification deep-link event
+  act(() => {
+    window.dispatchEvent(new CustomEvent('bachkhoa:open-employee-task', {
+      detail: { taskNodeId: 'n2' },
+    }))
+  })
+
+  // EmployeeNodeModal should open with the task details
+  // (rendered via createPortal, so it's in the document body)
+  await waitFor(() => {
+    expect(screen.getAllByText('Khảo sát & đo hiện trường').length).toBeGreaterThan(0)
+  })
 })
 
 it('bấm "Xem quy trình đã hoàn thành" mở lịch sử chuỗi K của riêng mình', async () => {

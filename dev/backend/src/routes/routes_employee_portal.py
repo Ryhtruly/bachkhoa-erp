@@ -755,6 +755,94 @@ def prior_documents(
     return {"status": "success", "data": prior_step_documents(db, task_node_id=task_node_id)}
 
 
+@router.get("/tasks/{task_node_id}/documents/{document_id}/file")
+def download_prior_document(
+    task_node_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Tải tệp của một giấy chính thức trong tủ hồ sơ.
+
+    ── Phân quyền ──────────────────────────────────────────────────────────────
+    Cùng mô hình với tủ hồ sơ: ai có phân công ở BẤT KỲ bước nào của Hạng mục
+    đó thì xem được TOÀN BỘ tệp, không phân bước. Giám đốc/Admin cũng xem được.
+    """
+    from urllib.parse import quote
+
+    from src.dossiers.register import read_scan
+
+    node = db.execute(
+        text("select workflow_instance_id from public.task_nodes where id = :i"),
+        {"i": task_node_id},
+    ).mappings().first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Không tìm thấy công việc.")
+
+    employee = _active_employee_for_user(db, user.id)
+    duoc_xem = is_workflow_instance_member(
+        db,
+        workflow_instance_id=node["workflow_instance_id"],
+        employee_id=employee.id if employee else None,
+    ) or check_user_permission(db, user, "contract", "read")
+    if not duoc_xem:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bạn không thuộc nhóm thực hiện hạng mục này nên không xem được tệp.",
+        )
+
+    valid_prior = db.execute(
+        text("""
+            with moc as (
+                select workflow_instance_id, node_code, occurrence_no
+                from public.task_nodes where id = :task_node_id
+            )
+            select exists (
+                select 1
+                from moc
+                join public.task_nodes n
+                  on n.workflow_instance_id = moc.workflow_instance_id
+                 and (
+                     n.id = :task_node_id
+                     or (
+                         (n.node_code, n.occurrence_no) < (moc.node_code, moc.occurrence_no)
+                         and n.status in ('accepted', 'completed')
+                     )
+                 )
+                join public.task_node_checklist_results r on r.task_node_id = n.id
+                join public.checklist_result_document_links l on l.checklist_result_id = r.id
+                join public.dossier_documents d on d.id = l.document_id
+                where d.id = :document_id
+                  and d.doc_status = 'DANG_DUNG'
+                  and (n.id = :task_node_id or l.review_status <> 'rejected')
+            )
+        """),
+        {"task_node_id": task_node_id, "document_id": document_id},
+    ).scalar()
+
+    if not valid_prior:
+        raise HTTPException(
+            status_code=404,
+            detail="Không tìm thấy tệp hoặc tệp không phải giấy chính thức của bước hiện tại hoặc bước trước.",
+        )
+
+    try:
+        row, body = read_scan(db, document_id)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tệp.") from exc
+
+    return Response(
+        content=body,
+        media_type=row.get("content_type") or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'inline; filename*=UTF-8\'\'{quote(row.get("file_name", "tai-lieu"))}',
+            "Cache-Control": "private, max-age=60",
+        },
+    )
+
+
 @router.get("/tasks/{task_node_id}/shortage")
 def node_shortage(
     task_node_id: str,
@@ -771,6 +859,13 @@ def node_shortage(
     cái được lưu lại.
     """
     from src.dossiers.documents import node_shortage_report
+
+    node = db.execute(
+        text("select workflow_instance_id from public.task_nodes where id = :i"),
+        {"i": task_node_id},
+    ).mappings().first()
+    if not node:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy công việc.")
 
     employee = _active_employee_for_user(db, user.id)
     if not employee:
