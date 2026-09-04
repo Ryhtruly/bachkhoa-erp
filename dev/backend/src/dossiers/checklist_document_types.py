@@ -35,15 +35,11 @@ _MATERIALIZE_CONFIGURED_TYPES_QUERY = text("""
            :actor_id
     from public.task_node_checklist_results cr
     join public.task_nodes n on n.id = cr.task_node_id
-    join public.workflow_instances wi on wi.id = n.workflow_instance_id
-    join public.workflow_instance_revisions r_defined
-      on r_defined.id = n.defined_by_revision_id
-    left join public.workflow_instance_revisions r_active
-      on r_active.id = wi.active_revision_id
+    join public.workflow_instance_revisions r
+      on r.workflow_instance_id = n.workflow_instance_id
+     and r.id = coalesce(:revision_id, n.defined_by_revision_id)
     cross join lateral jsonb_array_elements(coalesce(
-        r_active.graph->'nodes'->n.node_key->'checklist',
-        r_defined.graph->'nodes'->n.node_key->'checklist',
-        '[]'::jsonb
+        r.graph->'nodes'->n.node_key->'checklist', '[]'::jsonb
     )) checklist_item
     cross join lateral jsonb_array_elements(coalesce(
         checklist_item->'output_documents', '[]'::jsonb
@@ -73,14 +69,19 @@ _EXACT_COMBO_SUGGESTIONS_QUERY = text("""
 
 
 def materialize_configured_types(
-    db: Session, checklist_result_id: str, actor_id: str | None = None
+    db: Session,
+    checklist_result_id: str,
+    actor_id: str | None = None,
+    *,
+    revision_id: str | None = None,
 ) -> int:
-    """Snapshot configured graph outputs into idempotent runtime type rows."""
+    """Snapshot outputs from the node's defining revision, or an explicit target."""
     created = db.execute(
         _MATERIALIZE_CONFIGURED_TYPES_QUERY,
         {
             "checklist_result_id": checklist_result_id,
             "actor_id": actor_id,
+            "revision_id": revision_id,
         },
     ).fetchall()
     return len(created)

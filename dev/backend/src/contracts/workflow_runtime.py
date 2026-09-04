@@ -1572,7 +1572,10 @@ def _apply_workflow_amendment(
                 checklist_name=item["name"],
                 )
                 materialize_configured_types(
-                    db, checklist_result_id, actor_id=actor_id
+                    db,
+                    checklist_result_id,
+                    actor_id=actor_id,
+                    revision_id=revision["id"],
                 )
             checklist_count += 1
 

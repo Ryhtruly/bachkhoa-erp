@@ -25,8 +25,8 @@ create unique index ux_checklist_document_type_active_name_source
   (checklist_result_id, normalized_name, source) where is_active;
 
 -- Existing runtime checklists predate document-type materialization. Rebuild
--- their configured rows from the active graph (falling back to the immutable
--- defining revision), while preserving catalog names and sources as truth.
+-- their configured rows from each Node's immutable defining revision, while
+-- preserving catalog names and sources as truth.
 insert into public.checklist_result_document_types
     (checklist_result_id, template_id, name, normalized_name, source, origin, status)
 select cr.id,
@@ -38,13 +38,10 @@ select cr.id,
        'draft'
 from public.task_node_checklist_results cr
 join public.task_nodes n on n.id = cr.task_node_id
-join public.workflow_instances wi on wi.id = n.workflow_instance_id
 join public.workflow_instance_revisions r_defined
-  on r_defined.id = n.defined_by_revision_id
-left join public.workflow_instance_revisions r_active
-  on r_active.id = wi.active_revision_id
+  on r_defined.workflow_instance_id = n.workflow_instance_id
+ and r_defined.id = n.defined_by_revision_id
 cross join lateral jsonb_array_elements(coalesce(
-  r_active.graph->'nodes'->n.node_key->'checklist',
   r_defined.graph->'nodes'->n.node_key->'checklist',
   '[]'::jsonb
 )) checklist_item

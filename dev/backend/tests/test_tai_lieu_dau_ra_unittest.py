@@ -868,3 +868,205 @@ class NopThangKhiConToBiTraLaiTests(unittest.TestCase):
                 actor_id="U-1", note=None,
             )
         self.assertEqual(ket_qua["status"], "submitted")
+
+
+def _mapping_one(value):
+    result = MagicMock()
+    result.mappings.return_value.one.return_value = value
+    return result
+
+
+def _workflow_creation_db(*, runtime_rows=None, instance=None, task_node_id="TN-MOI"):
+    """DB boundary fake that leaves the workflow control flow real."""
+    db = MagicMock()
+
+    def execute(statement, params=None):
+        sql = " ".join(str(statement).lower().split())
+        if "from public.task_nodes" in sql and "status <> 'cancelled'" in sql:
+            return _rows(runtime_rows or [])
+        if "select employee_id, role_code" in sql:
+            return _rows([])
+        if "select id, checklist_key, status" in sql:
+            return _rows([])
+        if "select coalesce(max(occurrence_no)" in sql:
+            return _scalar_one(1)
+        if "insert into public.task_nodes" in sql:
+            return _scalar_one(task_node_id)
+        if "select id, status, active_revision_id" in sql:
+            return _mapping_one(instance)
+        if "select contract_id from public.service_lines" in sql:
+            return _row({"contract_id": "HD-1"})
+        return _khong_quan_tam()
+
+    db.execute.side_effect = execute
+    return db
+
+
+def _runtime_checklist_graph(node_key="k02"):
+    return {
+        "start_node": node_key,
+        "nodes": {
+            node_key: {
+                "task_code": "K02",
+                "name": "Đo hiện trạng",
+                "assignments": [],
+                "transitions": {},
+                "checklist": [{
+                    "key": "ban-ve",
+                    "name": "Bản vẽ",
+                    "required": True,
+                    "require_evidence": False,
+                    "approver_role": "admin",
+                    "output_documents": [{"template_id": "TPL-BAN-VE"}],
+                    "compensation": {"is_payable": False},
+                }],
+            },
+        },
+    }
+
+
+class MaterializeTaiBaDuongTaoChecklistTests(unittest.TestCase):
+    """Materialization receives the inserted checklist identity on all HIGH-risk paths."""
+
+    def _patch_dependencies(self, runtime, checklist_result_id):
+        return (
+            patch.object(runtime, "_current_work_item_rates", return_value={}),
+            patch.object(runtime, "_insert_checklist_result", return_value=checklist_result_id),
+            patch.object(runtime, "materialize_configured_types"),
+            patch.object(runtime, "_ensure_manual_checklist_assignment"),
+            patch.object(runtime, "_ensure_node_module_records", return_value={}),
+            patch.object(runtime, "recompute_planned_deadlines", return_value={}),
+        )
+
+    def test_amendment_existing_node_uses_inserted_id_actor_and_explicit_target_revision(self):
+        from src.contracts import workflow_runtime as runtime
+
+        db = _workflow_creation_db(runtime_rows=[{
+            "id": "TN-CU",
+            "node_key": "k02",
+            "node_code": "K02",
+            "status": "ready",
+            "occurrence_no": 1,
+            "defined_by_revision_id": "REV-CU",
+            "started_at": None,
+        }])
+        revision = {
+            "id": "REV-DICH",
+            "revision_no": 2,
+            "graph": _runtime_checklist_graph(),
+        }
+        patches = self._patch_dependencies(runtime, "CR-SUA-NODE-CU")
+        with patches[0], patches[1] as insert_result, patches[2] as materialize, \
+             patches[3], patches[4], patches[5]:
+            sequence = MagicMock()
+            sequence.attach_mock(insert_result, "insert")
+            sequence.attach_mock(materialize, "materialize")
+            runtime._apply_workflow_amendment(
+                db,
+                instance={"id": "WI-1", "active_revision_id": "REV-CU", "status": "running"},
+                revision=revision,
+                source_workflow_version_id=None,
+                actor_id="GD-1",
+            )
+
+        materialize.assert_called_once_with(
+            db,
+            "CR-SUA-NODE-CU",
+            actor_id="GD-1",
+            revision_id="REV-DICH",
+        )
+        self.assertLess(
+            [call[0] for call in sequence.method_calls].index("insert"),
+            [call[0] for call in sequence.method_calls].index("materialize"),
+        )
+
+    def test_amendment_added_node_uses_inserted_id_actor_and_defining_revision_default(self):
+        from src.contracts import workflow_runtime as runtime
+
+        db = _workflow_creation_db(runtime_rows=[], task_node_id="TN-THEM")
+        revision = {
+            "id": "REV-DICH",
+            "revision_no": 2,
+            "graph": _runtime_checklist_graph(),
+        }
+        patches = self._patch_dependencies(runtime, "CR-THEM-NODE")
+        with patches[0], patches[1] as insert_result, patches[2] as materialize, \
+             patches[3], patches[4], patches[5]:
+            sequence = MagicMock()
+            sequence.attach_mock(insert_result, "insert")
+            sequence.attach_mock(materialize, "materialize")
+            runtime._apply_workflow_amendment(
+                db,
+                instance={"id": "WI-1", "active_revision_id": "REV-CU", "status": "running"},
+                revision=revision,
+                source_workflow_version_id=None,
+                actor_id="GD-2",
+            )
+
+        materialize.assert_called_once_with(db, "CR-THEM-NODE", actor_id="GD-2")
+        self.assertLess(
+            [call[0] for call in sequence.method_calls].index("insert"),
+            [call[0] for call in sequence.method_calls].index("materialize"),
+        )
+
+    def test_initial_activation_uses_inserted_id_actor_and_defining_revision_default(self):
+        from src.contracts import workflow_runtime as runtime
+
+        graph = _runtime_checklist_graph()
+        revision = {
+            "id": "REV-DAU",
+            "workflow_instance_id": "WI-1",
+            "revision_no": 1,
+            "graph": graph,
+        }
+        db = _workflow_creation_db(
+            instance={"id": "WI-1", "status": "draft", "active_revision_id": None},
+            task_node_id="TN-DAU",
+        )
+        patches = self._patch_dependencies(runtime, "CR-KICH-HOAT")
+        with patch.object(runtime, "_collect_activation_readiness", return_value={
+                "blockers": [], "warnings": [], "requires_confirmation": False,
+             }), patch.object(runtime, "save_workflow_draft", return_value=revision), \
+             patches[0], patches[1] as insert_result, patches[2] as materialize, \
+             patches[3], patches[4], patches[5], \
+             patch("src.dossiers.register.open_service_line_register", return_value=0), \
+             patch("src.dossiers.register.open_contract_register", return_value=0):
+            sequence = MagicMock()
+            sequence.attach_mock(insert_result, "insert")
+            sequence.attach_mock(materialize, "materialize")
+            runtime.activate_workflow(
+                db,
+                service_line_id="SL-1",
+                graph=graph,
+                source_workflow_version_id=None,
+                change_reason=None,
+                actor_id="GD-3",
+            )
+
+        materialize.assert_called_once_with(db, "CR-KICH-HOAT", actor_id="GD-3")
+        self.assertLess(
+            [call[0] for call in sequence.method_calls].index("insert"),
+            [call[0] for call in sequence.method_calls].index("materialize"),
+        )
+
+    def test_activation_route_rolls_back_and_propagates_materialization_error(self):
+        from src.routes import routes_contracts as routes
+
+        db = MagicMock()
+        db.execute.return_value.first.return_value = None
+        payload = MagicMock(
+            graph=_runtime_checklist_graph(),
+            source_workflow_version_id=None,
+            change_reason=None,
+            confirm_warnings=False,
+        )
+        failure = RuntimeError("materialization failed")
+        with patch.object(routes, "_graph_has_payable_work", return_value=False), \
+             patch.object(routes, "activate_workflow", side_effect=failure):
+            with self.assertRaisesRegex(RuntimeError, "materialization failed"):
+                routes.activate_service_line_workflow(
+                    "SL-1", payload, db=db, user=MagicMock(id="GD-4")
+                )
+
+        db.rollback.assert_called_once_with()
+        db.commit.assert_not_called()

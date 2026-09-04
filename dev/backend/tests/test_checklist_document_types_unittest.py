@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.dossiers import checklist_document_types
@@ -88,49 +89,18 @@ class ChecklistDocumentTypeContextTests(unittest.TestCase):
         self.assertEqual(params, {"id": "CR-1"})
 
 
-class ConfiguredDocumentTypeMaterializationTests(unittest.TestCase):
-    def test_graph_outputs_materialize_from_catalog_once(self):
-        result = MagicMock()
-        result.fetchall.side_effect = [
-            [("TYPE-1",), ("TYPE-2",)],
-            [],
-        ]
-        db = MagicMock()
-        db.execute.return_value = result
-
-        first = checklist_document_types.materialize_configured_types(
-            db, "CR-1", actor_id="DIRECTOR-1"
+class ConfiguredDocumentTypeMigrationTests(unittest.TestCase):
+    def test_backfill_uses_only_each_nodes_immutable_defining_revision(self):
+        migration_path = next(
+            parent / "supabase/migrations/20260904090000_checklist_document_types.sql"
+            for parent in Path(__file__).resolve().parents
+            if (parent / "supabase/migrations").is_dir()
         )
-        second = checklist_document_types.materialize_configured_types(
-            db, "CR-1", actor_id="DIRECTOR-1"
-        )
+        migration = migration_path.read_text(encoding="utf-8").lower()
 
-        self.assertEqual(first, 2)
-        self.assertEqual(second, 0)
-        query, params = db.execute.call_args_list[0].args
-        emitted_query = str(query).lower()
-        self.assertIn("output_documents", emitted_query)
-        self.assertIn("join public.document_checklist_templates t", emitted_query)
-        self.assertIn("t.name", emitted_query)
-        self.assertIn("t.source", emitted_query)
-        self.assertIn("'configured'", emitted_query)
-        self.assertIn("on conflict", emitted_query)
-        self.assertEqual(params, {
-            "checklist_result_id": "CR-1",
-            "actor_id": "DIRECTOR-1",
-        })
-
-    def test_amended_node_uses_active_revision_before_defined_revision_is_rebased(self):
-        db = MagicMock()
-        db.execute.return_value.fetchall.return_value = []
-
-        checklist_document_types.materialize_configured_types(db, "CR-NEW")
-
-        query = str(db.execute.call_args.args[0]).lower()
-        self.assertIn("join public.workflow_instances", query)
-        self.assertIn("wi.active_revision_id", query)
-        self.assertIn("r_active.graph", query)
-        self.assertIn("r_defined.graph", query)
+        self.assertIn("r_defined.id = n.defined_by_revision_id", migration)
+        self.assertNotIn("r_active.graph", migration)
+        self.assertNotIn("wi.active_revision_id", migration)
 
 
 class ExactComboSuggestionTests(unittest.TestCase):
