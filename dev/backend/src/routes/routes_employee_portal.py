@@ -536,6 +536,177 @@ async def submit_checklist_evidence(
     return result
 
 
+class ChecklistDocumentTypeIn(BaseModel):
+    template_id: str | None = None
+    name: str | None = None
+    source: str | None = None
+
+
+def _authorize_document_type_route(
+    db: Session,
+    user: User,
+    task_node_id: str,
+    checklist_result_id: str,
+):
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy hồ sơ nhân sự.",
+        )
+    EmployeePortalService.authorize_checklist_evidence_submission(
+        db,
+        employee,
+        task_node_id,
+        checklist_result_id,
+        evidence_provided=True,
+    )
+    return employee
+
+
+def _require_document_type_in_checklist(
+    db: Session, checklist_result_id: str, document_type_id: str
+) -> None:
+    belongs = db.execute(
+        text("""
+            select 1
+            from public.checklist_result_document_types
+            where id = :document_type_id
+              and checklist_result_id = :checklist_result_id
+              and is_active
+        """),
+        {
+            "document_type_id": document_type_id,
+            "checklist_result_id": checklist_result_id,
+        },
+    ).first()
+    if not belongs:
+        raise HTTPException(
+            status_code=404,
+            detail="Không tìm thấy loại giấy trong mục checklist này.",
+        )
+
+
+@router.get("/tasks/{task_node_id}/checklist/{checklist_result_id}/document-type-suggestions")
+def get_checklist_document_type_suggestions(
+    task_node_id: str,
+    checklist_result_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import exact_combo_suggestions
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    return exact_combo_suggestions(db, checklist_result_id)
+
+
+@router.post("/tasks/{task_node_id}/checklist/{checklist_result_id}/document-types")
+def create_checklist_document_type(
+    task_node_id: str,
+    checklist_result_id: str,
+    payload: ChecklistDocumentTypeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import add_type
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    try:
+        result = add_type(
+            db,
+            checklist_result_id=checklist_result_id,
+            template_id=payload.template_id,
+            name=payload.name,
+            source=payload.source,
+            actor_id=user.id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("checklist_document_type_added", entity_id=checklist_result_id)
+    return {"status": "success", "data": result}
+
+
+@router.post(
+    "/tasks/{task_node_id}/checklist/{checklist_result_id}/document-types/{type_id}/files"
+)
+async def upload_checklist_document_type_files(
+    task_node_id: str,
+    checklist_result_id: str,
+    type_id: str,
+    files: list[UploadFile] = File(),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import add_files
+    from src.dossiers.documents import MAX_DOCUMENT_BYTES
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    if not files:
+        raise HTTPException(status_code=422, detail="Phải chọn ít nhất một tệp.")
+    _require_document_type_in_checklist(db, checklist_result_id, type_id)
+
+    uploads: list[tuple[str, str | None, bytes]] = []
+    read_failures: list[dict] = []
+    for file in files:
+        file_name = file.filename or "tai-lieu"
+        try:
+            data = await file.read(MAX_DOCUMENT_BYTES + 1)
+        except Exception as exc:
+            read_failures.append({
+                "file_name": file_name,
+                "status": "failed",
+                "error": str(exc) or exc.__class__.__name__,
+            })
+            continue
+        uploads.append((file_name, file.content_type, data))
+
+    try:
+        results = add_files(
+            db,
+            document_type_id=type_id,
+            uploads=uploads,
+            actor_id=user.id,
+        ) if uploads else []
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("checklist_document_type_files_changed", entity_id=checklist_result_id)
+    return {"status": "success", "data": results + read_failures}
+
+
+@router.delete(
+    "/tasks/{task_node_id}/checklist/{checklist_result_id}/document-types/{type_id}/files/{document_id}"
+)
+def delete_checklist_document_type_file(
+    task_node_id: str,
+    checklist_result_id: str,
+    type_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import remove_file
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    _require_document_type_in_checklist(db, checklist_result_id, type_id)
+    try:
+        result = remove_file(
+            db,
+            document_type_id=type_id,
+            document_id=document_id,
+            actor_id=user.id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("checklist_document_type_files_changed", entity_id=checklist_result_id)
+    return {"status": "success", "data": result}
+
+
 @router.post("/tasks/{task_node_id}/checklist/{checklist_result_id}/output-documents")
 async def submit_checklist_output_document(
     task_node_id: str,
