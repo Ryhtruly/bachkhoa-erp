@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import NodeOutputList from './NodeOutputList'
@@ -383,5 +383,112 @@ describe('Danh tính hàng bền — không rơi về chỉ số mảng khi đ�
     expect(cccdSau).toBe(cccdTruoc)
     expect(banVeSau).toBe(banVeTruoc)
     expect(soDoSau).toBe(soDoTruoc)
+  })
+})
+
+describe('Loại giấy runtime — trạng thái ở cấp loại, nhiều file ở bên trong', () => {
+  const RUNTIME_ITEM = {
+    id: 'CR-RUNTIME',
+    name: 'Khảo sát hiện trạng',
+    document_types: [
+      {
+        id: 'TYPE-REJECTED',
+        name: 'Ảnh hiện trạng thửa đất',
+        source: 'CONG_TY',
+        source_label: 'Công ty soạn',
+        status: 'rejected',
+        rejection_reason: 'Ảnh trang 2 bị mờ, không đọc được số thửa.',
+        file_count: 3,
+        files: [
+          { document_id: 'D-1', file_name: 'mat-tien.jpg' },
+          { document_id: 'D-2', file_name: 'moc-ranh.jpg' },
+          { document_id: 'D-3', file_name: 'so-thua.jpg' },
+        ],
+      },
+      {
+        id: 'TYPE-APPROVED',
+        name: 'Biên bản đo đạc',
+        source: 'CO_QUAN',
+        source_label: 'Pháp lý',
+        status: 'approved',
+        rejection_reason: null,
+        file_count: 1,
+        files: [{ document_id: 'D-4', file_name: 'bien-ban.pdf' }],
+      },
+    ],
+    output_documents: [{ template_id: 'LEGACY-MUST-NOT-RENDER' }],
+  }
+
+  it('ưu tiên document_types khi key tồn tại, hiện một trạng thái và đủ ba file', () => {
+    render(
+      <NodeOutputList checklistItem={RUNTIME_ITEM} nodeStatus="rework_required" />,
+    )
+
+    expect(screen.queryByText('LEGACY-MUST-NOT-RENDER')).not.toBeInTheDocument()
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    expect(within(row).getAllByText('Bị từ chối')).toHaveLength(1)
+    expect(within(row).getByText('3 file')).toBeInTheDocument()
+
+    fireEvent.click(within(row).getByRole('button', { name: /Xem 3 file/ }))
+    expect(within(row).getByText('mat-tien.jpg')).toBeInTheDocument()
+    expect(within(row).getByText('moc-ranh.jpg')).toBeInTheDocument()
+    expect(within(row).getByText('so-thua.jpg')).toBeInTheDocument()
+  })
+
+  it('loại bị từ chối hiện nguyên văn lý do và upload lại nhiều file theo typeId', async () => {
+    const onUploadDocument = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onUploadDocument={onUploadDocument}
+      />,
+    )
+
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    expect(within(row).getByText('Ảnh trang 2 bị mờ, không đọc được số thửa.')).toBeInTheDocument()
+    const input = within(row).getByLabelText('Tải file cho Ảnh hiện trạng thửa đất')
+    expect(input).toHaveAttribute('multiple')
+    const files = [
+      new File(['a'], 'anh-moi-1.jpg', { type: 'image/jpeg' }),
+      new File(['b'], 'anh-moi-2.jpg', { type: 'image/jpeg' }),
+    ]
+    fireEvent.change(input, { target: { files } })
+
+    await waitFor(() => expect(onUploadDocument).toHaveBeenCalledWith({
+      typeId: 'TYPE-REJECTED',
+      files,
+    }))
+  })
+
+  it('loại đã đạt có tích xanh và không còn upload', () => {
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onUploadDocument={vi.fn()}
+      />,
+    )
+
+    const row = rowOf('Biên bản đo đạc')
+    expect(within(row).getByText('Đạt')).toBeInTheDocument()
+    expect(within(row).queryByLabelText('Tải file cho Biên bản đo đạc')).not.toBeInTheDocument()
+  })
+
+  it('document_types rỗng vẫn không fallback sang giấy legacy', () => {
+    render(
+      <NodeOutputList
+        checklistItem={{
+          id: 'CR-EMPTY-RUNTIME',
+          name: 'Checklist runtime rỗng',
+          document_types: [],
+          output_documents: [{ template_id: 'LEGACY-HIDDEN' }],
+        }}
+        nodeStatus="in_progress"
+      />,
+    )
+
+    expect(screen.queryByText('LEGACY-HIDDEN')).not.toBeInTheDocument()
+    expect(screen.getByText(/chưa có loại giấy nào/)).toBeInTheDocument()
   })
 })

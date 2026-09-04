@@ -1492,9 +1492,9 @@
 /* ── 2-Column Responsive Layout ──────────────────────────────────────────── */
 .eiw-grid {
   display: grid;
-  grid-template-columns: 5fr 7fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
-  align-items: start;
+  align-items: stretch;
   border: none;
   background: transparent;
 }
@@ -1503,6 +1503,7 @@
   flex-direction: column;
   gap: 18px;
   min-width: 0;
+  height: 100%;
 }
 .eiw-col--left {
   border: none;
@@ -1510,6 +1511,101 @@
 .eiw-col--right {
   min-height: 100%;
 }
+
+.eiw-source-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.eiw-source-docs > li {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.eiw-source-docs__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+}
+.eiw-source-docs__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+.eiw-source-docs__name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eiw-source-docs__tag {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.eiw-source-docs__classify,
+.eiw-source-docs__picker button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.eiw-source-docs__picker {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.eiw-source-docs__picker select {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 12px;
+}
+.eiw-source-docs__picker button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.eiw-source-docs__picker > span,
+.eiw-source-docs__message {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+.eiw-source-docs__message.is-error { color: #be123c; }
 
 @media (max-width: 980px) {
   .eiw-grid {
@@ -2028,13 +2124,59 @@
   color: #94a3b8;
 }
 
+.eiw-checklist-section {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fffaf5;
+}
+.eiw-checklist-section__head {
+  padding: 13px 16px;
+  background: linear-gradient(135deg, #f97342, #df421f);
+  color: #fff;
+}
+.eiw-checklist-section__head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+}
+.eiw-checklist-section__head h2 > span {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 999px;
+  background: currentColor;
+}
+.eiw-checklist-section__head em {
+  font-style: normal;
+  font-weight: 700;
+  opacity: .9;
+}
+.eiw-checklist-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.eiw-checklist-section__empty {
+  margin: 0;
+  padding: 18px;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+}
+
 /* ── Thẻ Checklist Item (NodeOutputList / ChecklistSection) ───────────────── */
 .eiw-checklist-item-card {
   border: 1px solid #e2e8f0;
   border-radius: 16px;
   background: #ffffff;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 0;
+  margin-bottom: 0;
+  overflow: hidden;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
   transition: all 0.15s ease;
 }
@@ -2050,6 +2192,8 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  padding: 12px 14px;
+  background: #eaf2ff;
 }
 .eiw-checklist-item-head__left {
   display: flex;
@@ -2064,18 +2208,22 @@
   height: 32px;
   flex: none;
   border-radius: 9999px;
+  background: #ef4b23;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
 }
 .eiw-checklist-status-icon.is-valid {
-  background: #dcfce7;
-  color: #15803d;
+  background: #16a34a;
+  color: #fff;
 }
 .eiw-checklist-status-icon.is-rejected {
-  background: #ffe4e6;
-  color: #e11d48;
+  background: #e11d48;
+  color: #fff;
 }
 .eiw-checklist-status-icon.is-pending {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #ef4b23;
+  color: #fff;
 }
 .eiw-checklist-item-info {
   display: flex;
@@ -2349,7 +2497,7 @@
   justify-content: space-between;
   gap: 16px;
   padding-top: 24px;
-  margin-top: 16px;
+  margin-top: auto;
   border-top: 1px solid #f1f5f9;
   background: transparent;
   flex-wrap: wrap;
@@ -2418,6 +2566,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 12px;
 }
 .eiw-doc {
   border: 1px solid #e2e8f0;
@@ -3057,4 +3206,523 @@
   color: var(--danger-600, #dc2626);
   border: 1px solid color-mix(in srgb, var(--danger-500, #ef4444) 38%, transparent);
   background: color-mix(in srgb, var(--danger-500, #ef4444) 8%, transparent);
+}
+
+/* ===== Task 6 · Workspace loại giấy runtime ============================== */
+.eiw-workspace {
+  height: calc(100dvh - var(--app-header-height, 64px));
+  max-height: calc(100dvh - var(--app-header-height, 64px));
+  margin-block: 0;
+  padding: 12px 16px;
+  overflow: hidden;
+}
+
+.eiw-workspace > .eiw-top,
+.eiw-workspace > .eiw-chain {
+  flex: 0 0 auto;
+}
+
+.eiw-workspace .eiw-top {
+  padding: 10px 14px;
+}
+
+.eiw-workspace .eiw-chain {
+  min-height: 74px;
+  margin-block: 8px 10px;
+  padding: 8px 10px;
+}
+
+.eiw-workspace .eiw-step {
+  min-height: 54px;
+  padding: 7px 10px;
+}
+
+.eiw-workspace .eiw-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+}
+
+.eiw-workspace .eiw-col {
+  min-height: 0;
+  height: auto;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.eiw-workspace .eiw-col--left {
+  display: grid;
+  grid-template-rows: auto auto minmax(72px, 1fr) auto auto;
+}
+
+.eiw-workspace .eiw-band {
+  min-height: 42px;
+  padding: 9px 13px;
+  border-radius: 12px;
+}
+
+.eiw-workspace .eiw-clock {
+  min-height: 54px;
+  padding: 10px 14px;
+  border-radius: 12px;
+}
+
+.eiw-workspace .eiw-desc {
+  min-height: 0;
+  max-height: none;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.eiw-workspace .eiw-slotbody {
+  max-height: 152px;
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.eiw-workspace .eiw-money {
+  margin-top: 0;
+}
+
+.eiw-workspace .eiw-money__row dt,
+.eiw-workspace .eiw-money__row dd {
+  padding-block: 8px;
+}
+
+.eiw-workspace .eiw-checklist-section {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  border-radius: 12px;
+}
+
+.eiw-workspace .eiw-checklist-section__head {
+  flex: 0 0 auto;
+  padding: 10px 13px;
+}
+
+.eiw-workspace .eiw-checklist-section__body {
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+  scrollbar-color: #f97342 #fff7ed;
+  scrollbar-width: thin;
+}
+
+.eiw-workspace .eiw-checklist-section__body::-webkit-scrollbar {
+  width: 7px;
+}
+
+.eiw-workspace .eiw-checklist-section__body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #f97342;
+}
+
+.eiw-workspace .eiw-checklist-section__body::-webkit-scrollbar-track {
+  background: #fff7ed;
+}
+
+.eiw-workspace .eiw-checklist-item-head {
+  padding: 9px 11px;
+}
+
+.eiw-workspace .eiw-docs__scroll {
+  gap: 7px;
+  padding: 8px;
+}
+
+.eiw-workspace .eiw-doc {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+}
+
+.eiw-workspace .eiw-foot {
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-top: 0;
+  padding: 9px 0 0;
+}
+
+.eiw-workspace :is(button, input, select):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.eiw-workspace ::selection {
+  background: #fed7aa;
+  color: #7c2d12;
+}
+
+/* Picker gợi ý exact-combo nằm ngay trong checklist, không che workspace. */
+.eiw-type-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border-bottom: 1px solid #fed7aa;
+  background: #fffaf5;
+}
+
+.eiw-type-picker__head,
+.eiw-type-picker__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eiw-type-picker__head strong {
+  color: #172554;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.eiw-type-picker__context {
+  margin: 2px 0 0;
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.eiw-type-picker__close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  flex: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.eiw-type-picker__close:hover {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.eiw-type-picker__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(150px, .8fr);
+  gap: 8px;
+}
+
+.eiw-type-picker__field,
+.eiw-type-picker__files {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.eiw-type-picker__field input,
+.eiw-type-picker__field select,
+.eiw-type-picker__files input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #172554;
+  font: inherit;
+  font-weight: 550;
+}
+
+.eiw-type-picker__field select:disabled {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  opacity: 1;
+}
+
+.eiw-type-picker__search {
+  position: relative;
+  display: block;
+}
+
+.eiw-type-picker__search svg {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: #64748b;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.eiw-type-picker__search input {
+  width: 100%;
+  padding-left: 32px;
+}
+
+.eiw-type-picker__options,
+.eiw-type-picker__selected,
+.eiw-document-type__files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.eiw-type-picker__options {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.eiw-type-picker__options > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #eff6ff;
+  color: #1e293b;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.eiw-type-picker__options > li:last-child {
+  border-bottom: 0;
+}
+
+.eiw-type-picker__options > li:hover,
+.eiw-type-picker__options > li:focus-visible {
+  background: #eff6ff;
+}
+
+.eiw-type-picker__options em {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.eiw-type-picker__options .eiw-type-picker__create {
+  justify-content: flex-start;
+  color: #1d4ed8;
+  font-weight: 750;
+}
+
+.eiw-type-picker__loading {
+  justify-content: flex-start !important;
+  color: #64748b !important;
+  cursor: default !important;
+}
+
+.eiw-type-picker__selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.eiw-type-picker__selected li {
+  max-width: 210px;
+  overflow: hidden;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eiw-type-picker__error {
+  margin: 0;
+  color: #be123c;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.eiw-type-picker__actions {
+  justify-content: flex-end;
+}
+
+.eiw-type-picker__actions .eiw-btn {
+  min-height: 34px;
+  padding: 6px 11px;
+}
+
+/* Một hàng là một loại giấy; file chỉ là nội dung con của hàng đó. */
+.eiw-document-type.is-rejected {
+  border-color: #fda4af;
+  background: #fff7f7;
+}
+
+.eiw-document-type.is-approved {
+  border-color: #bbf7d0;
+  background: #f8fff9;
+}
+
+.eiw-doc__name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.eiw-doc__source {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.eiw-doc__source.is-khach_hang {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.eiw-doc__source.is-cong_ty {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.eiw-doc__source.is-co_quan {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.eiw-doc__badge--draft {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.eiw-doc__badge--pending_review {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.eiw-doc__files-toggle {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.eiw-document-type__files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.eiw-document-type__files li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 7px;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 11.5px;
+}
+
+.eiw-document-type__files li > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eiw-document-type__files button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.eiw-document-type__files .is-empty {
+  display: block;
+  color: #64748b;
+}
+
+@media (max-width: 979px) {
+  .eiw-workspace {
+    height: auto;
+    max-height: none;
+    margin-block: 0;
+    padding: 12px 8px 24px;
+    overflow: visible;
+  }
+
+  .eiw-workspace .eiw-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .eiw-workspace .eiw-col,
+  .eiw-workspace .eiw-col--left {
+    display: flex;
+    height: auto;
+    overflow: visible;
+  }
+
+  .eiw-workspace .eiw-checklist-section__body {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .eiw-workspace .eiw-desc,
+  .eiw-workspace .eiw-slotbody {
+    max-height: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .eiw-type-picker__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eiw-document-type .eiw-doc__row,
+  .eiw-source-docs__row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .eiw-document-type .eiw-doc__actions,
+  .eiw-source-docs__classify {
+    margin-left: 40px;
+  }
+
+  .eiw-source-docs__picker {
+    flex-direction: column;
+  }
 }

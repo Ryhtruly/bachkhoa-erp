@@ -11,10 +11,25 @@ import {
   Image as ImageIcon,
   Plus,
   Upload,
-  X,
 } from 'lucide-react'
 
+import ChecklistDocumentTypePicker from './ChecklistDocumentTypePicker'
 import { documentCounter, mergeDocumentVerdicts } from './nodeWorkFormat'
+
+const SOURCE_LABELS = {
+  KHACH_HANG: 'Khách hàng cung cấp',
+  CONG_TY: 'Công ty soạn',
+  CO_QUAN: 'Pháp lý',
+}
+
+const RUNTIME_STATUS_LABELS = {
+  draft: 'Chưa nộp',
+  pending_review: 'Chờ duyệt',
+  approved: 'Đạt',
+  rejected: 'Bị từ chối',
+}
+
+const EDITABLE_NODE_STATUSES = new Set(['ready', 'in_progress', 'rework_required'])
 
 const renderDocIcon = (name = '') => {
   const lower = name.toLowerCase()
@@ -48,10 +63,236 @@ const SR_ONLY = {
   border: 0,
 }
 
-/**
- * Danh mục giấy tờ đầu ra của một mục checklist (chuẩn giao diện Hình 2).
- */
 export default function NodeOutputList({
+  checklistItem,
+  ...props
+}) {
+  const hasRuntimeTypes = Object.prototype.hasOwnProperty.call(checklistItem || {}, 'document_types')
+  if (hasRuntimeTypes) {
+    return <RuntimeNodeOutputList checklistItem={checklistItem} {...props} />
+  }
+  return <LegacyNodeOutputList checklistItem={checklistItem} {...props} />
+}
+
+function RuntimeNodeOutputList({
+  checklistItem,
+  nodeStatus,
+  taskNodeId,
+  canPropose = false,
+  defaultOpen = true,
+  onOpenDocument,
+  onUploadDocument,
+  onChanged,
+  addToast,
+}) {
+  const [collapsed, setCollapsed] = useState(!defaultOpen)
+  const [adding, setAdding] = useState(false)
+  const [expandedTypeIds, setExpandedTypeIds] = useState(() => new Set())
+  const [uploadingId, setUploadingId] = useState('')
+  const inputRefs = useRef({})
+  const types = checklistItem?.document_types || []
+  const approved = types.filter(type => type.status === 'approved').length
+  const hasRejections = types.some(type => type.status === 'rejected')
+  const allApproved = types.length > 0 && approved === types.length
+  const overallState = hasRejections ? 'rejected' : allApproved ? 'valid' : 'pending'
+  const canEdit = EDITABLE_NODE_STATUSES.has(nodeStatus)
+
+  const toggleType = (typeId) => {
+    setExpandedTypeIds(current => {
+      const next = new Set(current)
+      if (next.has(typeId)) next.delete(typeId)
+      else next.add(typeId)
+      return next
+    })
+  }
+
+  const uploadFiles = async (type, fileList) => {
+    const files = Array.from(fileList || [])
+    if (files.length === 0 || !onUploadDocument) return
+    setUploadingId(type.id)
+    try {
+      await onUploadDocument({ typeId: type.id, files })
+    } finally {
+      setUploadingId('')
+    }
+  }
+
+  return (
+    <section className="eiw-docs" aria-label={`Checklist ${checklistItem?.name || ''}`}>
+      <div className={`eiw-checklist-item-card ${hasRejections ? 'is-rejected' : ''}`} id={`checklist-item-${checklistItem?.id || 'main'}`}>
+        <div className="eiw-checklist-item-head">
+          <div className="eiw-checklist-item-head__left">
+            <div className={`eiw-checklist-status-icon is-${overallState}`} title={`${types.length} loại giấy`}>
+              {types.length}
+            </div>
+            <div className="eiw-checklist-item-info">
+              <div className="eiw-checklist-item-title-row">
+                <h3>{checklistItem?.name || 'Checklist'}</h3>
+                <span className={`eiw-checklist-badge is-${overallState}`}>
+                  {hasRejections && <AlertTriangle size={12} />}
+                  {allApproved ? 'Hoàn tất' : hasRejections ? 'Cần sửa' : 'Chờ xử lý'}
+                </span>
+              </div>
+              <div className="eiw-checklist-item-meta">
+                <span className="eiw-docs__count"><b>{approved}/{types.length}</b><i>loại đạt</i></span>
+                {checklistItem?.note && <span> • <span>{checklistItem.note}</span></span>}
+              </div>
+            </div>
+          </div>
+          <div className="eiw-checklist-item-head__right">
+            {canPropose && canEdit && (
+              <button
+                type="button"
+                className="eiw-docs__add eiw-checklist-add-doc-btn"
+                onClick={() => setAdding(value => !value)}
+                aria-expanded={adding}
+              >
+                <Plus size={14} /> <span>Thêm loại giấy</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="eiw-checklist-collapse-btn"
+              onClick={() => setCollapsed(value => !value)}
+              title={collapsed ? 'Mở checklist' : 'Thu gọn checklist'}
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            </button>
+          </div>
+        </div>
+
+        {!collapsed && (
+          <>
+            {adding && (
+              <ChecklistDocumentTypePicker
+                taskNodeId={taskNodeId}
+                checklistResultId={checklistItem?.id}
+                addToast={addToast}
+                onClose={() => setAdding(false)}
+                onAdded={() => {
+                  setAdding(false)
+                  onChanged?.()
+                }}
+              />
+            )}
+            <div className="eiw-docs__scroll">
+              {types.length === 0 && (
+                <p className="eiw-docs__empty">Checklist này chưa có loại giấy nào.</p>
+              )}
+              {types.map(type => {
+                const files = type.files || []
+                const fileCount = Number.isFinite(Number(type.file_count))
+                  ? Number(type.file_count)
+                  : files.length
+                const expanded = expandedTypeIds.has(type.id)
+                const editableType = canEdit && type.status !== 'approved' && type.status !== 'pending_review'
+                return (
+                  <article
+                    className={`eiw-doc eiw-document-type is-${type.status}`}
+                    key={type.id}
+                    id={`checklist-doc-${type.id}`}
+                  >
+                    <div className="eiw-doc__row">
+                      <div className="eiw-doc__info-col">
+                        <div className="eiw-doc__icon-box">{renderDocIcon(files[0]?.file_name || type.name)}</div>
+                        <div className="eiw-doc__text-box">
+                          <div className="eiw-doc__name-row">
+                            <span className="eiw-doc__name">{type.name}</span>
+                            <span className={`eiw-doc__source is-${String(type.source || '').toLowerCase()}`}>
+                              {type.source_label || SOURCE_LABELS[type.source] || type.source}
+                            </span>
+                            <span className={`eiw-doc__badge eiw-doc__badge--${type.status}`}>
+                              {type.status === 'approved' && <Check size={11} />}
+                              {type.status === 'rejected' && <AlertTriangle size={11} />}
+                              {RUNTIME_STATUS_LABELS[type.status] || type.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="eiw-doc__actions">
+                        <button
+                          type="button"
+                          className="eiw-doc__files-toggle"
+                          onClick={() => toggleType(type.id)}
+                          aria-expanded={expanded}
+                          aria-label={`Xem ${fileCount} file của ${type.name}`}
+                        >
+                          {fileCount} file {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </button>
+                        {editableType && onUploadDocument && (
+                          <>
+                            <input
+                              type="file"
+                              multiple
+                              className="eiw-doc__file-input"
+                              style={SR_ONLY}
+                              ref={element => { inputRefs.current[type.id] = element }}
+                              aria-label={`Tải file cho ${type.name}`}
+                              disabled={uploadingId === type.id}
+                              onChange={event => {
+                                const selectedFiles = event.target.files
+                                event.target.value = ''
+                                uploadFiles(type, selectedFiles)
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="eiw-doc__upload-btn"
+                              disabled={uploadingId === type.id}
+                              onClick={() => inputRefs.current[type.id]?.click()}
+                              aria-label={`Chọn file cho ${type.name}`}
+                              title="Tải thêm hoặc thay file"
+                            >
+                              <Upload size={13} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {type.status === 'rejected' && type.rejection_reason && (
+                      <div className="eiw-doc__reason">
+                        <b>Lý do không đạt</b>
+                        <span>{type.rejection_reason}</span>
+                      </div>
+                    )}
+
+                    {expanded && (
+                      <ul className="eiw-document-type__files" aria-label={`File của ${type.name}`}>
+                        {files.length === 0 ? (
+                          <li className="is-empty">Chưa có file hoặc ảnh.</li>
+                        ) : files.map(file => (
+                          <li key={file.document_id || file.id || file.file_name}>
+                            <span>{renderDocIcon(file.file_name)}</span>
+                            <span>{file.file_name || file.name || 'Tệp không tên'}</span>
+                            <button
+                              type="button"
+                              onClick={() => onOpenDocument?.({ ...file, name: type.name })}
+                              aria-label={`Mở ${file.file_name || file.name || type.name}`}
+                            >
+                              <Eye size={13} /> Xem
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </article>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Fallback tạm thời cho response cũ chưa có key document_types.
+ */
+function LegacyNodeOutputList({
   checklistItem,
   nodeStatus,
   docTemplateById,
@@ -127,14 +368,8 @@ export default function NodeOutputList({
         {/* Top of Checklist Item Card */}
         <div className="eiw-checklist-item-head">
           <div className="eiw-checklist-item-head__left">
-            <div className={`eiw-checklist-status-icon is-${overallState}`}>
-              {overallState === 'valid' ? (
-                <Check size={16} strokeWidth={2.5} />
-              ) : overallState === 'rejected' ? (
-                <X size={16} strokeWidth={2.5} />
-              ) : (
-                <FileText size={16} strokeWidth={2} />
-              )}
+            <div className={`eiw-checklist-status-icon is-${overallState}`} title={`${documents.length} giấy tờ đầu ra`}>
+              {documents.length}
             </div>
 
             <div className="eiw-checklist-item-info">
@@ -157,11 +392,7 @@ export default function NodeOutputList({
           </div>
 
           <div className="eiw-checklist-item-head__right">
-            <span className="eiw-checklist-docs-count">
-              {documents.length} giấy tờ
-            </span>
-
-            {canPropose && (
+            {canPropose && onProposeDocument && (
               <button
                 type="button"
                 className="eiw-docs__add eiw-checklist-add-doc-btn"

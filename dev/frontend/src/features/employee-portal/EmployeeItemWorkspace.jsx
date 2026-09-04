@@ -11,7 +11,6 @@ import NodeChain from './NodeChain'
 import NodeOutputList from './NodeOutputList'
 import PauseReasonModal from './PauseReasonModal'
 import PriorDocumentsDrawer from './PriorDocumentsDrawer'
-import SlotRequestModal from './SlotRequestModal'
 import RollbackPickerModal from './RollbackPickerModal'
 import { countdown, effectiveDeadline, formatMoney } from './nodeWorkFormat'
 
@@ -93,11 +92,6 @@ export default function EmployeeItemWorkspace({
   // Số thứ tự lượt đọc /shortage: chỉ lượt MỚI NHẤT được ghi vào state, nên lượt
   // cũ về muộn (hay về sau khi component đã rời) không đạp lên kết quả mới.
   const gateReqRef = useRef(0)
-  // Mục checklist đang xin thêm loại giấy. Nhân viên chỉ ĐỀ XUẤT —
-  // Giám đốc duyệt thì ô giấy mới được tạo.
-  const [proposeFor, setProposeFor] = useState(null)
-
-
   const nodes = item.nodes || []
   const activeNodeId = pickedNodeId || item.current_task_node_id
   const activeNode = useMemo(
@@ -200,16 +194,31 @@ export default function EmployeeItemWorkspace({
   // đi theo checklistResultId + templateId do NodeOutputList gửi lên — không
   // đoán theo chỉ số hàng, tờ đầu, hay tên tệp. Chỉ báo thành công SAU khi máy
   // chủ trả về, rồi để onRefresh nạp lại trạng thái thật thay cho state cục bộ.
-  const handleUploadDocument = useCallback(async ({ checklistResultId, templateId, file }) => {
-    if (!task?.id || !checklistResultId || !templateId || !file) return
+  const handleUploadDocument = useCallback(async ({
+    checklistResultId,
+    templateId,
+    file,
+    typeId,
+    files,
+  }) => {
+    if (!task?.id) return
     const body = new FormData()
-    body.append('template_id', templateId)
-    body.append('file', file)
+    let endpoint = ''
+    if (typeId && files?.length) {
+      files.forEach(selectedFile => body.append('files', selectedFile))
+      endpoint = `/api/employee-portal/tasks/${encodeURIComponent(task.id)}`
+        + `/checklist/${encodeURIComponent(checklistResultId)}`
+        + `/document-types/${encodeURIComponent(typeId)}/files`
+    } else if (checklistResultId && templateId && file) {
+      body.append('template_id', templateId)
+      body.append('file', file)
+      endpoint = `/api/employee-portal/tasks/${encodeURIComponent(task.id)}`
+        + `/checklist/${encodeURIComponent(checklistResultId)}/output-documents`
+    } else {
+      return
+    }
     try {
-      await apiFetch(
-        `/api/employee-portal/tasks/${encodeURIComponent(task.id)}/checklist/${encodeURIComponent(checklistResultId)}/output-documents`,
-        { method: 'POST', body },
-      )
+      await apiFetch(endpoint, { method: 'POST', body })
       // NỘP XONG THÌ ĐỌC LẠI CỔNG: tờ vừa thay có thể vừa gỡ đúng blocker
       // 'rejected_documents' đang treo cạnh nút. Effect /shortage chỉ chạy lại
       // khi task.id/status/pause đổi — nộp tệp không đổi mấy thứ đó — nên phải
@@ -288,9 +297,13 @@ export default function EmployeeItemWorkspace({
     bonus: Number(activeNode?.bonus_amount || 0),
     settled: Boolean(activeNode?.amount_is_settled),
   }
+  const visibleBlockers = (gate?.blockers || []).filter(blocker => (
+    blocker.kind !== 'missing_documents'
+    && (blocker.kind !== 'paused' || !paused)
+  ))
 
   return (
-    <main className="eiw">
+    <main className="eiw eiw-workspace">
       {/* ── TẦNG 1 · Hợp đồng và chuỗi bước ───────────────────────────── */}
       <header className="eiw-top">
         <button
@@ -405,37 +418,53 @@ export default function EmployeeItemWorkspace({
               onResume={handleResume}
             />
 
-            {/* Mỗi mục checklist hiện ĐÚNG MỘT lần. Mục có khai giấy tờ đầu ra
-                thì bày danh mục giấy (đúng bản vẽ); mục chỉ đòi minh chứng rời
-                thì bày ô nộp minh chứng. Bày cả hai là một mục hai tiêu đề, và
-                nhân viên tưởng có hai việc phải làm. */}
-            {checklist.map(muc => (
-              (muc.output_documents || []).length > 0 ? (
-                <NodeOutputList
-                  key={muc.id}
-                  checklistItem={muc}
-                  nodeStatus={task.status}
-                  canPropose={!isDirector}
-                  onProposeDocument={(muc) => setProposeFor(muc.id)}
-                  onOpenDocument={openDocument}
-                  onUploadDocument={handleUploadDocument}
-                />
-              ) : (
-                <ChecklistEvidenceItem
-                  key={muc.id}
-                  taskNodeId={task.id}
-                  item={muc}
-                  deadlineAt={effectiveDeadline(task)}
-                  nodeStatus={task.status}
-                  contractId={item.contract_id}
-                  onSubmitted={onRefresh}
-                />
-              )
-            ))}
+            <section className="eiw-checklist-section" aria-labelledby="eiw-checklist-title">
+              <div className="eiw-checklist-section__head">
+                <h2 id="eiw-checklist-title">
+                  <span aria-hidden="true" /> Danh sách checklist
+                  <em>· {checklist.length} mục</em>
+                </h2>
+              </div>
+              <div className="eiw-checklist-section__body">
+                {checklist.length === 0 && (
+                  <p className="eiw-checklist-section__empty">Node này chưa có checklist được giao.</p>
+                )}
+                {checklist.map((muc, index) => (
+                  Object.prototype.hasOwnProperty.call(muc || {}, 'document_types')
+                    || (muc.output_documents || []).length > 0 ? (
+                    <NodeOutputList
+                      key={muc.id}
+                      checklistItem={muc}
+                      taskNodeId={task.id}
+                      nodeStatus={task.status}
+                      canPropose={!isDirector}
+                      defaultOpen={index === 0}
+                      onOpenDocument={openDocument}
+                      onUploadDocument={(payload) => handleUploadDocument({
+                        checklistResultId: muc.id,
+                        ...payload,
+                      })}
+                      onChanged={onRefresh}
+                      addToast={addToast}
+                    />
+                  ) : (
+                    <ChecklistEvidenceItem
+                      key={muc.id}
+                      taskNodeId={task.id}
+                      item={muc}
+                      deadlineAt={effectiveDeadline(task)}
+                      nodeStatus={task.status}
+                      contractId={item.contract_id}
+                      onSubmitted={onRefresh}
+                    />
+                  )
+                ))}
+              </div>
+            </section>
 
             {/* ── Thông báo của riêng bước này ──
                 Đứng ngay trên nút, vì nó nói VÌ SAO nút chưa bấm được. */}
-            {(gate?.blockers?.length > 0 || paused || openError) && (
+            {(visibleBlockers.length > 0 || paused || openError) && (
               <div className="eiw-alerts" role="status">
                 {openError && (
                   <p className="eiw-alert is-blocked" role="alert">
@@ -452,9 +481,7 @@ export default function EmployeeItemWorkspace({
                     </span>
                   </p>
                 )}
-                {(gate?.blockers || [])
-                  .filter(item => item.kind !== 'paused' || !paused)
-                  .map(blocker => (
+                {visibleBlockers.map(blocker => (
                     <p className={`eiw-alert is-${blocker.kind}`} key={blocker.kind}>
                       <TriangleAlert size={16} />
                       <span>{blocker.message}</span>
@@ -463,31 +490,31 @@ export default function EmployeeItemWorkspace({
               </div>
             )}
 
+            {/* Hành động thuộc riêng cột nhiệm vụ. Nộp nghiệm thu đứng trước
+                nhờ hỗ trợ đúng theo thứ tự nghiệp vụ người dùng đã chốt. */}
+            <footer className="eiw-foot">
+              <NodeActionBar task={task} onChanged={onRefresh} gate={gate} />
+              {!isDirector && !DONE_STATUSES.has(task.status) && (
+                activeNode?.my_help_request_id ? (
+                  <button
+                    type="button"
+                    className="eiw-btn eiw-btn--ghost"
+                    onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
+                  >
+                    Rút lời nhờ
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="eiw-btn eiw-btn--ghost"
+                    onClick={() => onRequestHelp?.(task)}
+                  >
+                    Nhờ hỗ trợ
+                  </button>
+                )
+              )}
+            </footer>
           </div>
-
-          {/* ── TẦNG 4 · Chân trang ─────────────────────────────────── */}
-          <footer className="eiw-foot">
-            {!isDirector && !DONE_STATUSES.has(task.status) && (
-              activeNode?.my_help_request_id ? (
-                <button
-                  type="button"
-                  className="eiw-btn eiw-btn--ghost"
-                  onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
-                >
-                  Rút lời nhờ
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="eiw-btn eiw-btn--ghost"
-                  onClick={() => onRequestHelp?.(task)}
-                >
-                  Nhờ hỗ trợ
-                </button>
-              )
-            )}
-            <NodeActionBar task={task} onChanged={onRefresh} gate={gate} />
-          </footer>
         </div>
       )}
 
@@ -507,15 +534,6 @@ export default function EmployeeItemWorkspace({
         onClose={() => setPauseOpen(false)}
         onConfirm={handlePause}
       />
-
-      {proposeFor && (
-        <SlotRequestModal
-          checklistResultId={proposeFor}
-          addToast={addToast}
-          onClose={() => setProposeFor(null)}
-          onDone={() => { setProposeFor(null); onRefresh?.() }}
-        />
-      )}
 
       <RollbackPickerModal
         open={rollbackOpen}
@@ -541,4 +559,3 @@ export default function EmployeeItemWorkspace({
     </main>
   )
 }
-

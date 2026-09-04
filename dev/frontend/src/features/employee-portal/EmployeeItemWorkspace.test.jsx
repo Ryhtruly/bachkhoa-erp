@@ -8,6 +8,9 @@ vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), getAccessToken: () => null 
 vi.mock('../document-register/DocumentRegister', () => ({
   default: () => <div data-testid="so-giay-to" />,
 }))
+vi.mock('./CustomerSourceDocuments', () => ({
+  default: () => <div data-testid="kho-giay-khach" />,
+}))
 vi.mock('../legal-dossier/LegalDossierNodePanel', () => ({ default: () => null }))
 vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({ default: () => null }))
 vi.mock('../handover/HandoverPanel', () => ({ default: () => null }))
@@ -149,13 +152,27 @@ describe('Tầng 3 — hai cột', () => {
     expect(screen.getByText('Ảnh mờ không đọc được')).toBeInTheDocument()
   })
 
-  it('chỉ K01 mở kho giấy tờ khách gửi', () => {
+  it('vùng checklist có tiêu đề và số mục giống cấu trúc chi tiết node của sếp', () => {
     mount()
-    expect(screen.queryByRole('button', { name: /Kho giấy tờ khách gửi/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Danh sách checklist/ })).toHaveTextContent('1 mục')
+  })
 
-    cleanup()
-    mount({ tasks: [{ ...TASK, node_code: 'K01' }] })
+  it('mọi node đều có kho giấy thô để gán vào checklist hiện tại', () => {
+    mount()
     expect(screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })).toBeInTheDocument()
+  })
+
+  it('cột phải giữ đúng thứ tự kho giấy, checklist, nộp nghiệm thu và nhờ hỗ trợ', () => {
+    mount()
+    const right = document.querySelector('.eiw-col--right')
+    const raw = within(right).getByRole('button', { name: /Kho giấy tờ khách gửi/ })
+    const checklist = within(right).getByRole('heading', { name: 'Bộ hồ sơ kỹ thuật' })
+    const submit = within(right).getByRole('button', { name: /Hành động/ })
+    const help = within(right).getByRole('button', { name: 'Nhờ hỗ trợ' })
+
+    expect(raw.compareDocumentPosition(checklist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(checklist.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(submit.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })
 
@@ -218,6 +235,109 @@ describe('Thông báo của bước', () => {
       expect(screen.getByRole('button', { name: /Hành động/ }))
         .toHaveAttribute('data-gate-blockers', 'rejected_documents')
     })
+  })
+
+  it('không render cảnh báo rời thiếu giấy nhưng vẫn giữ blocker trong gate của nút nộp', async () => {
+    mount({}, {
+      blockers: [
+        { kind: 'missing_documents', message: 'Còn thiếu giấy tờ đầu ra ở 2 mục checklist.' },
+      ],
+      can_submit: false,
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
+    expect(screen.queryByText('Còn thiếu giấy tờ đầu ra ở 2 mục checklist.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hành động/ }))
+      .toHaveAttribute('data-gate-blockers', 'missing_documents')
+  })
+})
+
+describe('Mật độ và thứ tự mở checklist', () => {
+  const RUNTIME_TASK = {
+    ...TASK,
+    checklist: [
+      {
+        id: 'CR-FIRST',
+        name: 'Checklist đầu tiên',
+        document_types: [{
+          id: 'TYPE-FIRST', name: 'Giấy ở checklist đầu', source: 'CONG_TY',
+          status: 'draft', file_count: 0, files: [],
+        }],
+      },
+      {
+        id: 'CR-SECOND',
+        name: 'Checklist thứ hai',
+        document_types: [{
+          id: 'TYPE-SECOND', name: 'Giấy ở checklist sau', source: 'CO_QUAN',
+          status: 'draft', file_count: 0, files: [],
+        }],
+      },
+    ],
+  }
+
+  it('checklist đầu mở mặc định, các checklist sau đóng và footer vẫn ở trong cột phải', () => {
+    mount({ tasks: [RUNTIME_TASK] })
+
+    expect(screen.getByText('Giấy ở checklist đầu')).toBeInTheDocument()
+    expect(screen.queryByText('Giấy ở checklist sau')).not.toBeInTheDocument()
+    const right = document.querySelector('.eiw-col--right')
+    expect(within(right).getByRole('contentinfo')).toHaveClass('eiw-foot')
+  })
+
+  it('workspace dùng class fixed-viewport riêng để CSS trả về natural flow trên mobile', () => {
+    mount({ tasks: [RUNTIME_TASK] })
+    expect(document.querySelector('main.eiw-workspace')).toBeInTheDocument()
+  })
+})
+
+describe('Upload nhiều file cho loại giấy runtime', () => {
+  it('gửi nhiều trường files đúng endpoint type và refresh theo state máy chủ', async () => {
+    const runtimeTask = {
+      ...TASK,
+      checklist: [{
+        id: 'CR-RUNTIME',
+        name: 'Checklist runtime',
+        document_types: [{
+          id: 'TYPE-RUNTIME', name: 'Ảnh mốc ranh', source: 'CONG_TY',
+          status: 'rejected', rejection_reason: 'Ảnh mờ', file_count: 1,
+          files: [{ document_id: 'D-OLD', file_name: 'anh-cu.jpg' }],
+        }],
+      }],
+    }
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url, options) => {
+      if (String(url).includes('/document-types/TYPE-RUNTIME/files') && options?.method === 'POST') {
+        return Promise.resolve({ status: 'success', data: [] })
+      }
+      return Promise.resolve({ blockers: [] })
+    })
+    const onRefresh = vi.fn()
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace
+          item={ITEM}
+          tasks={[runtimeTask]}
+          onBack={vi.fn()}
+          onRefresh={onRefresh}
+        />
+      </ToastProvider>,
+    )
+
+    const files = [
+      new File(['1'], 'moc-1.jpg', { type: 'image/jpeg' }),
+      new File(['2'], 'moc-2.jpg', { type: 'image/jpeg' }),
+    ]
+    fireEvent.change(screen.getByLabelText('Tải file cho Ảnh mốc ranh'), {
+      target: { files },
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+      '/api/employee-portal/tasks/n2/checklist/CR-RUNTIME/document-types/TYPE-RUNTIME/files',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    ))
+    const upload = apiFetch.mock.calls.find(([url]) => String(url).includes('/document-types/TYPE-RUNTIME/files'))
+    expect(upload[1].body.getAll('files')).toEqual(files)
+    expect(onRefresh).toHaveBeenCalled()
   })
 })
 
