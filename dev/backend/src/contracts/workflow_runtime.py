@@ -17,7 +17,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
 
-from src.dossiers.checklist_document_types import materialize_configured_types
+from src.dossiers.checklist_document_types import (
+    materialize_configured_types,
+    node_type_review_summary,
+    submit_types_for_node,
+)
 
 
 ROLE_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -4259,18 +4263,10 @@ def submit_task_node_for_acceptance(
     #
     # Chỉ còn chặn những mục THỰC SỰ chưa làm: chưa điền, đang làm dở, hoặc đã bị
     # trả về mà chưa sửa.
-    unresolved = db.execute(
-        text("""
-            select checklist_name from public.task_node_checklist_results
-            where task_node_id = :task_node_id
-              and status not in ('pending_approval', 'late_pending_approval',
-                                 'approved', 'late_approved', 'not_applicable')
-            order by checklist_name
-        """),
-        {"task_node_id": task_node_id},
-    ).mappings().all()
+    submitted_types = submit_types_for_node(db, task_node_id, actor_id)
+    unresolved = submitted_types.get("unresolved_checklists", [])
     if unresolved:
-        names = ", ".join(row["checklist_name"] for row in unresolved)
+        names = ", ".join(unresolved)
         raise WorkflowValidationError(f"Còn nhiệm vụ chưa điền xong: {names}")
 
     # CÒN TỜ ĐẦU RA BỊ TRẢ LẠI THÌ CHẶN NỘP — không cho "nộp lại y nguyên bài đã
@@ -4637,6 +4633,7 @@ def flush_node_review_batch(
     *,
     task_node_id: str,
     actor_id: str | None = None,
+    runtime_batch: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Gom mọi phán quyết chưa chốt của một bước thành ĐÚNG MỘT thông báo.
 
@@ -4676,7 +4673,7 @@ def flush_node_review_batch(
         """),
         {"task_node_id": task_node_id},
     ).mappings().first()
-    if not node or node["last_reviewed_at"] is None:
+    if not node or (node["last_reviewed_at"] is None and not runtime_batch):
         # Không lấy được khoá, hoặc không còn gì tồn đọng. Cả hai đều là "thôi,
         # để lượt sau" — không phải lỗi.
         return None
@@ -4706,6 +4703,8 @@ def flush_node_review_batch(
         """),
         {"task_node_id": task_node_id, "last_flush_at": last_flush_at},
     ).mappings().all()]
+    if runtime_batch:
+        batch.extend(dict(row) for row in runtime_batch)
     if not batch:
         # Cờ tồn đọng còn nhưng không có tờ nào sau mốc — dọn cờ để lượt sau khỏi
         # quét lại vô ích.
@@ -4726,16 +4725,26 @@ def flush_node_review_batch(
 
     # Payload dựng ở MÁY CHỦ, đọc từ DB. Nhận từ client thì nó vừa giả mạo được,
     # vừa sai khi phiên duyệt bị đứt giữa chừng.
+    runtime_summary = (
+        node_type_review_summary(db, task_node_id)
+        if runtime_batch
+        else {
+            "total": 0,
+            "approved": 0,
+            "rejected": 0,
+            "pending_review": 0,
+        }
+    )
     payload = {
         "nodeId": task_node_id,
         "nodeCode": node["node_code"],
         "contractCode": node["contract_id"],
         "overallStatus": overall_status,
         "summary": {
-            "total": overall["total"],
-            "approvedCount": overall["approved_count"],
-            "rejectedCount": overall["rejected_count"],
-            "pendingCount": overall["pending_count"],
+            "total": overall["total"] + runtime_summary["total"],
+            "approvedCount": overall["approved_count"] + runtime_summary["approved"],
+            "rejectedCount": overall["rejected_count"] + runtime_summary["rejected"],
+            "pendingCount": overall["pending_count"] + runtime_summary["pending_review"],
             "reviewedInBatch": len(batch),
         },
         "rejectedItems": [
@@ -4789,20 +4798,27 @@ def flush_node_review_batch(
             {"task_node_id": task_node_id},
         ).scalar()
         if pending_acceptance:
-            review_task_node_acceptance(
-                db,
-                acceptance_id=pending_acceptance,
-                decision="rework_required",
-                outcome=None,
-                review_note=(
+            review_kwargs = {
+                "acceptance_id": pending_acceptance,
+                "decision": "rework_required",
+                "outcome": None,
+                "review_note": (
                     f"Cần sửa {len(rejected)} tờ giấy: "
                     + "; ".join(
                         f"{row['document_name'] or row['checklist_name']} — {row['rejection_reason']}"
                         for row in rejected
                     )
                 ),
-                actor_id=actor_id,
-            )
+                "actor_id": actor_id,
+            }
+            runtime_notes = {
+                row["checklist_result_id"]: row["rejection_reason"]
+                for row in (runtime_batch or [])
+                if row["review_status"] == "rejected"
+            }
+            if runtime_notes:
+                review_kwargs["checklist_notes"] = runtime_notes
+            review_task_node_acceptance(db, **review_kwargs)
             node_status_changed = True
 
     return {
@@ -4943,6 +4959,16 @@ def review_task_node_acceptance(
             names = ", ".join(row["checklist_name"] for row in unresolved)
             raise WorkflowValidationError(
                 f"Không thể nghiệm thu Node vì còn checklist chưa được nộp đủ: {names}"
+            )
+
+        runtime_types = node_type_review_summary(db, task_node_id)
+        if not runtime_types["is_complete"]:
+            raise WorkflowValidationError(
+                "Không thể nghiệm thu Node vì các loại giấy chưa đạt 100% "
+                f"({runtime_types['approved']}/{runtime_types['total']} đã duyệt; "
+                f"{runtime_types['pending_review']} chờ duyệt; "
+                f"{runtime_types['rejected']} bị trả; "
+                f"{runtime_types['missing_files']} chưa có tệp)."
             )
 
         # Cổng GIẤY TỜ, tách khỏi cổng checklist ngay trên. Mục checklist đủ

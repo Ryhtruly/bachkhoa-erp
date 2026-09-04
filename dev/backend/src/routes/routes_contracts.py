@@ -24,6 +24,7 @@ from src.contracts import (
     query_contract_read_model
 )
 from src.finance.repository import priority_multiplier
+from src.dossiers.checklist_document_types import review_type
 from src.contracts.workflow_runtime import (
     NODES_SUBMITTED_TO_AGENCY,
     TaskClaimConflict,
@@ -190,6 +191,11 @@ class WorkflowLayoutPayload(BaseModel):
 class ChecklistReviewPayload(BaseModel):
     decision: str
     note: str | None = None
+
+
+class DocumentTypeReviewPayload(BaseModel):
+    decision: str
+    reason: str | None = None
 
 
 class NodeAcceptanceReviewPayload(BaseModel):
@@ -1656,6 +1662,44 @@ class DocumentReviewPayload(BaseModel):
     document_id: str
     decision: str
     reason: Optional[str] = None
+
+
+@router.post("/workflow/checklist/{checklist_result_id}/document-types/{type_id}/review")
+def review_checklist_document_type(
+    checklist_result_id: str,
+    type_id: str,
+    payload: DocumentTypeReviewPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    """Review one runtime document type and publish only after its transaction commits."""
+    try:
+        result = review_type(
+            db,
+            checklist_result_id=checklist_result_id,
+            type_id=type_id,
+            decision=payload.decision,
+            reason=payload.reason,
+            actor_id=user.id,
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except WorkflowValidationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    invalidate_cache("bachkhoa:notifications:summary:*")
+    invalidate_cache("task_pool:*")
+    publish_timeline_change("document_type_reviewed", entity_id=type_id)
+    if result.get("node_status") == "rework_required":
+        publish_timeline_change("node_review_completed", entity_id=result.get("task_node_id"))
+    return result
 
 
 @router.post("/workflow/checklist-results/{checklist_result_id}/document-review")

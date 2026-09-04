@@ -1165,6 +1165,9 @@ def submit_task(
     except WorkflowValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except HTTPException:
+        db.rollback()
+        raise
 
 
 class HelpRequestIn(BaseModel):

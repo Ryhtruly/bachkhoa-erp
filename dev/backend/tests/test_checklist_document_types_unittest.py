@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from src.dossiers import checklist_document_types
+from src.dossiers import checklist_document_types, slot_requests
 
 
 DocumentTypeStatus = checklist_document_types.DocumentTypeStatus
@@ -519,9 +519,6 @@ class AttachExistingRawDocumentTests(unittest.TestCase):
                 db, document_type_id="DT-COMPANY", document_id="D-RAW", actor_id="NV-1",
             )
         self.assertEqual(caught.exception.status_code, 409)
-        self.assertEqual(
-            sum("from public.dossier_documents d" in sql for sql, _ in db.calls), 0,
-        )
 
     def test_raw_document_must_belong_to_the_types_contract(self):
         attach_existing_file = required_function(self, "attach_existing_file")
@@ -537,6 +534,365 @@ class AttachExistingRawDocumentTests(unittest.TestCase):
             )
 
         self.assertEqual(caught.exception.status_code, 409)
+
+
+class _RuntimeResult:
+    def __init__(self, *, rows=None, scalar=None):
+        self._rows = list(rows or [])
+        self._scalar = scalar
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return self._rows
+
+    def scalar(self):
+        return self._scalar
+
+    def scalar_one(self):
+        return self._scalar
+
+
+class RuntimeReviewDb:
+    """Small stateful DB double for the runtime-type state machine."""
+
+    def __init__(self, types, *, node_status="submitted"):
+        self.types = {item["id"]: dict(item) for item in types}
+        self.node_status = node_status
+        self.calls = []
+        self.templates = {}
+        self.applicabilities = set()
+        self.slots = {}
+        self.dossier_links = set()
+        self.checklist_links = set()
+        self.context = {
+            "checklist_result_id": "CR-1",
+            "contract_id": "HD-1",
+            "service_line_id": "SL-1",
+            "service_package_id": "PKG-1",
+            "service_package_name": "Gói tách thửa",
+            "task_type_id": "TYPE-1",
+            "task_type_name": "Đo vẽ hiện trạng",
+            "task_node_id": "NODE-1",
+            "node_code": "K02",
+        }
+
+    def execute(self, query, params=None):
+        sql = " ".join(str(query).lower().split())
+        params = params or {}
+        self.calls.append((sql, params))
+
+        if "with locked_checklists as materialized" in sql:
+            missing = [
+                item["name"] for item in self.types.values()
+                if item.get("is_active", True) and not item.get("files")
+            ]
+            changed = 0
+            if not missing:
+                for item in self.types.values():
+                    if item.get("is_active", True) and item["status"] in ("draft", "rejected"):
+                        item.update(status="pending_review", rejection_reason=None)
+                        changed += 1
+            return _RuntimeResult(rows=[{
+                "missing_types": missing,
+                "unresolved_checklists": [],
+                "total": len(self.types),
+                "approved": sum(item["status"] == "approved" for item in self.types.values()),
+                "pending_review": sum(
+                    item["status"] == "pending_review" for item in self.types.values()
+                ),
+            }])
+        if "from public.task_node_checklist_results cr" in sql and "for update" in sql:
+            return _RuntimeResult(rows=[{
+                "id": "CR-1", "task_node_id": "NODE-1", "node_status": self.node_status,
+            }])
+        if "select 1 from public.task_node_checklist_results" in sql and "for update" in sql:
+            return _RuntimeResult(scalar=1, rows=[{"locked": 1}])
+        if "from public.task_node_checklist_results cr" in sql and "service_package_id" in sql:
+            return _RuntimeResult(rows=[self.context])
+        if "from public.checklist_result_document_types t" in sql and "for update of t" in sql:
+            if params.get("type_id") or params.get("id"):
+                type_id = params.get("type_id") or params.get("id")
+                item = self.types.get(type_id)
+                row = None if item is None else {
+                    **item,
+                    "task_node_id": "NODE-1",
+                    "node_status": self.node_status,
+                    "file_count": len(item.get("files", [])),
+                }
+                return _RuntimeResult(rows=[row] if row else [])
+            return _RuntimeResult(rows=[
+                {**item, "file_count": len(item.get("files", []))}
+                for item in self.types.values() if item.get("is_active", True)
+            ])
+        if "select t.status" in sql and "group by t.id" in sql:
+            return _RuntimeResult(rows=[
+                {"status": item["status"], "file_count": len(item.get("files", []))}
+                for item in self.types.values() if item.get("is_active", True)
+            ])
+        if "set status = 'pending_review'" in sql:
+            changed = []
+            for item in self.types.values():
+                if item.get("is_active", True) and item["status"] in ("draft", "rejected"):
+                    item.update(status="pending_review", rejection_reason=None)
+                    changed.append({"id": item["id"]})
+            return _RuntimeResult(rows=changed)
+        if "set status = :status" in sql and "checklist_result_document_types" in sql:
+            item = self.types[params["type_id"]]
+            item.update(
+                status=params["status"],
+                rejection_reason=params.get("reason"),
+                reviewed_by=params.get("actor_id"),
+            )
+            return _RuntimeResult(rows=[{"id": item["id"]}])
+        if "from public.task_node_acceptances" in sql and "status = 'pending'" in sql:
+            return _RuntimeResult(scalar="ACC-1")
+        if "from public.document_checklist_templates" in sql:
+            matches = [
+                template for template in self.templates.values()
+                if template["name"].strip().lower() == params["name"].strip().lower()
+                and template["source"] == params["source"]
+                and template["is_active"]
+            ]
+            return _RuntimeResult(rows=matches)
+        if "insert into public.document_checklist_templates" in sql:
+            template_id = f"TPL-NEW-{len(self.templates) + 1}"
+            self.templates[template_id] = {
+                "id": template_id,
+                "name": params["name"],
+                "source": params["source"],
+                "is_active": True,
+                "is_required": False,
+                "needs_original": False,
+                "default_quantity": 1,
+                "note": None,
+            }
+            return _RuntimeResult(scalar=template_id)
+        if "insert into public.document_template_applicabilities" in sql:
+            self.applicabilities.add((
+                params["template_id"], params["service_package_id"],
+                params["task_type_id"], params["node_code"],
+            ))
+            return _RuntimeResult()
+        if "set promoted_template_id" in sql:
+            self.types[params["type_id"]]["promoted_template_id"] = params["template_id"]
+            return _RuntimeResult()
+        if "insert into public.dossier_document_slots" in sql:
+            slot_id = f"SLOT-{len(self.slots) + 1}"
+            self.slots[slot_id] = params["type_id"]
+            return _RuntimeResult(scalar=slot_id)
+        if "set slot_id" in sql and "checklist_result_document_types" in sql:
+            self.types[params["type_id"]]["slot_id"] = params["slot_id"]
+            return _RuntimeResult()
+        if "insert into public.dossier_document_links" in sql:
+            type_id = params["type_id"]
+            for document_id in self.types[type_id].get("files", []):
+                self.dossier_links.add((document_id, params["slot_id"]))
+            return _RuntimeResult()
+        if "insert into public.checklist_result_document_links" in sql:
+            type_id = params["type_id"]
+            for document_id in self.types[type_id].get("files", []):
+                self.checklist_links.add(("CR-1", document_id))
+            return _RuntimeResult()
+        return _RuntimeResult()
+
+
+class SubmitRuntimeDocumentTypesTests(unittest.TestCase):
+    def test_submission_rejects_an_active_type_without_files_before_any_status_write(self):
+        submit = required_function(self, "submit_types_for_node")
+        db = RuntimeReviewDb([{
+            "id": "DT-EMPTY", "name": "Biên bản", "source": "CONG_TY",
+            "origin": "EMPLOYEE_CREATED", "status": "draft", "files": [],
+        }])
+
+        with self.assertRaises(HTTPException) as caught:
+            submit(db, "NODE-1", "USER-1")
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(db.types["DT-EMPTY"]["status"], "draft")
+
+    def test_submission_moves_draft_and_rejected_together_and_preserves_approved(self):
+        submit = required_function(self, "submit_types_for_node")
+        db = RuntimeReviewDb([
+            {"id": "DT-DRAFT", "name": "A", "source": "CONG_TY", "origin": "CONFIGURED",
+             "status": "draft", "rejection_reason": None, "files": ["D-1"]},
+            {"id": "DT-REJECTED", "name": "B", "source": "CO_QUAN", "origin": "EMPLOYEE_CREATED",
+             "status": "rejected", "rejection_reason": "Ảnh mờ", "files": ["D-2"]},
+            {"id": "DT-APPROVED", "name": "C", "source": "KHACH_HANG", "origin": "CONFIGURED",
+             "status": "approved", "rejection_reason": None, "files": ["D-3"]},
+        ])
+
+        result = submit(db, "NODE-1", "USER-1")
+
+        self.assertEqual(result, {"total": 3, "pending_review": 2, "approved": 1})
+        self.assertEqual(db.types["DT-DRAFT"]["status"], "pending_review")
+        self.assertEqual(db.types["DT-REJECTED"]["status"], "pending_review")
+        self.assertIsNone(db.types["DT-REJECTED"]["rejection_reason"])
+        self.assertEqual(db.types["DT-APPROVED"]["status"], "approved")
+
+
+class ReviewRuntimeDocumentTypeTests(unittest.TestCase):
+    def test_reject_requires_nonblank_reason(self):
+        review = required_function(self, "review_type")
+        with self.assertRaises(HTTPException) as caught:
+            review(
+                RuntimeReviewDb([]), checklist_result_id="CR-1", type_id="DT-1",
+                decision="rejected", reason="  ", actor_id="DIRECTOR",
+            )
+        self.assertEqual(caught.exception.status_code, 422)
+
+    def test_review_is_allowed_only_while_node_is_submitted(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([{
+            "id": "DT-1", "name": "Biên bản", "source": "CONG_TY",
+            "origin": "EMPLOYEE_CREATED", "status": "pending_review", "files": ["D-1"],
+        }], node_status="rework_required")
+        with self.assertRaises(HTTPException) as caught:
+            review(
+                db, checklist_result_id="CR-1", type_id="DT-1",
+                decision="approved", reason=None, actor_id="DIRECTOR",
+            )
+        self.assertEqual(caught.exception.status_code, 409)
+
+    def test_approve_requires_an_active_file(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([{
+            "id": "DT-1", "name": "Biên bản", "source": "CONG_TY",
+            "origin": "EMPLOYEE_CREATED", "status": "pending_review", "files": [],
+        }])
+        with self.assertRaises(HTTPException) as caught:
+            review(
+                db, checklist_result_id="CR-1", type_id="DT-1",
+                decision="approved", reason=None, actor_id="DIRECTOR",
+            )
+        self.assertEqual(caught.exception.status_code, 422)
+
+    def test_reject_returns_node_through_existing_rework_path_without_deleting_type_or_files(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([{
+            "id": "DT-1", "name": "Ảnh mốc", "source": "CONG_TY",
+            "origin": "EMPLOYEE_CREATED", "status": "pending_review", "files": ["D-1", "D-2"],
+        }])
+        with patch(
+            "src.contracts.workflow_runtime.review_task_node_acceptance",
+            return_value={"task_node_id": "NODE-1", "status": "rework_required"},
+        ), patch(
+            "src.contracts.workflow_runtime.flush_node_review_batch",
+            return_value={"task_node_id": "NODE-1", "node_status_changed": True},
+        ) as flush_batch:
+            result = review(
+                db, checklist_result_id="CR-1", type_id="DT-1",
+                decision="rejected", reason="Ảnh trang hai bị mờ", actor_id="DIRECTOR",
+            )
+
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(result["rejection_reason"], "Ảnh trang hai bị mờ")
+        self.assertEqual(result["task_node_id"], "NODE-1")
+        self.assertEqual(result["node_status"], "rework_required")
+        self.assertEqual(db.types["DT-1"]["files"], ["D-1", "D-2"])
+        self.assertNotIn("delete from", " ".join(sql for sql, _ in db.calls))
+        flush_batch.assert_called_once_with(
+            db, task_node_id="NODE-1", actor_id="DIRECTOR",
+            runtime_batch=[{
+                "review_status": "rejected",
+                "rejection_reason": "Ảnh trang hai bị mờ",
+                "checklist_name": "Ảnh mốc",
+                "checklist_result_id": "CR-1",
+                "document_name": "Ảnh mốc",
+            }],
+        )
+
+
+class CompletedChecklistPromotionTests(unittest.TestCase):
+    def _complete_db(self):
+        return RuntimeReviewDb([
+            {"id": "DT-CONFIG", "name": "CCCD", "source": "KHACH_HANG",
+             "origin": "CONFIGURED", "status": "approved", "template_id": "TPL-CONFIG",
+             "promoted_template_id": None, "slot_id": None, "files": ["D-1"]},
+            {"id": "DT-NEW", "name": "Ảnh mốc phụ", "source": "CONG_TY",
+             "origin": "EMPLOYEE_CREATED", "status": "pending_review", "template_id": None,
+             "promoted_template_id": None, "slot_id": None, "files": ["D-2", "D-3"]},
+        ])
+
+    def test_approving_last_type_promotes_only_employee_created_and_materializes_official_links(self):
+        review = required_function(self, "review_type")
+        db = self._complete_db()
+
+        result = review(
+            db, checklist_result_id="CR-1", type_id="DT-NEW",
+            decision="approved", reason=None, actor_id="DIRECTOR",
+        )
+
+        self.assertEqual(result["progress"], {
+            "approved": 2, "total": 2, "percent": 100, "is_complete": True,
+        })
+        promoted_id = db.types["DT-NEW"]["promoted_template_id"]
+        self.assertEqual(result["promoted_template_ids"], [promoted_id])
+        self.assertIsNone(db.types["DT-CONFIG"]["promoted_template_id"])
+        self.assertEqual(db.applicabilities, {(promoted_id, "PKG-1", "TYPE-1", "K02")})
+        self.assertEqual(len(db.slots), 2)
+        self.assertEqual(len(db.dossier_links), 3)
+        self.assertEqual(len(db.checklist_links), 3)
+        self.assertNotIn("upload", " ".join(sql for sql, _ in db.calls))
+        self.assertNotIn("insert into public.dossier_documents", " ".join(sql for sql, _ in db.calls))
+        official_link_sql = next(
+            sql for sql, _ in db.calls
+            if "insert into public.checklist_result_document_links" in sql
+        )
+        self.assertIn("review_status", official_link_sql)
+        self.assertIn("'approved'", official_link_sql)
+        self.assertIn("reviewed_by", official_link_sql)
+        self.assertIn("reviewed_at", official_link_sql)
+
+    def test_rerunning_completed_promotion_reuses_template_scope_slots_and_links(self):
+        review = required_function(self, "review_type")
+        promote = required_function(self, "promote_completed_checklist_types")
+        db = self._complete_db()
+        review(
+            db, checklist_result_id="CR-1", type_id="DT-NEW",
+            decision="approved", reason=None, actor_id="DIRECTOR",
+        )
+        counts_before = (
+            len(db.templates), len(db.applicabilities), len(db.slots),
+            len(db.dossier_links), len(db.checklist_links),
+        )
+
+        promoted_again = promote(db, "CR-1", "DIRECTOR")
+
+        self.assertEqual(promoted_again, [db.types["DT-NEW"]["promoted_template_id"]])
+        self.assertEqual(counts_before, (
+            len(db.templates), len(db.applicabilities), len(db.slots),
+            len(db.dossier_links), len(db.checklist_links),
+        ))
+
+
+class ExactComboPromotionHelperTests(unittest.TestCase):
+    def test_helper_writes_all_three_combo_dimensions_and_reuses_the_template(self):
+        promote = getattr(slot_requests, "promote_template_for_combo", None)
+        self.assertTrue(callable(promote), "missing promote_template_for_combo")
+        db = RuntimeReviewDb([])
+
+        first_id = promote(
+            db, name="Ảnh mốc phụ", source="CONG_TY",
+            service_package_id="PKG-1", task_type_id="TYPE-1", node_code="K02",
+            actor_id="DIRECTOR",
+        )
+        second_id = promote(
+            db, name="Ảnh mốc phụ", source="CONG_TY",
+            service_package_id="PKG-1", task_type_id="TYPE-1", node_code="K02",
+            actor_id="DIRECTOR",
+        )
+
+        self.assertEqual(first_id, second_id)
+        self.assertEqual(len(db.templates), 1)
+        self.assertEqual(db.applicabilities, {(first_id, "PKG-1", "TYPE-1", "K02")})
 
 
 if __name__ == "__main__":

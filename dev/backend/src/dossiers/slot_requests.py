@@ -431,6 +431,125 @@ def _compare_template_configuration(
     return differences
 
 
+def _resolve_or_create_template(
+    db: Session,
+    *,
+    name: str,
+    source: str,
+    quantity: int,
+    required: bool,
+    needs_original: bool,
+    reject_conflicting_same_name: bool,
+) -> str:
+    """Reuse a compatible active template or create one without committing."""
+    same_name_templates = db.execute(
+        text("""
+            select id, name, source, is_active, is_required, needs_original,
+                   default_quantity, note
+            from public.document_checklist_templates
+            where lower(trim(name)) = lower(trim(:name))
+            order by is_active desc
+        """),
+        {"name": name, "source": source},
+    ).mappings().all()
+
+    matching_templates, mismatched_templates = [], []
+    for template in same_name_templates:
+        differences = _compare_template_configuration(
+            template,
+            source=source,
+            quantity=quantity,
+            required=required,
+            needs_original=needs_original,
+        )
+        (matching_templates if not differences else mismatched_templates).append(
+            (template, differences)
+        )
+
+    if matching_templates:
+        return matching_templates[0][0]["id"]
+    if mismatched_templates and reject_conflicting_same_name:
+        _, differences = mismatched_templates[0]
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Đã có mẫu tên “{name}” nhưng cấu hình khác: "
+                + "; ".join(differences)
+                + ". Chọn mẫu sẵn có hoặc đặt tên chính thức khác."
+            ),
+        )
+
+    return db.execute(
+        text("""
+            insert into public.document_checklist_templates
+                (id, task_type_id, name, source, is_required, needs_original,
+                 default_quantity, sort_order, is_active)
+            values (gen_random_uuid()::text, null, :name, :source, :required,
+                    :needs_original, :quantity, 900, true)
+            returning id
+        """),
+        {
+            "name": name,
+            "source": source,
+            "required": required,
+            "needs_original": needs_original,
+            "quantity": quantity,
+        },
+    ).scalar()
+
+
+def promote_template_for_combo(
+    db: Session,
+    *,
+    name: str,
+    source: str,
+    service_package_id: str,
+    task_type_id: str,
+    node_code: str,
+    actor_id: str,
+) -> str:
+    """Create/reuse an employee type and attach its exact COMBO applicability."""
+    normalized_name = " ".join(str(name or "").split())
+    normalized_node = str(node_code or "").strip()
+    if not normalized_name:
+        raise HTTPException(status_code=422, detail="Tên loại giấy không được để trống.")
+    if source not in SOURCES:
+        raise HTTPException(status_code=422, detail="Nguồn tài liệu không hợp lệ.")
+    if not service_package_id or not task_type_id or not normalized_node:
+        raise HTTPException(
+            status_code=409,
+            detail="Không thể học mẫu khi thiếu Gói dịch vụ, Dạng hạng mục hoặc Mã bước.",
+        )
+
+    template_id = _resolve_or_create_template(
+        db,
+        name=normalized_name,
+        source=source,
+        quantity=1,
+        required=False,
+        needs_original=False,
+        reject_conflicting_same_name=False,
+    )
+    db.execute(
+        text("""
+            insert into public.document_template_applicabilities
+                (template_id, applicability_type, service_package_id, task_type_id,
+                 node_code, is_default, created_by)
+            values (:template_id, 'COMBO', :service_package_id, :task_type_id,
+                    :node_code, true, :actor_id)
+            on conflict do nothing
+        """),
+        {
+            "template_id": template_id,
+            "service_package_id": service_package_id,
+            "task_type_id": task_type_id,
+            "node_code": normalized_node,
+            "actor_id": actor_id,
+        },
+    )
+    return template_id
+
+
 def _promote_template_by_scope(
     db: Session,
     *,
@@ -491,53 +610,15 @@ def _promote_template_by_scope(
     # Chỉ dùng lại khi khớp: tên đã chuẩn hoá + nguồn + đang hoạt động. Khác
     # nguồn thì TỪ CHỐI tường minh để Giám đốc tự quyết, không tự nối và cũng
     # tuyệt đối không sửa mẫu cũ cho khớp.
-    same_name_templates = db.execute(
-        text("""
-            select id, name, source, is_active, is_required, needs_original,
-                   default_quantity, note
-            from public.document_checklist_templates
-            where lower(trim(name)) = lower(trim(:official_name))
-            order by is_active desc
-        """),
-        {"official_name": official_name},
-    ).mappings().all()
-
-    matching_templates, mismatched_templates = [], []
-    for template in same_name_templates:
-        differences = _compare_template_configuration(
-            template, source=source, quantity=quantity,
-            required=required, needs_original=needs_original,
-        )
-        (matching_templates if not differences else mismatched_templates).append((template, differences))
-
-    if matching_templates:
-        template_id = matching_templates[0][0]["id"]
-    elif mismatched_templates:
-        template, differences = mismatched_templates[0]
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Đã có mẫu tên “{official_name}” nhưng cấu hình khác: "
-                + "; ".join(differences)
-                + ". Chọn mẫu sẵn có hoặc đặt tên chính thức khác."
-            ),
-        )
-    else:
-        template_id = None
-
-    if not template_id:
-        template_id = db.execute(
-            text("""
-                insert into public.document_checklist_templates
-                    (id, task_type_id, name, source, is_required, needs_original,
-                     default_quantity, sort_order, is_active)
-                values (gen_random_uuid()::text, null, :official_name, :source, :required,
-                        :needs_original, :quantity, 900, true)
-                returning id
-            """),
-            {"official_name": official_name, "source": source, "required": required,
-             "needs_original": needs_original, "quantity": quantity},
-        ).scalar()
+    template_id = _resolve_or_create_template(
+        db,
+        name=official_name,
+        source=source,
+        quantity=quantity,
+        required=required,
+        needs_original=needs_original,
+        reject_conflicting_same_name=True,
+    )
 
     db.execute(
         text("""
