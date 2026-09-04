@@ -46,8 +46,9 @@ import {
   XCircle,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
+import FilePreviewModal from '../ui/FilePreviewModal';
 import CustomSelect from '../ui/CustomSelect';
-import { apiFetch, peekApiCache } from '../../lib/api';
+import { apiFetch, getAccessToken, peekApiCache } from '../../lib/api';
 import AvatarImage from '../AvatarImage';
 import { registerUnsavedChangesGuard } from '../../lib/unsavedChangesGuard';
 import { getGraphFingerprint } from './workflowDirty';
@@ -795,6 +796,8 @@ const DOC_TEMPLATES_URL = '/api/document-register/templates';
 /** Hai bước nộp cơ quan có khối riêng phía Giám đốc. K06 vẫn dùng khối cũ. */
 const AGENCY_NODE_CODES = new Set(['K05a', 'K05b']);
 
+const hasRuntimeDocumentTypes = item => Object.hasOwn(item?.runtime || {}, 'document_types');
+
 const registerUrlOf = (contractId, serviceLineId) => (
   `/api/document-register/register?contract_id=${encodeURIComponent(contractId)}`
   + `&service_line_id=${encodeURIComponent(serviceLineId)}`
@@ -913,6 +916,44 @@ export default function ContractWorkflowDesigner({
       await openPrivateObject(file.url);
     } catch (error) {
       addToast?.(error.message || 'Không thể mở file minh chứng', 'error');
+    }
+  }, [addToast]);
+  const reviewPreviewUrlRef = useRef('');
+  const [reviewDocumentPreview, setReviewDocumentPreview] = useState(null);
+  const closeReviewDocumentPreview = useCallback(() => {
+    if (reviewPreviewUrlRef.current) URL.revokeObjectURL(reviewPreviewUrlRef.current);
+    reviewPreviewUrlRef.current = '';
+    setReviewDocumentPreview(null);
+  }, []);
+  useEffect(() => () => {
+    if (reviewPreviewUrlRef.current) URL.revokeObjectURL(reviewPreviewUrlRef.current);
+  }, []);
+  const openChecklistDocument = useCallback(async (taskNodeId, file) => {
+    if (!taskNodeId || !file?.document_id) return;
+    try {
+      const token = getAccessToken();
+      const response = await fetch(
+        `/api/employee-portal/tasks/${encodeURIComponent(taskNodeId)}`
+          + `/documents/${encodeURIComponent(file.document_id)}/file`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.detail || `Không thể tải file (HTTP ${response.status})`);
+      }
+      const blob = await response.blob();
+      if (blob.size === 0) throw new Error('File không có nội dung.');
+      if (reviewPreviewUrlRef.current) URL.revokeObjectURL(reviewPreviewUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      reviewPreviewUrlRef.current = url;
+      setReviewDocumentPreview({
+        fileName: file.file_name || 'Tài liệu',
+        mimeType: file.content_type || blob.type || '',
+        url,
+        blob,
+      });
+    } catch (error) {
+      addToast?.(error.message || 'Không thể mở file để duyệt', 'error');
     }
   }, [addToast]);
   const workflow = serviceLine?.workflow;
@@ -1740,6 +1781,39 @@ export default function ContractWorkflowDesigner({
       addToast?.(error.message || 'Không thể duyệt minh chứng', 'error');
     } finally {
       setReviewingChecklistId('');
+    }
+  }, [addToast, onPersisted]);
+
+  const [reviewingDocumentTypeId, setReviewingDocumentTypeId] = useState('');
+  const reviewDocumentType = useCallback(async (checklistResultId, typeId, decision, reason = null) => {
+    const normalizedReason = String(reason || '').trim();
+    if (decision === 'rejected' && !normalizedReason) {
+      addToast?.('Nhập lý do không đạt trước khi trả loại giấy', 'error');
+      return;
+    }
+    setReviewingDocumentTypeId(typeId);
+    try {
+      await apiFetch(
+        `/api/contracts/workflow/checklist/${encodeURIComponent(checklistResultId)}`
+          + `/document-types/${encodeURIComponent(typeId)}/review`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            decision,
+            reason: decision === 'rejected' ? normalizedReason : null,
+          }),
+        },
+      );
+      addToast?.(
+        decision === 'approved' ? 'Đã đánh dấu loại giấy đạt' : 'Đã trả loại giấy kèm lý do',
+        'success',
+      );
+      await onPersisted?.();
+    } catch (error) {
+      addToast?.(error.message || 'Không thể duyệt loại giấy', 'error');
+    } finally {
+      setReviewingDocumentTypeId('');
     }
   }, [addToast, onPersisted]);
 
@@ -2913,6 +2987,27 @@ title="Lưu quy trình hiện tại thành mẫu"
                   <span>Chưa có checklist. Thêm mục để định nghĩa điều kiện Pass.</span>
                 </div>
               ) : selectedNode.data.checklist.map((item, index) => (
+                hasRuntimeDocumentTypes(item) ? (
+                  <NodeChecklistCard
+                    key={item.key || item.runtime?.id || index}
+                    item={item}
+                    index={index}
+                    docTemplateById={docTemplateById}
+                    workItems={workItems}
+                    roleCode={item.approver_role}
+                    canManageCompensation={canManageCompensation}
+                    readOnly
+                    canReviewDocuments={canReviewChecklist}
+                    reviewingTypeId={reviewingDocumentTypeId}
+                    onOpenDocument={file => openChecklistDocument(selectedNode.data.taskNodeId, file)}
+                    onApproveType={(checklistResultId, typeId) => {
+                      reviewDocumentType(checklistResultId, typeId, 'approved');
+                    }}
+                    onRejectType={(checklistResultId, typeId, reason) => {
+                      reviewDocumentType(checklistResultId, typeId, 'rejected', reason);
+                    }}
+                  />
+                ) : (
                 <div
                   className={`workflow-checklist-card${dragChecklistIndex === index ? ' is-dragging' : ''}`}
                   key={item.key || index}
@@ -3178,7 +3273,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                   )}
 
                   {/* Duyệt minh chứng (runtime) — footer trạng thái thực thi */}
-                  {['pending_approval', 'late_pending_approval'].includes(item.runtime?.status) && canReviewChecklist && (
+                  {['pending_approval', 'late_pending_approval'].includes(item.runtime?.status) && canReviewChecklist && !hasRuntimeDocumentTypes(item) && (
                     <div className="workflow-evidence-review">
                       <span><CircleDashed size={13} /> {item.runtime.status === 'late_pending_approval' ? 'Nộp trễ, chờ duyệt' : 'Đã nộp, chờ duyệt'}</span>
                       {item.runtime.is_overdue && <small>Lý do trễ: {item.runtime.late_reason || 'Chưa ghi nhận'}</small>}
@@ -3211,6 +3306,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                     <span className="workflow-evidence-decision workflow-evidence-decision--failed"><XCircle size={13} /> Đã từ chối — chờ nhân viên nộp lại</span>
                   )}
                 </div>
+                )
               ))}
               {!checklistEditable && selectedNode.data.taskNodeId && (
                 <div className="workflow-note-box">
@@ -3494,7 +3590,12 @@ title="Lưu quy trình hiện tại thành mẫu"
                               canManageCompensation={canManageCompensation}
                               readOnly
                               canReviewDocuments={canReviewChecklist}
-                              onOpenDocument={() => {
+                              reviewingTypeId={reviewingDocumentTypeId}
+                              onOpenDocument={file => {
+                                if (hasRuntimeDocumentTypes(item.checklistItem)) {
+                                  openChecklistDocument(item.taskNodeId, file);
+                                  return;
+                                }
                                 setSelectedNodeId(item.nodeId);
                                 setInspectorTab('node');
                                 setReviewInboxOpen(false);
@@ -3508,6 +3609,12 @@ title="Lưu quy trình hiện tại thành mẫu"
                               onReject={(_index, doc, reason) => {
                                 reviewedNodeIds.current.add(item.taskNodeId);
                                 onRejectDocument?.(item.checklistResultId, doc, reason);
+                              }}
+                              onApproveType={(checklistResultId, typeId) => {
+                                reviewDocumentType(checklistResultId, typeId, 'approved');
+                              }}
+                              onRejectType={(checklistResultId, typeId, reason) => {
+                                reviewDocumentType(checklistResultId, typeId, 'rejected', reason);
                               }}
                             />
                           )}
@@ -3532,6 +3639,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                               )
                             )) : <span>Không có tệp minh chứng</span>}
                           </div>
+                          {!hasRuntimeDocumentTypes(item.checklistItem) && (
                           <div className="workflow-review-inbox__actions">
                             <button
                               type="button"
@@ -3550,6 +3658,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                               <CheckCircle2 size={13} /> Duyệt đạt
                             </button>
                           </div>
+                          )}
                         </article>
                       ) : (
                         <button
@@ -3865,6 +3974,15 @@ title="Lưu quy trình hiện tại thành mẫu"
           })()}
         </div>
       </Modal>
+
+      <FilePreviewModal
+        open={Boolean(reviewDocumentPreview)}
+        fileName={reviewDocumentPreview?.fileName || ''}
+        mimeType={reviewDocumentPreview?.mimeType || ''}
+        url={reviewDocumentPreview?.url || ''}
+        blob={reviewDocumentPreview?.blob || null}
+        onClose={closeReviewDocumentPreview}
+      />
 
       <Modal
         open={cancelOpen}

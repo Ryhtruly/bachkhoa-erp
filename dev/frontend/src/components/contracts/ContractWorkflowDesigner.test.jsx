@@ -65,6 +65,7 @@ function makeServiceLine({
   nodeReady = false,
   taskCode = 'K01',
   outputDocs = null,
+  runtimeDocumentTypes,
 } = {}) {
   const node = {
     task_code: taskCode,
@@ -107,6 +108,7 @@ function makeServiceLine({
           require_evidence: true,
           status: pendingChecklistReview ? 'pending_approval' : 'approved',
           evidence_data: { files: [{ name: 'bien-ban.pdf', url: 'contracts/2004/service-lines/line-1/nodes/task-1/bien-ban.pdf' }] },
+          ...(runtimeDocumentTypes !== undefined ? { document_types: runtimeDocumentTypes } : {}),
         }] : [],
       }] : [{
         id: 'task-1', node_key: 'node-1', node_code: taskCode,
@@ -228,6 +230,116 @@ describe('ContractWorkflowDesigner workflow activation', () => {
       '/api/contracts/workflow/checklist/result-1/review',
       expect.objectContaining({ method: 'POST' }),
     ));
+  });
+
+  it('duyệt loại giấy runtime bằng đúng endpoint/body, refresh sau từng quyết định', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 })));
+    const onPersisted = vi.fn(() => Promise.resolve());
+    const addToast = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const runtimeDocumentTypes = [
+      {
+        id: 'TYPE-APPROVE', name: 'Ảnh hiện trạng', source: 'CONG_TY', status: 'pending_review',
+        file_count: 1, files: [{ document_id: 'DOC-1', file_name: 'hien-trang.jpg' }],
+      },
+      {
+        id: 'TYPE-REJECT', name: 'Biên nhận hồ sơ', source: 'CO_QUAN', status: 'pending_review',
+        file_count: 1, files: [{ document_id: 'DOC-2', file_name: 'bien-nhan.pdf' }],
+      },
+    ];
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ active: true, pendingChecklistReview: true, runtimeDocumentTypes })}
+        workItems={[workItem]}
+        documentTemplates={[]}
+        plannedNodeByTemplate={{}}
+        capabilities={{ review_workflow_checklist: true }}
+        onPersisted={onPersisted}
+        addToast={addToast}
+      />
+    );
+
+    const approveRow = screen.getByText('Ảnh hiện trạng').closest('.wf-check-type');
+    fireEvent.click(within(approveRow).getByRole('button', { name: 'Đạt' }));
+    await waitFor(() => expect(goiToi(fetchMock, '/document-types/TYPE-APPROVE/review')).toHaveLength(1));
+    expect(goiToi(fetchMock, '/document-types/TYPE-APPROVE/review')[0]).toEqual([
+      '/api/contracts/workflow/checklist/result-1/document-types/TYPE-APPROVE/review',
+      expect.objectContaining({ method: 'POST' }),
+    ]);
+    expect(JSON.parse(goiToi(fetchMock, '/document-types/TYPE-APPROVE/review')[0][1].body)).toEqual({
+      decision: 'approved',
+      reason: null,
+    });
+
+    const rejectRow = screen.getByText('Biên nhận hồ sơ').closest('.wf-check-type');
+    fireEvent.click(within(rejectRow).getByRole('button', { name: 'Không đạt' }));
+    fireEvent.change(within(rejectRow).getByLabelText('Lý do không đạt'), {
+      target: { value: '  Thiếu dấu tiếp nhận  ' },
+    });
+    fireEvent.click(within(rejectRow).getByRole('button', { name: 'Xác nhận không đạt' }));
+    await waitFor(() => expect(goiToi(fetchMock, '/document-types/TYPE-REJECT/review')).toHaveLength(1));
+    expect(JSON.parse(goiToi(fetchMock, '/document-types/TYPE-REJECT/review')[0][1].body)).toEqual({
+      decision: 'rejected',
+      reason: 'Thiếu dấu tiếp nhận',
+    });
+    await waitFor(() => expect(onPersisted).toHaveBeenCalledTimes(2));
+  });
+
+  it('giữ nguyên lỗi API duyệt loại giấy trên toast và không refresh sai', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      detail: 'Loại giấy không còn ở trạng thái chờ duyệt.',
+    }), { status: 409 })));
+    const onPersisted = vi.fn();
+    const addToast = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({
+          active: true,
+          pendingChecklistReview: true,
+          runtimeDocumentTypes: [{
+            id: 'TYPE-STALE', name: 'Phiếu tiếp nhận', source: 'CO_QUAN', status: 'pending_review',
+            file_count: 1, files: [{ document_id: 'DOC-STALE', file_name: 'phieu.pdf' }],
+          }],
+        })}
+        workItems={[workItem]}
+        documentTemplates={[]}
+        plannedNodeByTemplate={{}}
+        capabilities={{ review_workflow_checklist: true }}
+        onPersisted={onPersisted}
+        addToast={addToast}
+      />
+    );
+
+    fireEvent.click(within(screen.getByText('Phiếu tiếp nhận').closest('.wf-check-type'))
+      .getByRole('button', { name: 'Đạt' }));
+
+    await waitFor(() => expect(addToast).toHaveBeenCalledWith(
+      'Loại giấy không còn ở trạng thái chờ duyệt.',
+      'error',
+    ));
+    expect(onPersisted).not.toHaveBeenCalled();
+  });
+
+  it('runtime types ẩn action duyệt gộp ở node panel và Chờ duyệt; legacy vẫn giữ', async () => {
+    const runtimeType = [{
+      id: 'TYPE-1', name: 'CCCD', source: 'KHACH_HANG', status: 'pending_review',
+      file_count: 1, files: [{ document_id: 'DOC-1', file_name: 'cccd.jpg' }],
+    }];
+    renderDesigner({ active: true, pendingChecklistReview: true, runtimeDocumentTypes: runtimeType });
+
+    expect(screen.queryByRole('button', { name: 'Duyệt đạt' })).not.toBeInTheDocument();
+    expect(screen.getByText('CCCD')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
+    const inbox = document.querySelector('.workflow-review-inbox');
+    expect(within(inbox).queryByRole('button', { name: 'Duyệt đạt' })).not.toBeInTheDocument();
+    expect(within(inbox).getByText('CCCD')).toBeInTheDocument();
+
+    cleanup();
+    renderDesigner({ active: true, pendingChecklistReview: true });
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
+    expect(within(document.querySelector('.workflow-review-inbox'))
+      .getByRole('button', { name: 'Duyệt đạt' })).toBeInTheDocument();
   });
 
   it('shows cumulative processing time and marks an unfinished end date as planned', () => {

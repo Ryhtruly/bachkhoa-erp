@@ -43,6 +43,38 @@ const ITEM = {
   },
 }
 
+const RUNTIME_ITEM = {
+  ...ITEM,
+  runtime: {
+    id: 'CR-RUNTIME',
+    status: 'pending_approval',
+    document_types: [
+      {
+        id: 'TYPE-ANH',
+        name: 'Ảnh hiện trạng thửa đất',
+        source: 'CONG_TY',
+        status: 'pending_review',
+        rejection_reason: null,
+        file_count: 3,
+        files: [
+          { document_id: 'DOC-1', file_name: 'mat-truoc.jpg', content_type: 'image/jpeg' },
+          { document_id: 'DOC-2', file_name: 'mat-sau.jpg', content_type: 'image/jpeg' },
+          { document_id: 'DOC-3', file_name: 'toan-canh.pdf', content_type: 'application/pdf' },
+        ],
+      },
+      {
+        id: 'TYPE-PHAP-LY',
+        name: 'Biên nhận hồ sơ',
+        source: 'CO_QUAN',
+        status: 'pending_review',
+        rejection_reason: null,
+        file_count: 0,
+        files: [],
+      },
+    ],
+  },
+}
+
 const docWithVerdict = (index) => ({
   ...ITEM.output_documents[index],
   ...ITEM.runtime.review_by_template[ITEM.output_documents[index].template_id],
@@ -184,5 +216,138 @@ describe('Card checklist', () => {
     // Mất dòng là Giám đốc không biết còn tờ nào chưa duyệt.
     mount({ item: { ...ITEM, output_documents: [{ template_id: 'T-LA' }] } })
     expect(screen.getByText('T-LA')).toBeInTheDocument()
+  })
+
+  it('ưu tiên loại giấy runtime, bung đúng ba file và mở đúng file kèm ngữ cảnh loại', () => {
+    const onOpenDocument = vi.fn()
+    mount({
+      item: RUNTIME_ITEM,
+      onOpenDocument,
+      onApproveType: vi.fn(),
+      onRejectType: vi.fn(),
+    })
+
+    expect(screen.getByText('Ảnh hiện trạng thửa đất')).toBeInTheDocument()
+    expect(screen.getByText('Công ty soạn')).toBeInTheDocument()
+    expect(screen.getByText('3 file')).toBeInTheDocument()
+    expect(screen.queryByText('CCCD chủ đất')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Xem 3 file của Ảnh hiện trạng thửa đất/ }))
+    expect(screen.getByText('mat-truoc.jpg')).toBeInTheDocument()
+    expect(screen.getByText('mat-sau.jpg')).toBeInTheDocument()
+    expect(screen.getByText('toan-canh.pdf')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Mở mat-sau.jpg/ }))
+
+    expect(onOpenDocument).toHaveBeenCalledWith(expect.objectContaining({
+      document_id: 'DOC-2',
+      file_name: 'mat-sau.jpg',
+      document_type_id: 'TYPE-ANH',
+      document_type_name: 'Ảnh hiện trạng thửa đất',
+      source: 'CONG_TY',
+    }))
+  })
+
+  it('mỗi loại pending chỉ có một trạng thái và đúng một cặp Đạt/Không đạt', () => {
+    mount({
+      item: RUNTIME_ITEM,
+      onApproveType: vi.fn(),
+      onRejectType: vi.fn(),
+    })
+
+    const row = screen.getByText('Ảnh hiện trạng thửa đất').closest('.wf-check-type')
+    expect(within(row).getAllByText('Chờ duyệt')).toHaveLength(1)
+    expect(within(row).getAllByRole('button', { name: 'Đạt' })).toHaveLength(1)
+    expect(within(row).getAllByRole('button', { name: 'Không đạt' })).toHaveLength(1)
+  })
+
+  it('từ chối runtime bắt nhập lý do và gửi đúng checklist/type/lý do đã trim', () => {
+    const onRejectType = vi.fn()
+    mount({
+      item: RUNTIME_ITEM,
+      onApproveType: vi.fn(),
+      onRejectType,
+    })
+
+    const row = screen.getByText('Ảnh hiện trạng thửa đất').closest('.wf-check-type')
+    fireEvent.click(within(row).getByRole('button', { name: 'Không đạt' }))
+    expect(within(row).getByRole('button', { name: 'Xác nhận không đạt' })).toBeDisabled()
+    fireEvent.change(within(row).getByLabelText('Lý do không đạt'), {
+      target: { value: '  Trang hai bị mờ  ' },
+    })
+    fireEvent.click(within(row).getByRole('button', { name: 'Xác nhận không đạt' }))
+
+    expect(onRejectType).toHaveBeenCalledWith('CR-RUNTIME', 'TYPE-ANH', 'Trang hai bị mờ')
+  })
+
+  it('loại runtime không có file khóa cả Đạt và Không đạt', () => {
+    mount({
+      item: RUNTIME_ITEM,
+      onApproveType: vi.fn(),
+      onRejectType: vi.fn(),
+    })
+    const row = screen.getByText('Biên nhận hồ sơ').closest('.wf-check-type')
+    expect(within(row).getByText('Pháp lý')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Đạt' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Không đạt' })).toBeDisabled()
+  })
+
+  it('busy chỉ khóa đúng loại đang gửi để chặn double submit', () => {
+    const secondType = {
+      ...RUNTIME_ITEM.runtime.document_types[0],
+      id: 'TYPE-SECOND',
+      name: 'Bản đồ kiểm tra',
+    }
+    mount({
+      item: {
+        ...RUNTIME_ITEM,
+        runtime: {
+          ...RUNTIME_ITEM.runtime,
+          document_types: [RUNTIME_ITEM.runtime.document_types[0], secondType],
+        },
+      },
+      reviewingTypeId: 'TYPE-ANH',
+      onApproveType: vi.fn(),
+      onRejectType: vi.fn(),
+    })
+
+    const busyRow = screen.getByText('Ảnh hiện trạng thửa đất').closest('.wf-check-type')
+    const freeRow = screen.getByText('Bản đồ kiểm tra').closest('.wf-check-type')
+    expect(within(busyRow).getByRole('button', { name: 'Đạt' })).toBeDisabled()
+    expect(within(freeRow).getByRole('button', { name: 'Đạt' })).toBeEnabled()
+  })
+
+  it('document_types rỗng là runtime rỗng, không rơi về giấy legacy', () => {
+    mount({ item: { ...ITEM, runtime: { id: 'CR-EMPTY', document_types: [] } } })
+    expect(screen.queryByText('CCCD chủ đất')).not.toBeInTheDocument()
+    expect(screen.getByText('Chưa có loại giấy nào trong checklist.')).toBeInTheDocument()
+  })
+
+  it('runtime approved/rejected chỉ hiện một verdict cấp loại và nguyên văn lý do', () => {
+    const item = {
+      ...RUNTIME_ITEM,
+      runtime: {
+        ...RUNTIME_ITEM.runtime,
+        document_types: [
+          { ...RUNTIME_ITEM.runtime.document_types[0], status: 'approved' },
+          {
+            ...RUNTIME_ITEM.runtime.document_types[0],
+            id: 'TYPE-REJECTED',
+            name: 'Bản vẽ pháp lý',
+            source: 'KHACH_HANG',
+            status: 'rejected',
+            rejection_reason: 'Thiếu dấu giáp lai',
+          },
+        ],
+      },
+    }
+    mount({ item, onApproveType: vi.fn(), onRejectType: vi.fn() })
+
+    const approved = screen.getByText('Ảnh hiện trạng thửa đất').closest('.wf-check-type')
+    const rejected = screen.getByText('Bản vẽ pháp lý').closest('.wf-check-type')
+    expect(within(approved).getAllByText('Đạt')).toHaveLength(1)
+    expect(within(approved).queryByRole('button', { name: 'Đạt' })).not.toBeInTheDocument()
+    expect(within(rejected).getByText('Khách hàng cung cấp')).toBeInTheDocument()
+    expect(within(rejected).getAllByText('Không đạt')).toHaveLength(1)
+    expect(within(rejected).getByText('Thiếu dấu giáp lai')).toBeInTheDocument()
   })
 })
