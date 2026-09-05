@@ -20,7 +20,10 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.dossiers.checklist_document_types import SOURCE_LABELS as CHECKLIST_SOURCE_LABELS
+from src.dossiers.checklist_document_types import (
+    SOURCE_LABELS as CHECKLIST_SOURCE_LABELS,
+    runtime_schema_ready,
+)
 
 SOURCES = ("KHACH_HANG", "CONG_TY", "CO_QUAN")
 SOURCE_LABELS = {
@@ -246,7 +249,15 @@ def checklist_cabinet_by_node(db: Session, service_line_id: str) -> list[dict[st
     Tab Mẫu giấy tờ là danh mục gợi ý cấu hình, không phải danh sách bắt buộc của
     hồ sơ. Vì vậy hàm này đọc graph/checklist đang chạy và trạng thái duyệt của
     từng tài liệu, hoàn toàn không đọc ``document_template_applicabilities``.
+
+    Trong giai đoạn deploy cuốn chiếu, backend có thể được reload trước khi hai
+    bảng runtime được migrate. Tủ mới khi đó chưa có dữ liệu để trả; trả mảng
+    rỗng giữ màn hợp đồng hoạt động, thay vì để PostgreSQL ``UndefinedTable``
+    biến toàn bộ endpoint register thành lỗi 500.
     """
+    if not runtime_schema_ready(db):
+        return []
+
     groups: dict[tuple[str, str], dict[str, Any]] = {}
     for row in db.execute(
         _CHECKLIST_CABINET_QUERY, {"service_line_id": service_line_id}

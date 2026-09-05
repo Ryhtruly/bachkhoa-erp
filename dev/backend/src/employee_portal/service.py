@@ -26,7 +26,10 @@ from src.db.models import (
     LeaveRecord,
     User,
 )
-from src.dossiers.checklist_document_types import SOURCE_LABELS as DOCUMENT_TYPE_SOURCE_LABELS
+from src.dossiers.checklist_document_types import (
+    SOURCE_LABELS as DOCUMENT_TYPE_SOURCE_LABELS,
+    runtime_schema_ready,
+)
 
 # Runtime execution/pay tables (task_nodes, task_node_assignments,
 # work_pay_entitlements, employee_compensation_terms, employee_pay_adjustments)
@@ -937,41 +940,42 @@ class EmployeePortalService:
 
             checklist_result_ids = list(checklist_by_id)
             document_type_by_id = {}
-            for row in db.execute(
-                _CHECKLIST_DOCUMENT_TYPES_QUERY,
-                {"checklist_result_ids": checklist_result_ids},
-            ).mappings().all():
-                document_type = {
-                    "id": row["id"],
-                    "template_id": row["template_id"],
-                    "name": row["name"],
-                    "source": row["source"],
-                    "source_label": DOCUMENT_TYPE_SOURCE_LABELS.get(
-                        row["source"], row["source"]
-                    ),
-                    "origin": row["origin"],
-                    "status": row["status"],
-                    "rejection_reason": row["rejection_reason"],
-                    "files": [],
-                    "file_count": 0,
-                }
-                document_type_by_id[row["id"]] = document_type
-                checklist_by_id[row["checklist_result_id"]].setdefault(
-                    "document_types", []
-                ).append(document_type)
+            if checklist_result_ids and runtime_schema_ready(db):
+                for row in db.execute(
+                    _CHECKLIST_DOCUMENT_TYPES_QUERY,
+                    {"checklist_result_ids": checklist_result_ids},
+                ).mappings().all():
+                    document_type = {
+                        "id": row["id"],
+                        "template_id": row["template_id"],
+                        "name": row["name"],
+                        "source": row["source"],
+                        "source_label": DOCUMENT_TYPE_SOURCE_LABELS.get(
+                            row["source"], row["source"]
+                        ),
+                        "origin": row["origin"],
+                        "status": row["status"],
+                        "rejection_reason": row["rejection_reason"],
+                        "files": [],
+                        "file_count": 0,
+                    }
+                    document_type_by_id[row["id"]] = document_type
+                    checklist_by_id[row["checklist_result_id"]].setdefault(
+                        "document_types", []
+                    ).append(document_type)
 
-            for row in db.execute(
-                _CHECKLIST_DOCUMENT_TYPE_FILES_QUERY,
-                {"checklist_result_ids": checklist_result_ids},
-            ).mappings().all():
-                document_type = document_type_by_id.get(row["document_type_id"])
-                if document_type is None:
-                    continue
-                document_type["files"].append({
-                    "document_id": row["document_id"],
-                    "file_name": row["file_name"],
-                    "content_type": row["content_type"],
-                })
+                for row in db.execute(
+                    _CHECKLIST_DOCUMENT_TYPE_FILES_QUERY,
+                    {"checklist_result_ids": checklist_result_ids},
+                ).mappings().all():
+                    document_type = document_type_by_id.get(row["document_type_id"])
+                    if document_type is None:
+                        continue
+                    document_type["files"].append({
+                        "document_id": row["document_id"],
+                        "file_name": row["file_name"],
+                        "content_type": row["content_type"],
+                    })
 
             for checklist in checklist_by_id.values():
                 document_types = checklist.setdefault("document_types", [])

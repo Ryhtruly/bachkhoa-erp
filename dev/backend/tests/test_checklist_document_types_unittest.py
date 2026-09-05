@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 
-from src.dossiers import checklist_document_types, slot_requests
+from src.dossiers import checklist_document_types, register, slot_requests
 
 
 DocumentTypeStatus = checklist_document_types.DocumentTypeStatus
@@ -102,6 +102,20 @@ class ChecklistDocumentTypeProgressTests(unittest.TestCase):
         self.assertEqual(progress(db, "CR-2"), {
             "approved": 1, "total": 3, "percent": 33, "is_complete": False,
         })
+
+
+class ChecklistCabinetSchemaCompatibilityTests(unittest.TestCase):
+    def test_old_database_without_runtime_tables_returns_empty_cabinet(self):
+        db = MagicMock()
+        db.execute.return_value.scalar.return_value = False
+
+        self.assertEqual(register.checklist_cabinet_by_node(db, "SL-1"), [])
+
+        self.assertEqual(db.execute.call_count, 1)
+        probe_sql = " ".join(str(db.execute.call_args.args[0]).lower().split())
+        self.assertIn("to_regclass", probe_sql)
+        self.assertIn("checklist_result_document_types", probe_sql)
+        self.assertIn("checklist_result_document_type_files", probe_sql)
 
 
 class _ProfileResult:
@@ -210,18 +224,22 @@ class _ProfileSerializationDb:
 
 
 class EmployeeProfileDocumentTypeSerializationTests(unittest.TestCase):
-    def test_profile_returns_every_active_type_file_and_progress_in_two_batched_queries(self):
-        from src.employee_portal import service
-
-        db = _ProfileSerializationDb(service)
-        employee = SimpleNamespace(
+    @staticmethod
+    def _employee():
+        return SimpleNamespace(
             id="EMP-1", user_id="USER-1", department_id=None,
             full_name="Nhân viên", avatar_url=None, department="Survey",
             job_title="Kỹ thuật", join_date=None, base_salary=0, is_active=True,
         )
 
-        with patch.object(service, "_held_items", return_value=[]):
-            profile = service.EmployeePortalService.build_profile(db, employee)
+    def test_profile_returns_every_active_type_file_and_progress_in_two_batched_queries(self):
+        from src.employee_portal import service
+
+        db = _ProfileSerializationDb(service)
+
+        with patch.object(service, "_held_items", return_value=[]), \
+             patch.object(service, "runtime_schema_ready", return_value=True, create=True):
+            profile = service.EmployeePortalService.build_profile(db, self._employee())
 
         checklist = profile["tasks"][0]["checklist"][0]
         self.assertEqual(checklist["document_types"][0], {
@@ -260,6 +278,23 @@ class EmployeeProfileDocumentTypeSerializationTests(unittest.TestCase):
         self.assertEqual(len(file_calls), 1)
         self.assertEqual(type_calls[0][1], {"checklist_result_ids": ["CR-1", "CR-2"]})
         self.assertEqual(file_calls[0][1], {"checklist_result_ids": ["CR-1", "CR-2"]})
+
+    def test_profile_falls_back_cleanly_before_runtime_schema_is_migrated(self):
+        from src.employee_portal import service
+
+        db = _ProfileSerializationDb(service)
+        with patch.object(service, "_held_items", return_value=[]), \
+             patch.object(service, "runtime_schema_ready", return_value=False, create=True):
+            profile = service.EmployeePortalService.build_profile(db, self._employee())
+
+        for checklist in profile["tasks"][0]["checklist"]:
+            self.assertEqual(checklist["document_types"], [])
+            self.assertEqual(checklist["document_type_progress"], {
+                "approved": 0, "total": 0, "percent": 0, "is_complete": False,
+            })
+        queried = [query for query, _ in db.execute_calls]
+        self.assertNotIn(service._CHECKLIST_DOCUMENT_TYPES_QUERY, queried)
+        self.assertNotIn(service._CHECKLIST_DOCUMENT_TYPE_FILES_QUERY, queried)
 
 
 class ChecklistDocumentTypeContextTests(unittest.TestCase):

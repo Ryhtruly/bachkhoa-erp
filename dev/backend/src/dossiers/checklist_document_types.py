@@ -31,6 +31,16 @@ SOURCE_LABELS = {
     "CO_QUAN": "Pháp lý",
 }
 
+_RUNTIME_SCHEMA_READY_QUERY = text("""
+    select to_regclass('public.checklist_result_document_types') is not null
+       and to_regclass('public.checklist_result_document_type_files') is not null
+""")
+
+
+def runtime_schema_ready(db: Session) -> bool:
+    """Whether the additive runtime-type migration is available on this DB."""
+    return bool(db.execute(_RUNTIME_SCHEMA_READY_QUERY).scalar())
+
 
 _MATERIALIZE_CONFIGURED_TYPES_QUERY = text("""
     insert into public.checklist_result_document_types
