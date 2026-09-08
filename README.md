@@ -35,6 +35,7 @@ tăng tốc màn Hợp đồng & Công nợ.
 |---|---|
 | `docker-compose.yml` | Khởi tạo và kết nối `frontend`, `backend`, `redis-contracts` cùng volume lưu hợp đồng |
 | `dev/backend/Dockerfile` | Tạo image Python 3.11, cài `requirements.txt` và chạy FastAPI bằng Uvicorn |
+| `dev/backend/Dockerfile.prod` | Tạo backend production tối giản, chạy non-root và chỉ cài runtime dependencies |
 | `dev/backend/.dockerignore` | Không đưa `.env`, `venv`, cache Python và database cục bộ vào backend image |
 | `dev/frontend/Dockerfile` | Dùng Node để build React, sau đó dùng Nginx phục vụ bản production |
 | `dev/frontend/nginx.conf` | Phục vụ React và reverse proxy `/api`, `/static`, `/docs` sang backend |
@@ -42,6 +43,7 @@ tăng tốc màn Hợp đồng & Công nợ.
 | `docker-compose.dev.yml` | Chạy môi trường lập trình với backend auto reload và frontend hot reload |
 | `dev/frontend/Dockerfile.dev` | Tạo frontend development image chạy Vite thay vì Nginx |
 | `docker-compose.redis.yml` | Chỉ chạy Redis riêng khi phát triển thủ công; không chạy đồng thời với compose chính |
+| `docker-compose.backend.prod.yml` | Build/chạy riêng backend production cùng Redis và MinIO, không khởi động frontend |
 
 ### 3. Các service trong `docker-compose.yml`
 
@@ -105,6 +107,18 @@ Build image và chạy nền toàn bộ hệ thống:
 ```bash
 docker compose up --build -d
 ```
+
+Khi chỉ cần build hoặc chạy backend production:
+
+```bash
+docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml build backend
+docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml up -d backend redis-contracts minio
+```
+
+File `docker-compose.backend.prod.yml` vẫn đọc secret từ
+`dev/backend/.env`. Nếu khai báo `OBJECT_STORAGE_ENDPOINT`, backend sẽ dùng
+storage managed (ví dụ R2/S3) và không dùng MinIO cho dữ liệu object; nếu bỏ
+biến này, backend dùng MinIO nội bộ qua `http://minio:9000`.
 
 Kiểm tra trạng thái:
 

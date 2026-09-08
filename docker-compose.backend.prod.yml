@@ -1,16 +1,11 @@
-# =============================================================================
-# Docker Compose — Production (VPS)
-# =============================================================================
-# File này dùng trên VPS, pull image từ GHCR thay vì build local.
-# Đặt file này vào thư mục project trên VPS cùng cấp với dev/backend/.env.
-# Khi chạy, luôn truyền --env-file dev/backend/.env vì Compose interpolation
-# không đọc service-level env_file để thay thế ${...} trong chính file YAML.
+# Backend-only production stack.
 #
-# ⚠️  YÊU CẦU: Tạo file dev/backend/.env trên VPS chứa DATABASE_URL hoặc bộ
-#     PG_*, SECRET_KEY, CORS_ORIGINS, MINIO/R2 credentials và ENV=production.
-# =============================================================================
+# Use this file when the frontend is deployed separately or when only the
+# backend image needs to be built/run. DATABASE_URL and application secrets
+# must be provided through dev/backend/.env on the deployment host. Run with
+# `docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml`.
 
-name: bachkhoa-erp
+name: bachkhoa-erp-backend-prod
 
 services:
   redis-contracts:
@@ -48,9 +43,12 @@ services:
       retries: 20
 
   backend:
-    # ⬇️ Pull từ GHCR thay vì build local
-    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:latest
+    build:
+      context: ./dev/backend
+      dockerfile: Dockerfile.prod
+    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:${BACKEND_IMAGE_TAG:-local}
     restart: unless-stopped
+    init: true
     env_file:
       - ./dev/backend/.env
     environment:
@@ -58,7 +56,7 @@ services:
       SEED_ADMIN_ENABLED: "false"
       REDIS_URL: redis://redis-contracts:6379/0
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_BUCKET: bachkhoa-erp-files
+      MINIO_BUCKET: ${MINIO_BUCKET:-bachkhoa-erp-files}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://minio:9000}
       OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-bachkhoa-erp-files}
       OBJECT_STORAGE_ALLOW_PUBLIC_BUCKETS: "false"
@@ -81,16 +79,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
-
-  frontend:
-    # ⬇️ Pull từ GHCR thay vì build local
-    image: ghcr.io/ryhtruly/bachkhoa-erp-frontend:latest
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:3000:80"
-    depends_on:
-      backend:
-        condition: service_healthy
 
 volumes:
   contract-files:

@@ -76,7 +76,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./dev/backend
-          file: ./dev/backend/Dockerfile
+          file: ./dev/backend/Dockerfile.prod
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:latest
@@ -118,10 +118,10 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull images mới nhất
-            docker compose -f docker-compose.prod.yml pull
+            docker compose --env-file dev/backend/.env -f docker-compose.prod.yml pull
 
             # Khởi động lại với image mới (zero-downtime nếu dùng --remove-orphans)
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker compose --env-file dev/backend/.env -f docker-compose.prod.yml up -d --remove-orphans
 
             # Dọn image cũ để tiết kiệm ổ cứng
             docker image prune -f
