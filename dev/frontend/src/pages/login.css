@@ -74,12 +74,9 @@
 .bk-login .frame {
   position: relative;
   height: 100vh;
-  max-width: 1680px;
-  margin: 0 auto;
+  width: 100%;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  border-left: 1px solid var(--line);
-  border-right: 1px solid var(--line);
 }
 
 /* ── thanh trên ──────────────────────────────────────────────── */

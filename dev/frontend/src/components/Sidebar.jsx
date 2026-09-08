@@ -1,5 +1,49 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, Inbox, FileStack, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, Inbox, FileStack, Workflow, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { prefetchApi } from '../lib/api';
+
+const TAB_PREFETCH_HANDLERS = {
+  contracts: () => {
+    import('../pages/Contracts').catch(() => {});
+    if (typeof prefetchApi === 'function') {
+      prefetchApi('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      prefetchApi('/api/config');
+      prefetchApi('/api/catalog/service-packages');
+    }
+  },
+  'doc-templates': () => {
+    import('../features/document-register/DocumentTemplateSettings').catch(() => {});
+    if (typeof prefetchApi === 'function') {
+      prefetchApi('/api/document-register/templates');
+      prefetchApi('/api/document-register/workflow-nodes');
+      prefetchApi('/api/document-register/package-tree');
+    }
+  },
+  crm: () => {
+    import('../pages/CRM').catch(() => {});
+  },
+  customers: () => {
+    import('../pages/CustomerDirectory').catch(() => {});
+  },
+  tasks: () => {
+    import('../pages/Tasks').catch(() => {});
+  },
+  legal: () => {
+    import('../pages/LegalSubmissions').catch(() => {});
+  },
+  approvals: () => {
+    import('../features/approvals/ApprovalQueue').catch(() => {});
+  },
+  cashflow: () => {
+    import('../pages/Cashflow').catch(() => {});
+  },
+  kpi: () => {
+    import('../pages/KPI').catch(() => {});
+  },
+  wiki: () => {
+    import('../pages/HumanResources').catch(() => {});
+  },
+};
 
 export default function Sidebar({
   activeTab,
@@ -27,7 +71,7 @@ export default function Sidebar({
     // Mọi phiếu cần chữ ký Giám đốc gom về một chỗ — tách ra nhiều màn thì
     // phiếu nằm ở màn ít mở sẽ treo hàng tuần.
     { id: 'approvals', label: 'Hàng Chờ Duyệt', icon: Inbox, directorOnly: true },
-    { id: 'doc-templates', label: 'Mẫu Giấy Tờ', icon: FileStack, directorOnly: true },
+    { id: 'doc-templates', label: 'Quy Trình & Mẫu Giấy', icon: Workflow, directorOnly: true },
     { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet, permission: 'finance' },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr', directorOnly: true },
     { id: 'wiki', label: 'Nhân Sự & Đào Tạo', icon: BookOpen, permission: 'hr' },
@@ -94,6 +138,14 @@ export default function Sidebar({
                 aria-current={active ? 'page' : undefined}
                 title={item.label}
                 onClick={() => handleSelect(item.id)}
+                onMouseEnter={() => {
+                  const prefetch = TAB_PREFETCH_HANDLERS[item.id];
+                  if (prefetch) prefetch();
+                }}
+                onFocus={() => {
+                  const prefetch = TAB_PREFETCH_HANDLERS[item.id];
+                  if (prefetch) prefetch();
+                }}
               >
                 <Icon size={18} />
                 <span className="nav-item__label">{item.label}</span>
@@ -110,6 +162,8 @@ export default function Sidebar({
                 aria-current={activeTab === 'settings' ? 'page' : undefined}
                 title="Cấu Hình"
                 onClick={() => handleSelect('settings')}
+                onMouseEnter={() => import('../pages/Settings').catch(() => {})}
+                onFocus={() => import('../pages/Settings').catch(() => {})}
               >
                 <Settings2 size={18} />
                 <span className="nav-item__label">Cấu Hình</span>

@@ -28,6 +28,7 @@ export default function DataTable({
   emptyText = 'Không có dữ liệu',
   rowKey = 'id',
   onRowClick,
+  onRowMouseEnter,
   rowClassName,
   selectable = false,
   selected = [],
@@ -209,6 +210,7 @@ export default function DataTable({
                       className={`dt-row${isSelected ? ' dt-row--selected' : ''}${onRowClick ? ' dt-row--clickable' : ''}${customRowClass ? ` ${customRowClass}` : ''}`}
                       tabIndex={onRowClick ? 0 : undefined}
                       onClick={onRowClick ? () => onRowClick(row) : undefined}
+                      onMouseEnter={onRowMouseEnter ? () => onRowMouseEnter(row) : undefined}
                       onKeyDown={onRowClick ? (event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();

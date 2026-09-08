@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Check } from 'lucide-react';
+import './CustomSelect.css';
 
 export default function CustomSelect({
   label,
@@ -14,6 +15,7 @@ export default function CustomSelect({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
+  const menuRef = useRef(null);
 
   // Normalize options to array of { value, label }
   const normalizedOptions = options.map(opt => {
@@ -41,6 +43,31 @@ export default function CustomSelect({
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Chặn cuộn lọt ra ngoài modal/body cha khi lướt danh sách dropdown
+  useEffect(() => {
+    if (!isOpen) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+
+    const handleWheel = event => {
+      event.stopPropagation();
+      const { scrollTop, scrollHeight, clientHeight } = menu;
+      const isScrollable = scrollHeight > clientHeight;
+      if (!isScrollable) {
+        event.preventDefault();
+        return;
+      }
+      const isUp = event.deltaY < 0;
+      const isDown = event.deltaY > 0;
+      if ((isUp && scrollTop <= 0) || (isDown && scrollTop + clientHeight >= scrollHeight - 1)) {
+        event.preventDefault();
+      }
+    };
+
+    menu.addEventListener('wheel', handleWheel, { passive: false });
+    return () => menu.removeEventListener('wheel', handleWheel);
   }, [isOpen]);
 
   const handleSelect = optValue => {
@@ -93,7 +120,7 @@ export default function CustomSelect({
       </button>
 
       {isOpen && (
-        <div className="custom-select-menu" role="listbox">
+        <div ref={menuRef} className="custom-select-menu" role="listbox">
           {normalizedOptions.map(opt => {
             const isSelected = String(opt.value) === String(value);
             return (

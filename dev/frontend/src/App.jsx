@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState, startTransition } from 'react';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import Login from './pages/Login';
@@ -7,6 +7,8 @@ import ChatWidget from './components/ChatWidget';
 import { apiFetch, clearAccessToken } from './lib/api';
 import { requestNavigationPermission } from './lib/unsavedChangesGuard';
 import { ToastProvider } from './contexts/ToastContext';
+import { safeViewTransition } from './lib/viewTransition';
+import TabSkeleton from './components/ui/TabSkeleton';
 import './index.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -327,7 +329,11 @@ function App() {
     if (tab === effectiveTab) { setActiveTab(tab); return; }
     if (await requestNavigationPermission()) {
       clearNavigationQueue();
-      setActiveTab(tab);
+      safeViewTransition(() => {
+        startTransition(() => {
+          setActiveTab(tab);
+        });
+      });
     }
   };
 
@@ -351,7 +357,9 @@ function App() {
       contractId: item.contract_id,
       serviceLineId: item.service_line_id,
       nodeKey: item.node_key,
-      type: item.type,
+      taskNodeId: item.task_node_id,
+      targetType: item.target_type || item.type,
+      targetId: item.target_id || item.ref_id,
       nonce: Date.now(),
     });
   };
@@ -380,7 +388,7 @@ function App() {
           />
 <main className={`main${effectiveTab === 'contracts' ? ' main--contract' : ''}${effectiveTab === 'timeline' ? ' main--timeline' : ''}${effectiveTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers', 'doc-templates'].includes(effectiveTab) ? ' main--list' : ''}${effectiveTab === 'employee-dashboard' ? ' main--employee' : ''}`}>
             {ActiveTabComponent && (
-              <Suspense fallback={<div className="app-tab-loader" role="status">Đang tải phân hệ...</div>}>
+              <Suspense fallback={<TabSkeleton label="Đang tải phân hệ..." />}>
                 <MemoizedActiveTabScreen
                   key={effectiveTab}
                   Component={ActiveTabComponent}

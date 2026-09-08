@@ -2617,6 +2617,108 @@ tbody tr:last-child td {
   }
 }
 
+[data-theme='dark'] .skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.09) 50%, rgba(255, 255, 255, 0.04) 75%);
+  background-size: 200% 100%;
+}
+
+/* ─── Tab Skeleton Shimmer ─── */
+.tab-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.tab-skeleton__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tab-skeleton__title {
+  width: 220px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.tab-skeleton__btn {
+  width: 110px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.tab-skeleton__filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tab-skeleton__filter-input {
+  width: 280px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.tab-skeleton__filter-select {
+  width: 160px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.tab-skeleton__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.tab-skeleton__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border-subtle, #f1f5f9);
+}
+
+.tab-skeleton__row--head {
+  border-bottom: 2px solid var(--border-default, #e2e8f0);
+  padding-bottom: 14px;
+}
+
+/* ─── Native View Transitions (GPU-accelerated 0-overhead tab cross-fade) ─── */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 130ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ─── CSS Containment & Virtualization Optimization ─── */
+.contract-master-detail,
+.dtm,
+.service-line-layout {
+  contain: layout style;
+}
+
+.dt-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
 /* ==========================================
    SHARED UI COMPONENTS — v1.0
    ========================================== */
