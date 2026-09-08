@@ -596,7 +596,7 @@ def list_contract_workspace(
             "service_location": contract.service_location or "",
             "service_area": contract.service_area,
             "service_type": ", ".join(
-                [tt.name or line.service_type for line, tt, _ in service_lines if tt or line.service_type]
+                [(tt.name if tt else line.service_type) for line, tt, _ in service_lines if (tt or line.service_type)]
             ) or "Chưa có",
             "file_link": contract.file_link or "",
             "service_lines": [
