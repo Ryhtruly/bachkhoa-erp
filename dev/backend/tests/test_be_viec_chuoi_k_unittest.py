@@ -132,6 +132,47 @@ class NhanTronChuoiDoVeTests(unittest.TestCase):
         self.assertIn("role_code, is_primary", inserted_sql)
         self.assertNotIn("TN-K06", result["reserved_task_node_ids"])
 
+    def test_nhan_main_phap_ly_giu_ca_node_submitter_nhu_k05a_k05b(self):
+        """Node SUBMITTER cùng phòng (K05a/K05b) phải được giữ, không bị nhảy cóc qua K06."""
+        db = MagicMock()
+        db.execute.side_effect = [
+            _rows([
+                {
+                    "id": "TN-K05A", "node_code": "K05a", "status": "pending",
+                    "node_definition": {
+                        "pool_department_code": "LEGAL",
+                        "claim_roles": ["SUBMITTER"],
+                    },
+                },
+                {
+                    "id": "TN-K06", "node_code": "K06", "status": "pending",
+                    "node_definition": {
+                        "pool_department_code": "LEGAL",
+                        "claim_roles": ["MAIN"],
+                    },
+                },
+            ]),
+            _scalar("ASSIGN-K05A"), MagicMock(),
+            _scalar("ASSIGN-K06"), MagicMock(),
+        ]
+
+        with patch.object(workflow_runtime, "_bind_claimed_employee_to_payable_checklists") as bind:
+            result = workflow_runtime._reserve_main_workflow_chain(
+                db,
+                workflow_instance_id="WI-1",
+                claimed_task_node_id="TN-K04",
+                department_code="LEGAL",
+                employee_id="NV-LEGAL-1",
+                actor_id="USER-1",
+            )
+
+        self.assertEqual(result["reserved_task_node_ids"], ["TN-K05A", "TN-K06"])
+        self.assertEqual(bind.call_count, 2)
+        bind_calls = bind.call_args_list
+        self.assertEqual(bind_calls[0].kwargs["role_code"], "SUBMITTER")
+        self.assertEqual(bind_calls[1].kwargs["role_code"], "MAIN")
+
+
     def test_claim_k01_main_goi_co_che_giu_chuoi_cung_phong(self):
         """Khoá regression ở public API: sửa helper mà quên gọi vẫn phải đỏ test."""
 
@@ -447,5 +488,26 @@ class HangRaoTaiDoDangTests(unittest.TestCase):
         self.assertTrue(workflow_runtime.wip_limit_reached(con_lai))
 
 
+class BeViecTruyVanChuoiTests(unittest.TestCase):
+    """Truy vấn chuỗi Bể việc không được hiện lại bước đã xong và phải tính tiền cho vai SUBMITTER."""
+
+    def test_pool_chain_query_loai_bo_buoc_da_xong_va_tinh_submitter(self):
+        from src.employee_portal.service import _POOL_CHAIN_QUERY
+
+        cau_lenh = str(_POOL_CHAIN_QUERY)
+        self.assertIn("n.status not in ('cancelled', 'skipped', 'accepted', 'completed')", cau_lenh)
+        self.assertIn("wr.role_code in ('MAIN', 'SUBMITTER')", cau_lenh)
+
+    def test_pool_detail_steps_loai_bo_buoc_da_xong(self):
+        from src.employee_portal.service import _POOL_DETAIL_STEPS_QUERY, _POOL_DETAIL_CHECKLIST_QUERY
+
+        cau_lenh_steps = str(_POOL_DETAIL_STEPS_QUERY)
+        self.assertIn("n.status not in ('cancelled', 'skipped', 'accepted', 'completed')", cau_lenh_steps)
+
+        cau_lenh_checklist = str(_POOL_DETAIL_CHECKLIST_QUERY)
+        self.assertIn("wr.role_code in ('MAIN', 'SUBMITTER')", cau_lenh_checklist)
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -426,12 +426,17 @@ _ITEM_NODE_DETAIL_QUERY = text(
           and coalesce(r.is_payable, false)
           and wr.status = 'published'
           and current_date <@ wr.effective_period
-          and wr.role_code = coalesce((
-            select a.role_code from public.task_node_assignments a
-            where a.task_node_id = n.id and a.employee_id = :employee_id
-              and a.assignment_status in ('assigned', 'accepted')
-            limit 1
-          ), 'MAIN')
+          and (
+            case
+              when (
+                select a.role_code from public.task_node_assignments a
+                where a.task_node_id = n.id and a.employee_id = :employee_id
+                  and a.assignment_status in ('assigned', 'accepted')
+                limit 1
+              ) = 'ASSISTANT' then wr.role_code = 'ASSISTANT'
+              else wr.role_code in ('MAIN', 'SUBMITTER')
+            end
+          )
       ), 0) as amount,
       (
         select e.full_name
@@ -476,7 +481,7 @@ _POOL_CHAIN_QUERY = text(
              from public.task_node_checklist_results r
              join public.work_item_rates wr on wr.work_item_id = r.work_item_id
              where r.task_node_id = n.id and coalesce(r.is_payable, false)
-               and wr.role_code = 'MAIN' and wr.status = 'published'
+               and wr.role_code in ('MAIN', 'SUBMITTER') and wr.status = 'published'
                and current_date <@ wr.effective_period
            ), 0) as main_amount
     from public.task_nodes n
@@ -484,7 +489,7 @@ _POOL_CHAIN_QUERY = text(
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where n.workflow_instance_id = any(:instance_ids)
-      and n.status not in ('cancelled', 'skipped')
+      and n.status not in ('cancelled', 'skipped', 'accepted', 'completed')
     order by n.node_code, n.occurrence_no
     """
 )
@@ -538,7 +543,7 @@ _POOL_DETAIL_STEPS_QUERY = text(
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where n.workflow_instance_id = :instance_id
-      and n.status not in ('cancelled', 'skipped')
+      and n.status not in ('cancelled', 'skipped', 'accepted', 'completed')
     order by n.node_code, n.occurrence_no
     """
 )
@@ -549,8 +554,9 @@ _POOL_DETAIL_CHECKLIST_QUERY = text(
            coalesce(r.is_payable, false) as is_payable,
            coalesce((
              select wr.amount from public.work_item_rates wr
-             where wr.work_item_id = r.work_item_id and wr.role_code = 'MAIN'
+             where wr.work_item_id = r.work_item_id and wr.role_code in ('MAIN', 'SUBMITTER')
                and wr.status = 'published' and current_date <@ wr.effective_period
+             order by case when wr.role_code = 'MAIN' then 0 else 1 end
              limit 1
            ), 0) as main_amount,
            coalesce((
@@ -646,6 +652,7 @@ _TASK_CHECKLIST_QUERY = text(
            -- Ghi chú của Giám đốc khi trả việc. Không trả trường này thì nhân
            -- viên mở ra chỉ thấy "Cần bổ sung" mà không biết bổ sung cái gì.
            r.note as director_note,
+           r.note,
            r.submitted_at, r.evidence_data,
            -- Cấu hình tài liệu đầu ra lấy thẳng từ graph đang chạy. Không khai thì
            -- là null, và giao diện không hiện khu tài liệu — luồng minh chứng cũ
@@ -707,7 +714,8 @@ _CHECKLIST_DOCUMENT_TYPES_QUERY = text(
 
 _CHECKLIST_DOCUMENT_TYPE_FILES_QUERY = text(
     """
-    select f.document_type_id, d.id as document_id, d.file_name, d.content_type
+    select f.document_type_id, d.id as document_id, d.file_name, d.content_type,
+           f.change_reason
     from public.checklist_result_document_type_files f
     join public.checklist_result_document_types t on t.id = f.document_type_id
     join public.dossier_documents d on d.id = f.document_id
@@ -930,6 +938,7 @@ class EmployeePortalService:
                     "is_overdue": bool(row["is_overdue"]),
                     "late_reason": row["late_reason"],
                     "director_note": row["director_note"],
+                    "note": row["note"] if "note" in row else row.get("director_note"),
                     "submitted_at": _date_value(row["submitted_at"]),
                     "evidence_files": (row["evidence_data"] or {}).get("files", []),
                     "output_documents": list(row["output_documents"] or []),
@@ -940,7 +949,10 @@ class EmployeePortalService:
 
             checklist_result_ids = list(checklist_by_id)
             document_type_by_id = {}
-            if checklist_result_ids and runtime_schema_ready(db):
+            runtime_types_available = bool(
+                checklist_result_ids and runtime_schema_ready(db)
+            )
+            if runtime_types_available:
                 for row in db.execute(
                     _CHECKLIST_DOCUMENT_TYPES_QUERY,
                     {"checklist_result_ids": checklist_result_ids},
@@ -975,25 +987,27 @@ class EmployeePortalService:
                         "document_id": row["document_id"],
                         "file_name": row["file_name"],
                         "content_type": row["content_type"],
+                        "change_reason": row["change_reason"],
                     })
 
-            for checklist in checklist_by_id.values():
-                document_types = checklist.setdefault("document_types", [])
-                for document_type in document_types:
-                    document_type["file_count"] = len(document_type["files"])
-                approved = sum(
-                    1
-                    for document_type in document_types
-                    if document_type["status"] == "approved"
-                    and document_type["file_count"] > 0
-                )
-                total = len(document_types)
-                checklist["document_type_progress"] = {
-                    "approved": approved,
-                    "total": total,
-                    "percent": round(approved * 100 / total) if total else 0,
-                    "is_complete": total > 0 and approved == total,
-                }
+            if runtime_types_available:
+                for checklist in checklist_by_id.values():
+                    document_types = checklist.setdefault("document_types", [])
+                    for document_type in document_types:
+                        document_type["file_count"] = len(document_type["files"])
+                    approved = sum(
+                        1
+                        for document_type in document_types
+                        if document_type["status"] == "approved"
+                        and document_type["file_count"] > 0
+                    )
+                    total = len(document_types)
+                    checklist["document_type_progress"] = {
+                        "approved": approved,
+                        "total": total,
+                        "percent": round(approved * 100 / total) if total else 0,
+                        "is_complete": total > 0 and approved == total,
+                    }
         # Tên loại giấy: một truy vấn cho tất cả id được nhắc tới.
         #
         # Không nhét vào truy vấn checklist bằng lateral — lateral chỉ thấy bảng
@@ -1778,12 +1792,9 @@ class EmployeePortalService:
         evidence_provided: bool,
     ) -> None:
         """Reject unauthorized or invalid submissions before touching object storage."""
-        # K06 có cổng công nợ riêng. Kiểm tra trước khi route upload file lên
-        # MinIO để người dùng không thể vượt khóa UI bằng cách gọi thẳng API.
-        # Import cục bộ tránh tạo vòng phụ thuộc khi khởi động module.
-        from src.dossiers import handover
-
-        handover.ensure_handover_work_gate_open(db, task_node_id)
+        # Công nợ K06 chỉ chặn lúc Nộp nghiệm thu. Nhân viên vẫn phải được thêm
+        # loại giấy, tải/gỡ file và chuẩn bị đủ hồ sơ trong khi chờ thu tiền hoặc
+        # chờ Giám đốc duyệt nợ. Endpoint submit-acceptance giữ cổng tài chính.
         EmployeePortalService._authorized_checklist_for_submission(
             db,
             employee,
@@ -1831,6 +1842,9 @@ class EmployeePortalService:
                     "submitted_at": submitted_at.isoformat(),
                 }
             )
+        elif note:
+            evidence_data["note"] = note
+            evidence_data["reason"] = note
         evidence_data["files"] = files
         db.execute(
             text(
@@ -1838,6 +1852,7 @@ class EmployeePortalService:
                 update public.task_node_checklist_results
                 set status = :status, submitted_by = :user_id, submitted_at = :submitted_at,
                     is_overdue = :is_overdue, late_reason = :late_reason,
+                    note = coalesce(:note, note),
                     evidence_data = cast(:evidence_data as jsonb), updated_at = now()
                 where id = :id
                 """
@@ -1849,6 +1864,7 @@ class EmployeePortalService:
                 "submitted_at": submitted_at,
                 "is_overdue": is_overdue,
                 "late_reason": normalized_late_reason,
+                "note": note,
                 "evidence_data": json.dumps(evidence_data),
             },
         )

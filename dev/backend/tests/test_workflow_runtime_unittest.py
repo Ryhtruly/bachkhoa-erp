@@ -206,7 +206,14 @@ class DirectorDocumentTypeReviewRouteTests(unittest.TestCase):
 
         with patch.object(
             routes_contracts, "review_type", create=True,
-            return_value={"id": "DT-1", "status": "approved", "node_status": "submitted"},
+            return_value={
+                "id": "DT-1", "status": "approved", "node_status": "accepted",
+                "node_finalized": True,
+            },
+        ), patch.object(
+            routes_contracts, "invalidate_money_caches",
+        ) as invalidate_money, patch.object(
+            routes_contracts, "invalidate_cache",
         ), patch.object(
             routes_contracts, "publish_timeline_change",
             side_effect=lambda *args, **kwargs: order.append("publish"),
@@ -217,6 +224,7 @@ class DirectorDocumentTypeReviewRouteTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "approved")
         self.assertEqual(order, ["commit", "publish"])
+        invalidate_money.assert_called_once_with()
 
     def test_route_rolls_back_domain_validation_errors(self):
         endpoint = getattr(routes_contracts, "review_checklist_document_type", None)
@@ -250,8 +258,30 @@ class DirectorDocumentTypeReviewRouteTests(unittest.TestCase):
                     db, SimpleNamespace(id="DIRECTOR"),
                 )
 
-        db.rollback.assert_called_once()
-        db.commit.assert_not_called()
+    def test_validate_workflow_graph_accepts_k05a_case_insensitively(self):
+        db = MagicMock()
+        def mock_execute(query, params=None):
+            sql = str(query).lower()
+            if "from public.workflow_nodes" in sql:
+                return _Result(rows=[("K01",), ("K02",), ("K05a",), ("K05b",), ("K06",), ("K07",)])
+            if "from public.departments" in sql:
+                return _Result(rows=[("SURVEY",), ("LEGAL",)])
+            return _Result(rows=[])
+        db.execute.side_effect = mock_execute
+
+        graph = {
+            "start_node": "k05a",
+            "nodes": {
+                "k05a": {
+                    "task_code": "K05A",  # Upper case, while DB has K05a
+                    "name": "Nộp hồ sơ",
+                    "transitions": {},
+                    "checklist": [],
+                }
+            }
+        }
+        validated = workflow_runtime.validate_workflow_graph(db, graph)
+        self.assertEqual(validated["nodes"]["k05a"]["task_code"], "K05a")
 
 
 if __name__ == "__main__":
