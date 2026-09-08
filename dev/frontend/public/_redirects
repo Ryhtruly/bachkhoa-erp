@@ -1,2 +1,8 @@
-# Netlify SPA redirect rule
-/*    /index.html   200
+# Reverse Proxy API về Backend production.
+/api/*    https://bendbk.wiai.vn/api/:splat    200!
+
+# Reverse Proxy file tĩnh (hợp đồng, hồ sơ) về Backend.
+/static/*    https://bendbk.wiai.vn/static/:splat    200!
+
+# SPA fallback: phải đặt sau các rule API/static.
+/*    /index.html    200
