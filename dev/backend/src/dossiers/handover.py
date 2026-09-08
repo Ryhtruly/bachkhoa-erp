@@ -40,7 +40,7 @@ _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
 def _node_or_404(db: Session, task_node_id: str) -> dict:
     row = db.execute(
         text("""
-            select n.id, n.node_key, n.node_code, n.status, n.execution_data,
+            select n.id, n.node_key, n.node_code, n.status, n.started_at, n.execution_data,
                    n.workflow_instance_id, n.defined_by_revision_id,
                    wi.service_line_id, sl.contract_id, sl.service_type,
                    c.total_value, cu.full_name as customer_name,
@@ -245,18 +245,80 @@ def ensure_handover_work_gate_open(db: Session, task_node_id: str) -> dict:
 def _checklist_submission_state(db: Session, task_node_id: str) -> dict:
     row = db.execute(
         text("""
-            select count(*) as total,
-                   count(*) filter (
-                     where status not in (
-                       'pending_approval', 'late_pending_approval',
-                       'approved', 'late_approved', 'not_applicable'
-                     )
-                   ) as blocking,
-                   count(*) filter (
-                     where status in ('approved', 'late_approved', 'not_applicable')
-                   ) as approved
-            from public.task_node_checklist_results
-            where task_node_id = :n
+            with checklist_runtime_summary as (
+                select
+                    cr.id,
+                    cr.status,
+                    exists (
+                        select 1
+                        from public.checklist_result_document_types t
+                        where t.checklist_result_id = cr.id
+                          and t.is_active
+                    ) as uses_runtime_types,
+                    exists (
+                        select 1
+                        from public.checklist_result_document_types t
+                        where t.checklist_result_id = cr.id
+                          and t.is_active
+                          and not exists (
+                              select 1
+                              from public.checklist_result_document_type_files f
+                              where f.document_type_id = t.id
+                                and f.is_active
+                          )
+                    ) as has_empty_types,
+                    (
+                        exists (
+                            select 1
+                            from public.checklist_result_document_types t
+                            where t.checklist_result_id = cr.id
+                              and t.is_active
+                        )
+                        and not exists (
+                            select 1
+                            from public.checklist_result_document_types t
+                            where t.checklist_result_id = cr.id
+                              and t.is_active
+                              and (
+                                  t.status <> 'approved'
+                                  or not exists (
+                                      select 1
+                                      from public.checklist_result_document_type_files f
+                                      where f.document_type_id = t.id
+                                        and f.is_active
+                                  )
+                              )
+                        )
+                    ) as all_types_approved
+                from public.task_node_checklist_results cr
+                where cr.task_node_id = :n
+            )
+            select
+                count(*) as total,
+                count(*) filter (
+                    where (
+                        not uses_runtime_types
+                        and status not in (
+                            'pending_approval', 'late_pending_approval',
+                            'approved', 'late_approved', 'not_applicable'
+                        )
+                    )
+                    or (
+                        uses_runtime_types
+                        and has_empty_types
+                    )
+                ) as blocking,
+                count(*) filter (
+                    where (
+                        not uses_runtime_types
+                        and status in ('approved', 'late_approved', 'not_applicable')
+                    )
+                    or (
+                        uses_runtime_types
+                        and (all_types_approved or status in ('approved', 'late_approved', 'not_applicable'))
+                    )
+                ) as approved
+            from checklist_runtime_summary
         """),
         {"n": task_node_id},
     ).mappings().first()
@@ -400,7 +462,6 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
         is_dossier_actor
         and node["status"] in ("in_progress", "rework_required")
         and gate["is_open"]
-        and debt["gate_open"]
         and not is_node_closed
     )
     request_status = debt_request.get("status") if debt_request else None
@@ -434,7 +495,9 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
             and request_status != "pending"
         ),
         "can_submit_acceptance": bool(
-            can_edit_checklist and checklist_state["ready_for_acceptance"]
+            can_edit_checklist
+            and debt["gate_open"]
+            and checklist_state["ready_for_acceptance"]
         ),
         "installments": installments(db, node["contract_id"]),
         "lane_a": {
@@ -655,6 +718,12 @@ def review_debt_request(
     """Giám đốc duyệt/từ chối đúng yêu cầu của đúng Node, có audit bất biến."""
     if decision not in ("approved", "rejected"):
         raise HTTPException(status_code=400, detail="Quyết định phải là approved hoặc rejected")
+    note = (review_note or "").strip() or None
+    if decision == "rejected" and not note:
+        raise HTTPException(
+            status_code=422,
+            detail="Không duyệt yêu cầu nợ phải ghi rõ lý do để nhân viên xử lý.",
+        )
     row = db.execute(
         text("""
             select r.id, r.task_node_id, r.contract_id, r.requester_user_id,
@@ -671,7 +740,6 @@ def review_debt_request(
     if row["status"] != "pending":
         raise HTTPException(status_code=409, detail="Yêu cầu này đã được xử lý")
 
-    note = (review_note or "").strip() or None
     db.execute(
         text("""
             update public.handover_debt_requests
@@ -780,6 +848,21 @@ def submit_handover_for_acceptance(
     if not checklist_state["ready_for_acceptance"]:
         raise HTTPException(status_code=400, detail="Phải nộp đủ toàn bộ checklist và minh chứng bắt buộc")
 
+    # K06 has a dedicated submit endpoint, but runtime document types still use
+    # the same one-submit state machine as every other node. Keep this after
+    # actor/debt/checklist gates so a forbidden or financially blocked request
+    # cannot mutate employee evidence.
+    from src.dossiers.checklist_document_types import submit_types_for_node
+
+    submitted_types = submit_types_for_node(db, task_node_id, actor_id)
+    unresolved = submitted_types.get("unresolved_checklists", [])
+    if unresolved:
+        names = ", ".join(unresolved)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Còn nhiệm vụ chưa điền xong: {names}",
+        )
+
     attempt_no = db.execute(
         text("""
             select coalesce(max(attempt_no), 0) + 1
@@ -812,7 +895,13 @@ def submit_handover_for_acceptance(
     db.execute(
         text("""
             update public.task_nodes
-            set status = 'submitted', submitted_at = now(), execution_data = cast(:data as jsonb),
+            set status = 'submitted', submitted_at = now(),
+                execution_data = jsonb_set(
+                    cast(:data as jsonb),
+                    '{actual_duration_seconds}',
+                    to_jsonb(greatest(0, extract(epoch from (now() - coalesce(started_at, now())))::bigint)),
+                    true
+                ),
                 updated_at = now()
             where id = :n
         """),

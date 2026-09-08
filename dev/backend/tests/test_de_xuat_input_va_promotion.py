@@ -258,3 +258,32 @@ class SoCauHinhMauTests(unittest.TestCase):
         """Thứ tự hiển thị không đổi ý nghĩa tờ giấy."""
         db = self._run_promotion(_mau("TPL-CU"))
         self.assertTrue(db.execute.called)
+
+    def test_concurrent_insert_still_preserves_legacy_configuration_conflict(self):
+        """A conflicting winner between read/insert must still return legacy 409."""
+        from src.dossiers import slot_requests
+
+        no_templates = MagicMock()
+        no_templates.mappings.return_value.all.return_value = []
+        lost_insert_race = MagicMock()
+        lost_insert_race.scalar.return_value = None
+        conflicting_winner = MagicMock()
+        conflicting_winner.mappings.return_value.all.return_value = [
+            _mau("TPL-RACE", needs_original=True)
+        ]
+        db = MagicMock()
+        db.execute.side_effect = [no_templates, lost_insert_race, conflicting_winner]
+
+        with self.assertRaises(HTTPException) as caught:
+            slot_requests._resolve_or_create_template(
+                db,
+                name="Giấy uỷ quyền",
+                source="KHACH_HANG",
+                quantity=1,
+                required=False,
+                needs_original=False,
+                reject_conflicting_same_name=True,
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIn("bản chính", caught.exception.detail)

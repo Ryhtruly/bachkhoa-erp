@@ -1,6 +1,11 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../lib/api', () => ({
+  apiFetch: vi.fn(async () => ({})),
+}))
+
+import { apiFetch } from '../../lib/api'
 import NodeOutputList from './NodeOutputList'
 
 const TEMPLATES = new Map([
@@ -383,5 +388,282 @@ describe('Danh tính hàng bền — không rơi về chỉ số mảng khi đ�
     expect(cccdSau).toBe(cccdTruoc)
     expect(banVeSau).toBe(banVeTruoc)
     expect(soDoSau).toBe(soDoTruoc)
+  })
+})
+
+describe('Loại giấy runtime — trạng thái ở cấp loại, nhiều file ở bên trong', () => {
+  const RUNTIME_ITEM = {
+    id: 'CR-RUNTIME',
+    name: 'Khảo sát hiện trạng',
+    document_types: [
+      {
+        id: 'TYPE-REJECTED',
+        name: 'Ảnh hiện trạng thửa đất',
+        source: 'CONG_TY',
+        source_label: 'Công ty soạn',
+        status: 'rejected',
+        rejection_reason: 'Ảnh trang 2 bị mờ, không đọc được số thửa.',
+        file_count: 3,
+        files: [
+          { document_id: 'D-1', file_name: 'mat-tien.jpg', status: 'approved' },
+          {
+            document_id: 'D-2', file_name: 'moc-ranh.jpg', status: 'rejected',
+            rejection_reason: 'Ảnh mốc ranh bị mờ.',
+          },
+          { document_id: 'D-3', file_name: 'so-thua.jpg', status: 'draft' },
+        ],
+      },
+      {
+        id: 'TYPE-APPROVED',
+        name: 'Biên bản đo đạc',
+        source: 'CO_QUAN',
+        source_label: 'Pháp lý',
+        status: 'approved',
+        rejection_reason: null,
+        file_count: 1,
+        files: [{ document_id: 'D-4', file_name: 'bien-ban.pdf', status: 'approved' }],
+      },
+    ],
+    output_documents: [{ template_id: 'LEGACY-MUST-NOT-RENDER' }],
+  }
+
+  it('ưu tiên document_types khi key tồn tại, hiện một trạng thái và đủ ba file', () => {
+    render(
+      <NodeOutputList checklistItem={RUNTIME_ITEM} nodeStatus="rework_required" />,
+    )
+
+    expect(screen.queryByText('LEGACY-MUST-NOT-RENDER')).not.toBeInTheDocument()
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    expect(within(row).getAllByText('Bị từ chối')).toHaveLength(1)
+    expect(within(row).getByText('3', { selector: '.eiw-doc__file-count-badge' })).toBeInTheDocument()
+    expect(within(row).queryByText('3 file')).not.toBeInTheDocument()
+
+    fireEvent.click(within(row).getByRole('button', { name: /Xem 3 file/ }))
+    expect(within(row).getByText('mat-tien.jpg')).toBeInTheDocument()
+    expect(within(row).getByText('moc-ranh.jpg')).toBeInTheDocument()
+    expect(within(row).getByText('so-thua.jpg')).toBeInTheDocument()
+    expect(within(row).getByText('Ảnh trang 2 bị mờ, không đọc được số thửa.')).toBeInTheDocument()
+    expect(within(row).queryByText('Ảnh mốc ranh bị mờ.')).not.toBeInTheDocument()
+    expect(within(row).getAllByText('Bị từ chối')).toHaveLength(1)
+  })
+
+  it('loại bị từ chối hiện nguyên văn lý do và upload lại nhiều file theo typeId', async () => {
+    const onUploadDocument = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onUploadDocument={onUploadDocument}
+      />,
+    )
+
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    expect(within(row).getByText('Ảnh trang 2 bị mờ, không đọc được số thửa.')).toBeInTheDocument()
+    const input = within(row).getByLabelText('Tải file cho Ảnh hiện trạng thửa đất')
+    expect(input).toHaveAttribute('multiple')
+    const files = [
+      new File(['a'], 'anh-moi-1.jpg', { type: 'image/jpeg' }),
+      new File(['b'], 'anh-moi-2.jpg', { type: 'image/jpeg' }),
+    ]
+    fireEvent.change(input, { target: { files } })
+
+    await waitFor(() => expect(onUploadDocument).toHaveBeenCalledWith({
+      typeId: 'TYPE-REJECTED',
+      files,
+    }))
+  })
+
+  it('sao chép FileList trước khi reset input để upload không bị mất file', async () => {
+    const onUploadDocument = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onUploadDocument={onUploadDocument}
+      />,
+    )
+
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    const input = within(row).getByLabelText('Tải file cho Ảnh hiện trạng thửa đất')
+    const liveFiles = [new File(['scan'], 'anh-hop-le.jpg', { type: 'image/jpeg' })]
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      get: () => liveFiles,
+    })
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      get: () => '',
+      set: () => { liveFiles.length = 0 },
+    })
+
+    fireEvent.change(input)
+
+    await waitFor(() => expect(onUploadDocument).toHaveBeenCalledWith({
+      typeId: 'TYPE-REJECTED',
+      files: [expect.objectContaining({ name: 'anh-hop-le.jpg' })],
+    }))
+  })
+
+  it('đặt badge số file và nút upload trong cùng cụm thao tác', () => {
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onUploadDocument={vi.fn()}
+      />,
+    )
+
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    const actions = row.querySelector('.eiw-doc__actions')
+    const fileButton = within(row).getByRole('button', { name: /Xem 3 file/ })
+    const uploadButton = within(row).getByRole('button', { name: /Chọn file/ })
+    expect(actions).toContainElement(fileButton)
+    expect(actions).toContainElement(uploadButton)
+    expect(within(fileButton).getByText('3', { selector: '.eiw-doc__file-count-badge' })).toBeInTheDocument()
+  })
+
+  it('loại bị trả cho xóa từng file để thay lại, nhưng chỉ hiện một phán quyết ở cấp loại giấy', async () => {
+    const onDeleteDocument = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onDeleteDocument={onDeleteDocument}
+      />,
+    )
+
+    const row = rowOf('Ảnh hiện trạng thửa đất')
+    fireEvent.click(within(row).getByRole('button', { name: /Xem 3 file/ }))
+
+    expect(within(row).getAllByText('Bị từ chối')).toHaveLength(1)
+    expect(within(row).queryByText('Ảnh mốc ranh bị mờ.')).not.toBeInTheDocument()
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Xóa moc-ranh.jpg' }))
+    await waitFor(() => expect(onDeleteDocument).toHaveBeenCalledWith({
+      typeId: 'TYPE-REJECTED',
+      documentId: 'D-2',
+    }))
+  })
+
+  it('loại đã đạt vẫn cho bổ sung file nhưng bắt nhập lý do thay đổi', async () => {
+    const onUploadDocument = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onUploadDocument={onUploadDocument}
+      />,
+    )
+
+    const row = rowOf('Biên bản đo đạc')
+    expect(within(row).getByText('Đạt')).toBeInTheDocument()
+    fireEvent.click(within(row).getByRole('button', { name: 'Tải thêm file cho Biên bản đo đạc' }))
+    const dialog = screen.getByRole('dialog', { name: 'Lý do thay đổi Biên bản đo đạc' })
+    const reason = within(dialog).getByLabelText('Lý do thay đổi')
+    const choose = within(dialog).getByRole('button', { name: 'Tiếp tục chọn file' })
+    expect(choose).toBeDisabled()
+    fireEvent.change(reason, { target: { value: '  Bổ sung trang có chữ ký  ' } })
+    expect(choose).toBeEnabled()
+    fireEvent.click(choose)
+
+    const file = new File(['signed'], 'bien-ban-ky.pdf', { type: 'application/pdf' })
+    fireEvent.change(within(row).getByLabelText('Tải file cho Biên bản đo đạc'), {
+      target: { files: [file] },
+    })
+
+    await waitFor(() => expect(onUploadDocument).toHaveBeenCalledWith({
+      typeId: 'TYPE-APPROVED',
+      files: [file],
+      changeReason: 'Bổ sung trang có chữ ký',
+    }))
+  })
+
+  it('xóa file của loại đã đạt bắt nhập lý do trong popup', async () => {
+    const onDeleteDocument = vi.fn().mockResolvedValue(undefined)
+    render(
+      <NodeOutputList
+        checklistItem={RUNTIME_ITEM}
+        nodeStatus="rework_required"
+        onDeleteDocument={onDeleteDocument}
+      />,
+    )
+
+    const row = rowOf('Biên bản đo đạc')
+    fireEvent.click(within(row).getByRole('button', { name: /Xem 1 file/ }))
+    fireEvent.click(within(row).getByRole('button', { name: 'Xóa bien-ban.pdf' }))
+    const dialog = screen.getByRole('dialog', { name: 'Lý do thay đổi Biên bản đo đạc' })
+    expect(within(dialog).getByRole('button', { name: 'Xác nhận gỡ file' })).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText('Lý do thay đổi'), {
+      target: { value: '  Thay bằng bản ký mới  ' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Xác nhận gỡ file' }))
+
+    await waitFor(() => expect(onDeleteDocument).toHaveBeenCalledWith({
+      typeId: 'TYPE-APPROVED',
+      documentId: 'D-4',
+      changeReason: 'Thay bằng bản ký mới',
+    }))
+  })
+
+  it('document_types rỗng vẫn không fallback sang giấy legacy', () => {
+    render(
+      <NodeOutputList
+        checklistItem={{
+          id: 'CR-EMPTY-RUNTIME',
+          name: 'Checklist runtime rỗng',
+          document_types: [],
+          output_documents: [{ template_id: 'LEGACY-HIDDEN' }],
+        }}
+        nodeStatus="in_progress"
+      />,
+    )
+
+    expect(screen.queryByText('LEGACY-HIDDEN')).not.toBeInTheDocument()
+    expect(screen.getByText(/chưa có loại giấy nào/)).toBeInTheDocument()
+  })
+
+  it('hiển thị thông báo khi checklist không có loại giấy tờ và không tạo nút nộp riêng', () => {
+    render(
+      <NodeOutputList
+        taskNodeId="TASK-NODE-1"
+        checklistItem={{
+          id: 'CR-PAPERLESS-1',
+          name: 'Đóng hồ sơ & khoá hạng mục',
+          document_types: [],
+          status: 'pending',
+        }}
+        nodeStatus="in_progress"
+      />,
+    )
+
+    expect(screen.getByTestId('paperless-info-box')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Checklist này chưa có loại giấy nào\. Khi nộp nghiệm thu hệ thống sẽ yêu cầu nhập lý do\./),
+    ).toBeInTheDocument()
+    // Tuyệt đối không tạo nút nộp checklist riêng lẻ
+    expect(screen.queryByRole('button', { name: /Nộp checklist/i })).not.toBeInTheDocument()
+  })
+
+  it('hiển thị hộp thông tin đã nộp kèm lý do khi status là pending_approval', () => {
+    render(
+      <NodeOutputList
+        taskNodeId="TASK-NODE-1"
+        checklistItem={{
+          id: 'CR-PAPERLESS-1',
+          name: 'Đóng hồ sơ & khoá hạng mục',
+          document_types: [],
+          status: 'pending_approval',
+          note: 'Đã lưu kho tài liệu xong',
+        }}
+        nodeStatus="in_progress"
+      />,
+    )
+
+    const box = screen.getByTestId('paperless-submitted-box')
+    expect(box).toBeInTheDocument()
+    expect(within(box).getByText('Đã nộp checklist hoàn thành')).toBeInTheDocument()
+    expect(within(box).getByText('Chờ duyệt')).toBeInTheDocument()
+    expect(within(box).getByText(/Đã lưu kho tài liệu xong/)).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText(/Nhập lý do hoàn thành/)).not.toBeInTheDocument()
   })
 })

@@ -26,6 +26,10 @@ from src.db.models import (
     LeaveRecord,
     User,
 )
+from src.dossiers.checklist_document_types import (
+    SOURCE_LABELS as DOCUMENT_TYPE_SOURCE_LABELS,
+    runtime_schema_ready,
+)
 
 # Runtime execution/pay tables (task_nodes, task_node_assignments,
 # work_pay_entitlements, employee_compensation_terms, employee_pay_adjustments)
@@ -422,12 +426,17 @@ _ITEM_NODE_DETAIL_QUERY = text(
           and coalesce(r.is_payable, false)
           and wr.status = 'published'
           and current_date <@ wr.effective_period
-          and wr.role_code = coalesce((
-            select a.role_code from public.task_node_assignments a
-            where a.task_node_id = n.id and a.employee_id = :employee_id
-              and a.assignment_status in ('assigned', 'accepted')
-            limit 1
-          ), 'MAIN')
+          and (
+            case
+              when (
+                select a.role_code from public.task_node_assignments a
+                where a.task_node_id = n.id and a.employee_id = :employee_id
+                  and a.assignment_status in ('assigned', 'accepted')
+                limit 1
+              ) = 'ASSISTANT' then wr.role_code = 'ASSISTANT'
+              else wr.role_code in ('MAIN', 'SUBMITTER')
+            end
+          )
       ), 0) as amount,
       (
         select e.full_name
@@ -472,7 +481,7 @@ _POOL_CHAIN_QUERY = text(
              from public.task_node_checklist_results r
              join public.work_item_rates wr on wr.work_item_id = r.work_item_id
              where r.task_node_id = n.id and coalesce(r.is_payable, false)
-               and wr.role_code = 'MAIN' and wr.status = 'published'
+               and wr.role_code in ('MAIN', 'SUBMITTER') and wr.status = 'published'
                and current_date <@ wr.effective_period
            ), 0) as main_amount
     from public.task_nodes n
@@ -480,7 +489,7 @@ _POOL_CHAIN_QUERY = text(
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where n.workflow_instance_id = any(:instance_ids)
-      and n.status not in ('cancelled', 'skipped')
+      and n.status not in ('cancelled', 'skipped', 'accepted', 'completed')
     order by n.node_code, n.occurrence_no
     """
 )
@@ -534,7 +543,7 @@ _POOL_DETAIL_STEPS_QUERY = text(
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where n.workflow_instance_id = :instance_id
-      and n.status not in ('cancelled', 'skipped')
+      and n.status not in ('cancelled', 'skipped', 'accepted', 'completed')
     order by n.node_code, n.occurrence_no
     """
 )
@@ -545,8 +554,9 @@ _POOL_DETAIL_CHECKLIST_QUERY = text(
            coalesce(r.is_payable, false) as is_payable,
            coalesce((
              select wr.amount from public.work_item_rates wr
-             where wr.work_item_id = r.work_item_id and wr.role_code = 'MAIN'
+             where wr.work_item_id = r.work_item_id and wr.role_code in ('MAIN', 'SUBMITTER')
                and wr.status = 'published' and current_date <@ wr.effective_period
+             order by case when wr.role_code = 'MAIN' then 0 else 1 end
              limit 1
            ), 0) as main_amount,
            coalesce((
@@ -642,6 +652,7 @@ _TASK_CHECKLIST_QUERY = text(
            -- Ghi chú của Giám đốc khi trả việc. Không trả trường này thì nhân
            -- viên mở ra chỉ thấy "Cần bổ sung" mà không biết bổ sung cái gì.
            r.note as director_note,
+           r.note,
            r.submitted_at, r.evidence_data,
            -- Cấu hình tài liệu đầu ra lấy thẳng từ graph đang chạy. Không khai thì
            -- là null, và giao diện không hiện khu tài liệu — luồng minh chứng cũ
@@ -687,6 +698,32 @@ _TASK_CHECKLIST_QUERY = text(
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where r.task_node_id = any(:task_node_ids)
     order by r.checklist_name asc
+    """
+)
+
+_CHECKLIST_DOCUMENT_TYPES_QUERY = text(
+    """
+    select t.id, t.checklist_result_id, t.template_id, t.name, t.source,
+           t.origin, t.status, t.rejection_reason
+    from public.checklist_result_document_types t
+    where t.checklist_result_id = any(:checklist_result_ids)
+      and t.is_active
+    order by t.checklist_result_id, t.created_at, t.id
+    """
+)
+
+_CHECKLIST_DOCUMENT_TYPE_FILES_QUERY = text(
+    """
+    select f.document_type_id, d.id as document_id, d.file_name, d.content_type,
+           f.change_reason
+    from public.checklist_result_document_type_files f
+    join public.checklist_result_document_types t on t.id = f.document_type_id
+    join public.dossier_documents d on d.id = f.document_id
+    where t.checklist_result_id = any(:checklist_result_ids)
+      and t.is_active
+      and f.is_active
+      and d.doc_status = 'DANG_DUNG'
+    order by f.document_type_id, f.created_at, d.id
     """
 )
 
@@ -869,6 +906,7 @@ class EmployeePortalService:
         user = db.query(User).filter(User.id == employee.user_id).first()
         tasks = db.execute(_TASKS_QUERY, {"employee_id": employee.id}).mappings().all()
         checklist_by_task = {}
+        checklist_by_id = {}
         assignees_by_task = {}
         task_node_ids = [task["id"] for task in tasks]
         if task_node_ids:
@@ -889,24 +927,87 @@ class EmployeePortalService:
                 _TASK_CHECKLIST_QUERY, {"task_node_ids": task_node_ids}
             ).mappings().all()
             for row in checklist_rows:
-                checklist_by_task.setdefault(row["task_node_id"], []).append(
-                    {
+                checklist = {
+                    "id": row["id"],
+                    "key": row["checklist_key"],
+                    "name": row["checklist_name"],
+                    "is_required": bool(row["is_required"]),
+                    "status": row["status"],
+                    "require_evidence": bool(row["require_evidence"]),
+                    "approver_role": row["approver_role"],
+                    "is_overdue": bool(row["is_overdue"]),
+                    "late_reason": row["late_reason"],
+                    "director_note": row["director_note"],
+                    "note": row["note"] if "note" in row else row.get("director_note"),
+                    "submitted_at": _date_value(row["submitted_at"]),
+                    "evidence_files": (row["evidence_data"] or {}).get("files", []),
+                    "output_documents": list(row["output_documents"] or []),
+                    "review_by_template": dict(row["review_by_template"] or {}),
+                }
+                checklist_by_task.setdefault(row["task_node_id"], []).append(checklist)
+                checklist_by_id[row["id"]] = checklist
+
+            checklist_result_ids = list(checklist_by_id)
+            document_type_by_id = {}
+            runtime_types_available = bool(
+                checklist_result_ids and runtime_schema_ready(db)
+            )
+            if runtime_types_available:
+                for row in db.execute(
+                    _CHECKLIST_DOCUMENT_TYPES_QUERY,
+                    {"checklist_result_ids": checklist_result_ids},
+                ).mappings().all():
+                    document_type = {
                         "id": row["id"],
-                        "key": row["checklist_key"],
-                        "name": row["checklist_name"],
-                        "is_required": bool(row["is_required"]),
+                        "template_id": row["template_id"],
+                        "name": row["name"],
+                        "source": row["source"],
+                        "source_label": DOCUMENT_TYPE_SOURCE_LABELS.get(
+                            row["source"], row["source"]
+                        ),
+                        "origin": row["origin"],
                         "status": row["status"],
-                        "require_evidence": bool(row["require_evidence"]),
-                        "approver_role": row["approver_role"],
-                        "is_overdue": bool(row["is_overdue"]),
-                        "late_reason": row["late_reason"],
-                        "director_note": row["director_note"],
-                        "submitted_at": _date_value(row["submitted_at"]),
-                        "evidence_files": (row["evidence_data"] or {}).get("files", []),
-                        "output_documents": list(row["output_documents"] or []),
-                        "review_by_template": dict(row["review_by_template"] or {}),
+                        "rejection_reason": row["rejection_reason"],
+                        "files": [],
+                        "file_count": 0,
                     }
-                )
+                    document_type_by_id[row["id"]] = document_type
+                    checklist_by_id[row["checklist_result_id"]].setdefault(
+                        "document_types", []
+                    ).append(document_type)
+
+                for row in db.execute(
+                    _CHECKLIST_DOCUMENT_TYPE_FILES_QUERY,
+                    {"checklist_result_ids": checklist_result_ids},
+                ).mappings().all():
+                    document_type = document_type_by_id.get(row["document_type_id"])
+                    if document_type is None:
+                        continue
+                    document_type["files"].append({
+                        "document_id": row["document_id"],
+                        "file_name": row["file_name"],
+                        "content_type": row["content_type"],
+                        "change_reason": row["change_reason"],
+                    })
+
+            if runtime_types_available:
+                for checklist in checklist_by_id.values():
+                    document_types = checklist.setdefault("document_types", [])
+                    for document_type in document_types:
+                        document_type["file_count"] = len(document_type["files"])
+                    approved = sum(
+                        1
+                        for document_type in document_types
+                        if document_type["status"] == "approved"
+                        and document_type["file_count"] > 0
+                    )
+                    total = len(document_types)
+                    checklist["document_type_progress"] = {
+                        "approved": approved,
+                        "total": total,
+                        "percent": round(approved * 100 / total) if total else 0,
+                        "is_complete": total > 0 and approved == total,
+                    }
         # Tên loại giấy: một truy vấn cho tất cả id được nhắc tới.
         #
         # Không nhét vào truy vấn checklist bằng lateral — lateral chỉ thấy bảng
@@ -1695,12 +1796,9 @@ class EmployeePortalService:
         evidence_provided: bool,
     ) -> None:
         """Reject unauthorized or invalid submissions before touching object storage."""
-        # K06 có cổng công nợ riêng. Kiểm tra trước khi route upload file lên
-        # MinIO để người dùng không thể vượt khóa UI bằng cách gọi thẳng API.
-        # Import cục bộ tránh tạo vòng phụ thuộc khi khởi động module.
-        from src.dossiers import handover
-
-        handover.ensure_handover_work_gate_open(db, task_node_id)
+        # Công nợ K06 chỉ chặn lúc Nộp nghiệm thu. Nhân viên vẫn phải được thêm
+        # loại giấy, tải/gỡ file và chuẩn bị đủ hồ sơ trong khi chờ thu tiền hoặc
+        # chờ Giám đốc duyệt nợ. Endpoint submit-acceptance giữ cổng tài chính.
         EmployeePortalService._authorized_checklist_for_submission(
             db,
             employee,
@@ -1748,6 +1846,9 @@ class EmployeePortalService:
                     "submitted_at": submitted_at.isoformat(),
                 }
             )
+        elif note:
+            evidence_data["note"] = note
+            evidence_data["reason"] = note
         evidence_data["files"] = files
         db.execute(
             text(
@@ -1755,6 +1856,7 @@ class EmployeePortalService:
                 update public.task_node_checklist_results
                 set status = :status, submitted_by = :user_id, submitted_at = :submitted_at,
                     is_overdue = :is_overdue, late_reason = :late_reason,
+                    note = coalesce(:note, note),
                     evidence_data = cast(:evidence_data as jsonb), updated_at = now()
                 where id = :id
                 """
@@ -1766,6 +1868,7 @@ class EmployeePortalService:
                 "submitted_at": submitted_at,
                 "is_overdue": is_overdue,
                 "late_reason": normalized_late_reason,
+                "note": note,
                 "evidence_data": json.dumps(evidence_data),
             },
         )

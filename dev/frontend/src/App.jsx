@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState, startTransition } from 'react';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import Login from './pages/Login';
@@ -7,6 +7,8 @@ import ChatWidget from './components/ChatWidget';
 import { apiFetch, clearAccessToken } from './lib/api';
 import { requestNavigationPermission } from './lib/unsavedChangesGuard';
 import { ToastProvider } from './contexts/ToastContext';
+import { safeViewTransition } from './lib/viewTransition';
+import TabSkeleton from './components/ui/TabSkeleton';
 import './index.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -24,6 +26,7 @@ const EmployeePortalDashboard = lazy(() => import('./features/employee-portal/Em
 const MyPayroll = lazy(() => import('./features/employee-portal/MyPayroll'));
 const ApprovalQueue = lazy(() => import('./features/approvals/ApprovalQueue'));
 const DocumentTemplateSettings = lazy(() => import('./features/document-register/DocumentTemplateSettings'));
+const CustomerIntakePage = lazy(() => import('./pages/CustomerIntakePage'));
 
 const SIDEBAR_COLLAPSED_KEY = 'bachkhoa_sidebar_collapsed';
 const NAVIGATION_TARGET_PERMISSIONS = {
@@ -237,7 +240,7 @@ function App() {
 
   useEffect(() => {
     const navigateFromFeature = (event) => {
-      if (event.detail?.tab === 'cashflow') setActiveTab('cashflow');
+      if (event.detail?.tab) setActiveTab(event.detail.tab);
     };
     window.addEventListener('app:navigate', navigateFromFeature);
     return () => window.removeEventListener('app:navigate', navigateFromFeature);
@@ -251,6 +254,14 @@ function App() {
           handleLogin(token);
         }}
       />
+    );
+  }
+
+  if (window.location.pathname === '/intake' || window.location.pathname === '/yeu-cau-dich-vu') {
+    return (
+      <Suspense fallback={<TabSkeleton />}>
+        <CustomerIntakePage />
+      </Suspense>
     );
   }
 
@@ -327,7 +338,11 @@ function App() {
     if (tab === effectiveTab) { setActiveTab(tab); return; }
     if (await requestNavigationPermission()) {
       clearNavigationQueue();
-      setActiveTab(tab);
+      safeViewTransition(() => {
+        startTransition(() => {
+          setActiveTab(tab);
+        });
+      });
     }
   };
 
@@ -351,7 +366,9 @@ function App() {
       contractId: item.contract_id,
       serviceLineId: item.service_line_id,
       nodeKey: item.node_key,
-      type: item.type,
+      taskNodeId: item.task_node_id,
+      targetType: item.target_type || item.type,
+      targetId: item.target_id || item.ref_id,
       nonce: Date.now(),
     });
   };
@@ -380,7 +397,7 @@ function App() {
           />
 <main className={`main${effectiveTab === 'contracts' ? ' main--contract' : ''}${effectiveTab === 'timeline' ? ' main--timeline' : ''}${effectiveTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers', 'doc-templates'].includes(effectiveTab) ? ' main--list' : ''}${effectiveTab === 'employee-dashboard' ? ' main--employee' : ''}`}>
             {ActiveTabComponent && (
-              <Suspense fallback={<div className="app-tab-loader" role="status">Đang tải phân hệ...</div>}>
+              <Suspense fallback={<TabSkeleton label="Đang tải phân hệ..." />}>
                 <MemoizedActiveTabScreen
                   key={effectiveTab}
                   Component={ActiveTabComponent}

@@ -31,6 +31,11 @@
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
+.doc-cabinet__head > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
 .doc-cabinet__chevron {
   position: absolute;
   right: 8px;
@@ -41,6 +46,9 @@
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.22);
 }
+.doc-cabinet__chevron svg { transition: transform .16s ease; }
+.doc-cabinet__chevron svg.is-open { transform: rotate(180deg); }
+.doc-cabinet__body { display: grid; gap: 9px; padding: 9px; }
 
 /* ── Bộ chọn Hạng mục ──
    Tủ gắn theo đúng cặp Gói + Hạng mục, nên khi hợp đồng có nhiều hạng mục thì

@@ -38,6 +38,7 @@ from src.db.models import Employee, User
 from src.finance import AdvanceRequestIn, FinanceService
 from src.employee_portal.service import EmployeePortalService
 from src.dossiers.actor_guard import assert_can_view_node
+from src.dossiers.checklist_document_types import node_type_review_summary
 from src.files.references import FileReference
 from src.services.storage_service import AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX, delete_file, ensure_bucket, get_file, upload_file
 from src.services.timeline_realtime import employee_task_event_stream, publish_timeline_change
@@ -45,15 +46,21 @@ from src.services.timeline_realtime import employee_task_event_stream, publish_t
 
 class SubmitNodeIn(BaseModel):
     note: str | None = None
+    checklist_notes: dict[str, str] | None = None
 
 
 class ClaimNodeIn(BaseModel):
-    role_code: str = "MAIN"
+    role_code: Optional[str] = None
 
 
 class PauseNodeIn(BaseModel):
     reason_type: str
     note: str
+
+
+class ClassifySourceDocumentIn(BaseModel):
+    document_type_id: str | None = None
+    template_id: str | None = None
 
 
 class ClaimClusterIn(BaseModel):
@@ -484,10 +491,37 @@ async def submit_checklist_evidence(
             note = (form.get("note") or None) if isinstance(form.get("note"), str) else None
             raw_reason = form.get("late_reason")
             late_reason = raw_reason if isinstance(raw_reason, str) and raw_reason else None
+    elif "application/json" in (request.headers.get("content-type") or ""):
+        try:
+            json_body = await request.json()
+            if isinstance(json_body, dict):
+                raw_note = json_body.get("note")
+                note = raw_note.strip() if isinstance(raw_note, str) and raw_note.strip() else None
+                raw_reason = json_body.get("late_reason")
+                late_reason = raw_reason.strip() if isinstance(raw_reason, str) and raw_reason.strip() else None
+        except Exception:
+            pass
 
     employee = _active_employee_for_user(db, user.id)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
+
+    # Với checklist không có loại giấy tờ (types.length === 0) và không có file:
+    # cho nộp nhưng bắt buộc kèm lý do/ghi chú hoàn thành.
+    has_runtime_types = db.execute(
+        text("""
+            select exists (
+                select 1 from public.checklist_result_document_types t
+                where t.checklist_result_id = :cid and t.is_active
+            )
+        """),
+        {"cid": checklist_result_id},
+    ).scalar()
+    if not has_runtime_types and not file and not (note and note.strip()):
+        raise HTTPException(
+            status_code=422,
+            detail="Checklist này không có phân loại giấy tờ, vui lòng nhập lý do/ghi chú thực hiện để nộp.",
+        )
 
     EmployeePortalService.authorize_checklist_evidence_submission(
         db,
@@ -534,6 +568,185 @@ async def submit_checklist_evidence(
         raise
     publish_timeline_change("checklist_submitted", entity_id=checklist_result_id)
     return result
+
+
+class ChecklistDocumentTypeIn(BaseModel):
+    template_id: str | None = None
+    name: str | None = None
+    source: str | None = None
+
+
+class ChecklistDocumentChangeIn(BaseModel):
+    change_reason: str | None = None
+
+
+def _authorize_document_type_route(
+    db: Session,
+    user: User,
+    task_node_id: str,
+    checklist_result_id: str,
+):
+    employee = _active_employee_for_user(db, user.id)
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy hồ sơ nhân sự.",
+        )
+    EmployeePortalService.authorize_checklist_evidence_submission(
+        db,
+        employee,
+        task_node_id,
+        checklist_result_id,
+        evidence_provided=True,
+    )
+    return employee
+
+
+def _require_document_type_in_checklist(
+    db: Session, checklist_result_id: str, document_type_id: str
+) -> None:
+    belongs = db.execute(
+        text("""
+            select 1
+            from public.checklist_result_document_types
+            where id = :document_type_id
+              and checklist_result_id = :checklist_result_id
+              and is_active
+        """),
+        {
+            "document_type_id": document_type_id,
+            "checklist_result_id": checklist_result_id,
+        },
+    ).first()
+    if not belongs:
+        raise HTTPException(
+            status_code=404,
+            detail="Không tìm thấy loại giấy trong mục checklist này.",
+        )
+
+
+@router.get("/tasks/{task_node_id}/checklist/{checklist_result_id}/document-type-suggestions")
+def get_checklist_document_type_suggestions(
+    task_node_id: str,
+    checklist_result_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import exact_combo_suggestions
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    return exact_combo_suggestions(db, checklist_result_id)
+
+
+@router.post("/tasks/{task_node_id}/checklist/{checklist_result_id}/document-types")
+def create_checklist_document_type(
+    task_node_id: str,
+    checklist_result_id: str,
+    payload: ChecklistDocumentTypeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import add_type
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    try:
+        result = add_type(
+            db,
+            checklist_result_id=checklist_result_id,
+            template_id=payload.template_id,
+            name=payload.name,
+            source=payload.source,
+            actor_id=user.id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("checklist_document_type_added", entity_id=checklist_result_id)
+    return {"status": "success", "data": result}
+
+
+@router.post(
+    "/tasks/{task_node_id}/checklist/{checklist_result_id}/document-types/{type_id}/files"
+)
+async def upload_checklist_document_type_files(
+    task_node_id: str,
+    checklist_result_id: str,
+    type_id: str,
+    files: list[UploadFile] = File(),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    change_reason: str | None = Form(None),
+):
+    from src.dossiers.checklist_document_types import add_files
+    from src.dossiers.documents import MAX_DOCUMENT_BYTES
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    if not files:
+        raise HTTPException(status_code=422, detail="Phải chọn ít nhất một tệp.")
+    _require_document_type_in_checklist(db, checklist_result_id, type_id)
+
+    uploads: list[tuple[str, str | None, bytes]] = []
+    read_failures: list[dict] = []
+    for file in files:
+        file_name = file.filename or "tai-lieu"
+        try:
+            data = await file.read(MAX_DOCUMENT_BYTES + 1)
+        except Exception as exc:
+            read_failures.append({
+                "file_name": file_name,
+                "status": "failed",
+                "error": str(exc) or exc.__class__.__name__,
+            })
+            continue
+        uploads.append((file_name, file.content_type, data))
+
+    try:
+        results = add_files(
+            db,
+            document_type_id=type_id,
+            uploads=uploads,
+            actor_id=user.id,
+            change_reason=change_reason,
+        ) if uploads else []
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("checklist_document_type_files_changed", entity_id=checklist_result_id)
+    return {"status": "success", "data": results + read_failures}
+
+
+@router.delete(
+    "/tasks/{task_node_id}/checklist/{checklist_result_id}/document-types/{type_id}/files/{document_id}"
+)
+def delete_checklist_document_type_file(
+    task_node_id: str,
+    checklist_result_id: str,
+    type_id: str,
+    document_id: str,
+    payload: ChecklistDocumentChangeIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from src.dossiers.checklist_document_types import remove_file
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    _require_document_type_in_checklist(db, checklist_result_id, type_id)
+    try:
+        result = remove_file(
+            db,
+            document_type_id=type_id,
+            document_id=document_id,
+            actor_id=user.id,
+            change_reason=payload.change_reason,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("checklist_document_type_files_changed", entity_id=checklist_result_id)
+    return {"status": "success", "data": result}
 
 
 @router.post("/tasks/{task_node_id}/checklist/{checklist_result_id}/output-documents")
@@ -613,6 +826,63 @@ def reuse_checklist_output_document(
         db.rollback()
         raise
     publish_timeline_change("checklist_output_document_added", entity_id=checklist_result_id)
+    return {"status": "success", "data": result}
+
+
+@router.post("/tasks/{task_node_id}/checklist/{checklist_result_id}/source-documents/{document_id}")
+def classify_source_document(
+    task_node_id: str,
+    checklist_result_id: str,
+    document_id: str,
+    payload: ClassifySourceDocumentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Gán giấy nguyên bản vào đúng loại giấy checklist trong một transaction."""
+    from src.dossiers.checklist_document_types import attach_existing_file
+
+    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    document_type_id = str(payload.document_type_id or "").strip() or None
+    if document_type_id:
+        _require_document_type_in_checklist(db, checklist_result_id, document_type_id)
+    else:
+        template_id = str(payload.template_id or "").strip() or None
+        if not template_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Phải chọn loại giấy runtime hoặc mẫu giấy cũ.",
+            )
+        document_type_id = db.execute(
+            text("""
+                select id
+                from public.checklist_result_document_types
+                where checklist_result_id = :checklist_result_id
+                  and template_id = :template_id and is_active
+                order by created_at
+                limit 1
+            """),
+            {
+                "checklist_result_id": checklist_result_id,
+                "template_id": template_id,
+            },
+        ).scalar()
+        if not document_type_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Mẫu giấy này chưa được cấu hình trong checklist.",
+            )
+    try:
+        result = attach_existing_file(
+            db,
+            document_type_id=document_type_id,
+            document_id=document_id,
+            actor_id=user.id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("source_document_classified", entity_id=checklist_result_id)
     return {"status": "success", "data": result}
 
 
@@ -796,6 +1066,29 @@ def download_prior_document(
             with moc as (
                 select workflow_instance_id, node_code, occurrence_no
                 from public.task_nodes where id = :task_node_id
+            ), document_memberships as (
+                -- Liên kết đầu ra kiểu cũ.
+                select r.task_node_id,
+                       l.document_id,
+                       (l.review_status <> 'rejected') as prior_visible
+                from public.task_node_checklist_results r
+                join public.checklist_result_document_links l
+                  on l.checklist_result_id = r.id
+
+                union all
+
+                -- Loại giấy runtime: file vừa tải lên nằm ở bảng liên kết này,
+                -- không có dòng tương ứng trong checklist_result_document_links.
+                select r.task_node_id,
+                       f.document_id,
+                       (f.status = 'approved') as prior_visible
+                from public.task_node_checklist_results r
+                join public.checklist_result_document_types t
+                  on t.checklist_result_id = r.id
+                 and t.is_active
+                join public.checklist_result_document_type_files f
+                  on f.document_type_id = t.id
+                 and f.is_active
             )
             select exists (
                 select 1
@@ -809,12 +1102,11 @@ def download_prior_document(
                          and n.status in ('accepted', 'completed')
                      )
                  )
-                join public.task_node_checklist_results r on r.task_node_id = n.id
-                join public.checklist_result_document_links l on l.checklist_result_id = r.id
-                join public.dossier_documents d on d.id = l.document_id
+                join document_memberships membership on membership.task_node_id = n.id
+                join public.dossier_documents d on d.id = membership.document_id
                 where d.id = :document_id
                   and d.doc_status = 'DANG_DUNG'
-                  and (n.id = :task_node_id or l.review_status <> 'rejected')
+                  and (n.id = :task_node_id or membership.prior_visible)
             )
         """),
         {"task_node_id": task_node_id, "document_id": document_id},
@@ -875,18 +1167,28 @@ def node_shortage(
     missing = node_shortage_report(db, task_node_id)
     paused = node_pause_block(db, task_node_id=task_node_id)
     review = node_document_review_summary(db, task_node_id=task_node_id)
+    runtime_types = node_type_review_summary(db, task_node_id)
+    rejected_count = review["rejected_count"] + runtime_types["rejected"]
 
     # Xếp theo thứ tự nhân viên phải xử: đang tạm dừng thì mọi thứ khác vô nghĩa
     # cho tới khi bấm Tiếp tục; tờ bị trả thì phải sửa trước khi lo giấy còn thiếu.
     blockers = []
     if paused:
         blockers.append({"kind": "paused", "message": paused})
-    if review["rejected_count"]:
+    if rejected_count:
         blockers.append({
             "kind": "rejected_documents",
             "message": (
-                f"Còn {review['rejected_count']} tờ bị Giám đốc trả lại chưa sửa. "
-                "Nộp tệp mới cho đúng những tờ đó rồi nộp lại."
+                f"Còn {rejected_count} loại giấy bị Giám đốc trả lại chưa sửa. "
+                "Gỡ/tải lại file trong đúng loại giấy đó rồi nộp nghiệm thu lại."
+            ),
+        })
+    if runtime_types["missing_files"]:
+        blockers.append({
+            "kind": "missing_document_type_files",
+            "message": (
+                f"Còn {runtime_types['missing_files']} loại giấy chưa có file để nộp lại. "
+                "Tải ít nhất một file hoặc ảnh vào từng loại giấy đó."
             ),
         })
     if missing:
@@ -905,6 +1207,8 @@ def node_shortage(
             "approved_count": review["approved_count"],
             "rejected_count": review["rejected_count"],
             "pending_count": review["pending_count"],
+            "runtime_type_rejected_count": runtime_types["rejected"],
+            "runtime_type_pending_count": runtime_types["pending_review"],
         },
     }
 
@@ -921,7 +1225,12 @@ def submit_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy hồ sơ nhân sự.")
     try:
         result = submit_task_node_for_acceptance(
-            db, task_node_id=task_node_id, employee_id=employee.id, actor_id=user.id, note=payload.note
+            db,
+            task_node_id=task_node_id,
+            employee_id=employee.id,
+            actor_id=user.id,
+            note=payload.note,
+            checklist_notes=payload.checklist_notes,
         )
         db.commit()
         invalidate_cache("task_pool:*")
@@ -932,6 +1241,9 @@ def submit_task(
     except WorkflowValidationError as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except HTTPException:
+        db.rollback()
+        raise
 
 
 class HelpRequestIn(BaseModel):

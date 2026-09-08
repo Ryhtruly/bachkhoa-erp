@@ -46,6 +46,20 @@ vi.mock('./components/TopHeader', () => ({
       >
         Open employee task notification
       </button>
+      <button
+        type="button"
+        onClick={() => onNotificationNavigate?.({
+          type: 'checklist_review',
+          target_type: 'checklist_review',
+          target_id: 'checklist-result-42',
+          contract_id: 'contract-42',
+          service_line_id: 'line-42',
+          node_key: 'node-k01',
+          task_node_id: 'task-k01',
+        })}
+      >
+        Open checklist notification
+      </button>
       <button type="button" onClick={onLogout}>Test logout</button>
     </div>
   ),
@@ -284,6 +298,31 @@ describe('App sidebar preference', () => {
     expect(await screen.findByText('Employee dashboard screen')).toBeInTheDocument()
     await waitFor(() => expect(employeeTaskNavigationReceived).toHaveBeenCalledWith(
       expect.objectContaining({ taskNodeId: 'task-42' }),
+    ))
+  })
+
+  it('delivers every exact checklist review target to the contract screen', async () => {
+    apiFetch.mockResolvedValue({
+      username: 'director',
+      full_name: 'Giám đốc',
+      default_workspace: 'management',
+      is_director: true,
+      permissions: { contract: true },
+    })
+
+    render(<App />)
+    expect(await screen.findByText('Contract protected screen')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open checklist notification' }))
+
+    await waitFor(() => expect(contractNavigationReceived).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contractId: 'contract-42',
+        serviceLineId: 'line-42',
+        nodeKey: 'node-k01',
+        taskNodeId: 'task-k01',
+        targetType: 'checklist_review',
+        targetId: 'checklist-result-42',
+      }),
     ))
   })
 

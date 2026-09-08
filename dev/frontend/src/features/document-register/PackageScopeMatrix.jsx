@@ -51,7 +51,7 @@ export default function PackageScopeMatrix({ value, packageTree, disabled = fals
     <fieldset className="tsm" disabled={disabled}>
       <legend>Gói và hạng mục áp dụng</legend>
 
-      <label className="tsm__global">
+      <label className={`tsm__global${globalAll ? ' is-checked' : ''}`}>
         <input
           type="checkbox"
           checked={globalAll}
@@ -62,7 +62,10 @@ export default function PackageScopeMatrix({ value, packageTree, disabled = fals
             taskTypeIds: event.target.checked ? [] : taskTypeIds,
           })}
         />
-        <span>Mọi gói <em>(toàn công ty)</em></span>
+        <div className="tsm__global-text">
+          <span>Mọi gói <em>(toàn công ty)</em></span>
+          <small>Tự động nạp cho mọi hợp đồng và hạng mục toàn hệ thống</small>
+        </div>
       </label>
 
       <div className={`tsm__body${globalAll ? ' is-mo' : ''}`}>
@@ -73,9 +76,9 @@ export default function PackageScopeMatrix({ value, packageTree, disabled = fals
           const open = expanded.has(pkg.id)
 
           return (
-            <div key={pkg.id} className="tsm__pkg">
+            <div key={pkg.id} className={`tsm__pkg${open ? ' is-open' : ''}${wholePackage ? ' is-pkg-active' : ''}`}>
               <div className="tsm__pkg-head">
-                <label>
+                <label className="tsm__pkg-label">
                   <input
                     type="checkbox"
                     checked={wholePackage}
@@ -86,7 +89,11 @@ export default function PackageScopeMatrix({ value, packageTree, disabled = fals
                     disabled={globalAll}
                     onChange={() => togglePackage(pkg)}
                   />
-                  <span>{pkg.name}</span>
+                  <span className="tsm__pkg-title">{pkg.name}</span>
+                  {wholePackage && <span className="tsm__pkg-pill is-all">Trọn gói</span>}
+                  {!wholePackage && chosenChildren.length > 0 && (
+                    <span className="tsm__pkg-pill is-partial">{chosenChildren.length} hạng mục</span>
+                  )}
                 </label>
                 <button
                   type="button"
@@ -95,10 +102,8 @@ export default function PackageScopeMatrix({ value, packageTree, disabled = fals
                   aria-label={`${open ? 'Thu' : 'Bung'} hạng mục của ${pkg.name}`}
                   onClick={() => toggleExpand(pkg.id)}
                 >
+                  <span className="tsm__expand-text">{open ? 'Thu gọn' : 'Chi tiết'}</span>
                   {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  {chosenChildren.length > 0 && (
-                    <span className="tsm__dem">{chosenChildren.length}</span>
-                  )}
                 </button>
               </div>
 
@@ -108,7 +113,7 @@ export default function PackageScopeMatrix({ value, packageTree, disabled = fals
                     <p className="tsm__trong">Gói này chưa có hạng mục nào.</p>
                   )}
                   {(pkg.task_types || []).map(type => (
-                    <label key={type.id}>
+                    <label key={type.id} className={`tsm__type-item${taskTypeIds.includes(type.id) ? ' is-selected' : ''}`}>
                       <input
                         type="checkbox"
                         checked={taskTypeIds.includes(type.id)}

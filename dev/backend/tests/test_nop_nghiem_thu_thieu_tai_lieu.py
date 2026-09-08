@@ -12,7 +12,8 @@ from sqlalchemy import text
 
 from tests.fixtures_so_giay_to import (
     build_test_context, assign_node, create_test_user, insert_k01_node, insert_template,
-    insert_checklist_item_with_document, insert_document_slot, get_missing_documents,
+    insert_checklist_item_with_document, insert_document, insert_document_slot,
+    get_missing_documents,
 )
 
 
@@ -109,6 +110,70 @@ class NopNghiemThuThieuTaiLieuTests(unittest.TestCase):
         self._nop(bc)
         self.assertEqual(self._anh_chup(bc["node"])["missing"], bao_cao,
                          "Modal và vết lưu lệch nhau")
+
+    def test_loai_giay_runtime_thay_the_nguon_dem_cu_cua_modal(self):
+        """Một loại giấy runtime có file thì modal không được báo thiếu theo graph/sổ cũ."""
+        from src.dossiers.documents import node_shortage_report
+
+        bc = self._boi_canh(min_count=2)
+        type_id = self.db.execute(
+            text("""
+                insert into public.checklist_result_document_types
+                    (checklist_result_id, template_id, name, normalized_name,
+                     source, origin, status, created_by)
+                values (:checklist_result_id, :template_id, :name, :normalized_name,
+                        'KHACH_HANG', 'CONFIGURED', 'draft', :actor_id)
+                returning id
+            """),
+            {
+                "checklist_result_id": bc["muc"],
+                "template_id": bc["mau"],
+                "name": "Bản vẽ kỹ thuật thử",
+                "normalized_name": "bản vẽ kỹ thuật thử",
+                "actor_id": bc["nv"],
+            },
+        ).scalar_one()
+
+        # Runtime không mang khái niệm "cần 2 bản" của graph cũ: mỗi loại giấy
+        # chỉ cần ít nhất một file, và chính danh sách loại giấy là cấu trúc chuẩn.
+        self.assertEqual(node_shortage_report(self.db, bc["node"]), [{
+            "checklist_result_id": bc["muc"],
+            "checklist_name": "Chuẩn hoá bản vẽ",
+            "thieu": [{
+                "template_id": bc["mau"],
+                "name": "Bản vẽ kỹ thuật thử",
+                "can": 1,
+                "da_co": 0,
+                "con_thieu": 1,
+            }],
+        }])
+
+        document_id = insert_document(
+            self.db,
+            contract_id=self.db.execute(
+                text("select contract_id from public.service_lines where id=:sl"),
+                {"sl": bc["sl"]},
+            ).scalar_one(),
+            file_name="ban-ve-da-gan.pdf",
+        )
+        self.db.execute(
+            text("""
+                insert into public.checklist_result_document_type_files
+                    (document_type_id, document_id, created_by)
+                values (:document_type_id, :document_id, :actor_id)
+            """),
+            {
+                "document_type_id": type_id,
+                "document_id": document_id,
+                "actor_id": bc["nv"],
+            },
+        )
+
+        self.assertEqual(
+            node_shortage_report(self.db, bc["node"]),
+            [],
+            "đã gán file vào loại giấy runtime nhưng modal vẫn đếm thiếu theo cấu hình cũ",
+        )
 
     # ── 3 ────────────────────────────────────────────────────────────────────
     def test_chi_phu_trach_chinh_moi_nop_ca_goi(self):

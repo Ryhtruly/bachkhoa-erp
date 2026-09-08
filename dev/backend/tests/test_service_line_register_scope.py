@@ -18,6 +18,8 @@ thật, và nó khai đủ bốn trục Gói → Hạng mục → Node → Loạ
 
 import unittest
 import uuid
+import json
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -108,6 +110,94 @@ class ServiceLineRegisterScopeTests(unittest.TestCase):
     def _dung_so(self):
         return self.register.open_service_line_register(self.db, self.hang_muc)
 
+    def _dung_checklist_runtime(self, *, output_documents=None):
+        workflow_instance_id = _id("WI")
+        revision_id = _id("REV")
+        task_node_id = _id("TN")
+        checklist_result_id = _id("CR")
+        output_documents = output_documents or []
+        graph = {
+            "nodes": {
+                "k01": {
+                    "task_code": "K01",
+                    "checklist": [{"key": "c1", "output_documents": output_documents}],
+                },
+            },
+        }
+        self.db.execute(
+            text("""
+                insert into public.workflow_instances (id, service_line_id, status)
+                values (:id, :service_line_id, 'running')
+            """),
+            {"id": workflow_instance_id, "service_line_id": self.hang_muc},
+        )
+        self.db.execute(
+            text("""
+                insert into public.workflow_instance_revisions
+                    (id, workflow_instance_id, revision_no, graph, status)
+                values (:id, :workflow_instance_id, 1, cast(:graph as jsonb), 'draft')
+            """),
+            {
+                "id": revision_id,
+                "workflow_instance_id": workflow_instance_id,
+                "graph": json.dumps(graph),
+            },
+        )
+        self.db.execute(
+            text("""
+                insert into public.task_nodes
+                    (id, workflow_instance_id, defined_by_revision_id,
+                     node_key, node_code, status)
+                values (:id, :workflow_instance_id, :revision_id,
+                        'k01', 'K01', 'ready')
+            """),
+            {
+                "id": task_node_id,
+                "workflow_instance_id": workflow_instance_id,
+                "revision_id": revision_id,
+            },
+        )
+        self.db.execute(
+            text("""
+                insert into public.task_node_checklist_results
+                    (id, task_node_id, contract_id, checklist_key, checklist_name)
+                values (:id, :task_node_id, :contract_id, 'c1', 'Giấy đầu ra')
+            """),
+            {
+                "id": checklist_result_id,
+                "task_node_id": task_node_id,
+                "contract_id": self.hop_dong,
+            },
+        )
+        self.workflow_instance_id = workflow_instance_id
+        self.defining_revision_id = revision_id
+        self.task_node_id = task_node_id
+        return checklist_result_id
+
+    def _them_revision(self, output_documents):
+        revision_id = _id("REV")
+        graph = {
+            "nodes": {
+                "k01": {
+                    "task_code": "K01",
+                    "checklist": [{"key": "c1", "output_documents": output_documents}],
+                },
+            },
+        }
+        self.db.execute(
+            text("""
+                insert into public.workflow_instance_revisions
+                    (id, workflow_instance_id, revision_no, graph, status)
+                values (:id, :workflow_instance_id, 2, cast(:graph as jsonb), 'discarded')
+            """),
+            {
+                "id": revision_id,
+                "workflow_instance_id": self.workflow_instance_id,
+                "graph": json.dumps(graph),
+            },
+        )
+        return revision_id
+
     def _ten_o_giay(self):
         return sorted(row[0] for row in self.db.execute(
             text("select name from public.dossier_document_slots where service_line_id = :s"),
@@ -195,3 +285,192 @@ class ServiceLineRegisterScopeTests(unittest.TestCase):
         # Im lặng chứ không rơi về "cho hết" — đúng nguyên tắc applicable_templates
         # đã ghi sẵn trong docstring của nó.
         self.assertEqual(self._ten_o_giay(), [])
+
+    def test_exact_combo_suggestions_exclude_every_broader_or_wrong_scope(self):
+        from src.dossiers.checklist_document_types import exact_combo_suggestions
+
+        checklist_result_id = self._dung_checklist_runtime()
+        exact = self._mau("Đúng combo", "KHACH_HANG")
+        wrong_package = self._mau("Sai gói", "CONG_TY")
+        wrong_task_type = self._mau("Sai dạng hồ sơ", "CONG_TY")
+        wrong_node = self._mau("Sai bước", "CO_QUAN")
+        legacy_global = self._mau("Global đời cũ", "CONG_TY")
+
+        self._khai(exact, "COMBO", goi=self.goi_a,
+                   thu_tuc=self.thu_tuc_a, node="K01")
+        self._khai(wrong_package, "COMBO", goi=self.goi_b,
+                   thu_tuc=self.thu_tuc_a, node="K01")
+        self._khai(wrong_task_type, "COMBO", goi=self.goi_a,
+                   thu_tuc=self.thu_tuc_b, node="K01")
+        self._khai(wrong_node, "COMBO", goi=self.goi_a,
+                   thu_tuc=self.thu_tuc_a, node="K02")
+        self._khai(legacy_global, "GLOBAL")
+
+        result = exact_combo_suggestions(self.db, checklist_result_id)
+
+        self.assertEqual(
+            result["data"],
+            [{
+                "template_id": exact,
+                "name": "Đúng combo",
+                "source": "KHACH_HANG",
+                "source_label": "Khách hàng cung cấp",
+            }],
+        )
+        self.assertEqual(result["context"], {
+            "service_package_name": "Gói Đo vẽ",
+            "task_type_name": "Tách thửa",
+            "node_code": "K01",
+        })
+
+    def test_materialization_expands_catalog_values_and_is_idempotent(self):
+        from src.dossiers.checklist_document_types import materialize_configured_types
+
+        first = self._mau("Bản vẽ từ danh mục", "CONG_TY")
+        second = self._mau("Biên nhận từ danh mục", "CO_QUAN")
+        checklist_result_id = self._dung_checklist_runtime(output_documents=[
+            {"template_id": first, "name": "Tên giả từ graph", "source": "KHACH_HANG"},
+            {"template_id": second},
+        ])
+
+        self.assertEqual(materialize_configured_types(self.db, checklist_result_id), 2)
+        self.assertEqual(materialize_configured_types(self.db, checklist_result_id), 0)
+        rows = self.db.execute(
+            text("""
+                select template_id, name, source, origin, status
+                from public.checklist_result_document_types
+                where checklist_result_id = :checklist_result_id
+                order by name
+            """),
+            {"checklist_result_id": checklist_result_id},
+        ).mappings().all()
+        self.assertEqual({row["name"]: dict(row) for row in rows}, {
+            "Biên nhận từ danh mục": {
+                "template_id": second,
+                "name": "Biên nhận từ danh mục",
+                "source": "CO_QUAN",
+                "origin": "CONFIGURED",
+                "status": "draft",
+            },
+            "Bản vẽ từ danh mục": {
+                "template_id": first,
+                "name": "Bản vẽ từ danh mục",
+                "source": "CONG_TY",
+                "origin": "CONFIGURED",
+                "status": "draft",
+            },
+        })
+
+    def test_materialization_defaults_to_immutable_defining_revision(self):
+        from src.dossiers.checklist_document_types import materialize_configured_types
+
+        defined_template = self._mau("Giấy theo revision gốc", "CONG_TY")
+        active_template = self._mau("Giấy theo revision mới", "CO_QUAN")
+        checklist_result_id = self._dung_checklist_runtime(
+            output_documents=[{"template_id": defined_template}]
+        )
+        active_revision_id = self._them_revision([{"template_id": active_template}])
+        self.db.execute(
+            text("""
+                update public.workflow_instances
+                set active_revision_id = :revision_id
+                where id = :workflow_instance_id
+            """),
+            {
+                "revision_id": active_revision_id,
+                "workflow_instance_id": self.workflow_instance_id,
+            },
+        )
+
+        self.assertEqual(materialize_configured_types(self.db, checklist_result_id), 1)
+        materialized = self.db.execute(
+            text("""
+                select template_id from public.checklist_result_document_types
+                where checklist_result_id = :checklist_result_id
+            """),
+            {"checklist_result_id": checklist_result_id},
+        ).scalar_one()
+        self.assertEqual(materialized, defined_template)
+
+    def test_materialization_can_use_explicit_transient_amendment_revision(self):
+        from src.dossiers.checklist_document_types import materialize_configured_types
+
+        defined_template = self._mau("Giấy revision cũ", "CONG_TY")
+        target_template = self._mau("Giấy revision đích", "CO_QUAN")
+        checklist_result_id = self._dung_checklist_runtime(
+            output_documents=[{"template_id": defined_template}]
+        )
+        target_revision_id = self._them_revision([{"template_id": target_template}])
+
+        self.assertEqual(
+            materialize_configured_types(
+                self.db,
+                checklist_result_id,
+                revision_id=target_revision_id,
+            ),
+            1,
+        )
+        materialized = self.db.execute(
+            text("""
+                select template_id from public.checklist_result_document_types
+                where checklist_result_id = :checklist_result_id
+            """),
+            {"checklist_result_id": checklist_result_id},
+        ).scalar_one()
+        self.assertEqual(materialized, target_template)
+
+    def test_migration_backfill_uses_defining_revision_not_active_revision(self):
+        defined_template = self._mau("Giấy backfill revision gốc", "CONG_TY")
+        active_template = self._mau("Giấy backfill revision mới", "CO_QUAN")
+        checklist_result_id = self._dung_checklist_runtime(
+            output_documents=[{"template_id": defined_template}]
+        )
+        active_revision_id = self._them_revision([{"template_id": active_template}])
+        self.db.execute(
+            text("""
+                update public.workflow_instances
+                set active_revision_id = :revision_id
+                where id = :workflow_instance_id
+            """),
+            {
+                "revision_id": active_revision_id,
+                "workflow_instance_id": self.workflow_instance_id,
+            },
+        )
+        migrations = next(
+            parent / "supabase/migrations"
+            for parent in Path(__file__).resolve().parents
+            if (parent / "supabase/migrations").is_dir()
+        )
+        down_sql = (migrations / "20260904090000_checklist_document_types_down.sql").read_text(
+            encoding="utf-8"
+        )
+        up_sql = (migrations / "20260904090000_checklist_document_types.sql").read_text(
+            encoding="utf-8"
+        )
+
+        self.db.execute(text(down_sql))
+        self.db.execute(text(up_sql))
+
+        materialized = self.db.execute(
+            text("""
+                select template_id from public.checklist_result_document_types
+                where checklist_result_id = :checklist_result_id
+            """),
+            {"checklist_result_id": checklist_result_id},
+        ).scalar_one()
+        self.assertEqual(materialized, defined_template)
+
+    def test_combo_overrides_global_only_when_node_context_is_available(self):
+        template_id = self._mau("Phiếu đúng bước", "CONG_TY")
+        self._khai(template_id, "GLOBAL")
+        self._khai(template_id, "COMBO", goi=self.goi_a,
+                   thu_tuc=self.thu_tuc_a, node="K01")
+
+        without_node = self.register.applicable_templates(self.db, self.hang_muc)
+        with_node = self.register.applicable_templates(
+            self.db, self.hang_muc, node_code="K01"
+        )
+
+        self.assertEqual(without_node[0]["applicability_type"], "GLOBAL")
+        self.assertEqual(with_node[0]["applicability_type"], "COMBO")

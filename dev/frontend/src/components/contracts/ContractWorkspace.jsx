@@ -9,7 +9,11 @@ import {
   TriangleAlert,
   LoaderCircle,
   Workflow,
-  Ruler
+  Ruler,
+  Info,
+  ChevronDown,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import ContractWorkflowDesigner from './ContractWorkflowDesigner';
 import {
@@ -20,7 +24,6 @@ import {
 import { apiFetch, getAccessToken } from '../../lib/api';
 import { requestNavigationPermission } from '../../lib/unsavedChangesGuard';
 import PriorityBonusModal from './PriorityBonusModal';
-import { Sparkles } from 'lucide-react';
 
 const getContractId = contract => contract?.id || contract?.contract_id || '';
 
@@ -32,6 +35,94 @@ function WorkspaceEmpty({ icon: Icon = FolderOpen, title, description }) {
       <div><Icon size={28} /></div>
       <strong>{title}</strong>
       <p>{description}</p>
+    </div>
+  );
+}
+
+export function ContractHeaderDetails({ contract }) {
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event) => {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  if (!contract) return null;
+
+  return (
+    <div className="contract-header-summary" ref={popoverRef}>
+      <div className="contract-header-summary__bar">
+        <span className="contract-header-summary__client" title={contract.customer_name || 'Khách hàng'}>
+          <UserRound size={13} />
+          <strong>{contract.customer_name || 'Chưa có tên KH'}</strong>
+        </span>
+        {contract.customer_phone && (
+          <span className="contract-header-summary__phone">
+            <Phone size={12} /> {contract.customer_phone}
+          </span>
+        )}
+        <span className="contract-header-summary__divider" aria-hidden="true">•</span>
+        <span className="contract-header-summary__value">
+          {formatVND(contract.total_value)}
+        </span>
+        <button
+          type="button"
+          className={`contract-header-summary__btn${open ? ' is-active' : ''}`}
+          onClick={() => setOpen(v => !v)}
+          aria-expanded={open}
+          aria-label="Xem chi tiết thông tin khách hàng và hợp đồng"
+        >
+          <Info size={13} />
+          <span>Chi tiết</span>
+          <ChevronDown size={13} className={open ? 'is-open' : ''} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="contract-header-summary__popover" role="dialog" aria-label="Chi tiết thông tin hợp đồng">
+          <div className="contract-header-summary__popover-head">
+            <strong>Thông tin hợp đồng</strong>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Đóng chi tiết">
+              <X size={14} />
+            </button>
+          </div>
+          <div className="contract-header-summary__popover-grid">
+            <div className="summary-field">
+              <span className="summary-field__label"><UserRound size={12} /> Khách hàng</span>
+              <strong className="summary-field__value">{contract.customer_name || 'Chưa có'}</strong>
+            </div>
+            <div className="summary-field">
+              <span className="summary-field__label"><Phone size={12} /> Điện thoại</span>
+              <strong className="summary-field__value">
+                {contract.customer_phone ? (
+                  <a href={`tel:${contract.customer_phone}`}>{contract.customer_phone}</a>
+                ) : 'Chưa có'}
+              </strong>
+            </div>
+            <div className="summary-field">
+              <span className="summary-field__label"><MapPin size={12} /> Địa điểm dịch vụ</span>
+              <strong className="summary-field__value">{contract.service_location || 'Chưa có'}</strong>
+            </div>
+            <div className="summary-field">
+              <span className="summary-field__label"><Ruler size={12} /> Diện tích</span>
+              <strong className="summary-field__value">
+                {contract.service_area ? `${new Intl.NumberFormat('vi-VN').format(Number(contract.service_area))} m²` : 'Chưa có'}
+              </strong>
+            </div>
+            <div className="summary-field summary-field--full">
+              <span className="summary-field__label">Giá trị hợp đồng</span>
+              <strong className="summary-field__value is-value">{formatVND(contract.total_value)}</strong>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -102,9 +193,14 @@ function DocumentsTab({ workspace }) {
   );
 }
 
-const workspaceMemoryCache = new Map();
+export const workspaceMemoryCache = new Map();
 
-export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce, isDirector = false }) {
+export function clearWorkspaceMemoryCache(key) {
+  if (key) workspaceMemoryCache.delete(key);
+  else workspaceMemoryCache.clear();
+}
+
+export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetTaskNodeId, targetType, targetId, targetNonce, isDirector = false }) {
   const contractId = getContractId(contract);
   const contextKey = `${contractId}:${tab}`;
   const [workspace, setWorkspace] = useState(() => workspaceMemoryCache.get(contextKey) || null);
@@ -136,8 +232,8 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
     if (!contractId || tab === 'contracts') return undefined;
     let cancelled = false;
 
-    // Nếu đã có trong RAM cache, nạp ngay lập tức 0ms
-    if (workspaceMemoryCache.has(contextKey)) {
+    // Nếu đã có trong RAM cache và không phải lượt làm mới sau thao tác ghi, nạp ngay lập tức 0ms
+    if (workspaceMemoryCache.has(contextKey) && refreshKey === 0) {
       const cached = workspaceMemoryCache.get(contextKey);
       setWorkspace(cached);
       setSelectedServiceLineId(current => (
@@ -307,6 +403,7 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
               <Workflow size={20} />
               {`Thiết lập quy trình · ${contractId}`}
             </h2>
+            <ContractHeaderDetails contract={workspace?.contract} />
             {/* Thưởng ưu tiên — chỉ hiện khi có hạng mục đặt ưu tiên và người dùng
                 quản được khoán (giám đốc). Bấm để phân bổ thưởng khi hoàn thành. */}
             {workspace?.service_lines?.some(sl => sl.priority && sl.priority !== 'NORMAL')
@@ -338,7 +435,7 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
         <WorkspaceEmpty icon={TriangleAlert} title="Không tải được dữ liệu" description={error} />
       ) : !workspace ? null : (
         <>
-          <ContractSummary contract={workspace.contract} />
+          {tab !== 'workflow' && <ContractSummary contract={workspace.contract} />}
           {tab === 'services' && (
             <ServiceLinesTab workspace={workspace} selectedId={selectedServiceLineId} onSelect={setSelectedServiceLineId} />
           )}
@@ -400,9 +497,14 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
                   onRejectDocument={(checklistResultId, doc, reason) =>
                     reviewDocument(checklistResultId, doc, 'rejected', reason)}
                   onFlushReviewBatch={flushReviewBatch}
-                  onPersisted={() => setRefreshKey(current => current + 1)}
+                  onPersisted={() => {
+                    workspaceMemoryCache.delete(contextKey);
+                    setRefreshKey(current => current + 1);
+                  }}
                   targetNodeKey={selectedServiceLine?.id === targetServiceLineId ? targetNodeKey : undefined}
+                  targetTaskNodeId={selectedServiceLine?.id === targetServiceLineId ? targetTaskNodeId : undefined}
                   targetType={selectedServiceLine?.id === targetServiceLineId ? targetType : undefined}
+                  targetId={selectedServiceLine?.id === targetServiceLineId ? targetId : undefined}
                   targetNonce={selectedServiceLine?.id === targetServiceLineId ? targetNonce : undefined}
                 />
               </div>

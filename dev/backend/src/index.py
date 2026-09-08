@@ -39,6 +39,7 @@ from src.routes.routes_survey_records import router as survey_records_router
 from src.routes.routes_payroll import router as payroll_router
 from src.routes.routes_piece_rates import router as piece_rates_router
 from src.routes.routes_finance_export import router as finance_export_router
+from src.routes.routes_intake import router as intake_router
 
 from src.db.database import engine, Base, SessionLocal
 from src.services.storage_service import ensure_bucket, ensure_contract_template_bucket, ensure_finance_bucket, set_bucket_public
@@ -202,6 +203,7 @@ app.include_router(survey_records_router)
 app.include_router(payroll_router)
 app.include_router(piece_rates_router)
 app.include_router(finance_export_router)
+app.include_router(intake_router)
 
 @app.get("/")
 def read_root():

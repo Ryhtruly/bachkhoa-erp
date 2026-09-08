@@ -1,7 +1,8 @@
 """Regression tests for the K06 debt-request and manual acceptance gate."""
 
-import unittest
 import inspect
+import json
+import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +11,57 @@ from fastapi import HTTPException
 from src.contracts import workflow_runtime
 from src.core import redis_utils
 from src.dossiers import handover
+from src.employee_portal.service import EmployeePortalService
 from src.routes import routes_handover
+
+
+class _HandoverResult:
+    def __init__(self, *, rows=None, scalar=None):
+        self._rows = list(rows or [])
+        self._scalar = scalar
+
+    def mappings(self):
+        return self
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def scalar_one(self):
+        return self._scalar
+
+
+class _HandoverSubmitDb:
+    """Stateful boundary double for K06 plus the real runtime-type submit helper."""
+
+    def __init__(self, types):
+        self.types = {item["id"]: dict(item) for item in types}
+        self.calls = []
+        self.node_update_data = None
+
+    def execute(self, query, params=None):
+        sql = " ".join(str(query).lower().split())
+        self.calls.append(sql)
+        if "with locked_checklists as materialized" in sql:
+            active = [item for item in self.types.values() if item.get("is_active", True)]
+            missing = [item["name"] for item in active if not item.get("files")]
+            if not missing:
+                for item in active:
+                    if item["status"] in ("draft", "rejected"):
+                        item.update(status="pending_review", rejection_reason=None)
+            return _HandoverResult(rows=[{
+                "missing_types": missing,
+                "unresolved_checklists": [],
+                "total": len(active),
+                "approved": sum(item["status"] == "approved" for item in active),
+                "pending_review": sum(item["status"] == "pending_review" for item in active),
+            }])
+        if "max(attempt_no)" in sql:
+            return _HandoverResult(scalar=1)
+        if "insert into public.task_node_acceptances" in sql:
+            return _HandoverResult(scalar="ACC-K06")
+        if "update public.task_nodes" in sql and "execution_data" in sql:
+            self.node_update_data = json.loads(params["data"])
+        return _HandoverResult()
 
 
 class HandoverOverrideGateTests(unittest.TestCase):
@@ -49,6 +100,10 @@ class HandoverOverrideGateTests(unittest.TestCase):
         self.assertEqual(debt["remaining"], 5_000_000)
 
     def test_submit_acceptance_cannot_bypass_missing_debt_approval(self):
+        self.db = _HandoverSubmitDb([{
+            "id": "DT-DRAFT", "name": "Biên bản bàn giao",
+            "status": "draft", "files": ["DOC-1"],
+        }])
         debt = {"remaining": 5_000_000, "is_settled": False, "gate_open": False}
         with patch.object(handover, "_node_or_404", return_value=self.node), \
              patch.object(handover, "submission_gate", return_value={"is_open": True}), \
@@ -64,24 +119,143 @@ class HandoverOverrideGateTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 423)
         self.assertIn("5,000,000", caught.exception.detail)
         self.assertIn("xin duyệt nợ", caught.exception.detail)
+        self.assertEqual(self.db.types["DT-DRAFT"]["status"], "draft")
+        self.assertFalse(any("with locked_checklists as materialized" in sql for sql in self.db.calls))
 
-    def test_checklist_upload_is_locked_server_side_while_debt_request_is_missing(self):
-        debt = {"remaining": 5_000_000, "is_settled": False, "gate_open": False}
+    def test_unauthorized_handover_submit_does_not_transition_runtime_types(self):
+        db = _HandoverSubmitDb([{
+            "id": "DT-REJECTED", "name": "Phiếu giao nhận",
+            "status": "rejected", "rejection_reason": "Thiếu chữ ký",
+            "files": ["DOC-1"],
+        }])
         with patch.object(handover, "_node_or_404", return_value=self.node), \
-             patch.object(handover, "debt_summary", return_value=debt):
+             patch.object(handover, "submission_gate", return_value={"is_open": True}), \
+             patch.object(handover, "_split_handover_roles", return_value=([{"user_id": "USER-OTHER"}], [])), \
+             patch.object(handover, "debt_summary") as debt:
             with self.assertRaises(HTTPException) as caught:
-                handover.ensure_handover_work_gate_open(self.db, "TN-K06")
+                handover.submit_handover_for_acceptance(
+                    db, "TN-K06", actor_id="USER-NV", note=None
+                )
 
-        self.assertEqual(caught.exception.status_code, 423)
-        self.assertIn("Xin duyệt nợ", caught.exception.detail)
+        self.assertEqual(caught.exception.status_code, 403)
+        self.assertEqual(db.types["DT-REJECTED"]["status"], "rejected")
+        self.assertFalse(any("with locked_checklists as materialized" in sql for sql in db.calls))
+        debt.assert_not_called()
 
-    def test_checklist_upload_is_unlocked_after_director_approval(self):
+    def test_paid_handover_submits_runtime_types_and_preserves_approved(self):
+        db = _HandoverSubmitDb([
+            {"id": "DT-DRAFT", "name": "A", "status": "draft", "files": ["DOC-1"]},
+            {"id": "DT-REJECTED", "name": "B", "status": "rejected",
+             "rejection_reason": "Mờ", "files": ["DOC-2"]},
+            {"id": "DT-APPROVED", "name": "C", "status": "approved", "files": ["DOC-3"]},
+        ])
+        debt = {"remaining": 0, "is_settled": True, "gate_open": True}
+        with patch.object(handover, "_node_or_404", return_value=self.node), \
+             patch.object(handover, "submission_gate", return_value={"is_open": True}), \
+             patch.object(handover, "_split_handover_roles", return_value=([{"user_id": "USER-NV"}], [])), \
+             patch.object(handover, "debt_summary", return_value=debt), \
+             patch.object(handover, "_checklist_submission_state", return_value={
+                 "total": 1, "ready_for_acceptance": True,
+             }):
+            result = handover.submit_handover_for_acceptance(
+                db, "TN-K06", actor_id="USER-NV", note="Bàn giao"
+            )
+
+        self.assertEqual(result["status"], "submitted")
+        self.assertEqual(db.types["DT-DRAFT"]["status"], "pending_review")
+        self.assertEqual(db.types["DT-REJECTED"]["status"], "pending_review")
+        self.assertIsNone(db.types["DT-REJECTED"]["rejection_reason"])
+        self.assertEqual(db.types["DT-APPROVED"]["status"], "approved")
+        self.assertFalse(db.node_update_data["handover"]["used_debt_override"])
+        self.assertEqual(db.node_update_data["handover"]["remaining_at_submission"], 0)
+
+    def test_approved_debt_handover_still_submits_runtime_types(self):
+        db = _HandoverSubmitDb([{
+            "id": "DT-DRAFT", "name": "Biên bản", "status": "draft", "files": ["DOC-1"],
+        }])
         debt = {"remaining": 5_000_000, "is_settled": False, "gate_open": True}
         with patch.object(handover, "_node_or_404", return_value=self.node), \
-             patch.object(handover, "debt_summary", return_value=debt):
-            result = handover.ensure_handover_work_gate_open(self.db, "TN-K06")
+             patch.object(handover, "submission_gate", return_value={"is_open": True}), \
+             patch.object(handover, "_split_handover_roles", return_value=([{"user_id": "USER-NV"}], [])), \
+             patch.object(handover, "debt_summary", return_value=debt), \
+             patch.object(handover, "_checklist_submission_state", return_value={
+                 "total": 1, "ready_for_acceptance": True,
+             }):
+            result = handover.submit_handover_for_acceptance(
+                db, "TN-K06", actor_id="USER-NV", note=None
+            )
 
-        self.assertTrue(result["gate_open"])
+        self.assertEqual(result["status"], "submitted")
+        self.assertEqual(db.types["DT-DRAFT"]["status"], "pending_review")
+        self.assertTrue(db.node_update_data["handover"]["used_debt_override"])
+        self.assertEqual(
+            db.node_update_data["handover"]["remaining_at_submission"],
+            5_000_000,
+        )
+
+    def test_zero_file_runtime_type_blocks_handover_submission(self):
+        db = _HandoverSubmitDb([{
+            "id": "DT-EMPTY", "name": "Biên bản bàn giao",
+            "status": "draft", "files": [],
+        }])
+        debt = {"remaining": 0, "is_settled": True, "gate_open": True}
+        with patch.object(handover, "_node_or_404", return_value=self.node), \
+             patch.object(handover, "submission_gate", return_value={"is_open": True}), \
+             patch.object(handover, "_split_handover_roles", return_value=([{"user_id": "USER-NV"}], [])), \
+             patch.object(handover, "debt_summary", return_value=debt), \
+             patch.object(handover, "_checklist_submission_state", return_value={
+                 "total": 1, "ready_for_acceptance": True,
+             }):
+            with self.assertRaises(HTTPException) as caught:
+                handover.submit_handover_for_acceptance(
+                    db, "TN-K06", actor_id="USER-NV", note=None
+                )
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(db.types["DT-EMPTY"]["status"], "draft")
+        self.assertFalse(any("insert into public.task_node_acceptances" in sql for sql in db.calls))
+
+    def test_checklist_document_authorization_does_not_use_handover_debt_gate(self):
+        employee = SimpleNamespace(id="EMP-1")
+        with patch.object(
+            EmployeePortalService,
+            "_authorized_checklist_for_submission",
+            return_value=object(),
+        ) as normal_authorization, patch.object(
+            handover,
+            "ensure_handover_work_gate_open",
+        ) as debt_gate:
+            EmployeePortalService.authorize_checklist_evidence_submission(
+                self.db,
+                employee,
+                "TN-K06",
+                "CR-1",
+                evidence_provided=True,
+            )
+
+        debt_gate.assert_not_called()
+        normal_authorization.assert_called_once_with(
+            self.db,
+            employee,
+            "TN-K06",
+            "CR-1",
+            evidence_provided=True,
+            lock=False,
+        )
+
+    def test_rejecting_debt_request_requires_a_reason_before_database_update(self):
+        with self.assertRaises(HTTPException) as caught:
+            handover.review_debt_request(
+                self.db,
+                "REQ-1",
+                decision="rejected",
+                review_note="   ",
+                actor_id="DIRECTOR-1",
+            )
+
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("lý do", caught.exception.detail.lower())
+        self.db.execute.assert_not_called()
 
     def test_accounting_query_keeps_approved_debt_request_visible_after_settlement(self):
         source = inspect.getsource(handover.outstanding_handovers)
@@ -103,6 +277,22 @@ class HandoverOverrideGateTests(unittest.TestCase):
 
         self.assertTrue(checklist_state["ready_for_acceptance"])
         self.assertTrue(checklist_state["all_approved"])
+
+    def test_checklist_submission_state_query_includes_runtime_types(self):
+        result = MagicMock()
+        result.mappings.return_value.first.return_value = {
+            "total": 1,
+            "blocking": 0,
+            "approved": 0,
+        }
+        self.db.execute.return_value = result
+
+        checklist_state = handover._checklist_submission_state(self.db, "TN-K06")
+
+        executed_sql = " ".join(str(self.db.execute.call_args[0][0]).split())
+        self.assertIn("checklist_runtime_summary", executed_sql)
+        self.assertIn("checklist_result_document_types", executed_sql)
+        self.assertTrue(checklist_state["ready_for_acceptance"])
 
     def test_debt_request_exposes_protected_attachment_without_storage_key(self):
         result = MagicMock()

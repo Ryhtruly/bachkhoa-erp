@@ -15,3 +15,4 @@ export { SensitiveActionModal } from './SensitiveActionModal';
 export { default as ConfirmationModal } from './ConfirmationModal';
 export { default as CustomSelect } from './CustomSelect';
 export { default as FilePreviewModal } from './FilePreviewModal';
+export { default as TabSkeleton } from './TabSkeleton';

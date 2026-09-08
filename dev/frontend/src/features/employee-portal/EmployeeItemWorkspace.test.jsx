@@ -4,21 +4,30 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import EmployeeItemWorkspace from './EmployeeItemWorkspace'
 import { ToastProvider } from '../../contexts/ToastContext'
 
-vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), getAccessToken: () => null }))
+vi.mock('../../lib/api', () => ({
+  apiFetch: vi.fn(),
+  getAccessToken: () => null,
+  peekApiCache: vi.fn(() => null),
+}))
 vi.mock('../document-register/DocumentRegister', () => ({
   default: () => <div data-testid="so-giay-to" />,
+}))
+vi.mock('./CustomerSourceDocuments', () => ({
+  default: () => <div data-testid="kho-giay-khach" />,
 }))
 vi.mock('../legal-dossier/LegalDossierNodePanel', () => ({ default: () => null }))
 vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({ default: () => null }))
 vi.mock('../handover/HandoverPanel', () => ({ default: () => null }))
 vi.mock('./EmployeeWorkspaceCalendar', () => ({
   ChecklistEvidenceItem: () => <div data-testid="minh-chung" />,
-  NodeActionBar: ({ task, gate }) => (
+  NodeActionBar: ({ task, gate, handoverState }) => (
     <button
       type="button"
+      disabled={(task.is_handover || task.node_code === 'K06') && !handoverState?.debt?.gate_open}
       data-gate-blockers={(gate?.blockers || []).map(b => b.kind).join(',')}
+      data-gate-messages={(gate?.blockers || []).map(b => b.message).join('|')}
     >
-      Hành động {task.status}
+      {(task.is_handover || task.node_code === 'K06') ? 'Nộp nghiệm thu' : `Hành động ${task.status}`}
     </button>
   ),
 }))
@@ -149,13 +158,80 @@ describe('Tầng 3 — hai cột', () => {
     expect(screen.getByText('Ảnh mờ không đọc được')).toBeInTheDocument()
   })
 
-  it('chỉ K01 mở kho giấy tờ khách gửi', () => {
+  it('vùng checklist có tiêu đề và số mục giống cấu trúc chi tiết node của sếp', () => {
     mount()
-    expect(screen.queryByRole('button', { name: /Kho giấy tờ khách gửi/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Danh sách checklist/ })).toHaveTextContent('1 mục')
+  })
 
-    cleanup()
-    mount({ tasks: [{ ...TASK, node_code: 'K01' }] })
+  it('mọi node đều có kho giấy thô để gán vào checklist hiện tại', () => {
+    mount()
     expect(screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })).toBeInTheDocument()
+  })
+
+  it('cột phải giữ kho giấy và checklist trước footer; footer đặt hỗ trợ trái, nghiệm thu phải', () => {
+    mount()
+    const right = document.querySelector('.eiw-col--right')
+    const raw = within(right).getByRole('button', { name: /Kho giấy tờ khách gửi/ })
+    const checklist = within(right).getByRole('heading', { name: 'Bộ hồ sơ kỹ thuật' })
+    const submit = within(right).getByRole('button', { name: /Hành động/ })
+    const help = within(right).getByRole('button', { name: 'Nhờ hỗ trợ' })
+    const footer = within(right).getByRole('contentinfo')
+
+    expect(raw.compareDocumentPosition(checklist) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(checklist.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(help.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(help).toHaveClass('eiw-btn--help')
+  })
+})
+
+describe('Footer K06 và cổng công nợ', () => {
+  it('đặt Hỗ trợ + Xin duyệt nợ bên trái, chỉ khóa Nộp nghiệm thu bên phải', async () => {
+    const k06Item = {
+      ...ITEM,
+      current_task_node_id: 'n6',
+      contract_total_value: 10_000_000,
+      contract_paid_amount: 0,
+      nodes: [{ id: 'n6', node_code: 'K06', name: 'Nhận kết quả & bàn giao', status: 'in_progress', mine: true }],
+    }
+    const k06Task = {
+      ...TASK,
+      id: 'n6',
+      node_code: 'K06',
+      is_handover: true,
+      checklist: [],
+    }
+    apiFetch.mockReset()
+    apiFetch.mockImplementation(url => {
+      if (String(url) === '/api/handover/n6') {
+        return Promise.resolve({ data: {
+          debt: { remaining: 10_000_000, gate_open: false },
+          debt_request: null,
+          can_request_debt: true,
+          can_submit_acceptance: false,
+        } })
+      }
+      return Promise.resolve({ blockers: [] })
+    })
+
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace
+          item={k06Item}
+          tasks={[k06Task]}
+          onBack={vi.fn()}
+          onRefresh={vi.fn()}
+          onRequestHelp={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+
+    const footer = await screen.findByTestId('node-action-footer')
+    const support = within(footer).getByTestId('node-support-actions')
+    const primary = within(footer).getByTestId('node-primary-action')
+    expect(within(support).getByRole('button', { name: 'Nhờ hỗ trợ' })).toBeEnabled()
+    expect(await within(support).findByRole('button', { name: 'Xin duyệt nợ' })).toBeEnabled()
+    expect(within(primary).getByRole('button', { name: 'Nộp nghiệm thu' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })).toBeEnabled()
   })
 })
 
@@ -218,6 +294,223 @@ describe('Thông báo của bước', () => {
       expect(screen.getByRole('button', { name: /Hành động/ }))
         .toHaveAttribute('data-gate-blockers', 'rejected_documents')
     })
+  })
+
+  it('không render cảnh báo rời thiếu giấy nhưng vẫn giữ blocker trong gate của nút nộp', async () => {
+    mount({}, {
+      blockers: [
+        { kind: 'missing_documents', message: 'Còn thiếu giấy tờ đầu ra ở 2 mục checklist.' },
+      ],
+      can_submit: false,
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
+    expect(screen.queryByText('Còn thiếu giấy tờ đầu ra ở 2 mục checklist.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hành động/ }))
+      .toHaveAttribute('data-gate-blockers', 'missing_documents')
+  })
+
+  it('không lặp cảnh báo thiếu file phía trên và thay số cũ bằng số đếm từ checklist đang hiển thị', async () => {
+    const runtimeTask = {
+      ...TASK,
+      checklist: [{
+        id: 'CR-RUNTIME',
+        name: 'Checklist runtime',
+        status: 'pending',
+        document_types: [
+          { id: 'TYPE-1', name: 'Giấy 1', status: 'draft', file_count: 1,
+            files: [{ document_id: 'D-1', file_name: 'giay-1.pdf' }] },
+          { id: 'TYPE-2', name: 'Giấy 2', status: 'draft', file_count: 1,
+            files: [{ document_id: 'D-2', file_name: 'giay-2.pdf' }] },
+          { id: 'TYPE-3', name: 'Giấy 3', status: 'draft', file_count: 0, files: [] },
+        ],
+      }],
+    }
+    mount({ tasks: [runtimeTask] }, {
+      blockers: [{
+        kind: 'missing_document_type_files',
+        message: 'Còn 3 loại giấy chưa có file để nộp lại.',
+      }],
+      can_submit: false,
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
+    expect(screen.queryByText(/Còn 3 loại giấy/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Còn 1 loại giấy chưa được gán file/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hành động/ }))
+      .toHaveAttribute('data-gate-messages', 'Còn 1 loại giấy chưa được gán file.')
+  })
+
+  it('gỡ blocker runtime cũ ngay khi checklist mới đã có file và không còn loại bị từ chối', async () => {
+    const runtimeTask = {
+      ...TASK,
+      status: 'rework_required',
+      checklist: [{
+        id: 'CR-RUNTIME', name: 'Checklist runtime', status: 'pending',
+        document_types: [
+          { id: 'TYPE-1', name: 'Giấy 1', status: 'draft', file_count: 1,
+            files: [{ document_id: 'D-NEW', file_name: 'giay-moi.pdf' }] },
+        ],
+      }],
+    }
+    mount({ tasks: [runtimeTask] }, {
+      blockers: [
+        { kind: 'rejected_documents', message: 'Còn 1 loại giấy bị trả lại.' },
+        { kind: 'missing_document_type_files', message: 'Còn 1 loại giấy chưa có file.' },
+      ],
+      can_submit: false,
+      review_summary: { rejected_count: 0, runtime_type_rejected_count: 1 },
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: /Hành động/ }))
+      .toHaveAttribute('data-gate-blockers', '')
+    expect(screen.queryByText(/bị trả lại/)).not.toBeInTheDocument()
+  })
+})
+
+describe('Mật độ và thứ tự mở checklist', () => {
+  const RUNTIME_TASK = {
+    ...TASK,
+    checklist: [
+      {
+        id: 'CR-FIRST',
+        name: 'Checklist đầu tiên',
+        document_types: [{
+          id: 'TYPE-FIRST', name: 'Giấy ở checklist đầu', source: 'CONG_TY',
+          status: 'draft', file_count: 0, files: [],
+        }],
+      },
+      {
+        id: 'CR-SECOND',
+        name: 'Checklist thứ hai',
+        document_types: [{
+          id: 'TYPE-SECOND', name: 'Giấy ở checklist sau', source: 'CO_QUAN',
+          status: 'draft', file_count: 0, files: [],
+        }],
+      },
+    ],
+  }
+
+  it('checklist đầu mở mặc định, các checklist sau đóng và footer vẫn ở trong cột phải', () => {
+    mount({ tasks: [RUNTIME_TASK] })
+
+    expect(screen.getByText('Giấy ở checklist đầu')).toBeInTheDocument()
+    expect(screen.queryByText('Giấy ở checklist sau')).not.toBeInTheDocument()
+    const right = document.querySelector('.eiw-col--right')
+    expect(within(right).getByRole('contentinfo')).toHaveClass('eiw-foot')
+  })
+
+  it('workspace dùng class fixed-viewport riêng để CSS trả về natural flow trên mobile', () => {
+    mount({ tasks: [RUNTIME_TASK] })
+    expect(document.querySelector('main.eiw-workspace')).toBeInTheDocument()
+  })
+})
+
+describe('Upload nhiều file cho loại giấy runtime', () => {
+  it('gửi nhiều trường files trong một request và không tải lại toàn workspace', async () => {
+    const runtimeTask = {
+      ...TASK,
+      checklist: [{
+        id: 'CR-RUNTIME',
+        name: 'Checklist runtime',
+        document_types: [{
+          id: 'TYPE-RUNTIME', name: 'Ảnh mốc ranh', source: 'CONG_TY',
+          status: 'rejected', rejection_reason: 'Ảnh mờ', file_count: 1,
+          files: [{ document_id: 'D-OLD', file_name: 'anh-cu.jpg' }],
+        }],
+      }],
+    }
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url, options) => {
+      if (String(url).includes('/document-types/TYPE-RUNTIME/files') && options?.method === 'POST') {
+        return Promise.resolve({ status: 'success', data: files.map((file, index) => ({
+          document_id: `D-NEW-${index}`,
+          file_name: file.name,
+          status: 'success',
+          review_status: 'draft',
+          file_count: 3,
+        })) })
+      }
+      return Promise.resolve({ blockers: [] })
+    })
+    const onRefresh = vi.fn()
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace
+          item={ITEM}
+          tasks={[runtimeTask]}
+          onBack={vi.fn()}
+          onRefresh={onRefresh}
+        />
+      </ToastProvider>,
+    )
+
+    const files = [
+      new File(['1'], 'moc-1.jpg', { type: 'image/jpeg' }),
+      new File(['2'], 'moc-2.jpg', { type: 'image/jpeg' }),
+    ]
+    fireEvent.change(screen.getByLabelText('Tải file cho Ảnh mốc ranh'), {
+      target: { files },
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+      '/api/employee-portal/tasks/n2/checklist/CR-RUNTIME/document-types/TYPE-RUNTIME/files',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    ))
+    const upload = apiFetch.mock.calls.find(([url]) => String(url).includes('/document-types/TYPE-RUNTIME/files'))
+    expect(upload[1].body.getAll('files')).toEqual(files)
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
+  it('gửi change_reason khi bổ sung file vào loại giấy đã có file đạt', async () => {
+    const runtimeTask = {
+      ...TASK,
+      checklist: [{
+        id: 'CR-RUNTIME',
+        name: 'Checklist runtime',
+        document_types: [{
+          id: 'TYPE-RUNTIME', name: 'Biên bản đã duyệt', source: 'CONG_TY',
+          status: 'approved', file_count: 1,
+          files: [{ document_id: 'D-OLD', file_name: 'bien-ban-cu.pdf', status: 'approved' }],
+        }],
+      }],
+    }
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url, options) => {
+      if (String(url).includes('/document-types/TYPE-RUNTIME/files') && options?.method === 'POST') {
+        return Promise.resolve({ status: 'success', data: [] })
+      }
+      return Promise.resolve({ blockers: [] })
+    })
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace
+          item={ITEM}
+          tasks={[runtimeTask]}
+          onBack={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tải thêm file cho Biên bản đã duyệt' }))
+    const dialog = screen.getByRole('dialog', { name: 'Lý do thay đổi Biên bản đã duyệt' })
+    fireEvent.change(within(dialog).getByLabelText('Lý do thay đổi'), {
+      target: { value: 'Bổ sung bản có ký tên' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tiếp tục chọn file' }))
+    const file = new File(['signed'], 'bien-ban-moi.pdf', { type: 'application/pdf' })
+    fireEvent.change(screen.getByLabelText('Tải file cho Biên bản đã duyệt'), {
+      target: { files: [file] },
+    })
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+      '/api/employee-portal/tasks/n2/checklist/CR-RUNTIME/document-types/TYPE-RUNTIME/files',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    ))
+    const upload = apiFetch.mock.calls.find(([url]) => String(url).includes('/document-types/TYPE-RUNTIME/files'))
+    expect(upload[1].body.get('change_reason')).toBe('Bổ sung bản có ký tên')
   })
 })
 
@@ -334,19 +627,26 @@ describe('Mở tệp qua callback thật của cha (openDocument)', () => {
     expect(revoke).toHaveBeenCalledWith('blob:employee-preview')
   })
 
-  it('mở Tủ hồ sơ và bấm một tờ trước đó qua callback thật cũng mở FilePreviewModal', async () => {
+  it('mở file đã duyệt trong Tủ hồ sơ qua callback thật cũng mở FilePreviewModal', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       blob: () => Promise.resolve(fileBlob),
     })
-    // Tủ hồ sơ nạp danh sách tên qua apiFetch; trả về một tên giấy mở được.
+    // Tủ hồ sơ chuẩn trả về Node → loại giấy → file đã duyệt.
     apiFetch.mockReset()
     apiFetch.mockResolvedValue({
-      cabinet_by_node: [],
-      data: [{
+      checklist_cabinet_by_node: [{
         node_code: 'K01',
         node_name: 'Tiếp nhận',
-        documents: [{ document_id: 'prior1', name: 'Hợp đồng lưu trữ' }],
+        task_node_id: 'n1',
+        total: 1,
+        done: 1,
+        documents: [{
+          id: 'type1',
+          name: 'Hợp đồng lưu trữ',
+          file_count: 1,
+          files: [{ id: 'prior1', document_id: 'prior1', file_name: 'hop-dong-luu-tru.pdf' }],
+        }],
       }],
     })
 
@@ -355,11 +655,13 @@ describe('Mở tệp qua callback thật của cha (openDocument)', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /Mở tủ hồ sơ theo bước/ }))
 
-    const docBtn = await screen.findByRole('button', { name: /Mở Hợp đồng lưu trữ/ })
-    fireEvent.click(docBtn)
+    fireEvent.click(await screen.findByRole('button', { name: /K01.*1\/1/ }))
+    const typeButton = await screen.findByRole('button', { name: /Hợp đồng lưu trữ.*1 file/ })
+    fireEvent.click(typeButton)
+    fireEvent.click(screen.getByRole('button', { name: 'hop-dong-luu-tru.pdf' }))
 
     await waitFor(() => {
-      expect(screen.getByText(/Xem tài liệu Hợp đồng lưu trữ/)).toBeInTheDocument()
+      expect(screen.getByText(/Xem tài liệu hop-dong-luu-tru.pdf/)).toBeInTheDocument()
     })
   })
 })
@@ -523,5 +825,69 @@ describe('Tải lên tài liệu đầu ra qua API thật (multipart)', () => {
     // một lượt làm mới lặng lẽ.
     expect(demShortage()).toBe(truoc)
     expect(onRefresh).not.toHaveBeenCalled()
+  })
+
+  it('upload runtime cập nhật đúng hàng tại chỗ và không tải lại toàn workspace', async () => {
+    const runtimeTask = {
+      ...TASK,
+      checklist: [{
+        id: 'c-runtime',
+        name: 'Hồ sơ bàn giao',
+        document_types: [{
+          id: 'TYPE-1',
+          name: 'Giấy chứng nhận quyền sử dụng đất',
+          source: 'KHACH_HANG',
+          source_label: 'Khách hàng cung cấp',
+          status: 'draft',
+          file_count: 0,
+          files: [],
+        }],
+      }],
+    }
+    let shortageReads = 0
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url, options) => {
+      if (String(url).includes('/shortage')) {
+        shortageReads += 1
+        return Promise.resolve({ blockers: shortageReads === 1 ? [{ kind: 'missing_document_type_files' }] : [] })
+      }
+      if (String(url).includes('/document-types/TYPE-1/files') && options?.method === 'POST') {
+        return Promise.resolve({
+          status: 'success',
+          data: [{
+            document_id: 'DOC-NEW',
+            file_name: 'so-hong-moi.pdf',
+            content_type: 'application/pdf',
+            size_bytes: 7,
+            status: 'success',
+            review_status: 'draft',
+            file_count: 1,
+          }],
+        })
+      }
+      return Promise.reject(new Error(`Unexpected request: ${url}`))
+    })
+    const onRefresh = vi.fn()
+    render(
+      <ToastProvider>
+        <EmployeeItemWorkspace
+          item={ITEM}
+          tasks={[runtimeTask]}
+          onBack={vi.fn()}
+          onRefresh={onRefresh}
+        />
+      </ToastProvider>,
+    )
+
+    const input = screen.getByLabelText('Tải file cho Giấy chứng nhận quyền sử dụng đất')
+    fireEvent.change(input, {
+      target: { files: [new File(['so-hong'], 'so-hong-moi.pdf', { type: 'application/pdf' })] },
+    })
+
+    await waitFor(() => expect(shortageReads).toBe(2))
+    expect(onRefresh).not.toHaveBeenCalled()
+    expect(screen.getByText('1', { selector: '.eiw-doc__file-count-badge' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Xem 1 file của Giấy chứng nhận/ }))
+    expect(screen.getByText('so-hong-moi.pdf')).toBeInTheDocument()
   })
 })

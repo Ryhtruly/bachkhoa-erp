@@ -4,11 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import NodeBusinessSlot from './NodeBusinessSlot'
 
 vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), getAccessToken: () => null }))
-vi.mock('../document-register/DocumentRegister', () => ({
-  default: () => <div data-testid="kho-giay-khach" />,
-}))
-vi.mock('../handover/HandoverPanel', () => ({
-  default: () => <div data-testid="ban-giao" />,
+vi.mock('./CustomerSourceDocuments', () => ({
+  default: ({ onEmptyChange }) => (
+    <div data-testid="kho-giay-khach">
+      <button type="button" onClick={() => onEmptyChange?.(true)}>Báo kho rỗng</button>
+    </div>
+  ),
 }))
 vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({
   default: () => <div data-testid="theo-doi-co-quan" />,
@@ -32,11 +33,11 @@ const mount = (taskProps, props = {}) => render(
 afterEach(cleanup)
 
 describe('Chọn khối theo CỜ CẤU HÌNH, không theo mã bước', () => {
-  it('bước không khai cờ nào thì ô nghiệp vụ để trống', () => {
+  it('bước không khai cờ nào chỉ có kho giấy chung, không có nghiệp vụ đặc biệt', () => {
     const { container } = mount({ node_code: 'K03' })
 
-    // K02·K03·K04·K07 không có gì đặc biệt ở ô này — đúng bản vẽ.
-    expect(container.querySelector('.eiw-band--slot')).not.toBeInTheDocument()
+    expect(container.querySelectorAll('.eiw-band--slot')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })).toBeInTheDocument()
     expect(screen.queryByTestId('theo-doi-co-quan')).not.toBeInTheDocument()
     expect(screen.queryByTestId('ban-giao')).not.toBeInTheDocument()
   })
@@ -52,8 +53,11 @@ describe('Chọn khối theo CỜ CẤU HÌNH, không theo mã bước', () => {
   it('K05b có cả tạm dừng lẫn bảng theo dõi cơ quan', () => {
     mount({ node_code: 'K05b', allow_pause: true, allow_gov_tracking: true })
 
-    expect(screen.getByRole('button', { name: /Tạm dừng/ })).toBeInTheDocument()
+    const rawDocuments = screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })
+    const pause = screen.getByRole('button', { name: /Tạm dừng/ })
+    expect(pause).toBeInTheDocument()
     expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
+    expect(rawDocuments.compareDocumentPosition(pause) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('requires_gov_submission=true vẫn hiển thị bảng theo dõi cơ quan khi allow_gov_tracking=false', () => {
@@ -62,27 +66,37 @@ describe('Chọn khối theo CỜ CẤU HÌNH, không theo mã bước', () => {
     expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
   })
 
-  it('K06 có thanh công nợ và khối bàn giao', () => {
+  it('K06 chỉ có thanh công nợ, không chèn lại khối bàn giao cũ', () => {
     mount({ node_code: 'K06', is_handover: true })
 
-    expect(screen.getByTestId('ban-giao')).toBeInTheDocument()
+    expect(screen.queryByTestId('ban-giao')).not.toBeInTheDocument()
     expect(screen.getByText(/1\.230\.000đ \/ 12\.300\.000đ/)).toBeInTheDocument()
   })
 
-  it('K01 mở kho giấy tờ khách gửi và liên kết aria-controls với id của panel', () => {
-    mount({ node_code: 'K01' })
+  it('mọi node mở kho giấy tờ khách gửi và liên kết aria-controls với id của panel', () => {
+    mount({ node_code: 'K03' })
     const toggle = screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })
     expect(toggle).toBeInTheDocument()
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(toggle).toHaveAttribute('aria-controls', 'k01-customer-docs-panel')
+    expect(toggle).toHaveAttribute('aria-controls', 'customer-source-documents-panel')
 
-    const panel = document.getElementById('k01-customer-docs-panel')
+    const panel = document.getElementById('customer-source-documents-panel')
     expect(panel).toBeInTheDocument()
     expect(screen.getByTestId('kho-giay-khach')).toBeInTheDocument()
 
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(document.getElementById('k01-customer-docs-panel')).not.toBeInTheDocument()
+    expect(document.getElementById('customer-source-documents-panel')).not.toBeInTheDocument()
+  })
+
+  it('tự đóng kho giấy khi component con báo không còn tệp thô', () => {
+    mount({ node_code: 'K03' })
+    const toggle = screen.getByRole('button', { name: /Kho giấy tờ khách gửi/ })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Báo kho rỗng' }))
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById('customer-source-documents-panel')).not.toBeInTheDocument()
   })
 })
 

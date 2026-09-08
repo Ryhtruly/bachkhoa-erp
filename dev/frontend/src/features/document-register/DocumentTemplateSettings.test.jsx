@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DocumentTemplateSettings from './DocumentTemplateSettings'
 import { apiFetch } from '../../lib/api'
 
-vi.mock('../../lib/api', () => ({ apiFetch: vi.fn() }))
+vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), peekApiCache: vi.fn(), prefetchApi: vi.fn() }))
 vi.mock('../../contexts/ToastContext', () => ({ useToast: () => ({ addToast: vi.fn() }) }))
 
 const PACKAGES = [

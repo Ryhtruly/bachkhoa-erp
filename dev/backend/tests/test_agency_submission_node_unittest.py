@@ -1,27 +1,38 @@
-"""K05a/K05b là bước nộp cơ quan theo ĐỊNH NGHĨA, không theo cờ tick tay."""
+"""K05b là bước nộp cơ quan một cửa theo ĐỊNH NGHĨA.
 
+K05a là nộp nội nghiệp kỹ thuật (Đo vẽ), chỉ coi là bước nộp cơ quan nếu
+chủ động bật cờ requires_gov_submission.
+"""
+
+import unittest
 from src.contracts.workflow_runtime import is_agency_submission_node
 
 
-def test_k05a_and_k05b_are_agency_nodes_even_without_the_flag():
-    # Trước đây quên tick là hồ sơ im lặng không được tạo — không có mã biên
-    # nhận, không tạm dừng được, mà bước vẫn chạy bình thường nên không ai biết.
-    for ma in ("K05a", "K05b"):
-        assert is_agency_submission_node(node_code=ma, requires_gov_submission=False)
+class AgencySubmissionNodeTestCase(unittest.TestCase):
+    def test_k05b_is_agency_node_even_without_the_flag(self):
+        # K05b theo dõi một cửa Pháp lý: quên tick cờ thì hệ thống vẫn tự nhận diện
+        self.assertTrue(is_agency_submission_node(node_code="K05b", requires_gov_submission=False))
+        self.assertTrue(is_agency_submission_node(node_code="K05B", requires_gov_submission=False))
+        self.assertTrue(is_agency_submission_node(node_code=" k05b ", requires_gov_submission=False))
+
+    def test_k05a_is_survey_technical_submission_unless_flagged(self):
+        # K05a nộp nội nghiệp (Đo vẽ) nộp xong là hết việc, không theo dõi vòng đời
+        self.assertFalse(is_agency_submission_node(node_code="K05a", requires_gov_submission=False))
+        self.assertFalse(is_agency_submission_node(node_code="K05A", requires_gov_submission=False))
+        # Nếu Giám đốc chủ động bật cờ nộp cơ quan cho K05a thì vẫn được nhận diện
+        self.assertTrue(is_agency_submission_node(node_code="K05a", requires_gov_submission=True))
+
+    def test_other_nodes_follow_the_manual_flag(self):
+        self.assertFalse(is_agency_submission_node(node_code="K01", requires_gov_submission=False))
+        self.assertTrue(is_agency_submission_node(node_code="K01", requires_gov_submission=True))
+        self.assertFalse(is_agency_submission_node(node_code="K04", requires_gov_submission=False))
+        self.assertTrue(is_agency_submission_node(node_code="K04", requires_gov_submission=True))
+
+    def test_missing_node_code_is_never_guessed(self):
+        self.assertFalse(is_agency_submission_node(node_code=None, requires_gov_submission=False))
+        self.assertFalse(is_agency_submission_node(node_code="", requires_gov_submission=False))
+        self.assertTrue(is_agency_submission_node(node_code=None, requires_gov_submission=True))
 
 
-def test_node_code_match_is_case_insensitive():
-    # Dữ liệu cũ từng có cả "K05a" lẫn "K05A" — đúng cái bẫy đã làm hai bước này
-    # mất sạch phòng ban và vai trò trước đây.
-    assert is_agency_submission_node(node_code="K05A", requires_gov_submission=False)
-    assert is_agency_submission_node(node_code=" k05b ", requires_gov_submission=False)
-
-
-def test_other_nodes_still_follow_the_manual_flag():
-    assert not is_agency_submission_node(node_code="K01", requires_gov_submission=False)
-    assert is_agency_submission_node(node_code="K01", requires_gov_submission=True)
-
-
-def test_missing_node_code_is_never_guessed():
-    assert not is_agency_submission_node(node_code=None, requires_gov_submission=False)
-    assert not is_agency_submission_node(node_code="", requires_gov_submission=False)
+if __name__ == "__main__":
+    unittest.main()

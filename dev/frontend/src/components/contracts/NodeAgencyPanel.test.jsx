@@ -188,4 +188,26 @@ describe('Khối nộp cơ quan — màn Giám đốc', () => {
     const hang = (await screen.findByText('Mã biên nhận')).closest('.wf-agency__row')
     expect(within(hang).getByText('chưa có')).toBeInTheDocument()
   })
+
+  it('không có hồ sơ nhưng taskNode đang bị tạm dừng thì hiện dải tạm dừng', async () => {
+    apiFetch.mockReset()
+    apiFetch.mockImplementation(() => Promise.reject(new Error('404')))
+    render(
+      <NodeAgencyPanel
+        taskNodeId="task-1"
+        nodeCode="K05a"
+        taskNode={{
+          id: 'task-1',
+          status: 'in_progress',
+          pause_reason_type: 'INTERNAL',
+          paused_note: 'Thiếu giấy tờ khách hàng',
+        }}
+        addToast={vi.fn()}
+      />,
+    )
+    const dai = await screen.findByRole('status')
+    expect(dai).toHaveTextContent('ĐANG TẠM DỪNG')
+    expect(dai).toHaveTextContent('Thiếu giấy tờ khách hàng')
+    expect(dai).toHaveTextContent('NỘI BỘ')
+  })
 })

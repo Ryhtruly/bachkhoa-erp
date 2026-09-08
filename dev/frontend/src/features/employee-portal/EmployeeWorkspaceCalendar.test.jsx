@@ -58,17 +58,52 @@ describe('EmployeeWorkspaceCalendar', () => {
     expect(screen.getByTestId('calendar')).toHaveAttribute('data-first-duration-minutes', '360')
   })
 
-  it('does not render the generic completion action for K06', () => {
+  it('K06 chỉ khóa nút nộp nghiệm thu khi cổng công nợ chưa mở', () => {
     render(
       <ToastProvider>
         <NodeActionBar
-          task={{ id: 'k06', node_code: 'K06', status: 'in_progress', checklist: [] }}
+          task={{
+            id: 'k06', node_code: 'K06', status: 'in_progress', checklist: [{
+              id: 'cr-1', name: 'Hồ sơ bàn giao', document_types: [{
+                id: 'dt-1', name: 'Biên bản bàn giao', file_count: 1,
+              }],
+            }],
+          }}
+          handoverState={{ can_submit_acceptance: false, debt: { gate_open: false } }}
           onChanged={vi.fn()}
         />
       </ToastProvider>,
     )
 
-    expect(screen.queryByRole('button', { name: /Nộp hoàn thành công việc/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Nộp nghiệm thu' })).toBeDisabled()
+    expect(screen.getByText(/còn công nợ/i)).toBeInTheDocument()
+  })
+
+  it('K06 mở nút và gọi endpoint nghiệm thu riêng sau khi được duyệt nợ', async () => {
+    apiFetch.mockResolvedValue({ data: { status: 'submitted' } })
+    const onChanged = vi.fn()
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{
+            id: 'k06', node_code: 'K06', status: 'in_progress', checklist: [{
+              id: 'cr-1', name: 'Hồ sơ bàn giao', document_types: [{
+                id: 'dt-1', name: 'Biên bản bàn giao', file_count: 1,
+              }],
+            }],
+          }}
+          handoverState={{ can_submit_acceptance: true, debt: { gate_open: true } }}
+          onChanged={onChanged}
+        />
+      </ToastProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nộp nghiệm thu' }))
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+      '/api/handover/k06/submit-acceptance',
+      expect.objectContaining({ method: 'POST' }),
+    ))
+    expect(onChanged).toHaveBeenCalledTimes(1)
   })
 
   // ĐỔI CHỦ ĐÍCH: một nút "Nộp nghiệm thu" duy nhất cho MỌI bước. Bản trước có
@@ -107,6 +142,66 @@ describe('EmployeeWorkspaceCalendar', () => {
 
     // Đã điền hết (chờ duyệt cũng là đã điền) → nộp được.
     expect(screen.getByRole('button', { name: /Nộp nghiệm thu/i })).toBeEnabled()
+  })
+
+  it('checklist runtime trạng thái pending vẫn cho nộp khi mọi loại giấy đã được gán file', () => {
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{
+            id: 'k01-runtime', node_code: 'K01', status: 'in_progress',
+            checklist: [{
+              id: 'cr-runtime', checklist_name: 'Hồ sơ đầu vào', status: 'pending',
+              document_types: [
+                { id: 'type-a', name: 'CCCD', status: 'draft', file_count: 1,
+                  files: [{ document_id: 'doc-a' }] },
+                { id: 'type-b', name: 'Sổ đỏ', status: 'draft', file_count: 2,
+                  files: [{ document_id: 'doc-b1' }, { document_id: 'doc-b2' }] },
+              ],
+            }],
+          }}
+          gate={{ blockers: [] }}
+          onChanged={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Nộp nghiệm thu' })).toBeEnabled()
+    expect(screen.queryByText(/nhiệm vụ chưa điền xong/)).not.toBeInTheDocument()
+  })
+
+  it('bước bị trả bài cho nộp nghiệm thu lại trực tiếp, không bắt bấm Làm lại', () => {
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{ id: 'k01-rework', node_code: 'K01', status: 'rework_required', checklist: [] }}
+          onChanged={vi.fn()}
+          gate={{ blockers: [] }}
+        />
+      </ToastProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Nộp nghiệm thu lại' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Làm lại' })).not.toBeInTheDocument()
+  })
+
+  it('khóa nộp lại khi loại giấy đang sửa không còn file nào để Giám đốc duyệt', () => {
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{ id: 'k01-empty-type', node_code: 'K01', status: 'rework_required', checklist: [] }}
+          onChanged={vi.fn()}
+          gate={{ blockers: [{
+            kind: 'missing_document_type_files',
+            message: 'Còn 1 loại giấy chưa có file để nộp lại.',
+          }] }}
+        />
+      </ToastProvider>,
+    )
+
+    const button = screen.getByRole('button', { name: 'Nộp nghiệm thu lại' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', 'Còn 1 loại giấy chưa có file để nộp lại.')
   })
 
   it('còn nhiệm vụ chưa điền thì khoá nút và nói rõ thiếu cái gì', () => {
@@ -195,6 +290,118 @@ describe('EmployeeWorkspaceCalendar', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Quay lại bổ sung/ }))
 
     expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/submit'))).toHaveLength(0)
+  })
+
+  it('khi sếp không tạo loại giấy, bấm Nộp nghiệm thu mở Modal và bắt buộc đính kèm lý do', async () => {
+    apiFetch.mockImplementation(async (url) => {
+      if (url.includes('/shortage')) {
+        return { status: 'success', data: [] }
+      }
+      return { status: 'success' }
+    })
+
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{
+            id: 'k07-node',
+            node_code: 'K07',
+            status: 'in_progress',
+            checklist: [{
+              id: 'cr-paperless',
+              name: 'Đóng hồ sơ & khoá hạng mục',
+              status: 'pending',
+              document_types: [],
+            }],
+          }}
+          onChanged={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+
+    const nut = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+    expect(nut).toBeEnabled()
+    fireEvent.click(nut)
+
+    expect(await screen.findByText(/Checklist chưa có phân loại giấy tờ/)).toBeInTheDocument()
+    const nutNop = screen.getByRole('button', { name: /Vẫn nộp nghiệm thu/ })
+    expect(nutNop).toBeDisabled()
+
+    const textarea = screen.getByPlaceholderText(/Nhập lý do hoàn thành checklist chưa có loại giấy/)
+    fireEvent.change(textarea, { target: { value: 'Đã hoàn tất lưu kho và khoá hồ sơ' } })
+    expect(nutNop).toBeEnabled()
+
+    fireEvent.click(nutNop)
+
+    await vi.waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/employee-portal/tasks/k07-node/submit',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ note: 'Đã hoàn tất lưu kho và khoá hồ sơ' }),
+        }),
+      )
+    })
+  })
+
+  it('khi nhân viên không gán tài liệu vào loại giấy, đính kèm lý do giải trình khi nộp nghiệm thu', async () => {
+    apiFetch.mockImplementation(async (url) => {
+      if (url.includes('/shortage')) {
+        return {
+          status: 'success',
+          data: [{
+            checklist_result_id: 'cr-1',
+            checklist_name: 'Bản vẽ hiện trạng',
+            thieu: [{ name: 'Bản vẽ CAD', can: 1, da_co: 0, con_thieu: 1 }],
+          }],
+        }
+      }
+      return { status: 'success' }
+    })
+
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{
+            id: 'k04-node',
+            node_code: 'K04',
+            status: 'in_progress',
+            checklist: [{
+              id: 'cr-1',
+              name: 'Bản vẽ hiện trạng',
+              status: 'pending',
+              document_types: [{
+                id: 'dt-1',
+                name: 'Bản vẽ CAD',
+                file_count: 0,
+                files: [],
+              }],
+            }],
+          }}
+          onChanged={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+
+    const nut = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+    expect(nut).toBeEnabled()
+    fireEvent.click(nut)
+
+    expect(await screen.findByText('Bản vẽ CAD')).toBeInTheDocument()
+    const textarea = screen.getByPlaceholderText(/Nhập lý do chưa có giấy tờ hoặc giải trình thực hiện/)
+    fireEvent.change(textarea, { target: { value: 'Khách hàng chưa gửi file CAD gốc' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /Vẫn nộp nghiệm thu/ }))
+
+    await vi.waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/employee-portal/tasks/k04-node/submit',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ note: 'Khách hàng chưa gửi file CAD gốc' }),
+        }),
+      )
+    })
   })
 
   // ── Task 3: cổng CỨNG (paused / rejected_documents) vs cổng MỀM (missing) ──
@@ -326,18 +533,21 @@ describe('EmployeeWorkspaceCalendar', () => {
       expect(screen.getByRole('button', { name: /Nộp nghiệm thu/i })).toBeEnabled()
     })
 
-    it('K06 giữ đường bàn giao chuyên biệt: không mọc nút Nộp nghiệm thu dù gate có cổng cứng', () => {
+    it('K06 dùng nút nghiệm thu riêng nhưng vẫn tôn trọng blocker tài liệu', () => {
       render(
         <ToastProvider>
           <NodeActionBar
             task={{ id: 'k06', node_code: 'K06', status: 'in_progress', checklist: [] }}
             gate={{ blockers: [{ kind: 'rejected_documents', message: 'Còn tờ bị trả lại.' }] }}
+            handoverState={{ can_submit_acceptance: false, debt: { gate_open: true } }}
             onChanged={vi.fn()}
           />
         </ToastProvider>,
       )
 
-      expect(screen.queryByRole('button', { name: /Nộp nghiệm thu/i })).not.toBeInTheDocument()
+      const button = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+      expect(button).toBeDisabled()
+      expect(button).toHaveAttribute('title', 'Còn tờ bị trả lại.')
     })
   })
 

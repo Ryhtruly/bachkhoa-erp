@@ -75,6 +75,17 @@ def test_prior_document_idor_sql_contract(db_session):
             document_id text not null,
             review_status text not null
         ) on commit drop;
+        create temporary table checklist_result_document_types (
+            id text primary key,
+            checklist_result_id text not null,
+            is_active boolean not null
+        ) on commit drop;
+        create temporary table checklist_result_document_type_files (
+            document_type_id text not null,
+            document_id text not null,
+            status text not null,
+            is_active boolean not null
+        ) on commit drop;
         create temporary table dossier_documents (
             id text primary key,
             doc_status text not null
@@ -96,10 +107,29 @@ def test_prior_document_idor_sql_contract(db_session):
             ('r2-idor', 'd4-idor', 'rejected'),
             ('r3-idor', 'd5-idor', 'approved'),
             ('r-other', 'd6-idor', 'approved');
+        insert into pg_temp.checklist_result_document_types values
+            ('t1-idor', 'r1-idor', true),
+            ('t2-idor', 'r2-idor', true),
+            ('t3-idor', 'r3-idor', true),
+            ('t-other', 'r-other', true),
+            ('t-inactive', 'r2-idor', false);
+        insert into pg_temp.checklist_result_document_type_files values
+            ('t1-idor', 'd7-idor', 'approved', true),
+            ('t1-idor', 'd8-idor', 'draft', true),
+            ('t2-idor', 'd9-idor', 'draft', true),
+            ('t2-idor', 'd10-idor', 'rejected', true),
+            ('t3-idor', 'd11-idor', 'approved', true),
+            ('t-other', 'd12-idor', 'approved', true),
+            ('t2-idor', 'd13-idor', 'approved', false),
+            ('t-inactive', 'd14-idor', 'approved', true);
         insert into pg_temp.dossier_documents values
             ('d1-idor', 'DANG_DUNG'), ('d2-idor', 'DANG_DUNG'),
             ('d3-idor', 'THU_HOI'), ('d4-idor', 'DANG_DUNG'),
-            ('d5-idor', 'DANG_DUNG'), ('d6-idor', 'DANG_DUNG');
+            ('d5-idor', 'DANG_DUNG'), ('d6-idor', 'DANG_DUNG'),
+            ('d7-idor', 'DANG_DUNG'), ('d8-idor', 'DANG_DUNG'),
+            ('d9-idor', 'DANG_DUNG'), ('d10-idor', 'DANG_DUNG'),
+            ('d11-idor', 'DANG_DUNG'), ('d12-idor', 'DANG_DUNG'),
+            ('d13-idor', 'DANG_DUNG'), ('d14-idor', 'DANG_DUNG');
     """))
 
     sql_check = _extract_valid_prior_sql().replace("public.", "pg_temp.")
@@ -116,6 +146,14 @@ def test_prior_document_idor_sql_contract(db_session):
     assert check_doc("d4-idor") is True, "Current-node document remains viewable"
     assert check_doc("d5-idor") is False, "Later-node document must be blocked"
     assert check_doc("d6-idor") is False, "Wrong-workflow document must be blocked"
+    assert check_doc("d7-idor") is True, "Approved runtime file from a prior node must be viewable"
+    assert check_doc("d8-idor") is False, "Draft runtime file from a prior node must stay private"
+    assert check_doc("d9-idor") is True, "Newly uploaded runtime file on the current node must be viewable"
+    assert check_doc("d10-idor") is True, "Rejected runtime file on the current node must remain viewable for rework"
+    assert check_doc("d11-idor") is False, "Runtime file from a later node must be blocked"
+    assert check_doc("d12-idor") is False, "Runtime file from another workflow must be blocked"
+    assert check_doc("d13-idor") is False, "Inactive runtime attachment must be blocked"
+    assert check_doc("d14-idor") is False, "Attachment under an inactive runtime type must be blocked"
     db_session.rollback()
 
 

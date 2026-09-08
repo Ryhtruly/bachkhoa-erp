@@ -4,7 +4,8 @@ import { useToast } from '../contexts/ToastContext';
 import { DataTable, StatusBadge, FilterBar } from '../components/ui';
 import ContractComposer from '../features/contracts/ContractComposer';
 import { fetchProtectedDocumentBlob, requestDocxSaveHandle, writeBlobToFileHandle } from '../lib/fileSave';
-import { apiFetch, getAccessToken } from '../lib/api';
+import { apiFetch, getAccessToken, peekApiCache, prefetchApi } from '../lib/api';
+import { safeViewTransition } from '../lib/viewTransition';
 import ContractDocumentViewer from '../components/contracts/ContractDocumentViewer';
 import '../components/contracts/contracts.css';
 
@@ -40,32 +41,93 @@ function getPaginationItems(currentPage, totalPages) {
 }
 
 export default function Contracts({ isDirector = false }) {
-  const [contracts, setContracts] = useState([]);
-  const [config, setConfig] = useState({ personnel: [], services: [] });
-  const [loading, setLoading] = useState(true);
+  const [contracts, setContracts] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      if (cached) return Array.isArray(cached) ? cached : cached.data || [];
+    }
+    return [];
+  });
+  const [config, setConfig] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/config');
+      if (cached) {
+        return {
+          personnel: Array.isArray(cached.personnel) ? cached.personnel : [],
+          services: Array.isArray(cached.services) ? cached.services : [],
+        };
+      }
+    }
+    return { personnel: [], services: [] };
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      if (cached) return false;
+    }
+    return true;
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState('');
   const [contractView, setContractView] = useState('list');
-  const [selectedContract, setSelectedContract] = useState(null);
+  const [selectedContract, setSelectedContract] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      const rows = Array.isArray(cached) ? cached : cached?.data || [];
+      return rows[0] || null;
+    }
+    return null;
+  });
   const [documentUrl, setDocumentUrl] = useState('');
   const [navTarget, setNavTarget] = useState(null);
   const navTargetContractRef = useRef(null);
   const { addToast } = useToast();
 
+  const prefetchContractData = useCallback((contract) => {
+    const cId = getContractId(contract);
+    if (!cId || typeof prefetchApi !== 'function') return;
+    const firstLineId = contract?.service_lines?.[0]?.id || '';
+    if (firstLineId) {
+      prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(cId)}&service_line_id=${encodeURIComponent(firstLineId)}`);
+    }
+    prefetchApi(`/api/contracts/workspace?contract_id=${encodeURIComponent(cId)}`);
+  }, []);
+
+  const prefetchWorkflow = useCallback((cId) => {
+    if (!cId || typeof prefetchApi !== 'function') return;
+    prefetchApi(`/api/contracts/workspace?contract_id=${encodeURIComponent(cId)}`);
+  }, []);
+
+  const switchContractView = useCallback((nextView) => {
+    safeViewTransition(() => {
+      setContractView(nextView);
+    });
+  }, []);
+
   // Điều hướng từ chuông thông báo — bấm 1 mục là nhảy thẳng tới đúng hợp đồng/Hạng mục/Node.
   useEffect(() => {
     const handler = (event) => {
-      const { contractId, serviceLineId, nodeKey, type, nonce } = event.detail || {};
+      const {
+        contractId, serviceLineId, nodeKey, taskNodeId,
+        targetType, targetId, type, nonce,
+      } = event.detail || {};
       if (!contractId) return;
       // Ghim lại hợp đồng đích: danh sách có phân trang, hợp đồng cần tới có thể không nằm
       // trong trang đang tải nên vòng fetch sau đó sẽ đá về hợp đồng đầu trang nếu không ghim.
       navTargetContractRef.current = contractId;
       setSelectedContract(current => (getContractId(current) === contractId ? current : { id: contractId }));
-      setNavTarget({ serviceLineId, nodeKey, type, nonce });
-      setContractView('workflow');
+      setNavTarget({
+        serviceLineId,
+        nodeKey,
+        taskNodeId,
+        targetType: targetType || type,
+        targetId,
+        nonce,
+      });
+      switchContractView('workflow');
     };
     window.addEventListener('bachkhoa:navigate-to-node', handler);
     return () => window.removeEventListener('bachkhoa:navigate-to-node', handler);
@@ -73,16 +135,28 @@ export default function Contracts({ isDirector = false }) {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterValues, setFilterValues] = useState({ task_type_id: 'All' });
-  const [danhMucLoc, setDanhMucLoc] = useState([]);
+  const [danhMucLoc, setDanhMucLoc] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/catalog/service-packages');
+      if (cached?.data) return cached.data;
+    }
+    return [];
+  });
   const [signedDate, setSignedDate] = useState('');
   const [sort, setSort] = useState('desc');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    page_size: CONTRACT_GROUPS_PER_PAGE,
-    total_groups: 0,
-    total_contracts: 0,
-    total_pages: 0,
+  const [pagination, setPagination] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      if (cached?.pagination) return cached.pagination;
+    }
+    return {
+      page: 1,
+      page_size: CONTRACT_GROUPS_PER_PAGE,
+      total_groups: 0,
+      total_contracts: 0,
+      total_pages: 0,
+    };
   });
 
   const [formData, setFormData] = useState({
@@ -125,6 +199,16 @@ export default function Contracts({ isDirector = false }) {
       const payload = await apiFetch(`/api/contracts/workspace-list?${params}`);
       const rows = Array.isArray(payload) ? payload : payload?.data || [];
       setContracts(rows);
+      if (rows.length > 0 && typeof prefetchApi === 'function') {
+        const warmUp = () => {
+          rows.slice(0, 3).forEach(row => prefetchContractData(row));
+        };
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+          window.requestIdleCallback(warmUp, { timeout: 1000 });
+        } else {
+          setTimeout(warmUp, 50);
+        }
+      }
       setSelectedContract(current => {
         const matched = rows.find(item => getContractId(item) === getContractId(current));
         if (matched) return matched;
@@ -139,7 +223,7 @@ export default function Contracts({ isDirector = false }) {
     } finally {
       setLoading(false);
     }
-  }, [addToast, filterValues.task_type_id, page, searchTerm, signedDate, sort]);
+  }, [addToast, filterValues.task_type_id, page, prefetchContractData, searchTerm, signedDate, sort]);
 
   const openContractModal = async () => {
     setTemplatesLoading(true);
@@ -316,7 +400,6 @@ export default function Contracts({ isDirector = false }) {
       if (sourceDocuments.length > 0) addToast(`Đã lưu ${sourceDocuments.length} tài liệu khách gửi.`, 'success');
 
       setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
-      setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
       setIsModalOpen(false);
       if (page === 1) fetchContracts();
       else setPage(1);
@@ -358,19 +441,19 @@ export default function Contracts({ isDirector = false }) {
     {
       key: 'id',
       label: 'Mã hợp đồng',
-      width: 145,
+      width: 120,
       render: (value) => <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{value}</span>
     },
     {
       key: 'customer_name',
       label: 'Khách hàng',
-      width: 160,
+      width: 140,
       render: (val) => <EllipsisCell value={val} />
     },
     {
       key: 'service_lines',
       label: 'Hạng mục',
-      width: 135,
+      width: 120,
       render: (lines = []) => (
         <span className="contract-service-summary">
           <Layers3 size={14} />
@@ -386,7 +469,7 @@ export default function Contracts({ isDirector = false }) {
       key: 'total_value',
       label: 'Giá trị / Còn nợ',
       align: 'right',
-      width: 172,
+      width: 145,
       render: (value, row) => (
         <span className="contract-money">
           <strong>{formatVND(value)}</strong>
@@ -403,14 +486,14 @@ export default function Contracts({ isDirector = false }) {
     {
       key: 'status',
       label: 'Trạng thái',
-      width: 155,
+      width: 130,
       render: (value) => <StatusBadge status={value || 'Chưa cập nhật'} domain="contracts" />
     },
     {
       key: 'file_link',
       label: 'File',
       align: 'center',
-      width: 68,
+      width: 50,
       render: (val) => val
         ? <button type="button" className="btn btn-secondary btn-xs contract-file-btn"
             title="Mở tài liệu hợp đồng" aria-label="Mở tài liệu hợp đồng" onClick={() => openContractDocument(val)}>
@@ -422,9 +505,8 @@ export default function Contracts({ isDirector = false }) {
 
   return (
     <section className={`tab-pane active contract-page${contractView === 'list' ? ' contract-page--list' : ''}`} id="tab-hopdong">
-      {contractView === 'list' ? (
-        <div className="contract-master-detail">
-          <header className="contract-pane-title">
+      <div className="contract-master-detail" style={{ display: contractView === 'list' ? 'flex' : 'none' }}>
+        <header className="contract-pane-title">
             <div><span>Danh sách hợp đồng</span><strong>{pagination.total_contracts || contracts.length}</strong></div>
             <button type="button" className="contract-add-button" onClick={openContractModal} title="Soạn hợp đồng mới">
               <Plus size={20} />
@@ -466,6 +548,7 @@ export default function Contracts({ isDirector = false }) {
                 loading={loading}
                 rowKey="id"
                 onRowClick={setSelectedContract}
+                onRowMouseEnter={prefetchContractData}
                 rowClassName={(row) => {
                   const classes = [];
                   if (getContractId(row) === getContractId(selectedContract)) classes.push('contract-selected-row');
@@ -555,7 +638,13 @@ export default function Contracts({ isDirector = false }) {
                       addToast={addToast}
                     />
                   </div>
-                  <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
+                  <button
+                    type="button"
+                    className="btn btn-primary contract-workflow-action"
+                    onClick={() => switchContractView('workflow')}
+                    onMouseEnter={() => prefetchWorkflow(getContractId(selectedContract))}
+                    onFocus={() => prefetchWorkflow(getContractId(selectedContract))}
+                  >
                     <WorkflowIcon size={17} /> Quy trình
                   </button>
                 </>
@@ -574,17 +663,20 @@ export default function Contracts({ isDirector = false }) {
             </aside>
           </div>
         </div>
-      ) : (
+
+      {contractView === 'workflow' && (
         <ContractWorkspace
           tab="workflow"
           contract={selectedContract}
           contracts={contracts}
           onContractChange={setSelectedContract}
-          onBack={() => setContractView('list')}
+          onBack={() => switchContractView('list')}
           addToast={addToast}
           targetServiceLineId={navTarget?.serviceLineId}
           targetNodeKey={navTarget?.nodeKey}
-          targetType={navTarget?.type}
+          targetTaskNodeId={navTarget?.taskNodeId}
+          targetType={navTarget?.targetType}
+          targetId={navTarget?.targetId}
           targetNonce={navTarget?.nonce}
           isDirector={isDirector}
         />

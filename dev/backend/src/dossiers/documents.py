@@ -445,6 +445,7 @@ def resolve_output_slot(
 _CHECKLIST_OUTPUT_CONFIG_QUERY = text("""
     select coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->'checklist' as checklist,
            r.checklist_key,
+           n.id as task_node_id,
            wi.service_line_id,
            sl.contract_id
     from public.task_node_checklist_results r
@@ -637,6 +638,25 @@ _NODE_OUTPUT_STATE_QUERY = text("""
 """)
 
 
+_RUNTIME_TYPE_SHORTAGE_QUERY = text("""
+    select cr.id as checklist_result_id,
+           cr.checklist_name,
+           t.template_id,
+           t.name,
+           count(d.id) as file_count
+    from public.task_node_checklist_results cr
+    join public.checklist_result_document_types t
+      on t.checklist_result_id = cr.id and t.is_active
+    left join public.checklist_result_document_type_files f
+      on f.document_type_id = t.id and f.is_active
+    left join public.dossier_documents d
+      on d.id = f.document_id and d.doc_status = 'DANG_DUNG'
+    where cr.task_node_id = :task_node_id
+    group by cr.id, cr.checklist_name, t.id, t.template_id, t.name, t.created_at
+    order by cr.id, t.created_at, t.id
+""")
+
+
 def node_output_document_blockers(db: Session, task_node_id: str) -> list[str]:
     """Cổng ĐÓNG NODE — tài liệu đầu ra phải CÒN hợp lệ tại thời điểm đóng.
 
@@ -681,6 +701,39 @@ def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]
     Khác ``node_output_document_blockers``: hàm kia trả câu chữ để chặn, hàm này
     trả dữ liệu có cấu trúc để hiển thị và lưu vết.
     """
+    # Checklist đời mới materialize danh sách LOẠI GIẤY riêng cho đúng Node.
+    # Danh sách này thay thế hoàn toàn output_documents + ô sổ K01 đời cũ:
+    # một loại có thể giữ nhiều file nhưng chỉ cần ít nhất một file hiện hành.
+    # Nếu tiếp tục đếm graph cũ, file vừa tải vào loại runtime vẫn bị báo là
+    # "đã có 0", đồng thời cùng một loại còn bị kể thêm lần nữa từ sổ K01.
+    runtime_rows = [dict(row) for row in db.execute(
+        _RUNTIME_TYPE_SHORTAGE_QUERY, {"task_node_id": task_node_id}
+    ).mappings().all()]
+    if runtime_rows:
+        runtime_report: list[dict[str, Any]] = []
+        groups: dict[str, dict[str, Any]] = {}
+        for row in runtime_rows:
+            if int(row["file_count"] or 0) > 0:
+                continue
+            checklist_id = row["checklist_result_id"]
+            group = groups.get(checklist_id)
+            if group is None:
+                group = {
+                    "checklist_result_id": checklist_id,
+                    "checklist_name": row["checklist_name"],
+                    "thieu": [],
+                }
+                groups[checklist_id] = group
+                runtime_report.append(group)
+            group["thieu"].append({
+                "template_id": row["template_id"],
+                "name": row["name"],
+                "can": 1,
+                "da_co": 0,
+                "con_thieu": 1,
+            })
+        return runtime_report
+
     template_names = dict(
         db.execute(
             text("select id, name from public.document_checklist_templates")
@@ -1051,3 +1104,96 @@ def attach_existing_document(
         contract_id=context_row["contract_id"],
         actor_id=actor_id,
     )
+
+
+def classify_source_document_for_checklist(
+    db: Session,
+    *,
+    checklist_result_id: str,
+    document_id: str,
+    template_id: str,
+    actor_id: str,
+) -> dict[str, Any]:
+    """Phân loại một tệp nguyên bản vào đúng loại giấy của checklist, nguyên tử.
+
+    Một transaction đồng thời neo tệp vào ô giấy và mục checklist. Làm hai API
+    rời nhau có thể để lại trạng thái nửa vời: tệp đã biến khỏi kho nguyên bản
+    nhưng checklist vẫn chưa nhận được.
+    """
+    output_config, context = _output_config(db, checklist_result_id)
+    allowed_template_ids = {
+        config.get("template_id") for config in output_config if isinstance(config, dict)
+    }
+    if template_id not in allowed_template_ids:
+        raise HTTPException(status_code=409, detail="Mục checklist này không nhận loại tài liệu đó.")
+
+    slot = resolve_output_slot(
+        db,
+        template_id=template_id,
+        service_line_id=context.get("service_line_id"),
+        contract_id=context.get("contract_id"),
+    )
+    document = db.execute(
+        text("""
+            select d.id, d.file_name, d.doc_status, d.scope, d.slot_id,
+                   exists (
+                     select 1 from public.dossier_document_links l
+                     where l.document_id = d.id and l.link_status = 'DANG_DUNG'
+                   ) as has_active_links
+            from public.dossier_documents d
+            where d.id = :document_id and d.contract_id = :contract_id
+            for update
+        """),
+        {"document_id": document_id, "contract_id": context.get("contract_id")},
+    ).mappings().first()
+    if not document:
+        raise HTTPException(status_code=409, detail="Tài liệu không thuộc hợp đồng này.")
+    if document["doc_status"] != "DANG_DUNG":
+        raise HTTPException(status_code=409, detail="Tài liệu này không còn hiệu lực.")
+    if document["scope"] != "CONTRACT" or document["slot_id"] or document["has_active_links"]:
+        raise HTTPException(status_code=409, detail="Tài liệu này đã được phân loại.")
+
+    # Dùng lại đúng nghiệp vụ phân loại của Sổ giấy tờ để không mở một đường
+    # tắt bỏ qua kiểm tra nguồn KHACH_HANG, phiếu đề xuất đang chờ và audit.
+    # Hàm này không commit, nên toàn bộ vẫn nằm trong transaction của route.
+    from src.dossiers import register
+
+    register.link_source_document(
+        db, slot["id"], document_id, actor_id=actor_id,
+    )
+    db.execute(
+        text("""
+            update public.dossier_documents
+            set slot_id = :slot_id, task_node_id = :task_node_id
+            where id = :document_id
+        """),
+        {
+            "slot_id": slot["id"], "task_node_id": context.get("task_node_id"),
+            "document_id": document_id,
+        },
+    )
+    _lock_checklist_and_reject_overwrite(
+        db, checklist_result_id=checklist_result_id, document_id=document_id
+    )
+    db.execute(
+        text("""
+            insert into public.checklist_result_document_links
+                (contract_id, checklist_result_id, document_id, created_by)
+            values (:contract_id, :checklist_result_id, :document_id, :actor)
+            on conflict (checklist_result_id, document_id) do nothing
+        """),
+        {
+            "contract_id": context.get("contract_id"),
+            "checklist_result_id": checklist_result_id,
+            "document_id": document_id,
+            "actor": actor_id,
+        },
+    )
+    return {
+        "checklist_result_id": checklist_result_id,
+        "document_id": document_id,
+        "template_id": template_id,
+        "slot_id": slot["id"],
+        "slot_name": slot["name"],
+        "file_name": document["file_name"],
+    }

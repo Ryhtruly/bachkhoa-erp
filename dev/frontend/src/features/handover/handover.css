@@ -441,3 +441,49 @@
   .handover__footer { padding-top: 10px; }
   .handover__footer { flex-direction: column-reverse; }
 }
+.handover-debt-review {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 11px;
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #431407;
+  outline: none;
+}
+
+.handover-debt-review:focus,
+.handover-debt-review.is-targeted {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, .18);
+}
+
+.handover-debt-review__head,
+.handover-debt-review__actions,
+.handover-debt-review dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.handover-debt-review__head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c2410c;
+  font-weight: 800;
+}
+
+.handover-debt-review dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.handover-debt-review dt { color: #9a3412; }
+.handover-debt-review dd { margin: 0; text-align: right; font-weight: 650; }
+.handover-debt-review dd svg { vertical-align: -2px; }
+.handover-debt-review__actions { justify-content: flex-end; }

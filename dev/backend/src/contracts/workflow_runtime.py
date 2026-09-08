@@ -17,6 +17,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import Session
 
+from src.dossiers.checklist_document_types import (
+    materialize_configured_types,
+    node_type_review_summary,
+    submit_types_for_node,
+)
+
 
 ROLE_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 APPROVER_ROLE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -531,7 +537,7 @@ def _ensure_manual_checklist_assignment(
 
 
 _OUTPUT_DOCUMENT_FIELDS = frozenset(
-    {"template_id", "min_count", "required_before_submit", "needs_director_approval"}
+    {"template_id", "min_count", "required_before_submit", "needs_director_approval", "template_name"}
 )
 
 
@@ -695,8 +701,8 @@ def validate_workflow_graph(
     if not start_node or start_node not in raw_nodes:
         raise WorkflowValidationError("Node bắt đầu không tồn tại trong workflow")
 
-    active_codes = {
-        row[0]
+    active_codes_by_upper = {
+        str(row[0]).strip().upper(): row[0]
         for row in db.execute(text(
             "select code from public.workflow_nodes where coalesce(is_active, true)"
         )).all()
@@ -732,9 +738,11 @@ def validate_workflow_graph(
         node_key = str(raw_key).strip()
         if not node_key or not isinstance(raw_node, dict):
             raise WorkflowValidationError("Mỗi Node phải có key và dữ liệu hợp lệ")
-        node_code = str(raw_node.get("task_code") or "").strip().upper()
-        if node_code not in active_codes:
-            raise WorkflowValidationError(f"Node {node_key}: cụm công việc {node_code!r} không tồn tại hoặc đã tắt")
+        raw_code = str(raw_node.get("task_code") or "").strip()
+        upper_code = raw_code.upper()
+        if upper_code not in active_codes_by_upper:
+            raise WorkflowValidationError(f"Node {node_key}: cụm công việc {raw_code!r} không tồn tại hoặc đã tắt")
+        node_code = active_codes_by_upper[upper_code]
 
         transitions = raw_node.get("transitions") or {}
         if not isinstance(transitions, dict):
@@ -1569,6 +1577,12 @@ def _apply_workflow_amendment(
                     },
                 checklist_name=item["name"],
                 )
+                materialize_configured_types(
+                    db,
+                    checklist_result_id,
+                    actor_id=actor_id,
+                    revision_id=revision["id"],
+                )
             checklist_count += 1
 
             if is_payable:
@@ -1739,6 +1753,9 @@ def _apply_workflow_amendment(
                     "pay_key": compensation.get("pay_key") if is_payable else None,
                 },
             checklist_name=item["name"],
+            )
+            materialize_configured_types(
+                db, checklist_result_id, actor_id=actor_id
             )
             checklist_count += 1
             if is_payable:
@@ -2081,6 +2098,9 @@ def activate_workflow(
                     "pay_key": compensation.get("pay_key") if is_payable else None,
                 },
             checklist_name=item["name"],
+            )
+            materialize_configured_types(
+                db, checklist_result_id, actor_id=actor_id
             )
             checklist_count += 1
 
@@ -2546,20 +2566,24 @@ def prior_step_documents(db: Session, *, task_node_id: str) -> list[dict[str, An
 
 
 LEGAL_PACKAGE_ID = "sp_002"
+GOV_TRACKING_PACKAGE_IDS = frozenset({"sp_002", "sp_003"})
 
-# Hai bước NỘP CƠ QUAN theo đúng định nghĩa của mã bước. So sánh chữ thường vì
-# dữ liệu cũ từng có cả "K05a" lẫn "K05A" — đúng cái bẫy đã làm K05a/K05b mất
-# sạch phòng ban và vai trò trước đây.
-_AGENCY_NODE_CODES_LOWER = frozenset({"k05a", "k05b"})
+# Bước NỘP CƠ QUAN theo đúng định nghĩa của mã bước: chỉ K05b (Một cửa Pháp lý)
+# là nộp cơ quan có theo dõi tiến độ vòng đời. K05a là nộp kỹ thuật / nội nghiệp
+# của Đo vẽ, nộp xong là hết việc cơ quan, không theo dõi tiến độ. So sánh chữ thường
+# vì dữ liệu cũ từng có cả "K05b" lẫn "K05B".
+_AGENCY_NODE_CODES_LOWER = frozenset({"k05b"})
 
 
 def is_agency_submission_node(*, node_code: str | None, requires_gov_submission: bool) -> bool:
     """Bước này có phải bước nộp cơ quan không.
 
-    Nhận ra bằng HAI đường: cờ khai tay, hoặc mã bước. K05a/K05b theo định nghĩa
-    là bước nộp cơ quan — bắt Giám đốc tick lại cái đã nằm trong mã bước là thừa,
-    và quên tick thì hồ sơ im lặng không được tạo, tới lúc cần tra biên nhận mới
-    biết.
+    Nhận ra bằng HAI đường: cờ khai tay (requires_gov_submission), hoặc mã bước.
+    K05b theo định nghĩa là bước nộp cơ quan một cửa của Pháp lý — bắt Giám đốc
+    tick lại cái đã nằm trong mã bước là thừa, và quên tick thì hồ sơ im lặng không
+    được tạo, tới lúc cần tra biên nhận mới biết.
+    K05a là nộp kỹ thuật nội nghiệp của Đo vẽ, chỉ tính là bước nộp cơ quan nếu
+    được chủ động bật cờ requires_gov_submission.
     """
     if requires_gov_submission:
         return True
@@ -2745,9 +2769,10 @@ def _maybe_create_legal_submission(
     """Bước nộp cơ quan -> tự sinh 1 dòng legal_submissions.
 
     "Bước nộp cơ quan" nhận ra bằng HAI đường: cờ ``requires_gov_submission`` khai
-    tay, HOẶC mã bước nằm trong :data:`AGENCY_NODE_CODES`. K05a và K05b theo định
+    tay, HOẶC mã bước là K05b (Một cửa Pháp lý theo dõi vòng đời). K05b theo định
     nghĩa là bước nộp cơ quan — bắt Giám đốc tick lại cái đã nằm trong mã bước là
     thừa, và quên tick thì hồ sơ im lặng không được tạo.
+    K05a là nộp nội nghiệp kỹ thuật của Đo vẽ, giấy tờ lưu tại node, không sinh hồ sơ.
 
     Ràng buộc giữ nguyên: chỉ Hạng mục thuộc gói Pháp Lý mới sinh hồ sơ. Gói Đo Vẽ
     dù có kèm 'hỗ trợ nộp' (trả 350k cho nhân viên) cũng KHÔNG theo dõi vòng đời hồ
@@ -2757,7 +2782,7 @@ def _maybe_create_legal_submission(
         requires_gov_submission=bool(node_def.get("requires_gov_submission")),
     ):
         return None
-    if context.get("service_package_id") != LEGAL_PACKAGE_ID:
+    if context.get("service_package_id") not in GOV_TRACKING_PACKAGE_IDS:
         return None
 
     # Cùng lý do như hồ sơ đo vẽ: một hạng mục một hồ sơ nộp, không phải một
@@ -2772,6 +2797,22 @@ def _maybe_create_legal_submission(
         {"service_line_id": context["service_line_id"]},
     ).scalar()
     if existing_id:
+        db.execute(
+            text("""
+                update public.legal_submissions
+                set task_node_id = :task_node_id
+                where id = :existing_id and task_node_id is distinct from :task_node_id
+            """),
+            {"existing_id": existing_id, "task_node_id": task_node["id"]},
+        )
+        db.execute(
+            text("""
+                update public.legal_dossiers
+                set task_node_id = :task_node_id
+                where service_line_id = :service_line_id and task_node_id is distinct from :task_node_id
+            """),
+            {"service_line_id": context["service_line_id"], "task_node_id": task_node["id"]},
+        )
         return existing_id
 
     assignee = db.execute(
@@ -3109,7 +3150,9 @@ def _reserve_main_workflow_chain(
             candidate["node_code"], definition
         ):
             continue
-        if "MAIN" not in task_pool_roles(candidate["node_code"], definition):
+        roles = task_pool_roles(candidate["node_code"], definition)
+        target_role = next((role for role in roles if role != "ASSISTANT"), None)
+        if not target_role:
             continue
 
         assignment_id = db.execute(
@@ -3117,12 +3160,12 @@ def _reserve_main_workflow_chain(
                 insert into public.task_node_assignments
                     (task_node_id, employee_id, role_code, is_primary,
                      assignment_status, assigned_by, notes)
-                select :task_node_id, :employee_id, 'MAIN', true,
+                select :task_node_id, :employee_id, :role_code, true,
                        'assigned', :actor_id, :notes
                 where not exists (
                     select 1 from public.task_node_assignments
                     where task_node_id = :task_node_id
-                      and role_code = 'MAIN'
+                      and role_code = :role_code
                       and assignment_status in ('proposed', 'assigned', 'accepted')
                 )
                 returning id
@@ -3130,12 +3173,13 @@ def _reserve_main_workflow_chain(
             {
                 "task_node_id": candidate["id"],
                 "employee_id": employee_id,
+                "role_code": target_role,
                 "actor_id": actor_id,
                 "notes": "Giữ phụ trách chính khi nhận trọn chuỗi từ Bể việc",
             },
         ).scalar()
         if not assignment_id:
-            # Tôn trọng người MAIN đã được phân công trước; không cướp hoặc ghi đè.
+            # Tôn trọng người đã được phân công trước; không cướp hoặc ghi đè.
             continue
 
         db.execute(
@@ -3153,7 +3197,7 @@ def _reserve_main_workflow_chain(
                 "payload": json.dumps({
                     "assignment_id": assignment_id,
                     "employee_id": employee_id,
-                    "role_code": "MAIN",
+                    "role_code": target_role,
                     "reserved_with_task_node_id": claimed_task_node_id,
                 }),
             },
@@ -3162,7 +3206,7 @@ def _reserve_main_workflow_chain(
             db,
             task_node_id=candidate["id"],
             employee_id=employee_id,
-            role_code="MAIN",
+            role_code=target_role,
             actor_id=actor_id,
         )
         reserved_ids.append(candidate["id"])
@@ -3321,7 +3365,7 @@ def claim_and_start_task(
     *,
     task_node_id: str,
     employee_id: str,
-    role_code: str,
+    role_code: str | None = None,
     actor_id: str,
     start_now: bool = True,
 ) -> dict[str, Any]:
@@ -3338,9 +3382,10 @@ def claim_and_start_task(
     """
     from src.core.redis_utils import redis_distributed_lock
 
-    normalized_role = str(role_code or "MAIN").strip().upper()
+    normalized_role = str(role_code).strip().upper() if role_code else None
+    lock_role = normalized_role or "ANY"
     with redis_distributed_lock(
-        f"claim_node:{task_node_id}:{normalized_role}",
+        f"claim_node:{task_node_id}:{lock_role}",
         timeout_seconds=5,
         blocking_timeout=0,
         custom_error_msg="Công việc vừa được người khác nhận. Bể việc đang được cập nhật.",
@@ -3383,8 +3428,16 @@ def claim_and_start_task(
             raise WorkflowValidationError("Bước này do Giám đốc phân công, không thuộc Bể việc")
         if str(employee["department_code"] or "").upper() not in allowed_departments:
             raise WorkflowValidationError("Bạn không thuộc phòng ban phụ trách bước này")
-        if normalized_role not in task_pool_roles(node["node_code"], node_definition):
-            raise WorkflowValidationError("Vai trò nhận việc không hợp lệ cho bước này")
+        allowed_roles = task_pool_roles(node["node_code"], node_definition)
+        if not allowed_roles:
+            raise WorkflowValidationError("Bước này do Giám đốc phân công, không thuộc Bể việc")
+        if not normalized_role:
+            normalized_role = allowed_roles[0]
+        elif normalized_role not in allowed_roles:
+            if normalized_role == "MAIN" and len(allowed_roles) == 1:
+                normalized_role = allowed_roles[0]
+            else:
+                raise WorkflowValidationError("Vai trò nhận việc không hợp lệ cho bước này")
         if (
             node["node_code"] == "K02"
             and normalized_role == "ASSISTANT"
@@ -3530,7 +3583,7 @@ def claim_and_start_task(
             actor_id=actor_id,
         )
         chain_reservation: dict[str, Any] = {"reserved_task_node_ids": []}
-        if normalized_role == "MAIN":
+        if normalized_role in ("MAIN", "SUBMITTER"):
             chain_reservation = _reserve_main_workflow_chain(
                 db,
                 workflow_instance_id=node["workflow_instance_id"],
@@ -4114,7 +4167,12 @@ def start_task_node(db: Session, *, task_node_id: str, employee_id: str, actor_i
     db.execute(
         text("""
             update public.task_nodes
-            set status = 'in_progress', started_at = coalesce(started_at, now()), updated_at = now()
+            set status = 'in_progress',
+                started_at = coalesce(started_at, now()),
+                pause_reason_type = null,
+                paused_at = null,
+                paused_note = null,
+                updated_at = now()
             where id = :task_node_id
         """),
         {"task_node_id": task_node_id},
@@ -4146,7 +4204,13 @@ def start_task_node(db: Session, *, task_node_id: str, employee_id: str, actor_i
 
 
 def submit_task_node_for_acceptance(
-    db: Session, *, task_node_id: str, employee_id: str, actor_id: str, note: str | None
+    db: Session,
+    *,
+    task_node_id: str,
+    employee_id: str,
+    actor_id: str,
+    note: str | None,
+    checklist_notes: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Employee submits a node for manager review: in_progress -> submitted.
 
@@ -4245,19 +4309,44 @@ def submit_task_node_for_acceptance(
     #
     # Chỉ còn chặn những mục THỰC SỰ chưa làm: chưa điền, đang làm dở, hoặc đã bị
     # trả về mà chưa sửa.
-    unresolved = db.execute(
+    # Với các checklist mà sếp không phân loại giấy tờ (không có runtime types):
+    # Tự động chuyển trạng thái sang pending_approval để được duyệt cùng bước
+    # (cho phép nộp luôn kể cả khi không kèm lý do, theo quyết định nghiệp vụ).
+    paperless_pending = db.execute(
         text("""
-            select checklist_name from public.task_node_checklist_results
-            where task_node_id = :task_node_id
-              and status not in ('pending_approval', 'late_pending_approval',
-                                 'approved', 'late_approved', 'not_applicable')
-            order by checklist_name
+            select cr.id, cr.checklist_name, cr.note
+            from public.task_node_checklist_results cr
+            where cr.task_node_id = :task_node_id
+              and cr.status in ('pending', 'failed')
+              and not exists (
+                  select 1 from public.checklist_result_document_types t
+                  where t.checklist_result_id = cr.id and t.is_active
+              )
         """),
         {"task_node_id": task_node_id},
     ).mappings().all()
+    for cr in paperless_pending:
+        item_note = (checklist_notes or {}).get(cr["id"]) or (note.strip() if note else None) or cr["note"]
+        db.execute(
+            text("""
+                update public.task_node_checklist_results
+                set status = 'pending_approval', submitted_by = :actor_id,
+                    submitted_at = now(), note = :note, updated_at = now()
+                where id = :id and status in ('pending', 'failed')
+            """),
+            {"id": cr["id"], "actor_id": actor_id, "note": item_note},
+        )
+
+    allow_missing = bool(note and note.strip())
+    submitted_types = submit_types_for_node(
+        db, task_node_id, actor_id, allow_missing=allow_missing
+    )
+    unresolved = submitted_types.get("unresolved_checklists", [])
     if unresolved:
-        names = ", ".join(row["checklist_name"] for row in unresolved)
-        raise WorkflowValidationError(f"Còn nhiệm vụ chưa điền xong: {names}")
+        names = ", ".join(unresolved)
+        raise WorkflowValidationError(
+            f"Còn nhiệm vụ chưa có loại giấy tờ cần nhập lý do hoàn thành: {names}"
+        )
 
     # CÒN TỜ ĐẦU RA BỊ TRẢ LẠI THÌ CHẶN NỘP — không cho "nộp lại y nguyên bài đã
     # bị trả". Cổng /shortage đã bày blocker 'rejected_documents' để nút xám đi,
@@ -4341,7 +4430,7 @@ def submit_task_node_for_acceptance(
                 execution_data = jsonb_set(
                     coalesce(execution_data, '{}'::jsonb),
                     '{actual_duration_seconds}',
-                    to_jsonb(greatest(0, extract(epoch from (now() - coalesce(started_at, now())))::bigint)),
+                    to_jsonb(greatest(0, extract(epoch from (now() - coalesce(started_at, now())))::bigint - coalesce(paused_seconds, 0))),
                     true
                 ),
                 updated_at = now()
@@ -4449,6 +4538,15 @@ _CURRENT_DOCUMENT_LINKS_CTE = """
         left join public.dossier_document_slots s on s.id = d.slot_id
         where r.task_node_id = :task_node_id
           and d.doc_status = 'DANG_DUNG'
+          -- Runtime checklist types are reviewed as a TYPE. Once a file is
+          -- attached to one, its old per-file verdict must never keep the node
+          -- blocked through this legacy summary.
+          and not exists (
+              select 1
+              from public.checklist_result_document_type_files runtime_file
+              where runtime_file.document_id = d.id
+                and runtime_file.is_active
+          )
         order by l.checklist_result_id, coalesce(d.slot_id, l.document_id),
                  d.uploaded_at desc, d.id desc
     )
@@ -4623,6 +4721,7 @@ def flush_node_review_batch(
     *,
     task_node_id: str,
     actor_id: str | None = None,
+    runtime_batch: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Gom mọi phán quyết chưa chốt của một bước thành ĐÚNG MỘT thông báo.
 
@@ -4662,7 +4761,7 @@ def flush_node_review_batch(
         """),
         {"task_node_id": task_node_id},
     ).mappings().first()
-    if not node or node["last_reviewed_at"] is None:
+    if not node or (node["last_reviewed_at"] is None and not runtime_batch):
         # Không lấy được khoá, hoặc không còn gì tồn đọng. Cả hai đều là "thôi,
         # để lượt sau" — không phải lỗi.
         return None
@@ -4692,6 +4791,8 @@ def flush_node_review_batch(
         """),
         {"task_node_id": task_node_id, "last_flush_at": last_flush_at},
     ).mappings().all()]
+    if runtime_batch:
+        batch.extend(dict(row) for row in runtime_batch)
     if not batch:
         # Cờ tồn đọng còn nhưng không có tờ nào sau mốc — dọn cờ để lượt sau khỏi
         # quét lại vô ích.
@@ -4712,16 +4813,26 @@ def flush_node_review_batch(
 
     # Payload dựng ở MÁY CHỦ, đọc từ DB. Nhận từ client thì nó vừa giả mạo được,
     # vừa sai khi phiên duyệt bị đứt giữa chừng.
+    runtime_summary = (
+        node_type_review_summary(db, task_node_id)
+        if runtime_batch
+        else {
+            "total": 0,
+            "approved": 0,
+            "rejected": 0,
+            "pending_review": 0,
+        }
+    )
     payload = {
         "nodeId": task_node_id,
         "nodeCode": node["node_code"],
         "contractCode": node["contract_id"],
         "overallStatus": overall_status,
         "summary": {
-            "total": overall["total"],
-            "approvedCount": overall["approved_count"],
-            "rejectedCount": overall["rejected_count"],
-            "pendingCount": overall["pending_count"],
+            "total": overall["total"] + runtime_summary["total"],
+            "approvedCount": overall["approved_count"] + runtime_summary["approved"],
+            "rejectedCount": overall["rejected_count"] + runtime_summary["rejected"],
+            "pendingCount": overall["pending_count"] + runtime_summary["pending_review"],
             "reviewedInBatch": len(batch),
         },
         "rejectedItems": [
@@ -4775,20 +4886,27 @@ def flush_node_review_batch(
             {"task_node_id": task_node_id},
         ).scalar()
         if pending_acceptance:
-            review_task_node_acceptance(
-                db,
-                acceptance_id=pending_acceptance,
-                decision="rework_required",
-                outcome=None,
-                review_note=(
+            review_kwargs = {
+                "acceptance_id": pending_acceptance,
+                "decision": "rework_required",
+                "outcome": None,
+                "review_note": (
                     f"Cần sửa {len(rejected)} tờ giấy: "
                     + "; ".join(
                         f"{row['document_name'] or row['checklist_name']} — {row['rejection_reason']}"
                         for row in rejected
                     )
                 ),
-                actor_id=actor_id,
-            )
+                "actor_id": actor_id,
+            }
+            runtime_notes = {
+                row["checklist_result_id"]: row["rejection_reason"]
+                for row in (runtime_batch or [])
+                if row["review_status"] == "rejected"
+            }
+            if runtime_notes:
+                review_kwargs["checklist_notes"] = runtime_notes
+            review_task_node_acceptance(db, **review_kwargs)
             node_status_changed = True
 
     return {
@@ -4929,6 +5047,16 @@ def review_task_node_acceptance(
             names = ", ".join(row["checklist_name"] for row in unresolved)
             raise WorkflowValidationError(
                 f"Không thể nghiệm thu Node vì còn checklist chưa được nộp đủ: {names}"
+            )
+
+        runtime_types = node_type_review_summary(db, task_node_id)
+        if not runtime_types["is_complete"]:
+            raise WorkflowValidationError(
+                "Không thể nghiệm thu Node vì các loại giấy chưa đạt 100% "
+                f"({runtime_types['approved']}/{runtime_types['total']} đã duyệt; "
+                f"{runtime_types['pending_review']} chờ duyệt; "
+                f"{runtime_types['rejected']} bị trả; "
+                f"{runtime_types['missing_files']} chưa có tệp)."
             )
 
         # Cổng GIẤY TỜ, tách khỏi cổng checklist ngay trên. Mục checklist đủ
@@ -5505,6 +5633,13 @@ def cascade_rollback(
                 submitted_at = null,
                 accepted_at = null,
                 completed_at = null,
+                paused_seconds = coalesce(paused_seconds, 0) + case
+                    when paused_at is not null then greatest(0, extract(epoch from (clock_timestamp() - paused_at))::integer)
+                    else 0
+                end,
+                pause_reason_type = null,
+                paused_at = null,
+                paused_note = null,
                 notes = concat_ws(' | ', notes, :reason),
                 updated_at = now()
             where id = any(:ids)

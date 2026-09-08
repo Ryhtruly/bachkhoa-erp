@@ -31,6 +31,15 @@ describe('NodeChain', () => {
       const arrows = container.querySelectorAll('.eiw-chain__arrow')
       expect(arrows).toHaveLength(3)
     })
+
+    it('hiển thị tên node và tooltip đầy đủ', () => {
+      render(<NodeChain nodes={NODES} />)
+
+      const names = document.querySelectorAll('.eiw-step__name')
+      expect(names).toHaveLength(4)
+      expect(names[0].textContent).toBe('Tiếp nhận hồ sơ')
+      expect(names[0].getAttribute('title')).toBe('Tiếp nhận hồ sơ')
+    })
   })
 
   describe('nhãn trạng thái', () => {

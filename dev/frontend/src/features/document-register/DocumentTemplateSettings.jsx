@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, ChevronRight, FileStack, Pencil, Plus, Power } from 'lucide-react'
+import { Archive, ChevronRight, FileStack, Pencil, Plus, Power, Workflow } from 'lucide-react'
 
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import { useToast } from '../../contexts/ToastContext'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, peekApiCache, prefetchApi } from '../../lib/api'
+import { safeViewTransition } from '../../lib/viewTransition'
+import MasterWorkflowStudio from '../workflow-templates/MasterWorkflowStudio'
 import StorageLocationsModal from './StorageLocationsModal'
 import TemplateFormModal from './TemplateFormModal'
 import {
@@ -46,13 +48,27 @@ const EMPTY_FORM = {
   scope: { globalAll: false, packageIds: [], taskTypeIds: [] },
 }
 
-export default function DocumentTemplateSettings() {
+export default function DocumentTemplateSettings({ initialTab = 'docs' }) {
   const { addToast } = useToast() || {}
+  const [activeMainTab, setActiveMainTab] = useState(initialTab)
+  const [visitedSubTabs, setVisitedSubTabs] = useState(() => new Set([initialTab]))
 
-  const [data, setData] = useState(null)
-  const [packageTree, setPackageTree] = useState([])
-  const [nodes, setNodes] = useState([])
-  const [places, setPlaces] = useState([])
+  const handleTabChange = useCallback((tabId) => {
+    safeViewTransition(() => {
+      setActiveMainTab(tabId)
+      setVisitedSubTabs(prev => {
+        if (prev.has(tabId)) return prev
+        const next = new Set(prev)
+        next.add(tabId)
+        return next
+      })
+    })
+  }, [])
+
+  const [data, setData] = useState(() => (typeof peekApiCache === 'function' ? peekApiCache('/api/document-register/templates')?.data : null) || null)
+  const [packageTree, setPackageTree] = useState(() => (typeof peekApiCache === 'function' ? peekApiCache('/api/catalog/service-packages')?.data : null) || [])
+  const [nodes, setNodes] = useState(() => (typeof peekApiCache === 'function' ? peekApiCache('/api/document-register/workflow-nodes')?.data : null) || [])
+  const [places, setPlaces] = useState(() => (typeof peekApiCache === 'function' ? peekApiCache('/api/document-register/storage-locations')?.data : null) || [])
 
   const [selectedPackage, setSelectedPackage] = useState('')
   const [selectedTaskType, setSelectedTaskType] = useState('')
@@ -85,8 +101,6 @@ export default function DocumentTemplateSettings() {
 
   useEffect(() => { load() }, [load])
 
-  // Chọn sẵn gói đầu và hạng mục đầu của nó, để vào màn là có nội dung ngay chứ
-  // không phải ba cột trống bắt người ta đoán phải bấm gì trước.
   useEffect(() => {
     if (selectedPackage || packageTree.length === 0) return
     const first = packageTree[0]
@@ -114,9 +128,6 @@ export default function DocumentTemplateSettings() {
     [selectedTemplate, selectedPackage, selectedTaskType],
   )
 
-  // Dòng Cột 3 đang chọn. Chưa bấm dòng nào thì lấy dòng đầu — hẹp nhất, tức là
-  // bản ghi riêng của hạng mục đang đứng. Bắt bấm thêm một nhát chỉ để dùng nút
-  // Sửa trong khi chỉ có đúng một dòng là thao tác thừa.
   const activeAssignment = assignments.find(item => item.id === selectedAssignmentId)
     || assignments[0]
     || null
@@ -125,8 +136,6 @@ export default function DocumentTemplateSettings() {
   const currentTaskType = currentPackage?.task_types
     ?.find(type => type.id === selectedTaskType)
 
-  // Đổi ngữ cảnh thì bỏ chọn dòng cũ: giữ lại là Cột 3 hiện chi tiết của một tờ
-  // giấy không còn nằm trong danh sách bên trái.
   const changeContext = (patch) => {
     setSelectedTemplateId(null)
     setSelectedAssignmentId(null)
@@ -286,221 +295,260 @@ export default function DocumentTemplateSettings() {
     selectedTemplate && { key: 'giay', label: selectedTemplate.name },
   ].filter(Boolean)
 
-  return <section className="tab-pane active dtm list-page-frame" aria-label="Mẫu giấy tờ">
-    {/* ── HÀNG 1: tiêu đề màn + đường đi ──
-        Dùng đúng .contract-pane-title như Danh sách hợp đồng / Hồ Sơ Đo Vẽ:
-        cùng chiều cao, cùng nền, cùng chip đếm. Màn này đứng cạnh các tab kia
-        nên lệch một nhịp là thấy ngay. */}
-    <header className="contract-pane-title dtm__bar">
-      <div>
-        <FileStack size={19} style={{ color: 'var(--orange-500)' }} />
-        <span>Mẫu Giấy Tờ</span>
-        <strong>{templates.length}</strong>
-        {/* Đường đi bốn nấc: Gói › Hạng mục › Nhóm › Tên giấy. Bốn trục này quyết
-            định mọi thứ đang hiển thị bên dưới; không in ra thì nhìn ba cột
-            không biết mình đang đứng ở nhánh nào của cây. */}
-        <nav className="dtm__crumb" aria-label="Đường dẫn">
-          {breadcrumb.map((buoc, thuTu) => (
-            <span key={buoc.key} className={thuTu === breadcrumb.length - 1 ? 'is-cuoi' : ''}>
-              {thuTu > 0 && <ChevronRight size={12} aria-hidden="true" />}
-              {buoc.label}
-            </span>
-          ))}
-        </nav>
-      </div>
-      <div className="dtm__bar-tools">
+  return (
+    <div className="tab-pane active list-page-frame" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+      {/* ── THANH ĐIỀU HƯỚNG TAB CHÍNH ── */}
+      <nav className="doc-templates-main-tabs" aria-label="Phân hệ Quy trình và Mẫu giấy">
         <button
           type="button"
-          className="dtm__places"
-          onClick={() => setPlacesOpen(true)}
-          title="Danh mục nơi lưu bản cứng"
-          aria-label="Danh mục nơi lưu bản cứng"
+          aria-pressed={activeMainTab === 'workflow'}
+          className={`doc-templates-main-tab${activeMainTab === 'workflow' ? ' is-active' : ''}`}
+          onClick={() => handleTabChange('workflow')}
+          onMouseEnter={() => {
+            prefetchApi?.('/api/contracts/workflow/templates')
+            prefetchApi?.('/api/contracts/workflow/catalog')
+          }}
         >
-          <Archive size={16} />
+          <Workflow size={16} /> Sơ đồ quy trình mẫu (Workflow Studio)
         </button>
         <button
           type="button"
-          className="contract-add-button"
-          onClick={openCreate}
-          title="Thêm loại giấy tờ vào mẫu"
-          aria-label="Thêm loại giấy tờ"
+          aria-pressed={activeMainTab === 'docs'}
+          className={`doc-templates-main-tab${activeMainTab === 'docs' ? ' is-active' : ''}`}
+          onClick={() => handleTabChange('docs')}
+          onMouseEnter={() => {
+            prefetchApi?.('/api/document-register/templates')
+            prefetchApi?.('/api/document-register/workflow-nodes')
+          }}
         >
-          <Plus size={20} />
+          <FileStack size={16} /> Danh mục mẫu giấy tờ (Document Register)
         </button>
-      </div>
-    </header>
+      </nav>
 
-    {/* ── HÀNG 2: đầu cột ──
-        Mỗi cột có đầu riêng, và đầu cột CHÍNH LÀ bộ lọc của cột đó: chọn Gói thì
-        đổi danh sách Hạng mục ngay bên dưới, chọn Nhóm thì đổi danh sách giấy
-        ngay bên dưới. Dùng chung một lưới với hàng cột nên hai hàng luôn thẳng
-        nhau, không cần canh tay. */}
-    <div className="dtm__grid dtm__heads">
-      <div className="dtm__head" role="tablist" aria-label="Gói dịch vụ">
-        {packageTree.map(pkg => (
-          <button
-            key={pkg.id}
-            type="button"
-            role="tab"
-            aria-selected={selectedPackage === pkg.id}
-            className={`dtm__tab${selectedPackage === pkg.id ? ' is-active' : ''}`}
-            onClick={() => changeContext({ packageId: pkg.id })}
-          >
-            {pkg.name}
-          </button>
-        ))}
-      </div>
-      <div className="dtm__head" role="tablist" aria-label="Nhóm nguồn gốc">
-        {SOURCE_TABS.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={selectedSource === tab.id}
-            className={`dtm__tab${selectedSource === tab.id ? ' is-active' : ''}`}
-            onClick={() => changeContext({ source: tab.id })}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div className="dtm__head is-label">Node đã áp dụng</div>
-    </div>
-
-    {/* ── HÀNG 3: ba cột ── */}
-    <div className="dtm__grid dtm__cols">
-      {/* ── Cột 1: Hạng mục của gói đang chọn ──
-          Không có dòng tiêu đề: bản vẽ để cột này bắt đầu thẳng bằng danh sách,
-          và breadcrumb phía trên đã nói đang đứng ở gói nào. */}
-      <div className="dtm__col" data-col="types">
-        <div className="dtm__col-body">
-          {(currentPackage?.task_types || []).map(type => (
-            <button
-              key={type.id}
-              type="button"
-              className={`dtm__item${selectedTaskType === type.id ? ' is-active' : ''}`}
-              onClick={() => changeContext({ taskTypeId: type.id })}
-            >
-              {type.name}
-            </button>
-          ))}
-          {(currentPackage?.task_types || []).length === 0 && (
-            <p className="dtm__empty">Gói này chưa có hạng mục nào.</p>
-          )}
+      {visitedSubTabs.has('workflow') && (
+        <div
+          style={{
+            display: activeMainTab === 'workflow' ? 'flex' : 'none',
+            flex: '1 1 auto',
+            minHeight: 0,
+            overflow: 'hidden',
+            flexDirection: 'column',
+          }}
+        >
+          <MasterWorkflowStudio />
         </div>
-      </div>
+      )}
 
-      {/* ── Cột 2: tên loại giấy, thuần text, không nút trên dòng ── */}
-      <div className="dtm__col" data-col="docs">
-        <div className="dtm__col-body">
-          {!data && <p className="dtm__empty">Đang tải bộ mẫu…</p>}
-          {data && visibleTemplates.length === 0 && (
-            <p className="dtm__empty">
-              Chưa có loại giấy nào cho hạng mục và nhóm này.
-              Bấm <strong>+</strong> ở góc trên để thêm.
-            </p>
-          )}
-          {visibleTemplates.map(template => (
-            <button
-              key={template.id}
-              type="button"
-              className={`dtm__item${selectedTemplateId === template.id ? ' is-active' : ''}`
-                + (template.is_active ? '' : ' is-off')}
-              onClick={() => { setSelectedTemplateId(template.id); setSelectedAssignmentId(null) }}
-            >
-              <span>{template.name}</span>
-              {!template.is_active && <span className="dr-tag">đã tắt</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Cột 3: bản ghi gán của tờ giấy đang chọn, TRONG ngữ cảnh này ──
-          Dòng không mang nút riêng; bấm để chọn, rồi hai nút ghim ở đáy tác động
-          lên dòng đang chọn. */}
-      <div className="dtm__col" data-col="nodes">
-        <div className="dtm__col-body">
-          {!selectedTemplate && (
-            <p className="dtm__empty">
-              Vui lòng chọn 1 loại giấy tờ bên trái để xem chi tiết và thao tác.
-            </p>
-          )}
-          {selectedTemplate && assignments.length === 0 && (
-            <p className="dtm__empty">Tờ giấy này chưa gán bước nào trong hạng mục đang chọn.</p>
-          )}
-          {selectedTemplate && assignments.map(assignment => {
-            const node = nodes.find(item => item.code === assignment.node_code)
-            return (
+      {visitedSubTabs.has('docs') && (
+        <div
+          style={{
+            display: activeMainTab === 'docs' ? 'flex' : 'none',
+            flex: '1 1 auto',
+            minHeight: 0,
+            overflow: 'hidden',
+            flexDirection: 'column',
+          }}
+        >
+          <section className="dtm list-page-frame" aria-label="Mẫu giấy tờ" style={{ flex: '1 1 auto', minHeight: 0 }}>
+          {/* ── HÀNG 1: tiêu đề màn + đường đi ── */}
+          <header className="contract-pane-title dtm__bar">
+            <div>
+              <FileStack size={19} style={{ color: 'var(--orange-500)' }} />
+              <span>Mẫu Giấy Tờ</span>
+              <strong>{templates.length}</strong>
+              <nav className="dtm__crumb" aria-label="Đường dẫn">
+                {breadcrumb.map((buoc, thuTu) => (
+                  <span key={buoc.key} className={thuTu === breadcrumb.length - 1 ? 'is-cuoi' : ''}>
+                    {thuTu > 0 && <ChevronRight size={12} aria-hidden="true" />}
+                    {buoc.label}
+                  </span>
+                ))}
+              </nav>
+            </div>
+            <div className="dtm__bar-tools">
               <button
-                key={assignment.id}
                 type="button"
-                className={`dtm__node${activeAssignment?.id === assignment.id ? ' is-active' : ''}`}
-                onClick={() => setSelectedAssignmentId(assignment.id)}
+                className="dtm__places"
+                onClick={() => setPlacesOpen(true)}
+                title="Danh mục nơi lưu bản cứng"
+                aria-label="Danh mục nơi lưu bản cứng"
               >
-                {assignment.node_code
-                  ? <span><b>{assignment.node_code}</b> · {node?.name || 'bước không còn trong danh mục'}</span>
-                  : <span className="dr-tag is-chua-phan">chưa gán bước</span>}
-                {/* Nhãn phạm vi phải luôn đi kèm: cùng tờ giấy có thể vừa nhận
-                    bước từ chính hạng mục này, vừa thừa hưởng từ dòng "mọi gói". */}
-                <em>{assignment.scope_label}</em>
+                <Archive size={16} />
               </button>
-            )
-          })}
-        </div>
+              <button
+                type="button"
+                className="contract-add-button"
+                onClick={openCreate}
+                title="Thêm loại giấy tờ vào mẫu"
+                aria-label="Thêm loại giấy tờ"
+              >
+                <Plus size={20} />
+              </button>
+            </div>
+          </header>
 
-        <div className="dtm__foot">
-          <button
-            type="button"
-            className="dtm__act"
-            disabled={!activeAssignment}
-            onClick={() => openEdit(activeAssignment)}
-          >
-            <Pencil size={13} /> Sửa
-          </button>
-          <button
-            type="button"
-            className="dtm__act is-off"
-            disabled={!selectedTemplate}
-            onClick={() => setConfirmTarget(selectedTemplate)}
-          >
-            <Power size={13} /> Xoá
-          </button>
-        </div>
+          {/* ── HÀNG 2: đầu cột ── */}
+          <div className="dtm__grid dtm__heads">
+            <div className="dtm__head" role="tablist" aria-label="Gói dịch vụ">
+              {packageTree.map(pkg => (
+                <button
+                  key={pkg.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedPackage === pkg.id}
+                  className={`dtm__tab${selectedPackage === pkg.id ? ' is-active' : ''}`}
+                  onClick={() => changeContext({ packageId: pkg.id })}
+                >
+                  {pkg.name}
+                </button>
+              ))}
+            </div>
+            <div className="dtm__head" role="tablist" aria-label="Nhóm nguồn gốc">
+              {SOURCE_TABS.map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedSource === tab.id}
+                  className={`dtm__tab${selectedSource === tab.id ? ' is-active' : ''}`}
+                  onClick={() => changeContext({ source: tab.id })}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="dtm__head is-label">Node đã áp dụng</div>
+          </div>
+
+          {/* ── HÀNG 3: ba cột ── */}
+          <div className="dtm__grid dtm__cols">
+            <div className="dtm__col" data-col="types">
+              <div className="dtm__col-body">
+                {(currentPackage?.task_types || []).map(type => (
+                  <button
+                    key={type.id}
+                    type="button"
+                    className={`dtm__item${selectedTaskType === type.id ? ' is-active' : ''}`}
+                    onClick={() => changeContext({ taskTypeId: type.id })}
+                  >
+                    {type.name}
+                  </button>
+                ))}
+                {(currentPackage?.task_types || []).length === 0 && (
+                  <p className="dtm__empty">Gói này chưa có hạng mục nào.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="dtm__col" data-col="docs">
+              <div className="dtm__col-body">
+                {!data && <p className="dtm__empty">Đang tải bộ mẫu…</p>}
+                {data && visibleTemplates.length === 0 && (
+                  <p className="dtm__empty">
+                    Chưa có loại giấy nào cho hạng mục và nhóm này.
+                    Bấm <strong>+</strong> ở góc trên để thêm.
+                  </p>
+                )}
+                {visibleTemplates.map(template => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    className={`dtm__item${selectedTemplateId === template.id ? ' is-active' : ''}`
+                      + (template.is_active ? '' : ' is-off')}
+                    onClick={() => { setSelectedTemplateId(template.id); setSelectedAssignmentId(null) }}
+                  >
+                    <span>{template.name}</span>
+                    {!template.is_active && <span className="dr-tag">đã tắt</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="dtm__col" data-col="nodes">
+              <div className="dtm__col-body">
+                {!selectedTemplate && (
+                  <p className="dtm__empty">
+                    Vui lòng chọn 1 loại giấy tờ bên trái để xem chi tiết và thao tác.
+                  </p>
+                )}
+                {selectedTemplate && assignments.length === 0 && (
+                  <p className="dtm__empty">Tờ giấy này chưa gán bước nào trong hạng mục đang chọn.</p>
+                )}
+                {selectedTemplate && assignments.map(assignment => {
+                  const node = nodes.find(item => item.code === assignment.node_code)
+                  return (
+                    <button
+                      key={assignment.id}
+                      type="button"
+                      className={`dtm__node${activeAssignment?.id === assignment.id ? ' is-active' : ''}`}
+                      onClick={() => setSelectedAssignmentId(assignment.id)}
+                    >
+                      {assignment.node_code
+                        ? <span><b>{assignment.node_code}</b> · {node?.name || 'bước không còn trong danh mục'}</span>
+                        : <span className="dr-tag is-chua-phan">chưa gán bước</span>}
+                      <em>{assignment.scope_label}</em>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="dtm__foot">
+                <button
+                  type="button"
+                  className="dtm__act"
+                  disabled={!activeAssignment}
+                  onClick={() => openEdit(activeAssignment)}
+                >
+                  <Pencil size={13} /> Sửa
+                </button>
+                <button
+                  type="button"
+                  className="dtm__act is-off"
+                  disabled={!selectedTemplate}
+                  onClick={() => setConfirmTarget(selectedTemplate)}
+                >
+                  <Power size={13} /> Xoá
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <TemplateFormModal
+            open={Boolean(modalMode)}
+            mode={modalMode}
+            value={formData}
+            packageTree={packageTree}
+            nodes={nodes}
+            lockedScopeLabel={lockedScopeLabel}
+            saving={saving}
+            onChange={setFormData}
+            onSubmit={submitForm}
+            onClose={() => setModalMode(null)}
+          />
+
+          <StorageLocationsModal
+            open={placesOpen}
+            places={places}
+            onClose={() => setPlacesOpen(false)}
+            onSave={savePlace}
+            onDeactivate={deactivatePlace}
+          />
+
+          <ConfirmationModal
+            open={Boolean(confirmTarget)}
+            onClose={() => setConfirmTarget(null)}
+            onConfirm={deactivateTemplate}
+            title={`Tắt “${confirmTarget?.name || ''}” khỏi mẫu?`}
+            description={
+              `${confirmTarget?.in_use || 0} hồ sơ đang dùng mục này vẫn giữ nguyên — `
+              + 'chỉ hợp đồng mới là không còn đòi tờ giấy này nữa.'
+            }
+            confirmLabel="Tắt khỏi mẫu"
+            variant="warning"
+          />
+        </section>
       </div>
+      )}
     </div>
-
-    <TemplateFormModal
-      open={Boolean(modalMode)}
-      mode={modalMode}
-      value={formData}
-      packageTree={packageTree}
-      nodes={nodes}
-      lockedScopeLabel={lockedScopeLabel}
-      saving={saving}
-      onChange={setFormData}
-      onSubmit={submitForm}
-      onClose={() => setModalMode(null)}
-    />
-
-    <StorageLocationsModal
-      open={placesOpen}
-      places={places}
-      onClose={() => setPlacesOpen(false)}
-      onSave={savePlace}
-      onDeactivate={deactivatePlace}
-    />
-
-    <ConfirmationModal
-      open={Boolean(confirmTarget)}
-      onClose={() => setConfirmTarget(null)}
-      onConfirm={deactivateTemplate}
-      title={`Tắt “${confirmTarget?.name || ''}” khỏi mẫu?`}
-      description={
-        `${confirmTarget?.in_use || 0} hồ sơ đang dùng mục này vẫn giữ nguyên — `
-        + 'chỉ hợp đồng mới là không còn đòi tờ giấy này nữa.'
-      }
-      confirmLabel="Tắt khỏi mẫu"
-      variant="warning"
-    />
-  </section>
+  )
 }

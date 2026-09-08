@@ -1,30 +1,202 @@
 import { useState } from 'react';
-import { ArrowUpRight, Check, Plus, X } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronDown, FileText, Plus, X } from 'lucide-react';
 
 import { payRateFor } from './nodeCompensation';
 
 /**
- * Một mục checklist của Node — cấu hình VÀ chỗ Giám đốc duyệt từng tờ giấy.
- *
- * ── Luật nghiệp vụ ───────────────────────────────────────────────────────────
- * Checklist chỉ HOÀN THÀNH khi Giám đốc duyệt đủ 100% giấy tờ nhân viên đã gán.
- * Duyệt hết mới chốt lương khoán cho người phụ trách. Một tờ bị từ chối thì phải
- * ghi lý do, và checklist quay lại trạng thái chưa xong cho tới khi nhân viên
- * gán lại rồi được duyệt nốt.
- *
- * Vì thế nút Duyệt/Từ chối nằm trên TỪNG DÒNG GIẤY, không phải một nút chung cho
- * cả checklist: một nút chung sẽ khiến Giám đốc duyệt gộp mà không đọc từng tờ,
- * đúng thứ luật trên sinh ra để chặn.
- *
- * ── Phạm vi đợt này ──────────────────────────────────────────────────────────
- * Chỉ dựng UI phía Giám đốc. Backend hôm nay mới duyệt được ở mức MỤC CHECKLIST
- * (`task_node_checklist_results.status`), chưa duyệt tới từng tờ, và lương khoán
- * còn chốt lúc nghiệm thu cả Node. Nên mọi hành động thoát ra qua `onApprove` /
- * `onReject`; chưa truyền handler thì nút hiện disabled kèm tooltip nói rõ chưa
- * nối — không để nút bấm vào rồi im lặng.
+ * Một mục checklist của Node — cấu hình legacy và nơi Giám đốc đọc, duyệt các
+ * LOẠI giấy runtime. Mỗi loại có một verdict; mọi file của loại nằm trong cùng
+ * disclosure để đọc bằng mắt trước khi quyết định. Khi key `document_types`
+ * vắng mặt, card mới dùng đường duyệt từng document cũ trong giai đoạn chuyển đổi.
  */
 
 const formatMoney = (value) => new Intl.NumberFormat('vi-VN').format(Number(value) || 0);
+
+const SOURCE_LABELS = {
+  KHACH_HANG: 'Khách hàng cung cấp',
+  CONG_TY: 'Công ty soạn',
+  CO_QUAN: 'Pháp lý',
+};
+
+const TYPE_STATUS_LABELS = {
+  draft: 'Chưa nộp',
+  pending_review: 'Chờ duyệt',
+  approved: 'Đạt',
+  rejected: 'Không đạt',
+};
+
+const hasRuntimeDocumentTypes = item => Object.hasOwn(item?.runtime || {}, 'document_types');
+
+function DocumentTypeRow({
+  checklistResultId,
+  type,
+  canReview,
+  busy,
+  onOpen,
+  onApprove,
+  onReject,
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+  const files = Array.isArray(type.files) ? type.files : [];
+  const hasFiles = files.length > 0;
+  const pending = type.status === 'pending_review';
+  const employeeChangeReason = type.employee_change_reason || '';
+  const statusLabel = TYPE_STATUS_LABELS[type.status] || type.status || 'Chưa nộp';
+  const sourceLabel = SOURCE_LABELS[type.source] || type.source_label || type.source || 'Chưa rõ nguồn';
+  const reviewDisabled = !canReview || busy || !hasFiles;
+
+  const submitRejection = () => {
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) return;
+    onReject?.(checklistResultId, type.id, trimmedReason);
+    setRejecting(false);
+    setReason('');
+  };
+
+  return (
+    <section className={`wf-check-type is-${type.status || 'draft'}`}>
+      <div className="wf-check-type__summary">
+        <div className="wf-check-type__identity">
+          <button
+            type="button"
+            className="wf-check-type__name"
+            aria-expanded={expanded}
+            aria-label={`Mở file của loại giấy ${type.name || 'chưa đặt tên'}`}
+            disabled={!hasFiles}
+            onClick={() => setExpanded(value => !value)}
+          >
+            <strong>{type.name || 'Loại giấy chưa đặt tên'}</strong>
+          </button>
+          <span className={`wf-check-type__source is-${String(type.source || '').toLowerCase()}`}>
+            {sourceLabel}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="wf-check-type__files-toggle"
+          aria-expanded={expanded}
+          aria-label={`Xem ${files.length} file của ${type.name || 'loại giấy'}`}
+          disabled={!hasFiles}
+          onClick={() => setExpanded(value => !value)}
+        >
+          <FileText size={12} /> {files.length} file
+          <ChevronDown size={13} className={expanded ? 'is-open' : ''} />
+        </button>
+        <span className={`wf-check-type__status is-${type.status || 'draft'}`}>{statusLabel}</span>
+        {pending && employeeChangeReason && (
+          <span className="wf-check-type__updated">Cập nhật lại</span>
+        )}
+        {pending && canReview && (
+          <div className="wf-check-type__actions">
+            <button
+              type="button"
+              className="is-reject"
+              disabled={reviewDisabled}
+              title={hasFiles ? 'Ghi lý do không đạt cho loại giấy này' : 'Chưa có file nào để duyệt'}
+              onClick={() => setRejecting(true)}
+            >
+              <X size={13} /> Không đạt
+            </button>
+            <button
+              type="button"
+              className="is-approve"
+              disabled={reviewDisabled}
+              title={hasFiles ? 'Xác nhận toàn bộ file của loại giấy đạt' : 'Chưa có file nào để duyệt'}
+              onClick={() => onApprove?.(checklistResultId, type.id)}
+            >
+              <Check size={13} /> Đạt
+            </button>
+          </div>
+        )}
+      </div>
+
+      {pending && employeeChangeReason && (
+        <p className="wf-check-type__employee-note">
+          <strong>Ghi chú nhân viên:</strong> {employeeChangeReason}
+        </p>
+      )}
+
+      {expanded && (
+        <div className="wf-check-type__files" aria-label={`Tệp của ${type.name || 'loại giấy'}`}>
+          {files.map((file, fileIndex) => {
+            return (
+              <div
+                className="wf-check-type__file"
+                key={file.document_id || `${file.file_name}-${fileIndex}`}
+              >
+                <button
+                  type="button"
+                  disabled={!onOpen}
+                  onClick={() => onOpen?.({
+                    ...file,
+                    document_type_id: type.id,
+                    document_type_name: type.name,
+                    source: type.source,
+                  })}
+                  aria-label={`Mở ${file.file_name || `file ${fileIndex + 1}`}`}
+                >
+                  <FileText size={13} />
+                  <span>{file.file_name || `File ${fileIndex + 1}`}</span>
+                  <ArrowUpRight size={12} />
+                </button>
+                {file.change_reason && (
+                  <small><strong>Lý do bổ sung:</strong> {file.change_reason}</small>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {type.status === 'rejected' && type.rejection_reason && (
+        <p className="wf-check-type__reason"><strong>Lý do:</strong> {type.rejection_reason}</p>
+      )}
+
+      {rejecting && (
+        <div className="wf-review-modal__backdrop" role="presentation">
+          <section
+            className="wf-check-type__reject wf-review-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Từ chối loại giấy ${type.name || 'chưa đặt tên'}`}
+          >
+            <div className="wf-review-modal__head">
+              <div>
+                <strong>Không đạt: {type.name || 'Loại giấy'}</strong>
+                <span>Chỉ rõ tài liệu hoặc nội dung nhân viên cần sửa.</span>
+              </div>
+              <button type="button" aria-label="Đóng" onClick={() => { setRejecting(false); setReason(''); }}>
+                <X size={16} />
+              </button>
+            </div>
+            <label>
+              <span>Lý do không đạt</span>
+              <input
+                type="text"
+                value={reason}
+                autoFocus
+                placeholder="Nêu rõ trang hoặc nội dung cần sửa…"
+                onChange={event => setReason(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Escape') { setRejecting(false); setReason(''); }
+                  if (event.key === 'Enter' && reason.trim()) submitRejection();
+                }}
+              />
+            </label>
+            <div>
+              <button type="button" onClick={() => { setRejecting(false); setReason(''); }}>Huỷ</button>
+              <button type="button" disabled={!reason.trim() || busy} onClick={submitRejection}>
+                Xác nhận không đạt
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function DocumentRow({ doc, name, canReview, onOpen, onApprove, onReject }) {
   const [rejecting, setRejecting] = useState(false);
@@ -125,12 +297,24 @@ export default function NodeChecklistCard({
   onOpenDocument,
   onApprove,
   onReject,
+  onApproveType,
+  onRejectType,
+  reviewingTypeId = '',
+  reviewQueue = false,
   onChangeWorkItem,
+  nodeStatus = null,
 }) {
-  // Cấu hình khai LOẠI giấy đầu ra; phán quyết đến từ runtime, khoá theo
-  // template_id. Trộn ở đây để DocumentRow chỉ phải đọc một object.
+  // Sự tồn tại của key là ranh giới rollout: mảng runtime rỗng vẫn là nguồn thật,
+  // không được rơi về cấu hình legacy và làm lộ những dòng chưa materialize.
+  const usesRuntimeTypes = hasRuntimeDocumentTypes(item);
+  const allDocumentTypes = usesRuntimeTypes && Array.isArray(item.runtime.document_types)
+    ? item.runtime.document_types
+    : [];
+  const documentTypes = reviewQueue
+    ? allDocumentTypes.filter(type => type.status === 'pending_review')
+    : allDocumentTypes;
   const reviewByTemplate = item.runtime?.review_by_template || {};
-  const documents = (item.output_documents || []).map(doc => ({
+  const documents = usesRuntimeTypes ? [] : (item.output_documents || []).map(doc => ({
     ...doc,
     ...(reviewByTemplate[doc.template_id] || {}),
   }));
@@ -138,29 +322,51 @@ export default function NodeChecklistCard({
   const workItem = workItems.find(candidate => candidate.id === workItemId) || null;
 
   // Chưa truyền handler nghĩa là luồng duyệt chưa nối — không giả vờ bấm được.
-  const canReview = Boolean(onApprove && onReject) && (canReviewDocuments || !readOnly);
+  // Bước đã chốt hoàn tất hoặc đã huỷ thì không cho phép duyệt lại nữa.
+  const isFinished = ['accepted', 'completed', 'cancelled', 'skipped'].includes(nodeStatus);
+  const canReview = Boolean(onApprove && onReject) && (canReviewDocuments || !readOnly) && !isFinished;
+  const canReviewTypes = Boolean(onApproveType && onRejectType) && (canReviewDocuments || !readOnly) && !isFinished;
+  const reviewCount = usesRuntimeTypes ? documentTypes.length : documents.length;
 
   return (
     <article className="wf-check-card">
       <header className="wf-check-card__head">
         {/* Badge đếm số GIẤY ĐẦU RA, không đếm gì khác — đó là khối lượng Giám
             đốc phải duyệt để checklist này xong. */}
-        <span className="wf-check-card__count">{documents.length}</span>
+        <span className="wf-check-card__count">{reviewCount}</span>
         <span className="wf-check-card__name">{item.name || 'Chưa đặt tên'}</span>
-        <button
-          type="button"
-          className="wf-check-card__add"
-          disabled={readOnly}
-          onClick={() => onAddDocument?.(index)}
-        >
-          <Plus size={12} /> thêm giấy
-        </button>
+        {usesRuntimeTypes ? (
+          <span className="wf-check-card__mode" title="Chế độ: Duyệt theo từng loại giấy tờ">Duyệt theo loại</span>
+        ) : (
+          <button
+            type="button"
+            className="wf-check-card__add"
+            disabled={readOnly}
+            onClick={() => onAddDocument?.(index)}
+          >
+            <Plus size={12} /> thêm giấy
+          </button>
+        )}
       </header>
 
       <div className="wf-check-card__docs">
-        {documents.length === 0 && (
-          <p className="wf-check-card__empty">Chưa gán giấy tờ đầu ra nào.</p>
+        {reviewCount === 0 && (
+          <p className="wf-check-card__empty">
+            {usesRuntimeTypes ? 'Chưa có loại giấy nào trong checklist.' : 'Chưa gán giấy tờ đầu ra nào.'}
+          </p>
         )}
+        {documentTypes.map(type => (
+          <DocumentTypeRow
+            key={type.id}
+            checklistResultId={item.runtime.id}
+            type={type}
+            canReview={canReviewTypes}
+            busy={reviewingTypeId === type.id}
+            onOpen={onOpenDocument}
+            onApprove={onApproveType}
+            onReject={onRejectType}
+          />
+        ))}
         {documents.map((doc, docIndex) => (
           <DocumentRow
             key={doc.template_id || `doc-${docIndex}`}
@@ -174,7 +380,7 @@ export default function NodeChecklistCard({
         ))}
       </div>
 
-      <div className="wf-check-card__foot">
+      {!reviewQueue && <div className="wf-check-card__foot">
         <label className="wf-check-card__field">
           <span>công việc</span>
           <select
@@ -194,7 +400,7 @@ export default function NodeChecklistCard({
               đây là mỗi Node một giá và bảng giá chung mất tác dụng. */}
           <strong className="wf-check-card__pay">{formatMoney(payRateFor(workItem, roleCode))}</strong>
         </div>
-      </div>
+      </div>}
     </article>
   );
 }

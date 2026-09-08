@@ -20,6 +20,11 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from src.dossiers.checklist_document_types import (
+    SOURCE_LABELS as CHECKLIST_SOURCE_LABELS,
+    runtime_schema_ready,
+)
+
 SOURCES = ("KHACH_HANG", "CONG_TY", "CO_QUAN")
 SOURCE_LABELS = {
     "KHACH_HANG": "Khách hàng cung cấp",
@@ -69,7 +74,7 @@ def _contract_or_404(db: Session, contract_id: str) -> dict:
 # Tuyệt đối không OR các phạm vi lại với nhau: mẫu GLOBAL bật + PACKAGE tắt mà
 # OR thì ra bật, tức là Giám đốc tắt cho gói Pháp Lý xong nó vẫn tự tick — im
 # lặng phủ quyết đúng cái quyết định vừa đưa ra.
-_APPLICABILITY_RANK = {"GLOBAL": 1, "PACKAGE": 2, "TASK_TYPE": 3}
+_APPLICABILITY_RANK = {"GLOBAL": 1, "PACKAGE": 2, "TASK_TYPE": 3, "COMBO": 4}
 
 _APPLICABLE_TEMPLATES_QUERY = text("""
     select t.id, t.name, t.source, t.is_required, t.needs_original,
@@ -82,6 +87,11 @@ _APPLICABLE_TEMPLATES_QUERY = text("""
       or (a.applicability_type = 'PACKAGE'
           and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id))
       or (a.applicability_type = 'TASK_TYPE' and a.task_type_id = tt.id)
+      or (a.applicability_type = 'COMBO'
+          and :node_code is not null
+          and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id)
+          and a.task_type_id = tt.id
+          and a.node_code = :node_code)
     join document_checklist_templates t
       on t.id = a.template_id and coalesce(t.is_active, true)
     where sl.id = :service_line_id
@@ -89,7 +99,9 @@ _APPLICABLE_TEMPLATES_QUERY = text("""
 """)
 
 
-def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, Any]]:
+def applicable_templates(
+    db: Session, service_line_id: str, *, node_code: str | None = None
+) -> list[dict[str, Any]]:
     """Bộ mẫu gợi ý cho một Hạng mục, đã gộp theo độ ưu tiên phạm vi.
 
     Mỗi ``template_id`` chỉ ra ĐÚNG MỘT dòng. Không có phạm vi nào khớp thì
@@ -97,7 +109,8 @@ def applicable_templates(db: Session, service_line_id: str) -> list[dict[str, An
     """
     gop: dict[str, dict[str, Any]] = {}
     for row in db.execute(
-        _APPLICABLE_TEMPLATES_QUERY, {"service_line_id": service_line_id}
+        _APPLICABLE_TEMPLATES_QUERY,
+        {"service_line_id": service_line_id, "node_code": node_code},
     ).mappings():
         hang = _APPLICABILITY_RANK.get(row["applicability_type"], 0)
         cu_hon = gop.get(row["id"])
@@ -144,25 +157,155 @@ def templates_by_node(db: Session, service_line_id: str) -> dict[str, list[dict[
     return by_node
 
 
+_CHECKLIST_CABINET_QUERY = text("""
+    with type_state as (
+      select t.id as document_type_id,
+             t.checklist_result_id,
+             t.template_id,
+             t.promoted_template_id,
+             t.name,
+             t.source,
+             t.origin,
+             t.status as review_status,
+             t.rejection_reason,
+             t.slot_id,
+             coalesce(template.needs_original, false) as needs_original,
+             count(distinct d.id)::integer as file_count,
+             coalesce(
+               jsonb_agg(
+                 jsonb_build_object(
+                   'id', d.id,
+                   'document_id', d.id,
+                   'file_name', d.file_name,
+                   'content_type', d.content_type
+                 ) order by f.created_at, d.id
+               ) filter (where d.id is not null),
+               '[]'::jsonb
+             ) as files
+      from public.checklist_result_document_types t
+      join public.task_node_checklist_results cr_scope
+        on cr_scope.id = t.checklist_result_id
+      join public.task_nodes n_scope on n_scope.id = cr_scope.task_node_id
+      join public.workflow_instances wi_scope
+        on wi_scope.id = n_scope.workflow_instance_id
+       and wi_scope.service_line_id = :service_line_id
+      left join public.checklist_result_document_type_files f
+        on f.document_type_id = t.id
+       and f.is_active
+       and t.status = 'approved'
+      left join public.dossier_documents d
+        on d.id = f.document_id and d.doc_status = 'DANG_DUNG'
+      left join public.document_checklist_templates template
+        on template.id = coalesce(t.promoted_template_id, t.template_id)
+      where t.is_active
+      group by t.id, t.checklist_result_id, t.template_id, t.promoted_template_id,
+               t.name, t.source, t.origin, t.status, t.rejection_reason,
+               t.slot_id, template.needs_original
+    )
+    select n.node_code,
+           coalesce(nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
+                    wn.name) as node_name,
+           n.id as task_node_id,
+           cr.id as checklist_result_id,
+           cr.checklist_name,
+           type_state.document_type_id,
+           type_state.template_id,
+           type_state.promoted_template_id,
+           type_state.name,
+           type_state.source,
+           type_state.origin,
+           type_state.needs_original,
+           type_state.slot_id,
+           type_state.review_status,
+           type_state.rejection_reason,
+           type_state.files,
+           type_state.file_count
+    from public.workflow_instances wi
+    join public.task_nodes n on n.workflow_instance_id = wi.id
+    join public.workflow_nodes wn on wn.code = n.node_code
+    join public.task_node_checklist_results cr on cr.task_node_id = n.id
+    join type_state on type_state.checklist_result_id = cr.id
+    left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+    left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
+    where wi.service_line_id = :service_line_id
+      and n.status not in ('cancelled', 'skipped')
+    order by n.occurrence_no, n.node_code, cr.checklist_name,
+             type_state.name, type_state.document_type_id
+""")
+
+
+def checklist_cabinet_by_node(db: Session, service_line_id: str) -> list[dict[str, Any]]:
+    """Tủ riêng của Hạng mục: cấu trúc từ checklist, nội dung từ file đã đạt.
+
+    Tab Mẫu giấy tờ là danh mục gợi ý cấu hình, không phải danh sách bắt buộc của
+    hồ sơ. Vì vậy hàm này đọc graph/checklist đang chạy và trạng thái duyệt của
+    từng tài liệu, hoàn toàn không đọc ``document_template_applicabilities``.
+
+    Trong giai đoạn deploy cuốn chiếu, backend có thể được reload trước khi hai
+    bảng runtime được migrate. Tủ mới khi đó chưa có dữ liệu để trả; trả mảng
+    rỗng giữ màn hợp đồng hoạt động, thay vì để PostgreSQL ``UndefinedTable``
+    biến toàn bộ endpoint register thành lỗi 500.
+    """
+    if not runtime_schema_ready(db):
+        return []
+
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in db.execute(
+        _CHECKLIST_CABINET_QUERY, {"service_line_id": service_line_id}
+    ).mappings().all():
+        key = (row["node_code"], row["task_node_id"])
+        group = groups.setdefault(key, {
+            "node_code": row["node_code"],
+            "node_name": row["node_name"],
+            "task_node_id": row["task_node_id"],
+            "documents": [],
+            "total": 0,
+            "done": 0,
+        })
+        files = list(row["files"] or [])
+        file_count = int(row["file_count"] or 0)
+        if file_count > 0:
+            status, status_label = "DA_DUYET", "Đã duyệt"
+            group["done"] += 1
+        elif row["review_status"] == "rejected":
+            status, status_label = "KHONG_DAT", "Không đạt"
+        elif row["review_status"] == "pending_review":
+            status, status_label = "CHO_DUYET", "Chờ duyệt"
+        else:
+            status, status_label = "CHUA_NOP", "Chưa có tệp đạt"
+        group["documents"].append({
+            "id": row["document_type_id"],
+            "document_type_id": row["document_type_id"],
+            "template_id": row["promoted_template_id"] or row["template_id"],
+            "name": row["name"],
+            "source": row["source"],
+            "source_label": CHECKLIST_SOURCE_LABELS.get(row["source"], row["source"]),
+            "origin": row["origin"],
+            "is_required": True,
+            "needs_original": bool(row["needs_original"]),
+            "slot_id": row["slot_id"],
+            "task_node_id": row["task_node_id"],
+            "checklist_result_id": row["checklist_result_id"],
+            "checklist_name": row["checklist_name"],
+            "document_id": files[0].get("id") if files else None,
+            "review_status": row["review_status"],
+            "rejection_reason": row["rejection_reason"],
+            "status": status,
+            "status_label": status_label,
+            "is_waived": False,
+            "files": files,
+            "file_count": file_count,
+        })
+        group["total"] += 1
+    return list(groups.values())
+
+
 def cabinet_by_node(db: Session, service_line_id: str) -> list[dict[str, Any]]:
-    """TỦ HỒ SƠ của một Hạng mục, xếp theo BƯỚC — đúng hình cây tab Mẫu giấy tờ.
+    """Phép chiếu Mẫu giấy tờ theo bước, giữ lại để tương thích API cũ.
 
-    ── Vì sao không phải danh sách phẳng ────────────────────────────────────────
-    Tab Mẫu giấy tờ khai theo cây Gói → Hạng mục → Nguồn → Node → Loại giấy, và
-    docstring của chính màn đó đã ghi vì sao: bảng phẳng bày cả 31 mẫu cùng lúc
-    thì không trả lời được câu hỏi duy nhất người ta vào đây để hỏi — "hạng mục
-    này cần những tờ gì".
-
-    Tủ hồ sơ trước đây lặp lại đúng cái sai ấy: một danh sách 33 tờ công ty soạn,
-    không nói tờ nào thuộc bước nào.
-
-    ── Cấu trúc lấy từ MASTER DATA, không lấy từ ô giấy ─────────────────────────
-    "Hạng mục này cần tờ gì, rơi vào bước nào" là câu hỏi của master data. Ô giấy
-    (`dossier_document_slots`) chỉ trả lời "đã có tờ đó chưa".
-
-    Tách hai vai này ra thì ô giấy thừa — sinh ra bởi luật cũ vơ cả kho mẫu công
-    ty — tự không xuất hiện, vì chúng không nằm trong bộ master data khai cho
-    hạng mục này.
+    Đây KHÔNG phải tủ hồ sơ nghiệp vụ và KHÔNG biểu thị giấy bắt buộc của node.
+    Tủ thật dùng ``checklist_cabinet_by_node`` phía trên, vì chỉ checklist runtime
+    mới nói loại giấy nào Giám đốc đã giao cho nhân viên thực hiện.
     """
     by_node = templates_by_node(db, service_line_id)
     if not by_node:
@@ -1076,10 +1219,15 @@ def get_register(
             }
             for source in SOURCES
         ],
-        # TỦ HỒ SƠ xếp theo BƯỚC — cấu trúc lấy từ master data, không lấy từ ô
-        # giấy. Đây mới là câu trả lời cho "hạng mục này cần tờ gì, ở bước nào".
+        # Phép chiếu Mẫu giấy tờ đời cũ. Không dùng nó để kết luận node bắt buộc
+        # có giấy nào; giữ lại cho các màn chưa chuyển đổi.
         "cabinet_by_node": (
             cabinet_by_node(db, service_line_id) if service_line_id else []
+        ),
+        # Nguồn mới cho hai Tủ hồ sơ. Giữ trường cũ ở trên cho những màn chưa
+        # chuyển đổi; trường này mới phản ánh giấy thật được gắn vào checklist.
+        "checklist_cabinet_by_node": (
+            checklist_cabinet_by_node(db, service_line_id) if service_line_id else []
         ),
         "summary": {
             "total": len(slots),
@@ -2370,7 +2518,7 @@ def upsert_template(
                 set source = excluded.source, is_required = excluded.is_required,
                     needs_original = excluded.needs_original,
                     default_quantity = excluded.default_quantity,
-                    note = excluded.note, is_active = true, updated_at = now()
+                    note = excluded.note, is_active = excluded.is_active, updated_at = now()
             returning id
         """),
         params,
