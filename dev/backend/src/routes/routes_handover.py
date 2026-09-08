@@ -147,6 +147,7 @@ async def request_debt_override(
         db.commit()
         invalidate_cache("bachkhoa:handover:*")
         invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:notifications:summary:*")
         publish_timeline_change("handover_debt_requested", entity_id=task_node_id)
         return {"status": "success", "data": result}
     except Exception:
@@ -176,6 +177,7 @@ def review_debt_override(
     db.commit()
     invalidate_cache("bachkhoa:handover:*")
     invalidate_cache("bachkhoa:contract_workspace:*")
+    invalidate_cache("bachkhoa:notifications:summary:*")
     publish_timeline_change("handover_debt_reviewed", entity_id=result["task_node_id"])
     return {"status": "success", "data": result}
 

@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from src.contracts import workflow_runtime
 from src.core import redis_utils
 from src.dossiers import handover
+from src.employee_portal.service import EmployeePortalService
 from src.routes import routes_handover
 
 
@@ -214,23 +215,47 @@ class HandoverOverrideGateTests(unittest.TestCase):
         self.assertEqual(db.types["DT-EMPTY"]["status"], "draft")
         self.assertFalse(any("insert into public.task_node_acceptances" in sql for sql in db.calls))
 
-    def test_checklist_upload_is_locked_server_side_while_debt_request_is_missing(self):
-        debt = {"remaining": 5_000_000, "is_settled": False, "gate_open": False}
-        with patch.object(handover, "_node_or_404", return_value=self.node), \
-             patch.object(handover, "debt_summary", return_value=debt):
-            with self.assertRaises(HTTPException) as caught:
-                handover.ensure_handover_work_gate_open(self.db, "TN-K06")
+    def test_checklist_document_authorization_does_not_use_handover_debt_gate(self):
+        employee = SimpleNamespace(id="EMP-1")
+        with patch.object(
+            EmployeePortalService,
+            "_authorized_checklist_for_submission",
+            return_value=object(),
+        ) as normal_authorization, patch.object(
+            handover,
+            "ensure_handover_work_gate_open",
+        ) as debt_gate:
+            EmployeePortalService.authorize_checklist_evidence_submission(
+                self.db,
+                employee,
+                "TN-K06",
+                "CR-1",
+                evidence_provided=True,
+            )
 
-        self.assertEqual(caught.exception.status_code, 423)
-        self.assertIn("Xin duyệt nợ", caught.exception.detail)
+        debt_gate.assert_not_called()
+        normal_authorization.assert_called_once_with(
+            self.db,
+            employee,
+            "TN-K06",
+            "CR-1",
+            evidence_provided=True,
+            lock=False,
+        )
 
-    def test_checklist_upload_is_unlocked_after_director_approval(self):
-        debt = {"remaining": 5_000_000, "is_settled": False, "gate_open": True}
-        with patch.object(handover, "_node_or_404", return_value=self.node), \
-             patch.object(handover, "debt_summary", return_value=debt):
-            result = handover.ensure_handover_work_gate_open(self.db, "TN-K06")
+    def test_rejecting_debt_request_requires_a_reason_before_database_update(self):
+        with self.assertRaises(HTTPException) as caught:
+            handover.review_debt_request(
+                self.db,
+                "REQ-1",
+                decision="rejected",
+                review_note="   ",
+                actor_id="DIRECTOR-1",
+            )
 
-        self.assertTrue(result["gate_open"])
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("lý do", caught.exception.detail.lower())
+        self.db.execute.assert_not_called()
 
     def test_accounting_query_keeps_approved_debt_request_visible_after_settlement(self):
         source = inspect.getsource(handover.outstanding_handovers)
@@ -252,6 +277,22 @@ class HandoverOverrideGateTests(unittest.TestCase):
 
         self.assertTrue(checklist_state["ready_for_acceptance"])
         self.assertTrue(checklist_state["all_approved"])
+
+    def test_checklist_submission_state_query_includes_runtime_types(self):
+        result = MagicMock()
+        result.mappings.return_value.first.return_value = {
+            "total": 1,
+            "blocking": 0,
+            "approved": 0,
+        }
+        self.db.execute.return_value = result
+
+        checklist_state = handover._checklist_submission_state(self.db, "TN-K06")
+
+        executed_sql = " ".join(str(self.db.execute.call_args[0][0]).split())
+        self.assertIn("checklist_runtime_summary", executed_sql)
+        self.assertIn("checklist_result_document_types", executed_sql)
+        self.assertTrue(checklist_state["ready_for_acceptance"])
 
     def test_debt_request_exposes_protected_attachment_without_storage_key(self):
         result = MagicMock()
