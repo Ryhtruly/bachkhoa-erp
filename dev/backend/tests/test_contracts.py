@@ -12,6 +12,11 @@ from tests.fixtures_so_giay_to import (
 )
 
 
+def _require_postgresql(db):
+    if db.bind.dialect.name != "postgresql":
+        pytest.skip("requires PostgreSQL because the contract fixture uses the public schema")
+
+
 def test_contract_cache_status(client, admin_headers):
     res = client.get("/api/contracts/cache/status", headers=admin_headers)
     assert res.status_code == 200
@@ -29,6 +34,7 @@ def test_contract_workspace_returns_runtime_document_types_and_files(
     client, admin_headers, admin_user, db,
 ):
     """Màn Giám đốc phải đọc đúng loại giấy nhân viên vừa nộp, không rơi về graph cũ."""
+    _require_postgresql(db)
     context = build_test_context(db)
     service_line_id = context["hang_muc"][0]["id"]
     template_id = insert_template(db, name="CCCD runtime")
@@ -107,6 +113,7 @@ def test_contract_cabinet_shows_files_when_the_document_type_is_approved(
     client, admin_headers, admin_user, db,
 ):
     """Duyệt ở cấp loại giấy phải đưa file vào tủ dù file không có verdict riêng."""
+    _require_postgresql(db)
     context = build_test_context(db)
     service_line_id = context["hang_muc"][0]["id"]
     template_id = insert_template(db, name="CCCD đã duyệt")

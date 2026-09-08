@@ -238,11 +238,16 @@ def test_unauthorized_evidence_upload_neither_writes_nor_deletes_storage(monkeyp
         def first(self):
             return self.row
 
+        def scalar(self):
+            return self.row
+
     class UnauthorizedDb:
         def execute(self, statement, _params):
             sql = str(statement)
             if "task_node_checklist_assignments" in sql:
                 return Rows(None)
+            if "from public.checklist_result_document_types" in sql:
+                return Rows(False)
             if "from public.task_nodes n" in sql and "join public.service_lines sl" in sql:
                 return Rows({"id": "NODE-1", "service_line_id": "SL-1", "contract_id": "HD-1"})
             raise AssertionError(f"Unexpected query: {sql}")
