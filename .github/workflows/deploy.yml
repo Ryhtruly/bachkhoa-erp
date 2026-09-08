@@ -1,7 +1,7 @@
 # =============================================================================
 # CI/CD Pipeline — BachKhoa ERP
 # =============================================================================
-# Luồng:  Push main → Vitest → Build images → Push GHCR → SSH deploy VPS
+# Luồng:  Push main → Backend checks → Build backend image → Push GHCR → SSH deploy VPS
 #
 # Secrets cần tạo trong GitHub (Settings → Secrets → Actions):
 #   VPS_HOST        — IP hoặc domain VPS  (ví dụ: 203.0.113.50)
@@ -20,37 +20,31 @@ on:
 env:
   REGISTRY: ghcr.io
   BACKEND_IMAGE: ghcr.io/ryhtruly/bachkhoa-erp-backend
-  FRONTEND_IMAGE: ghcr.io/ryhtruly/bachkhoa-erp-frontend
 
 jobs:
-  # ─── Job 1: Chạy test frontend ──────────────────────────────────────
+  # ─── Job 1: Kiểm tra backend ────────────────────────────────────────
   test:
-    name: 🧪 Run Tests
+    name: 🧪 Check Backend
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: dev/frontend
+        working-directory: dev/backend
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: dev/frontend/package-lock.json
+          python-version: "3.11"
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Check Python syntax
+        run: python -m compileall -q src
 
-      - name: Run Vitest
-        run: npm test
-
-  # ─── Job 2: Build & push Docker images ──────────────────────────────
+  # ─── Job 2: Build & push backend image ──────────────────────────────
   build-and-push:
-    name: 🐳 Build & Push Images
+    name: 🐳 Build & Push Backend
     runs-on: ubuntu-latest
     needs: test                 # Chỉ chạy khi test passed
     permissions:
@@ -71,7 +65,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ── Backend image ──
       - name: Build & push Backend
         uses: docker/build-push-action@v6
         with:
@@ -81,19 +74,6 @@ jobs:
           tags: |
             ${{ env.BACKEND_IMAGE }}:latest
             ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # ── Frontend image ──
-      - name: Build & push Frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./dev/frontend
-          file: ./dev/frontend/Dockerfile
-          push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:latest
-            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -117,13 +97,16 @@ jobs:
             # Login vào GHCR để pull private images
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Pull images mới nhất
-            docker compose --env-file dev/backend/.env -f docker-compose.prod.yml pull
+            # Chọn image backend vừa push lên GHCR.
+            export BACKEND_IMAGE_TAG=latest
 
-            # Khởi động lại với image mới (zero-downtime nếu dùng --remove-orphans)
-            docker compose --env-file dev/backend/.env -f docker-compose.prod.yml up -d --remove-orphans
+            # Pull backend image mới và các service phụ thuộc của backend.
+            docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml pull
 
-            # Dọn image cũ để tiết kiệm ổ cứng
-            docker image prune -f
+            # Chạy backend cùng Redis; MinIO dùng instance có sẵn trên VPS.
+            docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml up -d --no-build --remove-orphans
+
+            # In trạng thái để bước deploy có bằng chứng rõ ràng.
+            docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml ps
 
             echo "✅ Deploy thành công lúc $(date '+%Y-%m-%d %H:%M:%S')"
