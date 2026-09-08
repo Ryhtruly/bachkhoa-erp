@@ -1,54 +1,119 @@
-import React, { useState, useEffect } from 'react';
-import { Book, UploadCloud, Link as LinkIcon } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
+import { Modal, FormRow } from '../components/ui';
+import { getAccessToken } from '../lib/api';
+import { fetchProtectedDocumentBlob } from '../lib/fileSave';
 
 export default function Wiki() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { addToast } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+  
+  // Search & Filter & Pagination states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('Tất cả');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const toastCtx = useToast();
+  const showMessage = toastCtx.addToast || toastCtx.showToast || console.log;
 
   const [formData, setFormData] = useState({
-    id: '', title: '', category: 'Quy trình nội bộ', link: ''
+    id: '', title: '', category: 'Quy trình ISO'
   });
+  const [selectedFile, setSelectedFile] = useState(null);
 
-  const fetchWiki = async () => {
+  const categories = ['Tất cả', 'Quy trình ISO', 'Sổ tay nhân sự', 'Tài liệu đào tạo', 'Quy định khác'];
+
+  const fetchWiki = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/wiki');
+      const params = new URLSearchParams({
+        page,
+        page_size: 10
+      });
+      if (searchQuery) params.append('search', searchQuery);
+      if (categoryFilter && categoryFilter !== 'Tất cả') params.append('category', categoryFilter);
+
+      const res = await fetch(`/api/wiki/?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setDocuments(Array.isArray(data) ? data : data.data || []);
+        setDocuments(data.data || []);
+        if (data.meta) {
+          setTotalPages(data.meta.total_pages);
+        }
       }
-    } catch (err) {
-      addToast('Lỗi tải Wiki', 'error');
+    } catch {
+      showMessage('Lỗi tải danh sách tài liệu', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery, categoryFilter, showMessage]);
 
+  // Fetch immediately on mount / filter change, debounce text search
   useEffect(() => {
-    fetchWiki();
-  }, []);
+    if (!searchQuery) {
+      fetchWiki();
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      fetchWiki();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [fetchWiki, searchQuery]);
 
   const handleUploadWiki = async (e) => {
     e.preventDefault();
+    if (!selectedFile) {
+      showMessage('Vui lòng chọn file đính kèm!', 'error');
+      return;
+    }
+    
+    setSubmitting(true);
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/wiki/upload', {
+      const data = new FormData();
+      data.append('id', formData.id);
+      data.append('title', formData.title);
+      data.append('category', formData.category);
+      data.append('file', selectedFile);
+
+      const res = await fetch('/api/wiki/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, roles_allowed: ["*"] })
+        body: data
       });
       if (res.ok) {
-        addToast('Đăng tài liệu thành công!', 'success');
+        showMessage('Đăng tài liệu thành công!', 'success');
         setIsModalOpen(false);
-        setFormData({ id: '', title: '', category: 'Quy trình nội bộ', link: '' });
+        setFormData({ id: '', title: '', category: 'Quy trình ISO' });
+        setSelectedFile(null);
         fetchWiki();
       } else {
         const err = await res.json();
-        addToast('Lỗi: ' + (err.detail || 'Không thể lưu tài liệu'), 'error');
+        showMessage('Lỗi: ' + (err.detail || 'Không thể lưu tài liệu'), 'error');
       }
     } catch {
-      addToast('Lỗi kết nối máy chủ', 'error');
+      showMessage('Lỗi kết nối máy chủ', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenDocument = async (docId) => {
+    const viewer = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+      const blob = await fetchProtectedDocumentBlob(
+        `/api/wiki/download/${encodeURIComponent(docId)}`,
+        getAccessToken(),
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      if (viewer) viewer.location.href = objectUrl;
+      else window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      viewer?.close();
+      showMessage('Không thể mở tài liệu Wiki', 'error');
     }
   };
 
@@ -56,14 +121,37 @@ export default function Wiki() {
     <section className="tab-pane active" id="tab-wiki">
       <div className="toolbar card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Book color="var(--orange-500)" size={20} /> Tri Thức Doanh Nghiệp (Wiki)
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+            <Book color="var(--orange-500)" size={22} /> Tri Thức Doanh Nghiệp (Wiki)
           </h3>
-          <p className="sub">Kho lưu trữ Quy trình ISO và sổ tay nội bộ.</p>
+          <p className="sub" style={{ marginTop: '4px', fontSize: '0.9rem' }}>Kho lưu trữ tài liệu, quy trình ISO, sổ tay nội bộ và HDSD trên Google Drive.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-          <UploadCloud size={16} /> Upload Tài Liệu
+        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <UploadCloud size={16} /> Thêm Tài Liệu Mới
         </button>
+      </div>
+
+      <div className="filters card" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
+          <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+          <input 
+            type="text" 
+            placeholder="Tìm kiếm theo tên hoặc mã tài liệu..." 
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+            style={{ width: '100%', padding: '8px 12px 8px 36px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)' }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Filter size={16} color="var(--text-tertiary)" />
+          <select 
+            value={categoryFilter}
+            onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+            style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)' }}
+          >
+            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+          </select>
+        </div>
       </div>
       
       <div className="table-wrap card" style={{ padding: 0 }}>
@@ -73,68 +161,194 @@ export default function Wiki() {
               <th>Mã Tài Liệu</th>
               <th>Tên Tài Liệu / Quy Trình</th>
               <th>Phân Loại</th>
-              <th>Thao Tác</th>
+              <th style={{ textAlign: 'center' }}>Hành Động</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan="4" style={{ textAlign: 'center', padding: '20px' }}>Đang tải...</td></tr>
+              <tr><td colSpan="4" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>Đang tải dữ liệu...</td></tr>
             ) : documents.length === 0 ? (
-              <tr><td colSpan="4" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Chưa có tài liệu nào</td></tr>
+              <tr><td colSpan="4" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>Chưa có tài liệu nào phù hợp.</td></tr>
             ) : (
               documents.map(doc => (
                 <tr key={doc.id}>
-                  <td><strong style={{ fontFamily: 'var(--font-mono)' }}>{doc.id}</strong></td>
-                  <td>{doc.title}</td>
-                  <td><span className="badge badge-info">{doc.category}</span></td>
+                  <td><strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--blue-400)' }}>{doc.id}</strong></td>
+                  <td style={{ fontWeight: 500 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FileText size={16} color="var(--text-tertiary)" />
+                      {doc.title}
+                    </div>
+                  </td>
                   <td>
-                    <a href={doc.link} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      Xem
-                    </a>
+                    <span className="badge" style={{ 
+                      background: doc.category.includes('ISO') ? 'rgba(59, 130, 246, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                      color: doc.category.includes('ISO') ? '#60a5fa' : '#fbbf24',
+                      border: 'none'
+                    }}>
+                      {doc.category}
+                    </span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button type="button" onClick={() => handleOpenDocument(doc.id)} className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <FileText size={14} /> Mở file
+                    </button>
                   </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
+        
+        {totalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', borderTop: '1px solid var(--border-subtle)', gap: '16px' }}>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              <ChevronLeft size={16} /> Trước
+            </button>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Trang {page} / {totalPages}</span>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+            >
+              Sau <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
       </div>
 
-      {isModalOpen && (
-        <div className="modal-overlay open" onClick={(e) => { if (e.target.className.includes('modal-overlay')) setIsModalOpen(false) }}>
-          <div className="modal card" style={{ maxWidth: '500px', width: '100%' }}>
-            <div className="modal-header">
-              <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <UploadCloud size={20} /> Upload Tài Liệu Mới
-              </h2>
-              <button className="modal-close" onClick={() => setIsModalOpen(false)}>✕</button>
-            </div>
-            <form onSubmit={handleUploadWiki} style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px' }}>
-              <div><label>Mã tài liệu</label><input required value={formData.id} onChange={e => setFormData({...formData, id: e.target.value})} type="text" placeholder="VD: ISO-001" /></div>
-              <div><label>Tên quy trình / Tài liệu</label><input required value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} type="text" placeholder="Quy trình đo đạc..." /></div>
-              <div>
-                <label>Phân loại</label>
-                <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                  <option>Quy trình nội bộ</option>
-                  <option>Hướng dẫn sử dụng</option>
-                  <option>Biểu mẫu văn bản</option>
-                  <option>Tài liệu đào tạo</option>
-                </select>
-              </div>
-              <div>
-                <label>Link đính kèm (Google Drive / Docs)</label>
-                <div style={{ position: 'relative' }}>
-                  <LinkIcon size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                  <input required value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} type="url" placeholder="https://" style={{ paddingLeft: '36px', width: '100%' }} />
-                </div>
-              </div>
-              <div className="modal-footer" style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Hủy</button>
-                <button type="submit" className="btn btn-primary">Lưu tài liệu</button>
-              </div>
-            </form>
+      <Modal
+        open={isModalOpen}
+        onClose={() => { if (!submitting) setIsModalOpen(false); }}
+        title="Thêm Tài Liệu Mới"
+        size="md"
+      >
+        <form onSubmit={handleUploadWiki} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{
+            background: 'rgba(59, 130, 246, 0.08)',
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            fontSize: '0.86rem',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <Info size={18} style={{ flexShrink: 0 }} />
+            <span>Tải lên tệp tài liệu (PDF, Word, Excel...) từ máy tính của bạn lên hệ thống lưu trữ.</span>
           </div>
-        </div>
-      )}
+
+          <FormRow label="MÃ TÀI LIỆU (VD: ISO-001)" required>
+            <input
+              type="text"
+              className="form-control"
+              required
+              placeholder="Nhập mã tài liệu duy nhất (VD: ISO-001, ST-2026)..."
+              value={formData.id}
+              onChange={e => setFormData({ ...formData, id: e.target.value })}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </FormRow>
+
+          <FormRow label="TÊN QUY TRÌNH / TÀI LIỆU" required>
+            <input
+              type="text"
+              className="form-control"
+              required
+              placeholder="Ví dụ: Quy trình đo đạc bản đồ địa chính..."
+              value={formData.title}
+              onChange={e => setFormData({ ...formData, title: e.target.value })}
+            />
+          </FormRow>
+
+          <FormRow label="PHÂN LOẠI TÀI LIỆU" required>
+            <select
+              className="form-control form-select"
+              required
+              value={formData.category}
+              onChange={e => setFormData({ ...formData, category: e.target.value })}
+            >
+              {categories.filter(c => c !== 'Tất cả').map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </FormRow>
+
+          <FormRow label="FILE ĐÍNH KÈM" required>
+            <div style={{
+              border: '2px dashed #cbd5e1',
+              borderRadius: '10px',
+              padding: '16px',
+              textAlign: 'center',
+              background: '#f8fafc',
+              position: 'relative',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s',
+            }}>
+              <input
+                type="file"
+                required
+                onChange={e => setSelectedFile(e.target.files[0] || null)}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: 'pointer'
+                }}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <FileUp size={24} color="#64748b" />
+                {selectedFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 600, fontSize: '0.88rem' }}>
+                    <CheckCircle size={16} /> {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                  </div>
+                ) : (
+                  <>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
+                      Nhấp vào đây hoặc kéo thả file để tải lên
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                      Hỗ trợ PDF, DOCX, XLSX, PNG, JPG... tối đa 25MB
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </FormRow>
+
+          <div style={{
+            marginTop: '8px',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: '12px',
+            borderTop: '1px solid #e2e8f0',
+            paddingTop: '16px'
+          }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsModalOpen(false)}
+              disabled={submitting}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              <UploadCloud size={16} /> {submitting ? 'Đang tải lên...' : 'Lưu vào hệ thống'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </section>
   );
 }

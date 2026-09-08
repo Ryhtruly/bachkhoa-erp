@@ -1,52 +1,149 @@
-import React, { useState, useEffect } from 'react';
-import { Filter, Plus, UserPlus, Phone, Search, Clock, Target, CheckCircle, Percent } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  UserPlus,
+  Phone,
+  Clock,
+  Target,
+  CheckCircle,
+  Percent,
+  ExternalLink,
+  Copy,
+  Check,
+  RotateCw,
+  Compass,
+  FileText,
+  Building2,
+  MapPin,
+  Maximize2,
+  MessageCircle,
+  HelpCircle,
+  Sparkles
+} from 'lucide-react';
+import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
+import { apiFetch } from '../lib/api';
+import { useToast } from '../contexts/ToastContext';
+import './crm.css';
+
+function QrCodeIcon({ size = 16, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="5" height="5" x="3" y="3" rx="1" />
+      <rect width="5" height="5" x="16" y="3" rx="1" />
+      <rect width="5" height="5" x="3" y="16" rx="1" />
+      <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
+      <path d="M21 21v.01" />
+      <path d="M12 7v3a2 2 0 0 1-2 2H7" />
+      <path d="M3 12h.01" />
+      <path d="M12 3h.01" />
+      <path d="M12 16v.01" />
+      <path d="M16 12h1" />
+      <path d="M21 12v.01" />
+      <path d="M12 21v-1" />
+    </svg>
+  );
+}
+
+// Hàm bóc tách chuỗi requirements có cấu trúc từ Form hoặc dữ liệu tự do
+function parseLeadRequirements(reqStr = '') {
+  if (!reqStr) return { serviceType: '', scaleInfo: '', propertyAddress: '', notes: '', packageType: 'general' };
+
+  let serviceType = '';
+  let scaleInfo = '';
+  let propertyAddress = '';
+  let notes = '';
+
+  if (reqStr.includes('|')) {
+    const parts = reqStr.split('|').map(s => s.trim());
+    parts.forEach(part => {
+      const lower = part.toLowerCase();
+      if (lower.startsWith('dịch vụ:')) {
+        serviceType = part.replace(/^dịch vụ:\s*/i, '');
+      } else if (lower.startsWith('quy mô:') || lower.startsWith('diện tích:')) {
+        scaleInfo = part.replace(/^(quy mô|diện tích):\s*/i, '');
+      } else if (lower.startsWith('vị trí bđs:') || lower.startsWith('địa chỉ bđs:')) {
+        propertyAddress = part.replace(/^(vị trí bđs|địa chỉ bđs):\s*/i, '');
+      } else if (lower.startsWith('ghi chú:')) {
+        notes = part.replace(/^ghi chú:\s*/i, '');
+      } else {
+        if (!notes) notes = part;
+      }
+    });
+  } else {
+    // Dữ liệu cũ dạng text tự do
+    notes = reqStr;
+  }
+
+  // Nhận diện nhóm dịch vụ để gán màu sắc nhận diện
+  const lowerAll = (serviceType + ' ' + notes).toLowerCase();
+  let packageType = 'general';
+  if (lowerAll.includes('đo') || lowerAll.includes('mốc') || lowerAll.includes('hiện trạng') || lowerAll.includes('trắc địa')) {
+    packageType = 'survey';
+  } else if (lowerAll.includes('sổ') || lowerAll.includes('chuyển nhượng') || lowerAll.includes('pháp lý') || lowerAll.includes('thừa kế') || lowerAll.includes('tặng cho') || lowerAll.includes('cấp đổi')) {
+    packageType = 'legal';
+  } else if (lowerAll.includes('xây dựng') || lowerAll.includes('gpxd') || lowerAll.includes('cải tạo')) {
+    packageType = 'construction';
+  }
+
+  return { serviceType, scaleInfo, propertyAddress, notes, packageType };
+}
 
 export default function CRM() {
+  const { addToast } = useToast();
   const [leads, setLeads] = useState([]);
   const [stats, setStats] = useState({ total_leads: 0, won_leads: 0, in_progress: 0, win_rate: 0 });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [closingLead, setClosingLead] = useState(null);
   const [closingData, setClosingData] = useState({ price: '', tax_id: '', area: '' });
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrCustomUrl, setQrCustomUrl] = useState('');
+  const [qrCopied, setQrCopied] = useState(false);
+
+  // Drag & drop state
+  const [draggingLeadId, setDraggingLeadId] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+
   // Advanced filters state
-  const [showFilters, setShowFilters] = useState(false);
   const [filterSource, setFilterSource] = useState('All');
   const [formData, setFormData] = useState({ name: '', phone: '', source: 'Facebook', notes: '' });
 
   const columns = ['Tiếp cận', 'Báo giá', 'Đàm phán', 'Chốt'];
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (isSilent = false) => {
     try {
-      const [leadsRes, statsRes] = await Promise.all([
-        fetch('http://127.0.0.1:8000/api/crm/leads'),
-        fetch('http://127.0.0.1:8000/api/crm/stats')
+      if (!isSilent) setRefreshing(true);
+      const [leadsData, statsData] = await Promise.all([
+        apiFetch('/api/crm/leads'),
+        apiFetch('/api/crm/stats')
       ]);
-      
-      if (leadsRes.ok) {
-        const data = await leadsRes.json();
-        setLeads(data.data || []);
-      }
-      if (statsRes.ok) {
-        const sData = await statsRes.json();
-        setStats(sData.data || {});
-      }
+
+      setLeads(leadsData?.data || []);
+      setStats(statsData?.data || {});
     } catch (err) {
-      console.error(err);
+      console.error('Lỗi tải dữ liệu CRM:', err);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleStatusChange = async (lead, newStatus) => {
     if (newStatus === 'Chốt' && lead.status !== 'Chốt') {
+      const parsed = parseLeadRequirements(lead.requirements);
       setClosingLead(lead);
-      setClosingData({ price: '', tax_id: '', area: '' });
+      // Điền trước quy mô/diện tích từ dữ liệu lead đã có
+      setClosingData({
+        price: '',
+        tax_id: '',
+        area: parsed.scaleInfo || ''
+      });
       return;
     }
     await submitStatusChange(lead.id, newStatus, {});
@@ -54,15 +151,21 @@ export default function CRM() {
 
   const submitStatusChange = async (leadId, newStatus, extraData = {}) => {
     try {
-      await fetch(`http://127.0.0.1:8000/api/crm/leads/${leadId}/status`, {
+      const res = await apiFetch(`/api/crm/leads/${leadId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_status: newStatus, ...extraData })
       });
-      fetchData();
+      fetchData(true);
       setClosingLead(null);
+      if (res?.data?.contract_id) {
+        addToast(`🎉 Đã chốt deal & sinh Hợp đồng ${res.data.contract_id} thành công!`, 'success');
+      } else {
+        addToast('Đã cập nhật trạng thái hồ sơ thành công.', 'success');
+      }
     } catch (err) {
       console.error(err);
+      addToast(err?.message || 'Có lỗi xảy ra khi cập nhật trạng thái', 'error');
     }
   };
 
@@ -74,7 +177,7 @@ export default function CRM() {
   const handleCreateLead = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/crm/leads', {
+      const res = await fetch('/api/crm/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,142 +197,315 @@ export default function CRM() {
     }
   };
 
+  // Drag & Drop handlers
+  const handleDragStart = (e, lead) => {
+    setDraggingLeadId(lead.id);
+    e.dataTransfer.setData('text/plain', lead.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setDraggingLeadId(null);
+    setDragOverCol(null);
+  };
+
+  const handleDragOver = (e, col) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverCol !== col) {
+      setDragOverCol(col);
+    }
+  };
+
+  const handleDragLeave = (e, col) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    if (dragOverCol === col) setDragOverCol(null);
+  };
+
+  const handleDrop = (e, targetCol) => {
+    e.preventDefault();
+    setDragOverCol(null);
+    const leadId = e.dataTransfer.getData('text/plain') || draggingLeadId;
+    if (!leadId) return;
+
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || lead.status === targetCol) return;
+
+    handleStatusChange(lead, targetCol);
+  };
+
   const filteredLeads = leads.filter(l => {
     const matchSearch = (l.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        (l.phone || '').includes(searchTerm);
-                        
+      (l.phone || '').includes(searchTerm) ||
+      (l.requirements || '').toLowerCase().includes(searchTerm.toLowerCase());
+
     const matchSource = filterSource === 'All' || l.source === filterSource;
-    
+
     return matchSearch && matchSource;
   });
 
   return (
-    <section className="tab-pane active" id="tab-crm">
+    <section className="tab-pane active crm-container" id="tab-crm">
       {/* Stats Header */}
-      <div className="stats-grid" style={{ marginBottom: '24px' }}>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon purple"><Target size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Tổng Lead</p>
-            <h4 className="stat-value">{stats.total_leads || 0}</h4>
-          </div>
-        </div>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon orange"><Clock size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Đang Tư Vấn</p>
-            <h4 className="stat-value">{stats.in_progress || 0}</h4>
-          </div>
-        </div>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon green"><CheckCircle size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Chốt Thành Công</p>
-            <h4 className="stat-value">{stats.won_leads || 0}</h4>
-          </div>
-        </div>
-        <div className="stat-card card glass-card">
-          <div className="stat-icon red"><Percent size={24} /></div>
-          <div className="stat-info">
-            <p className="stat-label">Tỉ Lệ Chốt</p>
-            <h4 className="stat-value">{stats.win_rate || 0}%</h4>
-          </div>
-        </div>
-      </div>
+      <StatsGrid>
+        <StatCard
+          label="Tổng Lead Tiếp Nhận"
+          value={stats.total_leads || 0}
+          icon={<Target size={24} />}
+          iconVariant="purple"
+        />
+        <StatCard
+          label="Đang Tư Vấn / Báo Giá"
+          value={stats.in_progress || 0}
+          icon={<Clock size={24} />}
+          iconVariant="orange"
+        />
+        <StatCard
+          label="Chốt Thành Hợp Đồng"
+          value={stats.won_leads || 0}
+          icon={<CheckCircle size={24} />}
+          iconVariant="green"
+        />
+        <StatCard
+          label="Tỉ Lệ Chốt Thầu"
+          value={`${stats.win_rate || 0}%`}
+          icon={<Percent size={24} />}
+          iconVariant="red"
+        />
+      </StatsGrid>
 
       {/* Toolbar */}
-      <div className="toolbar card glass-card" style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={16} color="var(--text-tertiary)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="Tìm khách hàng, SĐT..." 
-              style={{ paddingLeft: '36px', width: '300px', height: '38px' }}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <button className={`btn ${showFilters ? 'btn-primary' : 'btn-secondary'}`} style={{ height: '38px' }} onClick={() => setShowFilters(!showFilters)}>
-            <Filter size={16} /> Lọc nâng cao
-          </button>
-        </div>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)} style={{ height: '38px' }}>
-          <Plus size={16} /> Tạo Lead Mới
-        </button>
-      </div>
-
-      {/* Advanced Filters Panel */}
-      {showFilters && (
-        <div className="card glass-card" style={{ padding: '16px 24px', marginBottom: '24px', display: 'flex', gap: '20px', alignItems: 'flex-end', background: 'var(--bg-deep)' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>Lọc theo Nguồn khách hàng</label>
-            <select className="form-control" value={filterSource} onChange={(e) => setFilterSource(e.target.value)} style={{ width: '250px' }}>
-              <option value="All">Tất cả các nguồn</option>
-              <option value="Facebook">Facebook</option>
-              <option value="Zalo cá nhân">Zalo cá nhân</option>
-              <option value="Hotline">Hotline công ty</option>
-              <option value="Giới thiệu">Khách giới thiệu</option>
-              <option value="Khác">Khác</option>
-            </select>
-          </div>
-          {filterSource !== 'All' && (
-            <button className="btn btn-secondary" style={{ height: '38px', color: 'var(--orange-500)' }} onClick={() => setFilterSource('All')}>
-              Xóa lọc
+      <FilterBar
+        search={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Tìm tên khách, số điện thoại, vị trí đất, dịch vụ..."
+        filters={[
+          {
+            key: 'source',
+            label: 'Nguồn khách hàng',
+            type: 'select',
+            width: 200,
+            options: [
+              { value: 'All', label: 'Tất cả nguồn' },
+              { value: 'Web Form (Zalo)', label: 'Web Form (Zalo)' },
+              { value: 'Google Form', label: 'Google Form' },
+              { value: 'Facebook', label: 'Facebook' },
+              { value: 'Hotline', label: 'Hotline công ty' },
+              { value: 'Giới thiệu', label: 'Khách giới thiệu' },
+              { value: 'Khác', label: 'Khác' }
+            ]
+          }
+        ]}
+        values={{ source: filterSource }}
+        onFilterChange={(key, value) => {
+          if (key === 'source') setFilterSource(value);
+        }}
+        onReset={() => { setSearchTerm(''); setFilterSource('All'); }}
+        actions={
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* Nút Làm Mới (Refresh) */}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => fetchData()}
+              title="Làm mới danh sách Lead tức thì"
+            >
+              <RotateCw size={14} className={refreshing ? 'spinning' : ''} /> Làm Mới
             </button>
-          )}
-        </div>
-      )}
 
-      {/* Kanban Board */}
-      <div className="crm-grid" id="crm-kanban-board" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+            {/* Nút Copy Link Form Zalo */}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                const url = `${window.location.origin}/intake`;
+                navigator.clipboard.writeText(url);
+                setCopiedLink(true);
+                setTimeout(() => setCopiedLink(false), 3000);
+              }}
+              title="Sao chép link trang đăng ký dịch vụ để gửi cho khách qua Zalo"
+            >
+              {copiedLink ? <Check size={14} style={{ color: 'var(--green-500)' }} /> : <Copy size={14} />}
+              {copiedLink ? 'Đã chép link Zalo!' : 'Copy Link Form Zalo'}
+            </button>
+
+            {/* Nút Mã QR Form */}
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setQrCustomUrl(`${window.location.origin}/intake`);
+                setIsQrModalOpen(true);
+              }}
+              title="Xem và tải mã QR để gửi cho khách quét trên Zalo / điện thoại"
+            >
+              <QrCodeIcon size={14} /> Mã QR Form
+            </button>
+
+            {/* Nút Mở Xem Form */}
+            <a
+              href="/intake"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary btn-sm"
+              title="Mở tab mới xem trang Form tiếp nhận của khách"
+            >
+              <ExternalLink size={14} /> Xem Form
+            </a>
+
+            {/* Nút Tạo Lead Mới */}
+            <button className="btn btn-primary btn-sm" onClick={() => setIsModalOpen(true)}>
+              <UserPlus size={14} /> Tạo Lead Mới
+            </button>
+          </div>
+        }
+      />
+
+      {/* Kanban Board Grid */}
+      <div
+        className="crm-kanban-grid"
+        id="crm-kanban-board"
+        role="region"
+        aria-label="Quy trình khách hàng theo trạng thái"
+      >
         {columns.map(col => {
           const colLeads = filteredLeads.filter(l => l.status === col);
-          return (
-            <div className="crm-col" key={col} style={{ background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '16px', border: '1px solid var(--border-default)', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-              <div className="crm-col-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '2px solid var(--orange-500)' }}>
-                <h4 style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{col.toUpperCase()}</h4>
-                <span className="badge" style={{ background: 'var(--bg-deep)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600 }}>{colLeads.length}</span>
-              </div>
-              
-              <div className="crm-col-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '300px' }}>
-                {loading ? (
-                  <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', textAlign: 'center', marginTop: '20px' }}>Đang tải...</p>
-                ) : colLeads.length === 0 ? (
-                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem', background: 'var(--bg-deep)', borderRadius: '8px', border: '1px dashed var(--border-hover)' }}>Trống</div>
-                ) : (
-                  colLeads.map(lead => (
-                    <div className="crm-card" key={lead.id} style={{ background: 'var(--bg-surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-default)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', transition: 'transform 0.2s, box-shadow 0.2s', cursor: 'grab' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'var(--orange-glow)', color: 'var(--orange-600)' }}>{lead.source}</span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{lead.created_at?.split(' ')[0]}</span>
-                      </div>
-                      <div className="crm-card-title" style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>{lead.customer_name}</div>
-                      <div className="crm-card-sub" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
-                        <Phone size={12} /> {lead.phone || 'N/A'}
-                      </div>
-                      
-                      {lead.requirements && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', padding: '8px', background: 'var(--bg-deep)', borderRadius: '6px', marginBottom: '12px', fontStyle: 'italic' }}>
-                          "{lead.requirements}"
-                        </div>
-                      )}
+          const colClassModifier = col === 'Tiếp cận' ? 'tiep-can' : col === 'Báo giá' ? 'bao-gia' : col === 'Đàm phán' ? 'dam-phan' : 'chot';
+          const isOver = dragOverCol === col;
 
-                      <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '12px', marginTop: 'auto' }}>
-                        <select
-                          className="form-control"
-                          value={lead.status}
-                          onChange={(e) => handleStatusChange(lead, e.target.value)}
-                          style={{ width: '100%', fontSize: '0.8rem', padding: '6px 12px', height: 'auto', background: 'var(--bg-deep)' }}
-                        >
-                          {columns.map(opt => (
-                            <option key={opt} value={opt}>Chuyển: {opt}</option>
-                          ))}
-                        </select>
+          return (
+            <div
+              key={col}
+              className={`crm-kanban-col ${isOver ? 'drag-over' : ''}`}
+              onDragOver={(e) => handleDragOver(e, col)}
+              onDragLeave={(e) => handleDragLeave(e, col)}
+              onDrop={(e) => handleDrop(e, col)}
+            >
+              {/* Header Cột */}
+              <div className={`crm-col-top crm-col-top--${colClassModifier}`}>
+                <div className="crm-col-title-wrap">
+                  <span className={`crm-col-dot crm-col-dot--${colClassModifier}`} />
+                  <h4 className="crm-col-title">{col.toUpperCase()}</h4>
+                </div>
+                <span className="crm-col-count">{colLeads.length}</span>
+              </div>
+
+              {/* Danh Sách Thẻ Trong Cột */}
+              <div className="crm-col-list">
+                {loading ? (
+                  <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', textAlign: 'center', marginTop: '24px' }}>
+                    Đang tải dữ liệu...
+                  </p>
+                ) : colLeads.length === 0 ? (
+                  <div className="crm-empty-placeholder">
+                    <span>Chưa có lead</span>
+                    <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>Kéo thả thẻ vào đây</span>
+                  </div>
+                ) : (
+                  colLeads.map(lead => {
+                    const parsed = parseLeadRequirements(lead.requirements);
+                    const cleanPhone = (lead.phone || '').replace(/\D/g, '');
+                    const isDragging = draggingLeadId === lead.id;
+
+                    return (
+                      <div
+                        key={lead.id}
+                        className={`lead-card ${isDragging ? 'is-dragging' : ''}`}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, lead)}
+                        onDragEnd={handleDragEnd}
+                      >
+                        {/* Top: Nguồn + Ngày tạo */}
+                        <div className="lead-card-header">
+                          <span className={`lead-source-badge ${lead.source?.includes('Zalo') ? 'lead-source-badge--zalo' : lead.source?.includes('Google') ? 'lead-source-badge--google' : ''}`}>
+                            {lead.source || 'Tự động'}
+                          </span>
+                          <span className="lead-date">
+                            <Clock size={11} /> {lead.created_at?.split(' ')[0] || ''}
+                          </span>
+                        </div>
+
+                        {/* Tên khách hàng */}
+                        <h4 className="lead-customer-name">
+                          {lead.customer_name}
+                        </h4>
+
+                        {/* Badge Dịch vụ (nếu có) */}
+                        {parsed.serviceType && (
+                          <div className={`lead-service-pill lead-service-pill--${parsed.packageType}`}>
+                            {parsed.packageType === 'survey' ? <Compass size={13} /> : parsed.packageType === 'legal' ? <FileText size={13} /> : parsed.packageType === 'construction' ? <Building2 size={13} /> : <Sparkles size={13} />}
+                            {parsed.serviceType}
+                          </div>
+                        )}
+
+                        {/* Thông tin chi tiết: Vị trí đất & Quy mô */}
+                        <div className="lead-meta-list">
+                          {parsed.propertyAddress && (
+                            <div className="lead-meta-item">
+                              <MapPin size={13} className="lead-meta-icon" />
+                              <span className="lead-meta-value" title={parsed.propertyAddress}>
+                                {parsed.propertyAddress}
+                              </span>
+                            </div>
+                          )}
+
+                          {parsed.scaleInfo && (
+                            <div className="lead-meta-item">
+                              <Maximize2 size={13} className="lead-meta-icon" />
+                              <span className="lead-meta-value">
+                                Quy mô: <strong>{parsed.scaleInfo}</strong>
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Ghi chú thêm của khách */}
+                        {parsed.notes && (
+                          <p className="lead-notes-quote" title={parsed.notes}>
+                            "{parsed.notes}"
+                          </p>
+                        )}
+
+                        {/* Thanh thao tác nhanh: Gọi điện + Chat Zalo */}
+                        {lead.phone && (
+                          <div className="lead-actions-bar">
+                            <a
+                              href={`tel:${lead.phone}`}
+                              className="lead-action-btn lead-action-btn--phone"
+                              title={`Gọi điện tới số ${lead.phone}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Phone size={12} /> {lead.phone}
+                            </a>
+                            <a
+                              href={`https://zalo.me/${cleanPhone}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="lead-action-btn lead-action-btn--zalo"
+                              title={`Mở cuộc trò chuyện Zalo với ${lead.customer_name}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MessageCircle size={13} /> Chat Zalo
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Hộp chọn di chuyển cột */}
+                        <div className="lead-move-footer">
+                          <select
+                            className="lead-move-select"
+                            value={lead.status}
+                            onChange={(e) => handleStatusChange(lead, e.target.value)}
+                            title="Chọn cột để chuyển trạng thái (hoặc kéo thả thẻ)"
+                          >
+                            {columns.map(opt => (
+                              <option key={opt} value={opt}>Chuyển: {opt}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -237,83 +513,229 @@ export default function CRM() {
         })}
       </div>
 
-      {isModalOpen && (
-        <div className="modal-overlay open" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="modal card glass-card" style={{ maxWidth: '500px', width: '100%' }}>
-            <div className="modal-header" style={{ padding: '24px', borderBottom: '1px solid var(--border-default)' }}>
-              <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', fontWeight: 700 }}>
-                <UserPlus size={20} color="var(--orange-500)" /> Tạo Khách Hàng (Lead) Mới
-              </h2>
+      {/* Modal Tạo Lead Mới Thủ Công */}
+      <Modal
+        open={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <UserPlus size={20} color="var(--orange-500)" /> Tạo Khách Hàng (Lead) Mới
+          </span>
+        }
+      >
+        <form onSubmit={handleCreateLead} style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', padding: '12px 0' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                Tên Khách Hàng *
+              </label>
+              <input required className="form-control" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} type="text" placeholder="Ví dụ: Anh Minh..." />
             </div>
-            <form onSubmit={handleCreateLead} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '24px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Tên Khách Hàng *</label>
-                  <input required className="form-control" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} type="text" placeholder="Ví dụ: Anh Minh..." />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Số Điện Thoại *</label>
-                  <input required className="form-control" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} type="text" placeholder="090..." />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Nguồn Khách Hàng</label>
-                  <select required className="form-control" value={formData.source} onChange={e => setFormData({...formData, source: e.target.value})}>
-                    <option value="Facebook">Facebook</option>
-                    <option value="Zalo cá nhân">Zalo cá nhân</option>
-                    <option value="Hotline">Hotline công ty</option>
-                    <option value="Giới thiệu">Khách giới thiệu</option>
-                    <option value="Khác">Khác</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Nhu cầu / Ghi chú</label>
-                  <textarea className="form-control" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} placeholder="Khách cần tư vấn hoàn công nhà ở..." style={{ minHeight: '80px', resize: 'vertical' }}></textarea>
-                </div>
-              </div>
-              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', background: 'var(--bg-deep)', borderTop: '1px solid var(--border-default)', borderRadius: '0 0 var(--radius-md) var(--radius-md)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Hủy bỏ</button>
-                <button type="submit" className="btn btn-primary" style={{ padding: '0 24px' }}>Tạo Mới & Đưa vào Pipeline</button>
-              </div>
-            </form>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                Số Điện Thoại Zalo *
+              </label>
+              <input required className="form-control" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} type="tel" placeholder="090..." />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                Nguồn Khách Hàng
+              </label>
+              <select required className="form-control" value={formData.source} onChange={e => setFormData({ ...formData, source: e.target.value })}>
+                <option value="Web Form (Zalo)">Web Form (Zalo)</option>
+                <option value="Google Form">Google Form</option>
+                <option value="Facebook">Facebook</option>
+                <option value="Zalo cá nhân">Zalo cá nhân</option>
+                <option value="Hotline">Hotline công ty</option>
+                <option value="Giới thiệu">Khách giới thiệu</option>
+                <option value="Khác">Khác</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                Nhu cầu / Vị trí đất / Quy mô
+              </label>
+              <textarea className="form-control" value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} placeholder="Dịch vụ: Đo hiện trạng | Vị trí: Củ Chi | Quy mô: 200m2..." style={{ minHeight: '80px', resize: 'vertical' }}></textarea>
+            </div>
           </div>
-        </div>
-      )}
+          <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', marginTop: '16px', borderTop: '1px solid var(--border-default)' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Hủy bỏ</button>
+            <button type="submit" className="btn btn-primary" style={{ padding: '0 24px' }}>Tạo Mới & Đưa vào Pipeline</button>
+          </div>
+        </form>
+      </Modal>
 
-      {/* Closing Deal Modal */}
-      {closingLead && (
-        <div className="modal-overlay open" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="modal card glass-card" style={{ maxWidth: '500px', width: '100%' }}>
-            <div className="modal-header" style={{ padding: '24px', borderBottom: '1px solid var(--border-default)' }}>
-              <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', fontWeight: 700 }}>
-                <CheckCircle size={20} color="var(--green-500)" /> Xác nhận Chốt Deal
-              </h2>
-            </div>
-            <form onSubmit={handleConfirmClose} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '24px' }}>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  Bạn đang chốt deal với khách hàng <strong>{closingLead.customer_name}</strong>. Vui lòng nhập thông tin để hệ thống sinh Hợp Đồng tự động.
+      {/* Modal Xác Nhận Chốt Deal & Sinh Hợp Đồng Thông Minh */}
+      <Modal
+        open={!!closingLead}
+        onClose={() => setClosingLead(null)}
+        title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle size={20} color="var(--green-500)" /> Xác nhận Chốt Deal & Tạo Hợp Đồng
+          </span>
+        }
+      >
+        {closingLead && (
+          <form onSubmit={handleConfirmClose} style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', padding: '12px 0' }}>
+              <div style={{ background: 'var(--bg-deep)', padding: '12px 14px', borderRadius: '8px', borderLeft: '3px solid var(--green-500)' }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: 0, fontWeight: 600 }}>
+                  Khách hàng: {closingLead.customer_name} ({closingLead.phone})
                 </p>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Giá trị Hợp Đồng (VNĐ) *</label>
-                  <input required className="form-control" value={closingData.price} onChange={e => setClosingData({...closingData, price: e.target.value})} type="number" placeholder="Ví dụ: 15000000" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Mã số thuế (Tùy chọn)</label>
-                  <input className="form-control" value={closingData.tax_id} onChange={e => setClosingData({...closingData, tax_id: e.target.value})} type="text" placeholder="Nhập mã số thuế..." />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--text-secondary)' }}>Diện tích / Quy mô (Tùy chọn)</label>
-                  <input className="form-control" value={closingData.area} onChange={e => setClosingData({...closingData, area: e.target.value})} type="text" placeholder="Ví dụ: 150m2..." />
-                </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                  {closingLead.requirements}
+                </p>
               </div>
-              <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', padding: '16px 24px', background: 'var(--bg-deep)', borderTop: '1px solid var(--border-default)', borderRadius: '0 0 var(--radius-md) var(--radius-md)' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setClosingLead(null)}>Hủy bỏ</button>
-                <button type="submit" className="btn btn-primary" style={{ padding: '0 24px', background: 'var(--green-500)', borderColor: 'var(--green-500)' }}>Chốt Deal & Sinh Hợp Đồng</button>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                  Giá trị Hợp Đồng (VNĐ) <span style={{ color: 'red' }}>*</span>
+                </label>
+                <input
+                  required
+                  className="form-control"
+                  value={closingData.price}
+                  onChange={e => setClosingData({ ...closingData, price: e.target.value })}
+                  type="number"
+                  placeholder="Ví dụ: 15000000"
+                />
+                {closingData.price && Number(closingData.price) > 0 && (
+                  <div className="currency-live-preview">
+                    <span>Số tiền hiển thị:</span>
+                    <span>{new Intl.NumberFormat('vi-VN').format(Number(closingData.price))} VNĐ</span>
+                  </div>
+                )}
               </div>
-            </form>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                  Quy mô / Diện tích / Số mốc
+                </label>
+                <input
+                  className="form-control"
+                  value={closingData.area}
+                  onChange={e => setClosingData({ ...closingData, area: e.target.value })}
+                  type="text"
+                  placeholder="Ví dụ: 250 m2 hoặc 06 mốc ranh hoặc 01 bộ hồ sơ..."
+                />
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                  Dữ liệu này sẽ tự động điền vào mục "Diện tích/Quy mô (tạm tính)" trên Hợp đồng Word.
+                </span>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                  Mã số thuế / CCCD (Tùy chọn)
+                </label>
+                <input
+                  className="form-control"
+                  value={closingData.tax_id}
+                  onChange={e => setClosingData({ ...closingData, tax_id: e.target.value })}
+                  type="text"
+                  placeholder="Nhập mã số thuế hoặc số CCCD..."
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', marginTop: '16px', borderTop: '1px solid var(--border-default)' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setClosingLead(null)}>Hủy bỏ</button>
+              <button type="submit" className="btn btn-primary" style={{ padding: '0 24px', background: '#16a34a', borderColor: '#16a34a' }}>
+                Chốt Deal & Sinh Hợp Đồng Tự Động
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+      {/* Modal Mã QR Quét Form Tiếp Nhận Khách Hàng */}
+      <Modal
+        open={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <QrCodeIcon size={20} color="var(--orange-500)" /> Mã QR Form Tiếp Nhận (Zalo / Mobile)
+          </span>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '12px 0' }}>
+          {/* Card hiển thị mã QR nét cao */}
+          <div style={{
+            background: '#ffffff',
+            padding: '16px',
+            borderRadius: '12px',
+            border: '1px solid var(--border-default)',
+            boxShadow: 'var(--shadow-card)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px'
+          }}>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(qrCustomUrl || `${window.location.origin}/intake`)}&margin=6`}
+              alt="Mã QR Form Tiếp Nhận Khách Hàng Bách Khoa"
+              width={240}
+              height={240}
+              style={{ borderRadius: '8px', display: 'block' }}
+            />
+            <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--orange-600)', letterSpacing: '0.04em' }}>
+              BÁCH KHOA • QUÉT BẰNG ZALO HOẶC CAMERA
+            </div>
+          </div>
+
+          {/* Ô link & nút copy */}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+              Đường dẫn trang tiếp nhận:
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                className="form-control"
+                value={qrCustomUrl}
+                onChange={(e) => setQrCustomUrl(e.target.value)}
+                placeholder="http://..."
+                style={{ flex: 1, fontSize: '0.85rem' }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(qrCustomUrl);
+                  setQrCopied(true);
+                  setTimeout(() => setQrCopied(false), 2500);
+                }}
+                style={{ minWidth: '100px' }}
+              >
+                {qrCopied ? <Check size={14} style={{ color: 'var(--green-500)' }} /> : <Copy size={14} />}
+                {qrCopied ? 'Đã chép!' : 'Sao chép'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', margin: '4px 0 0', lineHeight: 1.4 }}>
+              💡 <strong>Cách dùng:</strong> Khách hàng chỉ cần mở Zalo (nút quét mã góc trên phải) hoặc Camera điện thoại quét mã này để mở ngay biểu mẫu khảo sát & báo giá.
+            </p>
+          </div>
+
+          {/* Nút tải về & thao tác */}
+          <div style={{ width: '100%', display: 'flex', gap: '10px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+            <a
+              href={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(qrCustomUrl || `${window.location.origin}/intake`)}&margin=12`}
+              download="QR_BachKhoa_TiepNhan.png"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-primary btn-sm"
+              style={{ flex: 1, textDecoration: 'none' }}
+            >
+              Tải Ảnh QR (.PNG Nét Cao)
+            </a>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsQrModalOpen(false)}
+            >
+              Đóng
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
     </section>
   );
 }

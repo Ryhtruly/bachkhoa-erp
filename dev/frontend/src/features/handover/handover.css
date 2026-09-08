@@ -1,0 +1,489 @@
+/* Khung node BÀN GIAO — cổng công nợ.
+   Dùng lại token màu/khoảng cách sẵn có để khớp với tab Hợp đồng. */
+
+.handover {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.handover--loading,
+.handover--error { color: var(--text-tertiary); font-size: 0.84rem; }
+.handover--error { color: #b91c1c; }
+
+.handover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.handover__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.handover__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+.handover__flag--danger { background: #fee2e2; color: #991b1b; }
+.handover__flag--ok     { background: #dcfce7; color: #166534; }
+
+.handover__gate {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 9px 12px;
+  background: #f1f5f9;
+  border-left: 3px solid #94a3b8;
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+/* ── Tiền ─────────────────────────────────────────────────────
+   Con số người ta cần biết đứng một mình, cỡ lớn nhất khối. Tổng và phần trăm
+   lùi xuống dòng phụ vì chúng chỉ để đối chiếu. */
+.handover__money {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 16px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+.handover__money.is-settled { background: #dcfce7; border-color: #bbf7d0; --handover-ink: #15803d; }
+.handover__money.is-debt    { background: #fef3c7; border-color: #fcd34d; --handover-ink: #b45309; }
+
+.handover__money-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.handover__money-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--handover-ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.handover__money-figure {
+  color: var(--handover-ink);
+  font-size: 1.45rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.handover__money-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--handover-ink) 18%, transparent);
+}
+.handover__money-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--handover-ink);
+  transition: width 0.35s var(--ease-out, ease);
+}
+
+.handover__money-detail {
+  margin: 0;
+  color: var(--handover-ink);
+  font-size: 0.79rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.handover__pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: #92400e;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+/* ── Các đợt đã thu ───────────────────────────────────────────── */
+.handover__history { display: flex; flex-direction: column; gap: 7px; }
+.handover__history-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.handover__history-head span { color: var(--text-secondary); font-size: 0.84rem; font-weight: 600; }
+.handover__history-head em { color: var(--text-tertiary); font-size: 0.76rem; font-style: normal; }
+.handover__history .handover__installments {
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+}
+.handover__installments {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.handover__installments li {
+  display: grid;
+  grid-template-columns: 56px 1fr 20px 76px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.8rem;
+}
+.handover__installments li:last-child { border-bottom: 0; }
+.handover__installments li.is-pending { opacity: 0.62; }
+.handover__inst-date   { color: var(--text-tertiary); }
+.handover__inst-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+.handover__inst-nobill { color: #dc2626; text-align: center; }
+.handover__inst-status { color: var(--text-tertiary); font-size: 0.74rem; text-align: right; }
+.handover__inst-status.is-waiting { color: #c2410c; font-weight: 600; }
+
+/* ── Hai khối nghiệp vụ: giao hồ sơ và thu đủ tiền ───────────── */
+.handover__cards { display: flex; flex-direction: column; gap: 8px; }
+.handover__card {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 3px 10px;
+  padding: 12px 14px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+.handover__card.is-done { background: #f0fdf4; border-color: #bbf7d0; }
+.handover__card-mark { display: flex; color: var(--text-tertiary); }
+.handover__card.is-done .handover__card-mark { color: #16a34a; }
+.handover__card-body { min-width: 0; }
+.handover__card strong { display: block; font-size: 0.87rem; font-weight: 700; line-height: 1.3; }
+.handover__card.is-done strong { color: #14532d; }
+.handover__card p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 0.79rem; line-height: 1.45; }
+.handover__card.is-done p { color: #3f6212; }
+.handover__card small { display: block; margin-top: 3px; font-size: 0.74rem; }
+.handover__card-who { color: var(--text-tertiary); }
+.handover__card-warn { color: #b45309; }
+/* Khung chi tiết chỉ rộng ~340px — ép nút đứng cùng hàng với chữ thì mỗi dòng
+   còn một từ. Cho nút xuống hàng riêng. */
+.handover__card .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: start;
+  margin-top: 8px;
+}
+
+.handover__checklist {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+.handover__checklist-title {
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.handover__checklist-item {
+  padding: 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.handover__checklist-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.handover__checklist-row span { font-size: 0.82rem; font-weight: 700; line-height: 1.4; }
+.handover__checklist-row em {
+  flex: none;
+  color: #9a3412;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 700;
+}
+.handover__checklist-submit { display: grid; gap: 8px; margin-top: 8px; }
+.handover__checklist-submit .receipt-input { min-width: 0; }
+
+.handover__footer {
+  position: sticky;
+  z-index: 2;
+  bottom: -1px;
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 -2px -2px;
+  padding: 12px 2px 2px;
+  border-top: 1px solid var(--border-subtle);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.82), #fff 30%);
+}
+.handover__footer .btn { min-width: 190px; }
+.handover__footer .btn:disabled { cursor: not-allowed; opacity: 0.52; }
+
+/* ── Hộp thoại ────────────────────────────────────────────────── */
+.handover__form { display: flex; flex-direction: column; gap: 14px; }
+.handover__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.handover__req { color: #dc2626; text-transform: none; letter-spacing: 0; }
+.handover__form-hint {
+  margin: 0;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+  line-height: 1.5;
+}
+.handover__form-footer { display: flex; justify-content: flex-end; gap: 10px; }
+
+.handover__confirm {
+  padding: 14px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+}
+.handover__confirm-line {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 5px;
+  font-size: 0.86rem;
+}
+.handover__confirm-line strong { font-variant-numeric: tabular-nums; }
+.handover__confirm-line--danger { color: #b91c1c; }
+.handover__confirm-ask {
+  margin: 14px 0 8px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.handover__confirm-note {
+  margin: 0;
+  color: #78350f;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.btn.btn-danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+.btn.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+/* Chế độ CHỈ ĐỌC — giám đốc xem trong sơ đồ quy trình */
+/* Ghi chú "chỉ xem" là lời nhắc, không phải cảnh báo — bỏ khối nền và vạch màu,
+   để nó lùi hẳn về sau các thẻ việc. */
+.handover__readonly {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.79rem;
+}
+
+/* Duyệt phiếu ngay tại chỗ — đây là việc của chính giám đốc, không phải
+   làm thay nhân viên, nên vẫn hiện ở chế độ chỉ đọc. */
+.handover__inst-approve { display: inline-flex; gap: 4px; justify-content: flex-end; }
+.handover__inst-approve button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: #fff;
+  color: #16a34a;
+  cursor: pointer;
+}
+.handover__inst-approve button:hover:not(:disabled) { border-color: #16a34a; background: #f0fdf4; }
+.handover__inst-approve button.is-reject { color: #dc2626; }
+.handover__inst-approve button.is-reject:hover:not(:disabled) { border-color: #dc2626; background: #fef2f2; }
+.handover__inst-approve button:disabled { opacity: 0.45; cursor: default; }
+
+/* Cột trạng thái hẹp lại để nhường chỗ cho 2 nút */
+.handover__installments li { grid-template-columns: 78px 1fr 20px 62px; }
+
+/* Tên người lo việc — để ai đọc cũng biết phải hỏi ai, không phải đoán */
+.handover__card strong { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.handover__card strong em {
+  font-style: normal;
+  color: var(--text-tertiary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Bộ hồ sơ bàn giao ────────────────────────────────────────
+   Gom mọi tài liệu về một nút. Khoá lại khi chưa thu đủ và chưa ai xác nhận
+   cho giao — nói rõ lý do ngay đó thay vì để người dùng bấm rồi mới biết. */
+.handover__package {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+}
+.handover__package > div { flex: 1; min-width: 0; }
+.handover__package strong { display: block; font-size: 0.87rem; font-weight: 700; }
+.handover__package p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 0.79rem; line-height: 1.45; }
+.handover__package small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  color: #b45309;
+  font-size: 0.76rem;
+}
+.handover__package .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Bước vừa được tick là bàn giao nhưng chưa Áp dụng — nói rõ phải làm gì, thay
+   vì không hiện gì cả. */
+.handover--pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 11px 13px;
+  border-left: 3px solid var(--orange-400, #fb923c);
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.81rem;
+  line-height: 1.5;
+}
+
+/* Trạng thái nghiệp vụ K06: tách rõ khóa nợ, đang làm, chờ nghiệm thu và
+   đã nghiệm thu nhưng chưa hoàn tất tài chính. */
+.handover__status {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.handover__status--debt_locked,
+.handover__status--debt_request_pending,
+.handover__status--work_accepted_awaiting_payment { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+.handover__status--pending_acceptance { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+.handover__status--in_progress { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.handover__status--completed { background: #f0fdf4; border-color: #86efac; color: #166534; }
+
+.handover__override-note,
+.handover__request-summary {
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.handover__override-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+.handover__request-summary {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #78350f;
+}
+.handover__card.is-locked .handover__checklist-item { background: #f8fafc; opacity: 0.72; }
+.handover__footer { gap: 10px; }
+
+@media (max-width: 560px) {
+  .handover__money-head,
+  .handover__checklist-row { align-items: flex-start; flex-direction: column; }
+  .handover__package { align-items: stretch; flex-direction: column; }
+  .handover__package .btn,
+  .handover__footer .btn { width: 100%; }
+  .handover__footer { padding-top: 10px; }
+  .handover__footer { flex-direction: column-reverse; }
+}
+.handover-debt-review {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 11px;
+  border: 1px solid #fdba74;
+  border-radius: 10px;
+  background: #fff7ed;
+  color: #431407;
+  outline: none;
+}
+
+.handover-debt-review:focus,
+.handover-debt-review.is-targeted {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, .18);
+}
+
+.handover-debt-review__head,
+.handover-debt-review__actions,
+.handover-debt-review dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.handover-debt-review__head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c2410c;
+  font-weight: 800;
+}
+
+.handover-debt-review dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.handover-debt-review dt { color: #9a3412; }
+.handover-debt-review dd { margin: 0; text-align: right; font-weight: 650; }
+.handover-debt-review dd svg { vertical-align: -2px; }
+.handover-debt-review__actions { justify-content: flex-end; }

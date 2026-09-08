@@ -1,0 +1,6 @@
+# Runtime dependencies plus tools used only by local data-seeding scripts.
+-r requirements.txt
+Faker==33.1.0
+# Bộ kiểm thử. Trước đây pytest chỉ được cài tay vào container đang chạy, nên
+# mỗi lần recreate backend là mất sạch và bộ test im lặng không chạy được.
+pytest==8.3.4

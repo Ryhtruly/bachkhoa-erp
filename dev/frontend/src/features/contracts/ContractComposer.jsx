@@ -1,0 +1,1199 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Check, ChevronDown, FileUp, X } from 'lucide-react'
+import { apiFetch } from '../../lib/api'
+import { laLoiChuaKichHoat, loiHienThi } from '../../lib/schemaV2'
+import DatePicker from '../../components/ui/DatePicker'
+import FilePreviewModal from '../../components/ui/FilePreviewModal'
+import './contractComposer.css'
+
+function CustomMultiSelect({ id, values = [], onToggle, options = [], placeholder, disabled }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const daChon = values.length
+  const nhan = daChon === 0
+    ? 'Không thu giấy nào từ khách'
+    : daChon === options.length
+      ? `Đủ bộ chuẩn · ${daChon} loại`
+      : `${daChon}/${options.length} loại giấy`
+
+  return (
+    <div className="custom-select-container" ref={ref}>
+      <button
+        id={id}
+        type="button"
+        className={`custom-select-trigger in ${open ? 'is-open' : ''}`}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span style={{ color: daChon ? 'var(--ink)' : 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {placeholder && !daChon ? placeholder : nhan}
+        </span>
+        <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="custom-select-menu is-multi" role="listbox" aria-multiselectable="true">
+          {options.map((opt) => {
+            const chon = values.includes(opt.id)
+            return (
+              <button
+                type="button"
+                key={opt.id}
+                role="option"
+                aria-selected={chon}
+                className={`custom-select-option ${chon ? 'is-selected' : ''}`}
+                onClick={() => onToggle(opt.id)}
+              >
+                {chon ? <Check size={14} className="check-icon" /> : <span className="check-placeholder" />}
+                <span>
+                  {opt.name}
+                  {opt.is_required && <em className="ctr-checklist__req"> · bắt buộc</em>}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function CustomSelect({ id, value, onChange, options = [], placeholder, disabled, className, 'aria-label': ariaLabel }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const normalizedOptions = useMemo(() => {
+    return (options || []).map(opt => {
+      if (typeof opt === 'object' && opt !== null) {
+        const val = opt.value !== undefined ? opt.value : (opt.id !== undefined ? opt.id : opt.code)
+        const lbl = opt.label !== undefined ? opt.label : (opt.name !== undefined ? opt.name : val)
+        return { value: String(val), label: String(lbl) }
+      }
+      return { value: String(opt), label: String(opt) }
+    })
+  }, [options])
+
+  const selectedOption = normalizedOptions.find(o => String(o.value) === String(value))
+
+  return (
+    <div className={`custom-select-container ${className || ''}`} ref={ref}>
+      <button
+        id={id}
+        type="button"
+        aria-label={ariaLabel}
+        className={`custom-select-trigger in ${className || ''} ${open ? 'is-open' : ''}`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span style={{ color: selectedOption ? 'var(--ink)' : 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedOption ? selectedOption.label : (placeholder || 'Chọn...')}
+        </span>
+        <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="custom-select-menu">
+          {placeholder && (
+            <button
+              type="button"
+              className={`custom-select-option ${!value ? 'is-selected' : ''}`}
+              onClick={() => {
+                onChange('')
+                setOpen(false)
+              }}
+            >
+              {!value ? <Check size={14} className="check-icon" /> : <span className="check-placeholder" />}
+              <span style={{ color: 'var(--ink-3)' }}>{placeholder}</span>
+            </button>
+          )}
+          {normalizedOptions.map((opt) => (
+            <button
+              type="button"
+              key={opt.value}
+              className={`custom-select-option ${String(opt.value) === String(value) ? 'is-selected' : ''}`}
+              onClick={() => {
+                onChange(opt.value)
+                setOpen(false)
+              }}
+            >
+              {String(opt.value) === String(value) ? (
+                <Check size={14} className="check-icon" />
+              ) : (
+                <span className="check-placeholder" />
+              )}
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Form soạn hợp đồng mới.
+ *
+ * Dựng theo bản thiết kế, nhưng chạy trên dữ liệu thật của hệ thống:
+ * tỉnh/phường lấy từ API địa giới, danh mục dịch vụ từ cấu hình, mã hợp đồng do
+ * máy chủ cấp trước khi mở form.
+ *
+ * Ba thứ form này làm mà form cũ không có:
+ *   1. Đọc số tiền thành chữ ngay khi gõ — số tiền là chỗ dễ gõ thừa/thiếu một
+ *      số 0 nhất, và người ta chỉ phát hiện khi đọc thành chữ.
+ *   2. Đếm số trường bắt buộc còn thiếu ở chân form, thay vì để người dùng bấm
+ *      Lưu rồi mới biết.
+ *   3. Khoảng cách giữa ngày ký và hạn hoàn thành hiện ngay cạnh hai ô ngày, và
+ *      cảnh báo khi hạn rơi vào trước ngày ký.
+ */
+
+const getTodayDate = () => new Date().toISOString().split('T')[0]
+
+const addDays = (iso, daysCount) => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  d.setDate(d.getDate() + daysCount)
+  return d.toISOString().split('T')[0]
+}
+
+// ── Đọc số thành chữ ─────────────────────────────────────────────
+const DIGIT_WORDS = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+
+function readThreeDigits(n, isFull) {
+  const hundreds = Math.floor(n / 100)
+  const tens = Math.floor((n % 100) / 10)
+  const units = n % 10
+  let s = ''
+  if (hundreds > 0 || isFull) {
+    s += `${DIGIT_WORDS[hundreds]} trăm`
+    if (tens === 0 && units > 0) s += ' lẻ'
+  }
+  if (tens > 1) {
+    s += ` ${DIGIT_WORDS[tens]} mươi`
+    if (units === 1) s += ' mốt'
+    else if (units === 5) s += ' lăm'
+    else if (units > 0) s += ` ${DIGIT_WORDS[units]}`
+  } else if (tens === 1) {
+    s += ' mười'
+    if (units === 5) s += ' lăm'
+    else if (units > 0) s += ` ${DIGIT_WORDS[units]}`
+  } else if (units > 0) {
+    s += ` ${DIGIT_WORDS[units]}`
+  }
+  return s.trim()
+}
+
+function spellCurrencyWords(n) {
+  if (!n) return ''
+  const unitNames = ['', 'nghìn', 'triệu', 'tỷ']
+  const groups = []
+  let x = n
+  while (x > 0) { groups.push(x % 1000); x = Math.floor(x / 1000) }
+  const parts = []
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    if (!groups[i]) continue
+    parts.push(readThreeDigits(groups[i], i < groups.length - 1) + (unitNames[i] ? ` ${unitNames[i]}` : ''))
+  }
+  const s = parts.join(' ')
+  return `${s.charAt(0).toUpperCase()}${s.slice(1)} đồng`
+}
+
+const parseNumericString = (v) => Number(String(v).replace(/\D/g, '')) || 0
+
+const normalizeAddressPart = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/gi, 'd')
+  .trim()
+  .toLowerCase()
+
+export function hydrateExistingCustomerAddress(customer, provinces = []) {
+  const provinceOptions = Array.isArray(provinces) ? provinces : []
+  const location = customer?.address_location
+    || customer?.addressLocation
+    || customer?.source_reference?.contract_address
+    || {}
+  const rawAddress = String(customer?.address || '').trim()
+  const parts = rawAddress.split(',').map(part => part.trim()).filter(Boolean)
+  const explicitProvinceName = location.province_name || customer?.province_name || ''
+  const explicitProvinceCode = location.province_code || customer?.province_code || ''
+  const province = provinceOptions.find(item => (
+    String(item.code) === String(explicitProvinceCode)
+    || normalizeAddressPart(item.name) === normalizeAddressPart(explicitProvinceName)
+    || normalizeAddressPart(item.name) === normalizeAddressPart(parts.at(-1))
+  ))
+  const provinceName = explicitProvinceName || province?.name || parts.at(-1) || ''
+  const provinceCode = String(explicitProvinceCode || province?.code || '')
+  const explicitWardName = location.ward_name || customer?.ward_name || ''
+  const wardName = explicitWardName || (parts.length > 2 ? parts.at(-2) : '')
+  const wardCode = String(location.ward_code || customer?.ward_code || '')
+  const detail = String(
+    location.detail || customer?.address_detail
+      || (parts.length > 2 ? parts.slice(0, -2).join(', ') : rawAddress),
+  ).trim()
+  return { detail, provinceCode, provinceName, wardCode, wardName }
+}
+
+// Gõ tắt theo cách người làm nghề vẫn nói: "5tr", "18.5tr", "500k", "1,2 tỷ".
+// Gõ đủ 18500000 vừa lâu vừa dễ thừa một số 0 mà mắt không bắt được.
+const UNIT_MULTIPLIERS = [
+  [/^([\d.,]+)\s*(?:k|ng[àa]n|ngh[ìi]n)$/i, 1e3],
+  [/^([\d.,]+)\s*(?:tr|tri[ệe]u|m)$/i, 1e6],
+  [/^([\d.,]+)\s*(?:t[ỷy]|b)$/i, 1e9],
+]
+
+/** Đọc chuỗi người dùng gõ thành số tiền. Trả null khi chưa gõ xong. */
+function parseShorthandCurrency(input) {
+  const s = String(input).trim()
+  if (!s) return 0
+  for (const [pattern, multiplier] of UNIT_MULTIPLIERS) {
+    const m = s.match(pattern)
+    if (m) {
+      // "18.5tr" và "18,5tr" đều là mười tám phẩy năm triệu; dấu chấm ở đây là
+      // dấu thập phân chứ không phải dấu phân nhóm hàng nghìn.
+      const num = Number(m[1].replace(/\./g, '.').replace(/,/g, '.'))
+      return Number.isFinite(num) ? Math.round(num * multiplier) : null
+    }
+  }
+  if (/[^\d.\s]/.test(s)) return null   // còn chữ lạ — người dùng đang gõ dở
+  return Number(s.replace(/\D/g, '')) || 0
+}
+
+const QUICK_DENOMINATIONS = [
+  { label: '+1 triệu', value: 1e6 },
+  { label: '+5 triệu', value: 5e6 },
+  { label: '+10 triệu', value: 1e7 },
+]
+
+export default function ContractComposer({
+  open,
+  code,
+  _services = [],
+  templates = [],
+  templatesLoading = false,
+  templatesError = '',
+  isDirector = false,
+  saving = false,
+  onClose,
+  onSubmit,
+}) {
+  const [form, setForm] = useState(() => ({
+    customer_name: '', phone: '', service_type: '', sales_source: '',
+    contract_value: '', detail: '', contract_template_id: '',
+    date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
+  }))
+  // Two-tier selector: Service Package -> Task Type. Stores task_type_id.
+  const [serviceCatalog, setServiceCatalog] = useState([])
+  const [selectedPackageKey, setSelectedPackageKey] = useState('')
+  const [selectedTaskTypeId, setSelectedTaskTypeId] = useState('')
+  const [loaiGiay, setLoaiGiay] = useState([])
+  const [loaiGiayChon, setLoaiGiayChon] = useState([])
+  const [cheDoGiay, setCheDoGiay] = useState('')
+  const [khoaV2, setKhoaV2] = useState('')
+  // Priority (Director only)
+  const [priority, setPriority] = useState('NORMAL')
+  const [priorityReason, setPriorityReason] = useState('')
+  // Customer types: individual / business
+  const [customerType, setCustomerType] = useState('individual')
+  const [existingCustomerId, setExistingCustomerId] = useState('')
+  const [identityInfo, setIdentityInfo] = useState({
+    tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
+    email: '', zalo_phone: '', representative_name: '', representative_role: '',
+  })
+  const [nameSearchResults, setNameSearchResults] = useState([])
+  const [taxSearchResults, setTaxSearchResults] = useState([])
+  const [_isSearching, setIsSearching] = useState(false)
+  const [isLookingUpTax, setIsLookingUpTax] = useState(false)
+  const [geoBoundary, setGeoBoundary] = useState({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
+  const [provinces, setProvinces] = useState([])
+  const [wards, setWards] = useState([])
+  const [missingFields, setMissingFields] = useState([])
+  const [sourceFiles, setSourceFiles] = useState([])
+  const [sourceFilesOpen, setSourceFilesOpen] = useState(true)
+  const [sourcePreview, setSourcePreview] = useState(null)
+  const [createdContractId, setCreatedContractId] = useState('')
+  const bodyRef = useRef(null)
+  const sourcePreviewUrlRef = useRef('')
+
+  const closeSourcePreview = useCallback(() => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+    sourcePreviewUrlRef.current = ''
+    setSourcePreview(null)
+  }, [])
+
+  const previewSourceFile = useCallback((file) => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    sourcePreviewUrlRef.current = url
+    setSourcePreview({ fileName: file.name, mimeType: file.type, url, blob: file })
+  }, [])
+
+  useEffect(() => () => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+  }, [])
+
+  // Reset form when reopened
+  useEffect(() => {
+    if (!open) return undefined
+    let bo = false
+    apiFetch('/api/document-register/checklist-options')
+      .then((res) => {
+        if (bo) return
+        const ds = res?.data || []
+        setLoaiGiay(ds)
+        setLoaiGiayChon(ds.map(x => x.id))
+      })
+      .catch((loi) => {
+        if (bo) return
+        setLoaiGiay([]); setLoaiGiayChon([])
+        // Schema V2 chưa apply: khoá phần chọn giấy và nói bằng tiếng Việt.
+        // Phần còn lại của form vẫn dùng bình thường.
+        setKhoaV2(laLoiChuaKichHoat(loi) ? loiHienThi(loi) : '')
+      })
+    return () => { bo = true }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setForm({
+      customer_name: '', phone: '', service_type: '', sales_source: '',
+      contract_value: '', detail: '', contract_template_id: '',
+      date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
+    })
+    setGeoBoundary({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
+    setWards([])
+    setMissingFields([])
+    setSelectedPackageKey('')
+    setSelectedTaskTypeId('')
+    setPriority('NORMAL')
+    setPriorityReason('')
+    setCustomerType('individual')
+    setExistingCustomerId('')
+    setIdentityInfo({ tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
+      email: '', zalo_phone: '', representative_name: '', representative_role: '' })
+    setNameSearchResults([])
+    setTaxSearchResults([])
+    setSourceFiles([])
+    setSourceFilesOpen(true)
+    closeSourcePreview()
+    setCreatedContractId('')
+  }, [open, closeSourcePreview])
+
+  // Load service package catalog
+  useEffect(() => {
+    if (!open) return
+    let isCancelled = false
+    apiFetch('/api/catalog/service-packages')
+      .then(res => { if (!isCancelled) setServiceCatalog(res?.data || []) })
+      .catch(() => {})
+    return () => { isCancelled = true }
+  }, [open])
+
+  // Auto-select first package and task type
+  useEffect(() => {
+    if (open && serviceCatalog.length > 0 && !selectedPackageKey) {
+      const firstPackage = serviceCatalog[0]
+      const packageKey = firstPackage.id || firstPackage.code
+      setSelectedPackageKey(packageKey)
+      if (firstPackage.task_types?.length > 0) {
+        const firstTask = firstPackage.task_types[0]
+        setSelectedTaskTypeId(firstTask.id)
+        setForm(f => ({ ...f, service_type: firstTask.name }))
+      }
+    }
+  }, [open, serviceCatalog, selectedPackageKey])
+
+  // Auto-select first template
+  useEffect(() => {
+    if (open && templates.length > 0 && !form.contract_template_id) {
+      setForm(f => ({ ...f, contract_template_id: templates[0].id }))
+    }
+  }, [open, templates, form.contract_template_id])
+
+  useEffect(() => {
+    if (!open) return undefined
+    let cancelled = false
+    fetch('/api/survey-records/wards/provinces')
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => { if (!cancelled) setProvinces(Array.isArray(d) ? d : (d.data || [])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [open])
+
+  useEffect(() => {
+    if (!geoBoundary.provinceCode) { setWards([]); return undefined }
+    let cancelled = false
+    fetch(`/api/survey-records/wards?province_code=${encodeURIComponent(geoBoundary.provinceCode)}`)
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => { if (!cancelled) setWards(Array.isArray(d) ? d : (d.data || [])) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [geoBoundary.provinceCode])
+
+  useEffect(() => {
+    if (!geoBoundary.provinceCode || geoBoundary.wardCode || !geoBoundary.wardName) return
+    const ward = wards.find(item => normalizeAddressPart(item.name) === normalizeAddressPart(geoBoundary.wardName))
+    if (ward) setGeoBoundary(current => ({ ...current, wardCode: String(ward.code), wardName: ward.name }))
+  }, [geoBoundary.provinceCode, geoBoundary.wardCode, geoBoundary.wardName, wards])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (e) => { if (e.key === 'Escape' && !saving) onClose?.() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, saving, onClose])
+
+  const requiredFields = useMemo(() => ([
+    ['customer_name', form.customer_name],
+    ['phone', form.phone],
+    ['provinceCode', geoBoundary.provinceCode],
+    ['wardCode', geoBoundary.wardCode],
+    ['selectedTaskTypeId', selectedTaskTypeId],
+    ['contract_template_id', form.contract_template_id],
+    ['sales_source', form.sales_source],
+    ['contract_value', form.contract_value],
+    ['date_signed', form.date_signed],
+    ['due_date', form.due_date],
+    ...(loaiGiay.length && !khoaV2 ? [['cheDoGiay', cheDoGiay]] : []),
+  ]), [form, geoBoundary, selectedTaskTypeId, loaiGiay.length, khoaV2, cheDoGiay])
+
+  const missingRequiredKeys = requiredFields.filter(([, v]) => !String(v || '').trim()).map(([k]) => k)
+  const numericValue = parseNumericString(form.contract_value)
+
+  const daysSpan = useMemo(() => {
+    const a = new Date(form.date_signed)
+    const b = new Date(form.due_date)
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null
+    return Math.round((b - a) / 864e5)
+  }, [form.date_signed, form.due_date])
+
+  const handleFieldChange = (key) => (e) => {
+    setForm(cur => ({ ...cur, [key]: e.target.value }))
+    setMissingFields(cur => cur.filter(x => x !== key))
+  }
+
+  const handleCurrencyChange = (e) => {
+    const raw = e.target.value.slice(0, 24)
+    const num = parseShorthandCurrency(raw)
+    setForm(cur => ({
+      ...cur,
+      contract_value: num === null ? raw : (num ? num.toLocaleString('vi-VN') : ''),
+    }))
+    setMissingFields(cur => cur.filter(x => x !== 'contract_value'))
+  }
+
+  const handleCurrencyBlur = () => {
+    const num = parseShorthandCurrency(form.contract_value)
+    setForm(cur => ({ ...cur, contract_value: num ? num.toLocaleString('vi-VN') : '' }))
+  }
+
+  const handleAddQuickAmount = (amountToAdd) => {
+    const num = Math.min(parseNumericString(form.contract_value) + amountToAdd, 999999999999999)
+    setForm(cur => ({ ...cur, contract_value: num.toLocaleString('vi-VN') }))
+    setMissingFields(cur => cur.filter(x => x !== 'contract_value'))
+  }
+
+  const handleIdentityChange = (key) => (e) => {
+    setExistingCustomerId('')
+    setIdentityInfo(cur => ({ ...cur, [key]: e.target.value }))
+    setMissingFields(cur => cur.filter(x => x !== key))
+  }
+
+  const handleSwitchCustomerType = (type) => {
+    if (type === customerType) return
+    setCustomerType(type)
+    setExistingCustomerId('')
+    setForm(cur => ({
+      ...cur,
+      customer_name: '',
+      phone: '',
+    }))
+    setIdentityInfo({
+      tax_id: '',
+      id_card_number: '',
+      id_card_date: '',
+      id_card_place: '',
+      email: '',
+      zalo_phone: '',
+      representative_name: '',
+      representative_role: '',
+    })
+    setNameSearchResults([])
+    setTaxSearchResults([])
+    setMissingFields(cur => cur.filter(x => !['customer_name', 'phone', 'tax_id', 'id_card_number', 'representative_name'].includes(x)))
+  }
+
+  // Search existing customers by name
+  useEffect(() => {
+    const q = (form.customer_name || '').trim()
+    if (!open || q.length < 2 || existingCustomerId) { setNameSearchResults([]); return }
+    let isCancelled = false
+    setIsSearching(true)
+    const timer = setTimeout(() => {
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}&customer_type=${customerType}`)
+        .then(res => { if (!isCancelled) setNameSearchResults(res?.data || []) })
+        .catch(() => {})
+        .finally(() => { if (!isCancelled) setIsSearching(false) })
+    }, 350)
+    return () => { isCancelled = true; clearTimeout(timer) }
+  }, [open, form.customer_name, customerType, existingCustomerId])
+
+  // Search business by tax ID
+  useEffect(() => {
+    if (customerType !== 'business') { setTaxSearchResults([]); return }
+    const q = (identityInfo.tax_id || '').trim()
+    if (!open || q.length < 2 || existingCustomerId) { setTaxSearchResults([]); return }
+    let isCancelled = false
+    const timer = setTimeout(() => {
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}&customer_type=business`)
+        .then(res => { if (!isCancelled) setTaxSearchResults(res?.data || []) })
+        .catch(() => {})
+    }, 350)
+    return () => { isCancelled = true; clearTimeout(timer) }
+  }, [open, identityInfo.tax_id, customerType, existingCustomerId])
+
+  const handleSelectExistingCustomer = (customer) => {
+    const addressLocation = hydrateExistingCustomerAddress(customer, provinces) || {
+      detail: '', provinceCode: '', provinceName: '', wardCode: '', wardName: '',
+    }
+    setExistingCustomerId(customer.id)
+    setCustomerType(customer.customer_type || 'individual')
+    setForm(cur => ({
+      ...cur,
+      customer_name: customer.full_name || '',
+      phone: customer.phone || '',
+      detail: addressLocation.detail || cur.detail,
+    }))
+    setGeoBoundary(addressLocation)
+    setIdentityInfo({
+      tax_id: customer.tax_id || '', id_card_number: customer.id_card_number || '',
+      id_card_date: customer.id_card_date || '', id_card_place: customer.id_card_place || '',
+      email: customer.email || '', zalo_phone: customer.zalo_phone || '',
+      representative_name: customer.representative_name || '', representative_role: customer.representative_role || '',
+    })
+    setNameSearchResults([])
+    setTaxSearchResults([])
+  }
+
+  // Lookup tax ID
+  const handleLookupTax = async () => {
+    const taxCode = (identityInfo.tax_id || '').replace(/\D/g, '')
+    if (taxCode.length < 10) return
+    setIsLookingUpTax(true)
+    try {
+      const res = await apiFetch(`/api/customers/lookup-tax/${taxCode}`)
+      const d = res?.data
+      if (d?.found) {
+        setForm(cur => ({ ...cur, customer_name: d.name || cur.customer_name, detail: d.address || cur.detail }))
+        setMissingFields(cur => cur.filter(x => x !== 'customer_name'))
+      }
+    } catch {
+      // Ignore lookup failures gracefully
+    } finally {
+      setIsLookingUpTax(false)
+    }
+  }
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault()
+    if (saving || templatesLoading) return
+    if (missingRequiredKeys.length) {
+      setMissingFields(missingRequiredKeys)
+      const badElement = bodyRef.current?.querySelector('.bad')
+      badElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      badElement?.focus?.()
+      return
+    }
+    if (isDirector && priority !== 'NORMAL' && !priorityReason.trim()) {
+      setMissingFields(['uutien-lydo'])
+      bodyRef.current?.querySelector('#dv-uutien-lydo')?.focus?.()
+      return
+    }
+    const missingIdentity = []
+    if (customerType === 'business') {
+      if (!identityInfo.tax_id.trim()) missingIdentity.push('tax_id')
+      if (!identityInfo.representative_name.trim()) missingIdentity.push('representative_name')
+    } else {
+      if (!identityInfo.id_card_number.trim()) missingIdentity.push('id_card_number')
+    }
+    if (missingIdentity.length) {
+      setMissingFields(missingIdentity)
+      bodyRef.current?.querySelector('.bad')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
+    const fullAddress = [form.detail.trim(), geoBoundary.wardName, geoBoundary.provinceName].filter(Boolean).join(', ')
+    const result = await onSubmit?.({
+      contract_id: code,
+      customer_name: form.customer_name.trim(),
+      phone: form.phone.trim(),
+      service_type: form.service_type,
+      contract_template_id: form.contract_template_id,
+      task_type_id: selectedTaskTypeId,
+      ...(cheDoGiay ? {
+        document_selection_mode:
+          cheDoGiay === 'MAC_DINH' ? 'DEFAULT'
+            : cheDoGiay === 'THU_CONG' ? 'CUSTOM' : 'NONE',
+        ...(cheDoGiay === 'THU_CONG' ? { document_template_ids: loaiGiayChon } : {}),
+      } : {}),
+      priority: isDirector ? priority : 'NORMAL',
+      priority_reason: (isDirector && priority !== 'NORMAL') ? priorityReason.trim() : null,
+      customer_type: customerType,
+      customer_id: existingCustomerId || null,
+      tax_id: identityInfo.tax_id.trim() || null,
+      id_card_number: identityInfo.id_card_number.trim() || null,
+      id_card_date: identityInfo.id_card_date || null,
+      id_card_place: identityInfo.id_card_place.trim() || null,
+      email: identityInfo.email.trim() || null,
+      zalo_phone: identityInfo.zalo_phone.trim() || null,
+      representative_name: identityInfo.representative_name.trim() || null,
+      representative_role: identityInfo.representative_role.trim() || null,
+      sales_source: form.sales_source.trim(),
+      contract_value: numericValue,
+      address: fullAddress,
+      address_detail: form.detail.trim(),
+      province_code: geoBoundary.provinceCode || null,
+      province_name: geoBoundary.provinceName || null,
+      ward_code: geoBoundary.wardCode || null,
+      ward_name: geoBoundary.wardName || null,
+      date_signed: form.date_signed,
+      due_date: form.due_date,
+      source_documents: sourceFiles,
+      existing_contract_id: createdContractId || null,
+    })
+    if (result?.contract_id) setCreatedContractId(result.contract_id)
+    if (Array.isArray(result?.failed_files)) setSourceFiles(result.failed_files)
+  }, [saving, templatesLoading, missingRequiredKeys, form, geoBoundary, code, numericValue, selectedTaskTypeId, loaiGiay, loaiGiayChon, cheDoGiay, priority, priorityReason, isDirector, customerType, existingCustomerId, identityInfo, sourceFiles, createdContractId, onSubmit])
+
+  if (!open) return null
+
+  const getValidationClass = (k) => (missingFields.includes(k) ? ' bad' : '')
+
+  return createPortal(
+    <div className="ctr-form-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose?.() }}>
+      <form className="ctr-form" onSubmit={handleSubmit} role="dialog" aria-modal="true" aria-label="Soạn hợp đồng mới">
+
+        <header className="hd">
+          <div className="ic">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <path d="M14 2v6h6" />
+              <path d="M10 13l3 3-1 3-3-1 1-5z" />
+            </svg>
+          </div>
+          <div>
+            <h1>Soạn hợp đồng mới</h1>
+            <p>Điền thông tin và lưu hợp đồng vào hệ thống</p>
+          </div>
+          <div className="code"><b>Mã HĐ</b>{code || '—'}</div>
+          <button className="x" type="button" aria-label="Đóng" onClick={() => !saving && onClose?.()}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
+        </header>
+
+        <div className="bd" ref={bodyRef}>
+
+          <section className="sec">
+            <div className="sec-hd"><h2>Khách hàng</h2><i /></div>
+            <div className="kh-loai" role="tablist">
+              {[['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, label]) => (
+                <button key={v} type="button" role="tab" aria-selected={customerType === v}
+                  className={`kh-loai__nut${customerType === v ? ' is-on' : ''}`}
+                  onClick={() => handleSwitchCustomerType(v)}>{label}</button>
+              ))}
+              {existingCustomerId && <span className="kh-loai__cu">✓ Khách cũ — đã tự điền</span>}
+            </div>
+            <div className="row c2">
+              <div style={{ position: 'relative' }}>
+                <label htmlFor="kh-ten">{customerType === 'business' ? 'Tên công ty' : 'Tên khách hàng'}<u>*</u></label>
+                <input className={`in${getValidationClass('customer_name')}`} id="kh-ten" autoComplete="off"
+                  placeholder={customerType === 'business' ? 'Công ty TNHH ...' : 'Nguyễn Văn An'}
+                  value={form.customer_name} onChange={handleFieldChange('customer_name')} />
+                {nameSearchResults.length > 0 && (
+                  <ul className="kh-goiy">
+                    {nameSearchResults.map(kh => (
+                      <li key={kh.id}><button type="button" onClick={() => handleSelectExistingCustomer(kh)}>
+                        <strong>{kh.full_name}</strong>
+                        <small>{kh.customer_type === 'business' ? `MST ${kh.tax_id || '—'}` : `CCCD ${kh.id_card_number || '—'}`} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
+                      </button></li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <label htmlFor="kh-sdt">Số điện thoại<u>*</u></label>
+                <input className={`in${getValidationClass('phone')}`} id="kh-sdt" type="tel" inputMode="numeric"
+                  placeholder="0901 234 567" value={form.phone} onChange={handleFieldChange('phone')} />
+              </div>
+            </div>
+            {customerType === 'business' ? (
+              <>
+                <div className="row c2">
+                  <div style={{ position: 'relative' }}>
+                    <label htmlFor="kh-mst">Mã số thuế<u>*</u></label>
+                    <div className="kh-mst-row">
+                      <input className={`in${getValidationClass('tax_id')}`} id="kh-mst" inputMode="numeric" placeholder="0312345678"
+                        value={identityInfo.tax_id} onChange={handleIdentityChange('tax_id')}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLookupTax(); } }} />
+                      <button type="button" className="kh-tracuu" disabled={isLookingUpTax || (identityInfo.tax_id || '').replace(/\D/g,'').length < 10}
+                        onClick={handleLookupTax}>{isLookingUpTax ? '...' : 'Tra cứu'}</button>
+                    </div>
+                    {taxSearchResults.length > 0 && (
+                      <ul className="kh-goiy">
+                        {taxSearchResults.map(kh => (
+                          <li key={kh.id}><button type="button" onClick={() => handleSelectExistingCustomer(kh)}>
+                            <strong>{kh.full_name}</strong>
+                            <small>MST {kh.tax_id || '—'} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
+                          </button></li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="kh-email">Email</label>
+                    <input className="in" id="kh-email" type="email" placeholder="ketoan@congty.vn"
+                      value={identityInfo.email} onChange={handleIdentityChange('email')} />
+                  </div>
+                </div>
+                <div className="row c2">
+                  <div>
+                    <label htmlFor="kh-dd">Người đại diện<u>*</u></label>
+                    <input className={`in${getValidationClass('representative_name')}`} id="kh-dd" placeholder="Nguyễn Văn Giám"
+                      value={identityInfo.representative_name} onChange={handleIdentityChange('representative_name')} />
+                  </div>
+                  <div>
+                    <label htmlFor="kh-cv">Chức vụ</label>
+                    <input className="in" id="kh-cv" placeholder="Giám đốc"
+                      value={identityInfo.representative_role} onChange={handleIdentityChange('representative_role')} />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="row c2">
+                  <div>
+                    <label htmlFor="kh-cccd">Số CCCD<u>*</u></label>
+                    <input className={`in${getValidationClass('id_card_number')}`} id="kh-cccd" inputMode="numeric" placeholder="079300012345"
+                      value={identityInfo.id_card_number} onChange={handleIdentityChange('id_card_number')} />
+                  </div>
+                  <div>
+                    <label htmlFor="kh-email2">Email</label>
+                    <input className="in" id="kh-email2" type="email" placeholder="tuỳ chọn"
+                      value={identityInfo.email} onChange={handleIdentityChange('email')} />
+                  </div>
+                </div>
+                <div className="row c2">
+                  <div>
+                    <label>Ngày cấp</label>
+                    <DatePicker
+                      value={identityInfo.id_card_date}
+                      onChange={(val) => setIdentityInfo(cur => ({ ...cur, id_card_date: val }))}
+                      placement="auto"
+                      placeholder="Chọn ngày cấp"
+                      className="date-picker--fill"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="kh-noicap">Nơi cấp</label>
+                    <input className="in" id="kh-noicap" placeholder="Cục CS QLHC về TTXH"
+                      value={identityInfo.id_card_place} onChange={handleIdentityChange('id_card_place')} />
+                  </div>
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className="sec">
+            <div className="sec-hd"><h2>Hồ sơ khách gửi</h2><i /></div>
+            <label className="ctr-source-upload" htmlFor="contract-source-documents">
+              <FileUp size={19} />
+              <span>
+                <strong>Tài liệu khách gửi</strong>
+                <small>Chọn ảnh, PDF hoặc tệp Office nhận từ Zalo; K01 sẽ phân loại sau.</small>
+              </span>
+              <input
+                id="contract-source-documents"
+                aria-label="Tài liệu khách gửi"
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx"
+                onChange={event => {
+                  const picked = Array.from(event.target.files || [])
+                  setSourceFiles(current => {
+                    const known = new Set(current.map(file => `${file.name}:${file.size}:${file.lastModified}`))
+                    return [...current, ...picked.filter(file => !known.has(`${file.name}:${file.size}:${file.lastModified}`))]
+                  })
+                  setSourceFilesOpen(true)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+            {sourceFiles.length > 0 && (
+              <div className="ctr-source-files">
+                <button
+                  type="button"
+                  className="ctr-source-files__toggle"
+                  aria-label={`${sourceFiles.length} tài liệu đã chọn`}
+                  aria-expanded={sourceFilesOpen}
+                  aria-controls="contract-source-file-list"
+                  onClick={() => setSourceFilesOpen(current => !current)}
+                >
+                  <span>
+                    <strong>{sourceFiles.length} tài liệu đã chọn</strong>
+                    <small>{sourceFiles.length} tệp chờ tải lên sau khi lưu hợp đồng</small>
+                  </span>
+                  <ChevronDown className={sourceFilesOpen ? 'is-open' : ''} size={17} aria-hidden="true" />
+                </button>
+                {sourceFilesOpen && (
+                  <ul id="contract-source-file-list" className="ctr-source-files__list">
+                    {sourceFiles.map((file, index) => (
+                      <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                        <FileUp size={16} aria-hidden="true" />
+                        <span className="ctr-source-files__meta">
+                          <button
+                            type="button"
+                            className="ctr-source-files__preview"
+                            title={file.name}
+                            aria-label={`Xem ${file.name}`}
+                            onClick={() => previewSourceFile(file)}
+                          >{file.name}</button>
+                          <small>
+                            {file.size < 1024 * 1024
+                              ? `${Math.max(1, Math.ceil(file.size / 1024))} KB`
+                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+                          </small>
+                        </span>
+                        <button
+                          type="button"
+                          className="ctr-source-files__remove"
+                          aria-label={`Bỏ ${file.name}`}
+                          onClick={() => setSourceFiles(current => current.filter((_, position) => position !== index))}
+                        >
+                          <X size={15} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="sec">
+            <div className="sec-hd"><h2>Địa chỉ bất động sản</h2><i /></div>
+            <div className="row c3">
+              <div>
+                <label htmlFor="dc-tinh">Tỉnh / Thành phố<u>*</u></label>
+                <CustomSelect
+                  id="dc-tinh"
+                  className={getValidationClass('provinceCode').trim()}
+                  placeholder="Chọn tỉnh/thành"
+                  value={geoBoundary.provinceCode}
+                  options={provinces.map(t => ({ value: t.code, label: t.name }))}
+                  onChange={(val) => {
+                    const t = provinces.find(x => String(x.code) === String(val))
+                    setGeoBoundary({ provinceCode: t?.code || '', provinceName: t?.name || '', wardCode: '', wardName: '' })
+                    setMissingFields(cur => cur.filter(x => x !== 'provinceCode'))
+                  }}
+                />
+              </div>
+              <div>
+                <label htmlFor="dc-phuong">Phường / Xã<u>*</u></label>
+                <CustomSelect
+                  id="dc-phuong"
+                  className={getValidationClass('wardCode').trim()}
+                  disabled={!geoBoundary.provinceCode}
+                  placeholder={geoBoundary.provinceCode ? 'Chọn phường/xã' : 'Chọn tỉnh trước'}
+                  value={geoBoundary.wardCode}
+                  options={wards.map(p => ({ value: p.code, label: p.name }))}
+                  onChange={(val) => {
+                    const p = wards.find(x => String(x.code) === String(val))
+                    setGeoBoundary(cur => ({ ...cur, wardCode: p?.code || '', wardName: p?.name || '' }))
+                    setMissingFields(cur => cur.filter(x => x !== 'wardCode'))
+                  }}
+                />
+              </div>
+              <div>
+                <label htmlFor="dc-duong">Số nhà, đường<small>không bắt buộc</small></label>
+                <input className="in" id="dc-duong" placeholder="12 Nguyễn Huệ"
+                  value={form.detail} onChange={handleFieldChange('detail')} />
+              </div>
+            </div>
+          </section>
+
+          <section className="sec">
+            <div className="sec-hd"><h2>Dịch vụ &amp; giá trị</h2><i /></div>
+            <div className="row c2">
+              <div>
+                <label htmlFor="dv-goi">Gói dịch vụ<u>*</u></label>
+                <CustomSelect
+                  id="dv-goi"
+                  className={getValidationClass('selectedTaskTypeId').trim()}
+                  value={selectedPackageKey}
+                  options={serviceCatalog.map(g => ({ value: g.id || g.code, label: g.name }))}
+                  onChange={(selectedKey) => {
+                    setSelectedPackageKey(selectedKey)
+                    const pkg = serviceCatalog.find(g => (g.id || g.code) === selectedKey)
+                    if (pkg?.task_types?.length > 0) {
+                      const firstTask = pkg.task_types[0]
+                      setSelectedTaskTypeId(firstTask.id)
+                      setForm(f => ({ ...f, service_type: firstTask.name }))
+                    } else {
+                      setSelectedTaskTypeId('')
+                      setForm(f => ({ ...f, service_type: '' }))
+                    }
+                  }}
+                />
+              </div>
+              <div>
+                <label htmlFor="dv-loai">Hạng mục<u>*</u></label>
+                <CustomSelect
+                  id="dv-loai"
+                  className={getValidationClass('selectedTaskTypeId').trim()}
+                  disabled={!selectedPackageKey}
+                  value={selectedTaskTypeId}
+                  options={(serviceCatalog.find(g => (g.id || g.code) === selectedPackageKey)?.task_types || []).map(task => ({
+                    value: task.id,
+                    label: task.name,
+                  }))}
+                  onChange={(id) => {
+                    setSelectedTaskTypeId(id)
+                    const pkg = serviceCatalog.find(g => (g.id || g.code) === selectedPackageKey)
+                    const task = pkg?.task_types?.find(t => t.id === id)
+                    setForm(f => ({ ...f, service_type: task?.name || '' }))
+                  }}
+                />
+              </div>
+            </div>
+            {khoaV2 && (
+              <div className="row c1">
+                <p className="ctr-v2-locked" role="status">{khoaV2}</p>
+              </div>
+            )}
+            {!khoaV2 && loaiGiay.length > 0 && (
+              <div className="row c1">
+                <div>
+                  <label>
+                    Giấy tờ cần thu của khách<u>*</u>
+                    <span className="ctr-badge-v2" title="Sổ giấy tờ chốt riêng cho Hạng mục này">
+                      Sổ theo Hạng mục
+                    </span>
+                  </label>
+
+                  {/* Ba chế độ tách bạch. Không có lựa chọn nào được tick sẵn:
+                      người soạn phải nói rõ ý định, để "quên chọn" không bao giờ
+                      bị hiểu thành "dùng bộ mặc định". */}
+                  <div className="ctr-che-do" role="radiogroup" aria-label="Chế độ chọn giấy tờ">
+                    {[
+                      ['MAC_DINH', 'Dùng bộ mặc định', `${loaiGiay.filter(x => x.is_default !== false).length} loại theo gói và hạng mục`],
+                      ['THU_CONG', 'Chọn thủ công', 'Tự tick từng loại giấy'],
+                      ['KHONG_CAN', 'Không yêu cầu giấy tờ', 'Hạng mục này không thu giấy nào của khách'],
+                    ].map(([ma, nhan, mo_ta]) => (
+                      <button
+                        type="button"
+                        key={ma}
+                        role="radio"
+                        aria-checked={cheDoGiay === ma}
+                        className={`ctr-che-do__o${cheDoGiay === ma ? ' is-active' : ''}`}
+                        onClick={() => {
+                          setCheDoGiay(ma)
+                          if (ma === 'THU_CONG' && loaiGiayChon.length === 0) {
+                            setLoaiGiayChon(loaiGiay.filter(x => x.is_default !== false).map(x => x.id))
+                          }
+                        }}
+                      >
+                        <strong>{nhan}</strong>
+                        <span>{mo_ta}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {cheDoGiay === 'THU_CONG' && (
+                    <CustomMultiSelect
+                      id="dv-giay"
+                      options={loaiGiay}
+                      values={loaiGiayChon}
+                      onToggle={(id) => setLoaiGiayChon(cur => (
+                        cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
+                      ))}
+                    />
+                  )}
+
+                  <p className="ctr-checklist__hint">
+                    {cheDoGiay === 'KHONG_CAN'
+                      ? 'Hạng mục ra đời với sổ trống. Vẫn thêm được từng loại giấy sau.'
+                      : 'Bỏ loại giấy mà hạng mục này không cần — K01 sẽ không đòi nữa. Sau khi lập hợp đồng vẫn thêm/bỏ được.'}
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="row c2">
+              <div>
+                <label htmlFor="dv-sale">Sale / nguồn<u>*</u></label>
+                <input className={`in${getValidationClass('sales_source')}`} id="dv-sale" placeholder="Trần Minh"
+                  value={form.sales_source} onChange={handleFieldChange('sales_source')} />
+              </div>
+            </div>
+            {templatesError && <p className="hint" role="alert">{templatesError}</p>}
+            <div className="row">
+              <div>
+                <label htmlFor="hd-mau">Mẫu hợp đồng<u>*</u></label>
+                <CustomSelect
+                  id="hd-mau"
+                  className={getValidationClass('contract_template_id').trim()}
+                  disabled={templatesLoading}
+                  placeholder={templatesLoading ? 'Đang tải mẫu hợp đồng…' : 'Chọn mẫu hợp đồng'}
+                  value={form.contract_template_id}
+                  options={templates.map(template => ({
+                    value: template.id,
+                    label: `${template.name} — v${template.version}`,
+                  }))}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, contract_template_id: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'contract_template_id'))
+                  }}
+                />
+              </div>
+            </div>
+            <div className="row">
+              <div className="tien">
+                <label htmlFor="dv-gia">Giá trị hợp đồng<u>*</u><small>gõ tắt được: 18.5tr, 500k</small></label>
+                <div className="wrap">
+                  <input className={`in money${getValidationClass('contract_value')}`} id="dv-gia" inputMode="decimal"
+                    autoComplete="off" placeholder="0" value={form.contract_value}
+                    onChange={handleCurrencyChange} onBlur={handleCurrencyBlur} />
+                  <span className="suf">₫</span>
+                </div>
+                <p className="hint">{numericValue > 0 && <b>{spellCurrencyWords(numericValue)}</b>}</p>
+                <div className="quick">
+                  {QUICK_DENOMINATIONS.map(m => (
+                    <button key={m.value} type="button" onClick={() => handleAddQuickAmount(m.value)}>{m.label}</button>
+                  ))}
+                  {numericValue > 0 && (
+                    <button type="button" className="is-clear"
+                      onClick={() => setForm(cur => ({ ...cur, contract_value: '' }))}>Xoá</button>
+                  )}
+                </div>
+              </div>
+            </div>
+            {isDirector && (
+              <div className="row c2">
+                <div>
+                  <label htmlFor="dv-uutien">Độ ưu tiên hồ sơ</label>
+                  <CustomSelect
+                    id="dv-uutien"
+                    value={priority}
+                    onChange={(val) => {
+                      setPriority(val)
+                      if (val === 'NORMAL') setPriorityReason('')
+                    }}
+                    options={[
+                      { value: 'NORMAL', label: 'Bình thường' },
+                      { value: 'HIGH', label: 'Ưu tiên cao (x1,2)' },
+                      { value: 'URGENT', label: 'Gấp (x1,5)' },
+                    ]}
+                  />
+                </div>
+                {priority !== 'NORMAL' && (
+                  <div>
+                    <label htmlFor="dv-uutien-lydo">Lý do ưu tiên<u>*</u></label>
+                    <input className="in" id="dv-uutien-lydo" placeholder="VD: Khách cần gấp trước 25/8"
+                      value={priorityReason} onChange={(e) => setPriorityReason(e.target.value)} />
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="sec">
+            <div className="sec-hd"><h2>Thời hạn</h2><i /></div>
+            <div className="row c-date">
+              <div>
+                <label>Ngày ký<u>*</u></label>
+                <DatePicker
+                  value={form.date_signed}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, date_signed: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'date_signed'))
+                  }}
+                  placement="top"
+                  placeholder="Chọn ngày ký"
+                  className={`date-picker--fill${getValidationClass('date_signed')}`}
+                />
+              </div>
+              <div>
+                <label>Hạn hoàn thành<u>*</u></label>
+                <DatePicker
+                  value={form.due_date}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, due_date: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'due_date'))
+                  }}
+                  placement="top"
+                  placeholder="Chọn hạn hoàn thành"
+                  className={`date-picker--fill${getValidationClass('due_date')}`}
+                />
+              </div>
+              {daysSpan !== null && (
+                <div className={`span${daysSpan < 0 ? ' is-bad' : ''}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                  <span>{daysSpan < 0 ? 'Hạn trước ngày ký' : daysSpan === 0 ? 'Trong ngày' : `${daysSpan} ngày`}</span>
+                </div>
+              )}
+            </div>
+          </section>
+
+        </div>
+
+        <footer className="ft">
+          <div className={`stat${missingRequiredKeys.length === 0 ? ' done' : ''}`}>
+            <i className="dot" />
+            <span>
+              {missingRequiredKeys.length === 0
+                ? <>Đã điền đủ <b>{requiredFields.length}/{requiredFields.length}</b> trường bắt buộc</>
+                : <>Còn thiếu <b>{missingRequiredKeys.length}</b> trường bắt buộc</>}
+            </span>
+          </div>
+          <button className="btn" type="button" disabled={saving} onClick={() => onClose?.()}>Huỷ</button>
+          <button className="btn pri" type="submit" disabled={saving || templatesLoading}>
+            {saving ? 'Đang lưu…' : templatesLoading ? 'Đang tải mẫu…' : createdContractId ? 'Tải lại tệp lỗi' : 'Lưu hợp đồng'}
+          </button>
+        </footer>
+
+      </form>
+      <FilePreviewModal
+        open={Boolean(sourcePreview)}
+        fileName={sourcePreview?.fileName}
+        mimeType={sourcePreview?.mimeType}
+        url={sourcePreview?.url}
+        blob={sourcePreview?.blob}
+        onClose={closeSourcePreview}
+      />
+    </div>,
+    document.body,
+  )
+}

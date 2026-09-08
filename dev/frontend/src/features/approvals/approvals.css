@@ -1,0 +1,148 @@
+/* Chờ tôi duyệt — hộp việc của Giám đốc trên Tổng Quan.
+   Tông cảnh báo nhẹ: đây là việc đang chặn người khác, không phải thống kê. */
+
+.approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius-sm, 8px);
+}
+
+.approvals__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.approvals__head > div:first-child { display: flex; align-items: center; gap: 12px; }
+.approvals__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 9px;
+  border-radius: 10px;
+  background: var(--orange-500);
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.approvals__head strong { display: block; font-size: 0.95rem; font-weight: 800; }
+.approvals__head p { margin: 2px 0 0; color: #92400e; font-size: 0.79rem; }
+.approvals__total {
+  flex-shrink: 0;
+  color: #b45309;
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Danh sách phiếu ──────────────────────────────────────────── */
+.approvals__list { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.approvals__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 108px 118px 22px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.approvals__row:hover { background: #fff; border-color: #fcd34d; }
+.approvals__partner {
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.approvals__contract {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.73rem;
+}
+.approvals__amount {
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.approvals__bill { color: #16a34a; }
+/* Thiếu bill là thứ giám đốc phải thấy TRƯỚC khi mở phiếu ra */
+.approvals__bill.is-missing { color: #dc2626; }
+
+.approvals__more { margin: 0; color: #92400e; font-size: 0.78rem; }
+
+/* ── Hộp thoại duyệt ──────────────────────────────────────────── */
+.approvals__form { display: flex; flex-direction: column; gap: 14px; }
+.approvals__detail {
+  display: grid;
+  gap: 7px;
+  padding: 13px 15px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+.approvals__detail p {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+  font-size: 0.86rem;
+}
+.approvals__detail span { color: var(--text-tertiary); }
+.approvals__detail strong { font-variant-numeric: tabular-nums; }
+.approvals__detail .is-money { color: var(--orange-600, #c2410c); font-size: 1.05rem; }
+
+.approvals__bill-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 8px 13px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.approvals__bill-link:hover { border-color: var(--orange-500); color: var(--orange-600, #c2410c); }
+
+.approvals__warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border-left: 3px solid #dc2626;
+  color: #991b1b;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.approvals__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.approvals__hint { color: var(--text-tertiary); text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+.approvals__form-footer { display: flex; justify-content: flex-end; gap: 10px; }
+.approvals__form-footer .btn { display: inline-flex; align-items: center; gap: 6px; }

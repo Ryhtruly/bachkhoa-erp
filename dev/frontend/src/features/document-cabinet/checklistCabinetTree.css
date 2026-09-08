@@ -1,0 +1,294 @@
+.cab-tree {
+  display: grid;
+  gap: 8px;
+  color: #172033;
+}
+
+.cab-tree__header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.cab-tree__summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cab-tree__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cab-tree__action-btn {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+}
+
+.cab-tree__action-btn:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.cab-tree__action-dot {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.cab-tree__search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.cab-tree__search-icon {
+  position: absolute;
+  left: 10px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.cab-tree__search-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 30px 0 32px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 12.5px;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.cab-tree__search-input:focus {
+  background: #ffffff;
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.cab-tree__search-clear {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: #cbd5e1;
+  color: #475569;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.12s ease;
+}
+
+.cab-tree__search-clear:hover {
+  background: #94a3b8;
+  color: #ffffff;
+}
+
+.cab-tree__node {
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cab-tree__node.is-current {
+  border-color: #fb923c;
+  box-shadow: 0 0 0 1px rgba(251, 146, 60, 0.2);
+}
+
+.cab-tree__node-button,
+.cab-tree__type-button,
+.cab-tree__files button {
+  width: 100%;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cab-tree__node-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+}
+
+.cab-tree__node-button b {
+  color: #ea580c;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.cab-tree__node-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.cab-tree__node-button em {
+  color: #64748b;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.cab-tree svg {
+  transition: transform .16s ease;
+  flex-shrink: 0;
+}
+
+.cab-tree svg.is-open {
+  transform: rotate(180deg);
+}
+
+.cab-tree__types,
+.cab-tree__files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cab-tree__type + .cab-tree__type {
+  border-top: 1px solid #f1f5f9;
+}
+
+/* Nút loại giấy: Chia 2 hàng theo chiều dọc (Tên ở trên, tag Nguồn ở dưới),
+   cột 2 là Badge số file và cột 3 là Chevron. Nhờ vậy tên không bị ép bóp méo thành 4 dòng to đùng */
+.cab-tree__type-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 3px 8px;
+  padding: 7px 10px;
+  background: #fff;
+  transition: background-color 0.12s ease;
+}
+
+.cab-tree__type-button:hover {
+  background: #f8fafc;
+}
+
+.cab-tree__type-name {
+  grid-column: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #1e293b;
+  word-break: break-word;
+}
+
+.cab-tree__type-button small {
+  grid-column: 1;
+  justify-self: start;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 9.5px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.cab-tree__type-button small.is-cong_ty {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.cab-tree__type-button small.is-co_quan {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.cab-tree__badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.cab-tree__type.has-files .cab-tree__badge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.cab-tree__type-button > svg {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: #94a3b8;
+}
+
+.cab-tree__files {
+  padding: 2px 10px 8px 18px;
+}
+
+.cab-tree__files button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #1d4ed8;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.cab-tree__files button:hover {
+  background: #eff6ff;
+}
+
+.cab-tree__files span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cab-tree__empty {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 11.5px;
+  text-align: center;
+}

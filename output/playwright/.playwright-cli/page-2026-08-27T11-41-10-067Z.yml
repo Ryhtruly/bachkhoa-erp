@@ -1,0 +1,95 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - img "Bách Khoa - Đo đạc - Kiến trúc - Xây dựng" [ref=e6]
+    - generic [ref=e7]:
+      - button "Chuyển sang nền tối" [ref=e8] [cursor=pointer]:
+        - generic [ref=e9]: 🌙
+      - generic [ref=e10]:
+        - generic [ref=e11]:
+          - term [ref=e12]: Phiên bản
+          - definition [ref=e13]: "2.4"
+        - generic [ref=e14]:
+          - term [ref=e15]: Trạng thái
+          - definition [ref=e16]: Đang hoạt động
+  - main [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]: "592400"
+        - generic [ref=e22]: "592440"
+        - generic [ref=e23]: "592480"
+        - generic [ref=e24]: "592520"
+        - generic [ref=e25]: "592560"
+        - generic [ref=e26]: "592600"
+        - generic [ref=e27]: "592640"
+        - generic [ref=e28]: "592680"
+        - generic [ref=e29]: "592720"
+        - generic [ref=e30]: "592760"
+        - generic [ref=e31]: "592800"
+        - generic [ref=e32]: "592840"
+      - generic [ref=e33]:
+        - paragraph [ref=e34]: Sơ đồ ranh thửa · minh hoạ
+        - heading [level=1] [ref=e36]:
+          - text: Quản lý hồ sơ đo vẽvà pháp lý
+          - emphasis [ref=e37]: chính xác
+          - text: đến từng mốc toạ độ.
+        - paragraph [ref=e38]: Từ tiếp cận khách hàng, đo đạc thực địa, đến bàn giao và thu tiền — toàn bộ quy trình được ghi lại xuyên suốt trên một hệ thống.
+      - img "Sơ đồ ranh thửa minh hoạ với sáu mốc toạ độ" [ref=e40]:
+        - generic [ref=e52]:
+          - generic [ref=e53]: 42.6m
+          - generic [ref=e54]: 51.3m
+          - generic [ref=e55]: 36.8m
+          - generic [ref=e56]: 28.4m
+          - generic [ref=e57]: 44.1m
+          - generic [ref=e58]: 39.2m
+          - generic [ref=e59]: Hoàn công
+        - generic [ref=e60]:
+          - generic [ref=e61]: "X: 592481.6"
+          - generic [ref=e62]: "Y: 1189203.4"
+          - generic [ref=e63]: "Z: 2.14"
+        - generic [ref=e64]: "N"
+        - generic [ref=e70]:
+          - generic [ref=e71]: "0"
+          - generic [ref=e72]: 20m
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - term [ref=e75]: Diện tích
+          - definition [ref=e76]: 1.284,7 m²
+        - generic [ref=e77]:
+          - term [ref=e78]: Số mốc
+          - definition [ref=e79]: "06"
+        - generic [ref=e80]:
+          - term [ref=e81]: Hệ toạ độ
+          - definition [ref=e82]: VN-2000
+        - generic [ref=e83]:
+          - term [ref=e84]: Cập nhật
+          - definition [ref=e85]: 12/08/2026
+      - generic [ref=e86]:
+        - generic [ref=e87]: Mốc đã đo
+        - generic [ref=e89]: Mốc mới nhất
+        - generic [ref=e91]: Ranh hoàn công
+    - complementary [ref=e93]:
+      - generic [ref=e94]:
+        - generic [ref=e95]: "01"
+        - generic [ref=e96]:
+          - heading "Đăng nhập" [level=2] [ref=e97]
+          - paragraph [ref=e98]: Khung xác thực hệ thống
+      - generic [ref=e99]:
+        - generic [ref=e100]:
+          - generic [ref=e101]: Tài khoản
+          - textbox "Tài khoản" [ref=e102]
+        - generic [ref=e103]:
+          - generic [ref=e104]: Mật khẩu
+          - textbox "Mật khẩu" [ref=e105]:
+            - /placeholder: ••••••••
+        - generic [ref=e106]:
+          - generic [ref=e107] [cursor=pointer]:
+            - checkbox "Ghi nhớ"
+            - text: Ghi nhớ
+          - button "Quên mật khẩu?" [ref=e109] [cursor=pointer]
+        - button "Truy cập hệ thống →" [ref=e110] [cursor=pointer]
+      - generic [ref=e111]:
+        - generic [ref=e112]: BK-ERP-2026
+        - generic [ref=e113]: Bảo mật SSL
+  - contentinfo [ref=e114]:
+    - generic [ref=e115]: © 2026 Bách Khoa ERP — Hệ thống quản trị đo vẽ & pháp lý
+    - generic [ref=e116]: Hệ toạ độ VN-2000 · Múi 3°

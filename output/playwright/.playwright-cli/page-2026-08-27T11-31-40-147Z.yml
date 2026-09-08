@@ -1,0 +1,978 @@
+- generic [ref=e1]:
+  - generic [ref=e118]:
+    - banner [ref=e119]:
+      - generic [ref=e124]:
+        - generic [ref=e125]:
+          - generic [ref=e126]: BÁCH KH
+          - generic [ref=e130]: A
+        - generic [ref=e132]: ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG
+      - generic [ref=e133]:
+        - button "Làm mới" [ref=e134] [cursor=pointer]
+        - generic [ref=e140]:
+          - button "🌙" [ref=e141] [cursor=pointer]
+          - button "Thông báo việc cần xử lý" [ref=e144] [cursor=pointer]
+        - button "Ảnh đại diện dự phòng của admin admin" [ref=e150] [cursor=pointer]:
+          - generic "Ảnh đại diện dự phòng của admin" [ref=e151]: AD
+          - generic [ref=e152]: admin
+    - generic [ref=e155]:
+      - complementary "Điều hướng chính" [ref=e156]:
+        - generic [ref=e157]:
+          - generic [ref=e158]: Điều hướng
+          - button "Thu gọn thanh điều hướng" [expanded] [ref=e159] [cursor=pointer]
+        - navigation "Các phân hệ" [ref=e163]:
+          - button "Tổng Quan" [ref=e164] [cursor=pointer]
+          - button "CRM Bán Hàng" [ref=e171] [cursor=pointer]
+          - button "Khách Hàng" [ref=e175] [cursor=pointer]
+          - button "Hồ Sơ Đo Vẽ" [ref=e182] [cursor=pointer]
+          - button "Hồ Sơ Pháp Lý" [ref=e186] [cursor=pointer]
+          - button "Hợp Đồng" [ref=e192] [cursor=pointer]
+          - button "Quản Lý Timeline" [ref=e197] [cursor=pointer]
+          - button "Hàng Chờ Duyệt" [ref=e200] [cursor=pointer]
+          - button "Mẫu Giấy Tờ" [ref=e205] [cursor=pointer]
+          - button "Thu Chi Sổ Quỹ" [ref=e211] [cursor=pointer]
+          - button "KPI Nhân Sự" [ref=e216] [cursor=pointer]
+          - button "Nhân Sự & Đào Tạo" [ref=e219] [cursor=pointer]
+          - generic [ref=e223]: Hệ thống
+          - button "Cấu Hình" [ref=e224] [cursor=pointer]
+      - main [ref=e229]:
+        - generic [ref=e634]:
+          - generic [ref=e635]:
+            - generic [ref=e636]:
+              - generic [ref=e637]: Danh sách hợp đồng
+              - strong [ref=e638]: "13"
+            - button "Soạn hợp đồng mới" [ref=e639] [cursor=pointer]
+          - generic [ref=e641]:
+            - generic [ref=e642]:
+              - generic [ref=e645]:
+                - textbox "Tìm kiếm" [ref=e647]:
+                  - /placeholder: Tìm mã hợp đồng, khách hàng, địa điểm...
+                - generic [ref=e648]:
+                  - button "Chọn ngày ký" [ref=e650] [cursor=pointer]
+                  - generic [ref=e654]:
+                    - generic [ref=e655]: "Sắp xếp:"
+                    - button "Sắp xếp" [ref=e657] [cursor=pointer]:
+                      - generic [ref=e658]: Mới nhất
+                  - button "Bộ lọc" [ref=e661] [cursor=pointer]
+              - table [ref=e669]:
+                - rowgroup [ref=e670]:
+                  - row [ref=e671]:
+                    - columnheader "Mã hợp đồng" [ref=e672]
+                    - columnheader "Khách hàng" [ref=e674]
+                    - columnheader "Giá trị / Còn nợ" [ref=e676]
+                    - columnheader "Trạng thái" [ref=e678]
+                    - columnheader "File" [ref=e680]
+                - rowgroup [ref=e682]:
+                  - row [ref=e683] [cursor=pointer]:
+                    - cell "013/BK-2026" [ref=e684]
+                    - cell "nguyễn Hiếu" [ref=e685]
+                    - cell [ref=e687]:
+                      - generic [ref=e688]:
+                        - strong [ref=e689]: 1.000.000₫
+                        - emphasis [ref=e690]: còn 1.000.000₫
+                    - cell "Chưa có quy trình" [ref=e691]
+                    - cell [ref=e694]:
+                      - button "Mở tài liệu hợp đồng" [ref=e695]
+                  - row [ref=e699] [cursor=pointer]:
+                    - cell "012/BK-2026" [ref=e700]
+                    - cell "Lê quang Trí" [ref=e701]
+                    - cell [ref=e703]:
+                      - generic [ref=e704]:
+                        - strong [ref=e705]: 5.000.000₫
+                        - emphasis [ref=e706]: còn 5.000.000₫
+                    - cell "Chưa có quy trình" [ref=e707]
+                    - cell [ref=e710]:
+                      - button "Mở tài liệu hợp đồng" [ref=e711]
+                  - row [ref=e715] [cursor=pointer]:
+                    - cell "011/BK-2026" [ref=e716]
+                    - cell "Lê Quang Huy" [ref=e717]
+                    - cell [ref=e719]:
+                      - generic [ref=e720]:
+                        - strong [ref=e721]: 1.000.000₫
+                        - emphasis [ref=e722]: còn 1.000.000₫
+                    - cell "Chưa có quy trình" [ref=e723]
+                    - cell [ref=e726]:
+                      - button "Mở tài liệu hợp đồng" [ref=e727]
+                  - row [ref=e731] [cursor=pointer]:
+                    - cell "010/BK-2026" [ref=e732]
+                    - cell "Lê Quang Huy" [ref=e733]
+                    - cell [ref=e735]:
+                      - generic [ref=e736]:
+                        - strong [ref=e737]: 5.000.000₫
+                        - emphasis [ref=e738]: còn 5.000.000₫
+                    - cell "Chưa có quy trình" [ref=e739]
+                    - cell [ref=e742]:
+                      - button "Mở tài liệu hợp đồng" [ref=e743]
+                  - row [ref=e747] [cursor=pointer]:
+                    - cell "009/BK-2026" [ref=e748]
+                    - cell "nguyễn Hiếu" [ref=e749]
+                    - cell [ref=e751]:
+                      - generic [ref=e752]:
+                        - strong [ref=e753]: 10.000.000₫
+                        - emphasis [ref=e754]: còn 10.000.000₫
+                    - cell "Chưa có quy trình" [ref=e755]
+                    - cell [ref=e758]:
+                      - button "Mở tài liệu hợp đồng" [ref=e759]
+                  - row [ref=e763] [cursor=pointer]:
+                    - cell "008/BK-2026" [ref=e764]
+                    - cell "nguyễn Hiếu" [ref=e765]
+                    - cell [ref=e767]:
+                      - generic [ref=e768]:
+                        - strong [ref=e769]: 10.000.000₫
+                        - emphasis [ref=e770]: còn 10.000.000₫
+                    - cell "Chưa có quy trình" [ref=e771]
+                    - cell [ref=e774]:
+                      - button "Mở tài liệu hợp đồng" [ref=e775]
+                  - row [ref=e779] [cursor=pointer]:
+                    - cell "007/BK-2026" [ref=e780]
+                    - cell "Lê Quang Huy" [ref=e781]
+                    - cell [ref=e783]:
+                      - generic [ref=e784]:
+                        - strong [ref=e785]: 9.000.000₫
+                        - emphasis [ref=e786]: còn 9.000.000₫
+                    - cell "Chưa có quy trình" [ref=e787]
+                    - cell [ref=e790]:
+                      - button "Mở tài liệu hợp đồng" [ref=e791]
+                  - row [ref=e795] [cursor=pointer]:
+                    - cell "006/BK-2026" [ref=e796]
+                    - cell "Lê quang Trí" [ref=e797]
+                    - cell [ref=e799]:
+                      - generic [ref=e800]:
+                        - strong [ref=e801]: 9.000.000₫
+                        - emphasis [ref=e802]: còn 9.000.000₫
+                    - cell "Chưa có quy trình" [ref=e803]
+                    - cell [ref=e806]:
+                      - button "Mở tài liệu hợp đồng" [ref=e807]
+                  - row [ref=e811] [cursor=pointer]:
+                    - cell "005/BK-2026" [ref=e812]
+                    - cell "nguyễn Hiếu" [ref=e813]
+                    - cell [ref=e815]:
+                      - generic [ref=e816]:
+                        - strong [ref=e817]: 10.000.000₫
+                        - emphasis [ref=e818]: còn 10.000.000₫
+                    - cell "Đang thực hiện" [ref=e819]
+                    - cell [ref=e822]:
+                      - button "Mở tài liệu hợp đồng" [ref=e823]
+                  - row [ref=e827] [cursor=pointer]:
+                    - cell "004/BK-2026" [ref=e828]
+                    - cell "nguyễn Hiếu" [ref=e829]
+                    - cell [ref=e831]:
+                      - generic [ref=e832]:
+                        - strong [ref=e833]: 10.000.000₫
+                        - emphasis [ref=e834]: còn 10.000.000₫
+                    - cell "Chưa có quy trình" [ref=e835]
+                    - cell [ref=e838]:
+                      - button "Mở tài liệu hợp đồng" [ref=e839]
+                  - row [ref=e843] [cursor=pointer]:
+                    - cell "003/BK-2026" [ref=e844]
+                    - cell "xxxx" [ref=e845]
+                    - cell [ref=e847]:
+                      - generic [ref=e848]:
+                        - strong [ref=e849]: 10.000.000₫
+                        - emphasis [ref=e850]: đã thu đủ
+                    - cell "Hoàn thành" [ref=e851]
+                    - cell [ref=e854]:
+                      - button "Mở tài liệu hợp đồng" [ref=e855]
+                  - row [ref=e859] [cursor=pointer]:
+                    - cell "002/BK-2026" [ref=e860]
+                    - cell "Lê quang Trí" [ref=e861]
+                    - cell [ref=e863]:
+                      - generic [ref=e864]:
+                        - strong [ref=e865]: 10.000.000₫
+                        - emphasis [ref=e866]: còn 10.000.000₫
+                    - cell "Đang thực hiện" [ref=e867]
+                    - cell [ref=e870]:
+                      - button "Mở tài liệu hợp đồng" [ref=e871]
+                  - row [ref=e875] [cursor=pointer]:
+                    - cell "001/BK-2026" [ref=e876]
+                    - cell "Lê Quang Huy" [ref=e877]
+                    - cell [ref=e879]:
+                      - generic [ref=e880]:
+                        - strong [ref=e881]: 10.000.000₫
+                        - emphasis [ref=e882]: còn 10.000.000₫
+                    - cell "Đang thực hiện" [ref=e883]
+                    - cell [ref=e886]:
+                      - button "Mở tài liệu hợp đồng" [ref=e887]
+              - generic [ref=e891]:
+                - generic [ref=e892]: 1–13 / 13 hợp đồng
+                - generic [ref=e893]:
+                  - button "Trang đầu" [disabled] [ref=e894]
+                  - button "Trang trước" [disabled] [ref=e898]
+                  - button "Trang 1" [ref=e901] [cursor=pointer]: "1"
+                  - button "Trang sau" [disabled] [ref=e902]
+                  - button "Trang cuối" [disabled] [ref=e905]
+            - complementary [ref=e909]:
+              - generic [ref=e910]:
+                - generic [ref=e915]:
+                  - generic [ref=e916]: Hợp đồng đang chọn
+                  - heading "013/BK-2026" [level=3] [ref=e917]
+                - generic [ref=e918]: Chưa có quy trình
+              - generic [ref=e920]:
+                - generic [ref=e925]:
+                  - generic [ref=e926]: Khách hàng
+                  - strong [ref=e927]: nguyễn Hiếu
+                - generic [ref=e931]:
+                  - generic [ref=e932]: Ngày ký
+                  - strong [ref=e933]: 2026-08-27
+                - generic [ref=e938]:
+                  - generic [ref=e939]: Giá trị hợp đồng
+                  - strong [ref=e940]: 1.000.000₫
+                - generic [ref=e946]:
+                  - generic [ref=e947]: Hạng mục
+                  - strong [ref=e948]: Cắm mốc
+                - generic [ref=e949]:
+                  - strong [ref=e953]: Tài liệu hợp đồng
+                  - generic [ref=e954]: Đã có file hợp đồng
+                  - button "Mở tài liệu" [ref=e955] [cursor=pointer]
+                - button "Giấy tờ khách hàng cung cấp" [ref=e959] [cursor=pointer]
+              - button "Quy trình" [ref=e963] [cursor=pointer]
+    - button "Mở trợ lý nội bộ" [ref=e351]
+  - generic [ref=e632]: nguyễn Hiếu
+  - dialog "Soạn hợp đồng mới" [ref=e1015]:
+    - banner [ref=e1016]:
+      - generic [ref=e1022]:
+        - heading "Soạn hợp đồng mới" [level=1] [ref=e1023]
+        - paragraph [ref=e1024]: Điền thông tin và lưu hợp đồng vào hệ thống
+      - generic [ref=e1025]:
+        - generic [ref=e1026]: Mã HĐ
+        - text: 014/BK-2026
+      - button "Đóng" [ref=e1027] [cursor=pointer]
+    - generic [ref=e1030]:
+      - generic [ref=e1031]:
+        - heading "Khách hàng" [level=2] [ref=e1033]
+        - tablist [ref=e1035]:
+          - tab "Cá nhân" [selected] [ref=e1036] [cursor=pointer]
+          - tab "Doanh nghiệp" [ref=e1037] [cursor=pointer]
+        - generic [ref=e1038]:
+          - generic [ref=e1039]:
+            - generic [ref=e1040]: Tên khách hàng*
+            - textbox "Tên khách hàng*" [ref=e1041]:
+              - /placeholder: Nguyễn Văn An
+          - generic [ref=e1042]:
+            - generic [ref=e1043]: Số điện thoại*
+            - textbox "Số điện thoại*" [ref=e1044]:
+              - /placeholder: 0901 234 567
+        - generic [ref=e1045]:
+          - generic [ref=e1046]:
+            - generic [ref=e1047]: Số CCCD*
+            - textbox "Số CCCD*" [ref=e1048]:
+              - /placeholder: "079300012345"
+          - generic [ref=e1049]:
+            - generic [ref=e1050]: Email
+            - textbox "Email" [ref=e1051]:
+              - /placeholder: tuỳ chọn
+        - generic [ref=e1052]:
+          - generic [ref=e1053]:
+            - generic [ref=e1054]: Ngày cấp
+            - button "Chọn ngày cấp" [ref=e1056] [cursor=pointer]
+          - generic [ref=e1060]:
+            - generic [ref=e1061]: Nơi cấp
+            - textbox "Nơi cấp" [ref=e1062]:
+              - /placeholder: Cục CS QLHC về TTXH
+      - generic [ref=e1063]:
+        - heading "Hồ sơ khách gửi" [level=2] [ref=e1065]
+        - generic [ref=e1067] [cursor=pointer]:
+          - generic [ref=e1072]:
+            - strong [ref=e1073]: Tài liệu khách gửi
+            - generic [ref=e1074]: Chọn ảnh, PDF hoặc tệp Office nhận từ Zalo; K01 sẽ phân loại sau.
+          - button "Tài liệu khách gửi"
+        - generic [ref=e1199]:
+          - button "3 tài liệu đã chọn" [expanded] [ref=e1200] [cursor=pointer]:
+            - generic [ref=e1201]:
+              - strong [ref=e1202]: 3 tài liệu đã chọn
+              - generic [ref=e1203]: 3 tệp chờ tải lên sau khi lưu hợp đồng
+          - list [ref=e1206]:
+            - listitem [ref=e1207]:
+              - generic [ref=e1212]:
+                - button "Xem Database_Upgrade_Plan_REVIEWED.docx" [ref=e1213] [cursor=pointer]: Database_Upgrade_Plan_REVIEWED.docx
+                - generic [ref=e1214]: 12 KB
+              - button "Bỏ Database_Upgrade_Plan_REVIEWED.docx" [ref=e1215] [cursor=pointer]
+            - listitem [ref=e1219]:
+              - generic [ref=e1224]:
+                - button "Xem master_backup_20260623_140401.xlsx" [ref=e1225] [cursor=pointer]: master_backup_20260623_140401.xlsx
+                - generic [ref=e1226]: 360 KB
+              - button "Bỏ master_backup_20260623_140401.xlsx" [ref=e1227] [cursor=pointer]
+            - listitem [ref=e1231]:
+              - generic [ref=e1236]:
+                - button "Xem LOGO BACH KHOA.pdf" [ref=e1237] [cursor=pointer]: LOGO BACH KHOA.pdf
+                - generic [ref=e1238]: 362 KB
+              - button "Bỏ LOGO BACH KHOA.pdf" [ref=e1239] [cursor=pointer]
+      - generic [ref=e1075]:
+        - heading "Địa chỉ bất động sản" [level=2] [ref=e1077]
+        - generic [ref=e1079]:
+          - generic [ref=e1080]:
+            - generic [ref=e1081]: Tỉnh / Thành phố*
+            - button "Tỉnh / Thành phố*" [ref=e1083] [cursor=pointer]:
+              - generic [ref=e1084]: Chọn tỉnh/thành
+          - generic [ref=e1087]:
+            - generic [ref=e1088]: Phường / Xã*
+            - button "Phường / Xã*" [disabled] [ref=e1090]:
+              - generic [ref=e1091]: Chọn tỉnh trước
+          - generic [ref=e1094]:
+            - generic [ref=e1095]: Số nhà, đườngkhông bắt buộc
+            - textbox "Số nhà, đườngkhông bắt buộc" [ref=e1096]:
+              - /placeholder: 12 Nguyễn Huệ
+      - generic [ref=e1097]:
+        - heading "Dịch vụ & giá trị" [level=2] [ref=e1099]
+        - generic [ref=e1101]:
+          - generic [ref=e1102]:
+            - generic [ref=e1103]: Gói dịch vụ*
+            - button "Gói dịch vụ*" [ref=e1105] [cursor=pointer]:
+              - generic [ref=e1106]: Đo Vẽ
+          - generic [ref=e1109]:
+            - generic [ref=e1110]: Hạng mục*
+            - button "Hạng mục*" [ref=e1112] [cursor=pointer]:
+              - generic [ref=e1113]: Cắm mốc
+        - generic [ref=e1117]:
+          - generic [ref=e1118]:
+            - text: Giấy tờ cần thu của khách*
+            - generic "Sổ giấy tờ chốt riêng cho Hạng mục này" [ref=e1119]: Sổ theo Hạng mục
+          - radiogroup "Chế độ chọn giấy tờ" [ref=e1120]:
+            - radio "Dùng bộ mặc định 6 loại theo gói và hạng mục" [ref=e1121] [cursor=pointer]:
+              - strong [ref=e1122]: Dùng bộ mặc định
+              - generic [ref=e1123]: 6 loại theo gói và hạng mục
+            - radio "Chọn thủ công Tự tick từng loại giấy" [ref=e1124] [cursor=pointer]:
+              - strong [ref=e1125]: Chọn thủ công
+              - generic [ref=e1126]: Tự tick từng loại giấy
+            - radio "Không yêu cầu giấy tờ Hạng mục này không thu giấy nào của khách" [ref=e1127] [cursor=pointer]:
+              - strong [ref=e1128]: Không yêu cầu giấy tờ
+              - generic [ref=e1129]: Hạng mục này không thu giấy nào của khách
+          - paragraph [ref=e1130]: Bỏ loại giấy mà hạng mục này không cần — K01 sẽ không đòi nữa. Sau khi lập hợp đồng vẫn thêm/bỏ được.
+        - generic [ref=e1132]:
+          - generic [ref=e1133]: Sale / nguồn*
+          - textbox "Sale / nguồn*" [ref=e1134]:
+            - /placeholder: Trần Minh
+        - generic [ref=e1136]:
+          - generic [ref=e1137]: Mẫu hợp đồng*
+          - button "Mẫu hợp đồng*" [ref=e1139] [cursor=pointer]:
+            - generic [ref=e1140]: Hợp đồng dịch vụ khung Bách Khoa 2026 — v1
+        - generic [ref=e1144]:
+          - generic [ref=e1145]: "Giá trị hợp đồng*gõ tắt được: 18.5tr, 500k"
+          - generic [ref=e1146]:
+            - 'textbox "Giá trị hợp đồng*gõ tắt được: 18.5tr, 500k" [ref=e1147]':
+              - /placeholder: "0"
+            - generic: ₫
+          - paragraph [ref=e1148]
+          - generic [ref=e1149]:
+            - button "+1 triệu" [ref=e1150] [cursor=pointer]
+            - button "+5 triệu" [ref=e1151] [cursor=pointer]
+            - button "+10 triệu" [ref=e1152] [cursor=pointer]
+        - generic [ref=e1154]:
+          - generic [ref=e1155]: Độ ưu tiên hồ sơ
+          - button "Độ ưu tiên hồ sơ" [ref=e1157] [cursor=pointer]:
+            - generic [ref=e1158]: Bình thường
+      - generic [ref=e1161]:
+        - heading "Thời hạn" [level=2] [ref=e1163]
+        - generic [ref=e1165]:
+          - generic [ref=e1166]:
+            - generic [ref=e1167]: Ngày ký*
+            - generic [ref=e1168]:
+              - button "27/08/2026" [ref=e1169] [cursor=pointer]
+              - button "Xóa ngày đã chọn" [ref=e1173] [cursor=pointer]
+          - generic [ref=e1177]:
+            - generic [ref=e1178]: Hạn hoàn thành*
+            - generic [ref=e1179]:
+              - button "03/09/2026" [ref=e1180] [cursor=pointer]
+              - button "Xóa ngày đã chọn" [ref=e1184] [cursor=pointer]
+          - generic [ref=e1188]: 7 ngày
+    - contentinfo [ref=e1193]:
+      - generic [ref=e1194]: Còn thiếu 7 trường bắt buộc
+      - button "Huỷ" [ref=e1197] [cursor=pointer]
+      - button "Lưu hợp đồng" [ref=e1198] [cursor=pointer]
+  - dialog [ref=e1243]:
+    - generic [ref=e1244]:
+      - generic [ref=e1245]:
+        - heading "Xem tài liệu Database_Upgrade_Plan_REVIEWED.docx" [level=2] [ref=e1246]
+        - button "Đóng" [active] [ref=e1247] [cursor=pointer]
+      - generic [ref=e1252]:
+        - generic "Nội dung Database_Upgrade_Plan_REVIEWED.docx" [ref=e1253]:
+          - article [ref=e1256]:
+            - paragraph [ref=e1257]: Quản lý Quy trình động và Khoán theo Node
+            - paragraph [ref=e1258]:
+              - text: Database Upgrade Plan — Bản đã rà soát
+              - generic [ref=e1259]: "Ngày cập nhật: 03/08/2026 · Trạng thái: thiết kế để duyệt, chưa chạy migration"
+            - paragraph [ref=e1260]: "Tài liệu này thay phần mô tả dạng danh sách của bản cũ bằng bảng rõ ràng: bảng nào cần tạo/sửa, cột nào, kiểu dữ liệu gì và lý do thay đổi. File gốc không bị ghi đè."
+            - paragraph [ref=e1261]: 1. Tóm tắt phạm vi database
+            - paragraph [ref=e1262]: Phạm vi
+            - paragraph [ref=e1263]: Số lượng
+            - paragraph [ref=e1264]: Ghi chú
+            - paragraph [ref=e1265]: Bảng mới
+            - paragraph [ref=e1266]: "10"
+            - paragraph [ref=e1267]: 4 cấu hình workflow + 5 thực thi + 1 đơn giá khoán
+            - paragraph [ref=e1268]: Bảng hiện có cần sửa
+            - paragraph [ref=e1269]: "1"
+            - paragraph [ref=e1270]: task_pay_records
+            - paragraph [ref=e1271]: Bảng hiện có dùng lại
+            - paragraph [ref=e1272]: "7"
+            - paragraph [ref=e1273]: Không tạo bản sao và không đổi ý nghĩa nghiệp vụ
+            - paragraph [ref=e1274]: 2. Bản cũ cần sửa chỗ nào?
+            - paragraph [ref=e1275]: Nội dung trong bản cũ
+            - paragraph [ref=e1276]: Xử lý
+            - paragraph [ref=e1277]: Thiết kế thay thế
+            - paragraph [ref=e1278]: Lý do
+            - paragraph [ref=e1279]: workflow_nodes
+            - paragraph [ref=e1280]: ĐỔI TÊN + CHUẨN HÓA
+            - paragraph [ref=e1281]: workflow_node_definitions
+            - paragraph [ref=e1282]: Phân biệt rõ định nghĩa K01–K09 với Node thực tế được chạy trong Task.
+            - paragraph [ref=e1283]: workflows
+            - paragraph [ref=e1284]: TÁCH THÀNH 2 BẢNG
+            - paragraph [ref=e1285]: workflow_templates và workflow_versions
+            - paragraph [ref=e1286]: Giám đốc được sửa quy trình nhưng Task cũ phải giữ đúng phiên bản đã dùng.
+            - paragraph [ref=e1287]: workflow_sequences
+            - paragraph [ref=e1288]: BỎ
+            - paragraph [ref=e1289]: Lưu graph trong workflow_versions.definition JSONB
+            - paragraph [ref=e1290]: Bảng thứ tự tuyến tính không biểu diễn được rẽ nhánh, chờ, quay lại bổ sung hoặc kéo thả Node.
+            - paragraph [ref=e1291]: Thêm workflow_id vào projects_tasks
+            - paragraph [ref=e1292]: KHÔNG THÊM
+            - paragraph [ref=e1293]: Dùng workflow_instances.task_id
+            - paragraph [ref=e1294]: Tách dữ liệu Task khỏi dữ liệu chạy workflow và lưu được snapshot phiên bản.
+            - paragraph [ref=e1295]: Thêm current_node vào projects_tasks
+            - paragraph [ref=e1296]: KHÔNG THÊM
+            - paragraph [ref=e1297]: Suy ra từ trạng thái trong task_nodes
+            - paragraph [ref=e1298]: Tránh hai nguồn trạng thái bị lệch nhau.
+            - paragraph [ref=e1299]: task_nodes.assignee_id
+            - paragraph [ref=e1300]: TÁCH RA
+            - paragraph [ref=e1301]: task_node_assignments
+            - paragraph [ref=e1302]: Một Node có thể có người chính, người phụ, người viết, người nộp và người nghiệm thu.
+            - paragraph [ref=e1303]: task_nodes.status chỉ có Pending/In Progress/Completed/Blocked
+            - paragraph [ref=e1304]: MỞ RỘNG
+            - paragraph [ref=e1305]: PENDING, READY, IN_PROGRESS, SUBMITTED, REWORK_REQUIRED, ACCEPTED, BLOCKED, SKIPPED, CANCELLED
+            - paragraph [ref=e1306]: Cần tách “làm xong” khỏi “đã nghiệm thu đạt”.
+            - paragraph [ref=e1307]: node_pay_rates.service_type
+            - paragraph [ref=e1308]: THAY BẰNG FK
+            - paragraph [ref=e1309]: service_package_id và task_type_id
+            - paragraph [ref=e1310]: Không lưu tên dịch vụ tự do; phải liên kết đúng Gói và Hạng mục.
+            - paragraph [ref=e1311]: Completed tự sinh lương
+            - paragraph [ref=e1312]: SỬA ĐIỀU KIỆN
+            - paragraph [ref=e1313]: Chỉ tạo khoán sau khi có nghiệm thu ACCEPTED và khóa chống trùng
+            - paragraph [ref=e1314]: Không trả lương cho Node tự đánh dấu hoàn thành hoặc bị trả lại.
+            - paragraph [ref=e1315]: Thiếu mapping, phiên chạy, lịch sử, nghiệm thu
+            - paragraph [ref=e1316]: THÊM
+            - paragraph [ref=e1317]: task_type_workflow_bindings, workflow_instances, task_node_events, task_node_acceptances
+            - paragraph [ref=e1318]: Đủ dữ liệu để vận hành, audit và tính khoán.
+            - paragraph [ref=e1319]: 3. Các bảng mới — cột và kiểu dữ liệu
+            - paragraph [ref=e1320]: 3.1 workflow_node_definitions — Danh mục K01–K09
+            - paragraph [ref=e1321]: Cột
+            - paragraph [ref=e1322]: Kiểu dữ liệu
+            - paragraph [ref=e1323]: Ràng buộc
+            - paragraph [ref=e1324]: Ý nghĩa
+            - paragraph [ref=e1325]: id
+            - paragraph [ref=e1326]: UUID
+            - paragraph [ref=e1327]: PK, DEFAULT gen_random_uuid()
+            - paragraph [ref=e1328]: ID nội bộ
+            - paragraph [ref=e1329]: code
+            - paragraph [ref=e1330]: TEXT
+            - paragraph [ref=e1331]: UNIQUE, NOT NULL
+            - paragraph [ref=e1332]: Mã K01…K09
+            - paragraph [ref=e1333]: name
+            - paragraph [ref=e1334]: TEXT
+            - paragraph [ref=e1335]: NOT NULL
+            - paragraph [ref=e1336]: Tên cụm công việc
+            - paragraph [ref=e1337]: description
+            - paragraph [ref=e1338]: TEXT
+            - paragraph [ref=e1339]: "NULL"
+            - paragraph [ref=e1340]: Đầu ra nghiệm thu chuẩn
+            - paragraph [ref=e1341]: is_active
+            - paragraph [ref=e1342]: BOOLEAN
+            - paragraph [ref=e1343]: NOT NULL, DEFAULT TRUE
+            - paragraph [ref=e1344]: Ngừng dùng mềm, không xóa lịch sử
+            - paragraph [ref=e1345]: created_at
+            - paragraph [ref=e1346]: TIMESTAMPTZ
+            - paragraph [ref=e1347]: NOT NULL, DEFAULT now()
+            - paragraph [ref=e1348]: Ngày tạo
+            - paragraph [ref=e1349]: updated_at
+            - paragraph [ref=e1350]: TIMESTAMPTZ
+            - paragraph [ref=e1351]: NOT NULL, DEFAULT now()
+            - paragraph [ref=e1352]: Ngày cập nhật
+            - paragraph [ref=e1353]: 3.2 workflow_templates — Thông tin mẫu quy trình
+            - paragraph [ref=e1354]: Cột
+            - paragraph [ref=e1355]: Kiểu dữ liệu
+            - paragraph [ref=e1356]: Ràng buộc
+            - paragraph [ref=e1357]: Ý nghĩa
+            - paragraph [ref=e1358]: id
+            - paragraph [ref=e1359]: UUID
+            - paragraph [ref=e1360]: PK
+            - paragraph [ref=e1361]: ID mẫu
+            - paragraph [ref=e1362]: code
+            - paragraph [ref=e1363]: TEXT
+            - paragraph [ref=e1364]: UNIQUE, NOT NULL
+            - paragraph [ref=e1365]: Ví dụ PL_CAP_DOI
+            - paragraph [ref=e1366]: name
+            - paragraph [ref=e1367]: TEXT
+            - paragraph [ref=e1368]: NOT NULL
+            - paragraph [ref=e1369]: Tên hiển thị
+            - paragraph [ref=e1370]: description
+            - paragraph [ref=e1371]: TEXT
+            - paragraph [ref=e1372]: "NULL"
+            - paragraph [ref=e1373]: Mô tả phạm vi
+            - paragraph [ref=e1374]: is_active
+            - paragraph [ref=e1375]: BOOLEAN
+            - paragraph [ref=e1376]: NOT NULL, DEFAULT TRUE
+            - paragraph [ref=e1377]: Cho phép sử dụng
+            - paragraph [ref=e1378]: created_by
+            - paragraph [ref=e1379]: TEXT
+            - paragraph [ref=e1380]: FK → users.id
+            - paragraph [ref=e1381]: Người tạo
+            - paragraph [ref=e1382]: created_at, updated_at
+            - paragraph [ref=e1383]: TIMESTAMPTZ
+            - paragraph [ref=e1384]: NOT NULL
+            - paragraph [ref=e1385]: Audit thời gian
+            - paragraph [ref=e1386]: 3.3 workflow_versions — Phiên bản sơ đồ kéo thả
+            - paragraph [ref=e1387]: Cột
+            - paragraph [ref=e1388]: Kiểu dữ liệu
+            - paragraph [ref=e1389]: Ràng buộc
+            - paragraph [ref=e1390]: Ý nghĩa
+            - paragraph [ref=e1391]: id
+            - paragraph [ref=e1392]: UUID
+            - paragraph [ref=e1393]: PK
+            - paragraph [ref=e1394]: ID phiên bản
+            - paragraph [ref=e1395]: workflow_template_id
+            - paragraph [ref=e1396]: UUID
+            - paragraph [ref=e1397]: FK → workflow_templates.id, NOT NULL
+            - paragraph [ref=e1398]: Thuộc mẫu nào
+            - paragraph [ref=e1399]: version_no
+            - paragraph [ref=e1400]: INTEGER
+            - paragraph [ref=e1401]: NOT NULL, CHECK > 0
+            - paragraph [ref=e1402]: Số phiên bản
+            - paragraph [ref=e1403]: status
+            - paragraph [ref=e1404]: TEXT
+            - paragraph [ref=e1405]: CHECK DRAFT/PUBLISHED/ARCHIVED
+            - paragraph [ref=e1406]: Trạng thái xuất bản
+            - paragraph [ref=e1407]: schema_version
+            - paragraph [ref=e1408]: INTEGER
+            - paragraph [ref=e1409]: NOT NULL, DEFAULT 1
+            - paragraph [ref=e1410]: Phiên bản cấu trúc JSON
+            - paragraph [ref=e1411]: definition
+            - paragraph [ref=e1412]: JSONB
+            - paragraph [ref=e1413]: NOT NULL
+            - paragraph [ref=e1414]: Nodes, edges, layout, checklist, điều kiện, lịch và chính sách khoán
+            - paragraph [ref=e1415]: definition_hash
+            - paragraph [ref=e1416]: TEXT
+            - paragraph [ref=e1417]: "NULL"
+            - paragraph [ref=e1418]: Kiểm tra nội dung snapshot
+            - paragraph [ref=e1419]: created_by, published_by
+            - paragraph [ref=e1420]: TEXT
+            - paragraph [ref=e1421]: FK → users.id
+            - paragraph [ref=e1422]: Người tạo/xuất bản
+            - paragraph [ref=e1423]: created_at, published_at
+            - paragraph [ref=e1424]: TIMESTAMPTZ
+            - paragraph [ref=e1425]: published_at có thể NULL
+            - paragraph [ref=e1426]: Audit thời gian
+            - paragraph [ref=e1427]: 3.4 task_type_workflow_bindings — Hạng mục dùng quy trình nào
+            - paragraph [ref=e1428]: Cột
+            - paragraph [ref=e1429]: Kiểu dữ liệu
+            - paragraph [ref=e1430]: Ràng buộc
+            - paragraph [ref=e1431]: Ý nghĩa
+            - paragraph [ref=e1432]: id
+            - paragraph [ref=e1433]: UUID
+            - paragraph [ref=e1434]: PK
+            - paragraph [ref=e1435]: ID mapping
+            - paragraph [ref=e1436]: task_type_id
+            - paragraph [ref=e1437]: TEXT
+            - paragraph [ref=e1438]: FK → task_types.id, NOT NULL
+            - paragraph [ref=e1439]: Hạng mục
+            - paragraph [ref=e1440]: workflow_version_id
+            - paragraph [ref=e1441]: UUID
+            - paragraph [ref=e1442]: FK → workflow_versions.id, NOT NULL
+            - paragraph [ref=e1443]: Phiên bản mặc định
+            - paragraph [ref=e1444]: is_default
+            - paragraph [ref=e1445]: BOOLEAN
+            - paragraph [ref=e1446]: NOT NULL, DEFAULT TRUE
+            - paragraph [ref=e1447]: Mapping mặc định
+            - paragraph [ref=e1448]: effective_from, effective_to
+            - paragraph [ref=e1449]: DATE
+            - paragraph [ref=e1450]: effective_to có thể NULL
+            - paragraph [ref=e1451]: Khoảng hiệu lực
+            - paragraph [ref=e1452]: created_by
+            - paragraph [ref=e1453]: TEXT
+            - paragraph [ref=e1454]: FK → users.id
+            - paragraph [ref=e1455]: Người cấu hình
+            - paragraph [ref=e1456]: 3.5 workflow_instances — Một lần chạy workflow của Task
+            - paragraph [ref=e1457]: Cột
+            - paragraph [ref=e1458]: Kiểu dữ liệu
+            - paragraph [ref=e1459]: Ràng buộc
+            - paragraph [ref=e1460]: Ý nghĩa
+            - paragraph [ref=e1461]: id
+            - paragraph [ref=e1462]: UUID
+            - paragraph [ref=e1463]: PK
+            - paragraph [ref=e1464]: ID phiên chạy
+            - paragraph [ref=e1465]: task_id
+            - paragraph [ref=e1466]: TEXT
+            - paragraph [ref=e1467]: FK → projects_tasks.id, UNIQUE, NOT NULL
+            - paragraph [ref=e1468]: Mỗi Task có một workflow chính
+            - paragraph [ref=e1469]: workflow_version_id
+            - paragraph [ref=e1470]: UUID
+            - paragraph [ref=e1471]: FK → workflow_versions.id, NOT NULL
+            - paragraph [ref=e1472]: Phiên bản đã chọn
+            - paragraph [ref=e1473]: definition_snapshot
+            - paragraph [ref=e1474]: JSONB
+            - paragraph [ref=e1475]: NOT NULL
+            - paragraph [ref=e1476]: Bản chụp bất biến khi Task bắt đầu
+            - paragraph [ref=e1477]: status
+            - paragraph [ref=e1478]: TEXT
+            - paragraph [ref=e1479]: CHECK NOT_STARTED/RUNNING/PAUSED/COMPLETED/CANCELLED
+            - paragraph [ref=e1480]: Trạng thái toàn quy trình
+            - paragraph [ref=e1481]: started_at, completed_at
+            - paragraph [ref=e1482]: TIMESTAMPTZ
+            - paragraph [ref=e1483]: NULL khi chưa phát sinh
+            - paragraph [ref=e1484]: Thời gian thực hiện
+            - paragraph [ref=e1485]: created_by
+            - paragraph [ref=e1486]: TEXT
+            - paragraph [ref=e1487]: FK → users.id
+            - paragraph [ref=e1488]: Người khởi tạo
+            - paragraph [ref=e1489]: created_at
+            - paragraph [ref=e1490]: TIMESTAMPTZ
+            - paragraph [ref=e1491]: NOT NULL, DEFAULT now()
+            - paragraph [ref=e1492]: Ngày tạo
+            - paragraph [ref=e1493]: 3.6 task_nodes — Node thực tế của Task
+            - paragraph [ref=e1494]: Cột
+            - paragraph [ref=e1495]: Kiểu dữ liệu
+            - paragraph [ref=e1496]: Ràng buộc
+            - paragraph [ref=e1497]: Ý nghĩa
+            - paragraph [ref=e1498]: id
+            - paragraph [ref=e1499]: UUID
+            - paragraph [ref=e1500]: PK
+            - paragraph [ref=e1501]: ID Node chạy
+            - paragraph [ref=e1502]: workflow_instance_id
+            - paragraph [ref=e1503]: UUID
+            - paragraph [ref=e1504]: FK → workflow_instances.id, NOT NULL
+            - paragraph [ref=e1505]: Thuộc phiên chạy nào
+            - paragraph [ref=e1506]: template_node_key
+            - paragraph [ref=e1507]: TEXT
+            - paragraph [ref=e1508]: NOT NULL
+            - paragraph [ref=e1509]: Khóa Node trong JSON template
+            - paragraph [ref=e1510]: node_type
+            - paragraph [ref=e1511]: TEXT
+            - paragraph [ref=e1512]: CHECK START/END/K_NODE/DECISION/WAIT
+            - paragraph [ref=e1513]: Loại Node
+            - paragraph [ref=e1514]: node_code
+            - paragraph [ref=e1515]: TEXT
+            - paragraph [ref=e1516]: NULL với Node hệ thống
+            - paragraph [ref=e1517]: K01–K09
+            - paragraph [ref=e1518]: occurrence_no
+            - paragraph [ref=e1519]: INTEGER
+            - paragraph [ref=e1520]: NOT NULL, DEFAULT 1
+            - paragraph [ref=e1521]: Lần chạy khi quay lại/bổ sung
+            - paragraph [ref=e1522]: status
+            - paragraph [ref=e1523]: TEXT
+            - paragraph [ref=e1524]: State machine có CHECK
+            - paragraph [ref=e1525]: Trạng thái xử lý và nghiệm thu
+            - paragraph [ref=e1526]: is_required
+            - paragraph [ref=e1527]: BOOLEAN
+            - paragraph [ref=e1528]: NOT NULL
+            - paragraph [ref=e1529]: Node bắt buộc hay tùy chọn
+            - paragraph [ref=e1530]: config_snapshot
+            - paragraph [ref=e1531]: JSONB
+            - paragraph [ref=e1532]: NOT NULL
+            - paragraph [ref=e1533]: Checklist, minh chứng, role, lịch và pay policy
+            - paragraph [ref=e1534]: planned_start, planned_end
+            - paragraph [ref=e1535]: TIMESTAMPTZ
+            - paragraph [ref=e1536]: "NULL"
+            - paragraph [ref=e1537]: Dữ liệu timetable
+            - paragraph [ref=e1538]: started_at, submitted_at, accepted_at, completed_at
+            - paragraph [ref=e1539]: TIMESTAMPTZ
+            - paragraph [ref=e1540]: NULL theo trạng thái
+            - paragraph [ref=e1541]: Mốc thời gian thực tế
+            - paragraph [ref=e1542]: blocked_reason
+            - paragraph [ref=e1543]: TEXT
+            - paragraph [ref=e1544]: "NULL"
+            - paragraph [ref=e1545]: Lý do chặn
+            - paragraph [ref=e1546]: created_at, updated_at
+            - paragraph [ref=e1547]: TIMESTAMPTZ
+            - paragraph [ref=e1548]: NOT NULL
+            - paragraph [ref=e1549]: Audit thời gian
+            - paragraph [ref=e1550]: 3.7 task_node_assignments — Phân công linh hoạt
+            - paragraph [ref=e1551]: Cột
+            - paragraph [ref=e1552]: Kiểu dữ liệu
+            - paragraph [ref=e1553]: Ràng buộc
+            - paragraph [ref=e1554]: Ý nghĩa
+            - paragraph [ref=e1555]: id
+            - paragraph [ref=e1556]: UUID
+            - paragraph [ref=e1557]: PK
+            - paragraph [ref=e1558]: ID phân công
+            - paragraph [ref=e1559]: task_node_id
+            - paragraph [ref=e1560]: UUID
+            - paragraph [ref=e1561]: FK → task_nodes.id, NOT NULL
+            - paragraph [ref=e1562]: Node được giao
+            - paragraph [ref=e1563]: employee_id
+            - paragraph [ref=e1564]: TEXT
+            - paragraph [ref=e1565]: FK → employees.id, NOT NULL
+            - paragraph [ref=e1566]: Nhân viên nhận việc
+            - paragraph [ref=e1567]: role_code
+            - paragraph [ref=e1568]: TEXT
+            - paragraph [ref=e1569]: NOT NULL
+            - paragraph [ref=e1570]: MAIN/ASSISTANT/WRITER/SUBMITTER/REVIEWER/SPECIALIST
+            - paragraph [ref=e1571]: assignment_status
+            - paragraph [ref=e1572]: TEXT
+            - paragraph [ref=e1573]: CHECK PROPOSED/ASSIGNED/ACCEPTED/DECLINED/COMPLETED/REPLACED
+            - paragraph [ref=e1574]: Trạng thái phân công
+            - paragraph [ref=e1575]: is_primary
+            - paragraph [ref=e1576]: BOOLEAN
+            - paragraph [ref=e1577]: NOT NULL, DEFAULT FALSE
+            - paragraph [ref=e1578]: Người phụ trách chính
+            - paragraph [ref=e1579]: planned_start, planned_end
+            - paragraph [ref=e1580]: TIMESTAMPTZ
+            - paragraph [ref=e1581]: "NULL"
+            - paragraph [ref=e1582]: Đưa vào lịch cá nhân
+            - paragraph [ref=e1583]: assigned_by
+            - paragraph [ref=e1584]: TEXT
+            - paragraph [ref=e1585]: FK → users.id
+            - paragraph [ref=e1586]: Người giao việc
+            - paragraph [ref=e1587]: assigned_at, ended_at
+            - paragraph [ref=e1588]: TIMESTAMPTZ
+            - paragraph [ref=e1589]: ended_at có thể NULL
+            - paragraph [ref=e1590]: Thời gian phân công/thay người
+            - paragraph [ref=e1591]: replacement_reason
+            - paragraph [ref=e1592]: TEXT
+            - paragraph [ref=e1593]: "NULL"
+            - paragraph [ref=e1594]: Lý do thay người
+            - paragraph [ref=e1595]: 3.8 task_node_events — Nhật ký bất biến
+            - paragraph [ref=e1596]: Cột
+            - paragraph [ref=e1597]: Kiểu dữ liệu
+            - paragraph [ref=e1598]: Ràng buộc
+            - paragraph [ref=e1599]: Ý nghĩa
+            - paragraph [ref=e1600]: id
+            - paragraph [ref=e1601]: UUID
+            - paragraph [ref=e1602]: PK
+            - paragraph [ref=e1603]: ID sự kiện
+            - paragraph [ref=e1604]: task_node_id
+            - paragraph [ref=e1605]: UUID
+            - paragraph [ref=e1606]: FK → task_nodes.id, NOT NULL
+            - paragraph [ref=e1607]: Node phát sinh sự kiện
+            - paragraph [ref=e1608]: event_type
+            - paragraph [ref=e1609]: TEXT
+            - paragraph [ref=e1610]: NOT NULL
+            - paragraph [ref=e1611]: ASSIGNED/STARTED/SUBMITTED/ACCEPTED/REWORK/BLOCKED…
+            - paragraph [ref=e1612]: actor_user_id
+            - paragraph [ref=e1613]: TEXT
+            - paragraph [ref=e1614]: FK → users.id
+            - paragraph [ref=e1615]: Người thao tác
+            - paragraph [ref=e1616]: payload
+            - paragraph [ref=e1617]: JSONB
+            - paragraph [ref=e1618]: "NOT NULL, DEFAULT {}"
+            - paragraph [ref=e1619]: Dữ liệu chi tiết của sự kiện
+            - paragraph [ref=e1620]: created_at
+            - paragraph [ref=e1621]: TIMESTAMPTZ
+            - paragraph [ref=e1622]: NOT NULL, DEFAULT now()
+            - paragraph [ref=e1623]: Thời điểm sự kiện
+            - paragraph [ref=e1624]: 3.9 task_node_acceptances — Các lần nghiệm thu
+            - paragraph [ref=e1625]: Cột
+            - paragraph [ref=e1626]: Kiểu dữ liệu
+            - paragraph [ref=e1627]: Ràng buộc
+            - paragraph [ref=e1628]: Ý nghĩa
+            - paragraph [ref=e1629]: id
+            - paragraph [ref=e1630]: UUID
+            - paragraph [ref=e1631]: PK
+            - paragraph [ref=e1632]: ID lần nghiệm thu
+            - paragraph [ref=e1633]: task_node_id
+            - paragraph [ref=e1634]: UUID
+            - paragraph [ref=e1635]: FK → task_nodes.id, NOT NULL
+            - paragraph [ref=e1636]: Node được nghiệm thu
+            - paragraph [ref=e1637]: attempt_no
+            - paragraph [ref=e1638]: INTEGER
+            - paragraph [ref=e1639]: NOT NULL, CHECK > 0
+            - paragraph [ref=e1640]: Lần gửi duyệt
+            - paragraph [ref=e1641]: decision
+            - paragraph [ref=e1642]: TEXT
+            - paragraph [ref=e1643]: CHECK ACCEPTED/REWORK_REQUIRED/REJECTED
+            - paragraph [ref=e1644]: Kết quả
+            - paragraph [ref=e1645]: reviewer_user_id
+            - paragraph [ref=e1646]: TEXT
+            - paragraph [ref=e1647]: FK → users.id, NOT NULL
+            - paragraph [ref=e1648]: Người nghiệm thu
+            - paragraph [ref=e1649]: submission_payload
+            - paragraph [ref=e1650]: JSONB
+            - paragraph [ref=e1651]: NOT NULL
+            - paragraph [ref=e1652]: Snapshot checklist và minh chứng
+            - paragraph [ref=e1653]: review_payload
+            - paragraph [ref=e1654]: JSONB
+            - paragraph [ref=e1655]: "NOT NULL, DEFAULT {}"
+            - paragraph [ref=e1656]: Điểm, ghi chú và tiêu chí trả lại
+            - paragraph [ref=e1657]: decided_at
+            - paragraph [ref=e1658]: TIMESTAMPTZ
+            - paragraph [ref=e1659]: NOT NULL
+            - paragraph [ref=e1660]: Thời điểm quyết định
+            - paragraph [ref=e1661]: 3.10 node_pay_rates — Đơn giá khoán theo Node
+            - paragraph [ref=e1662]: Cột
+            - paragraph [ref=e1663]: Kiểu dữ liệu
+            - paragraph [ref=e1664]: Ràng buộc
+            - paragraph [ref=e1665]: Ý nghĩa
+            - paragraph [ref=e1666]: id
+            - paragraph [ref=e1667]: UUID
+            - paragraph [ref=e1668]: PK
+            - paragraph [ref=e1669]: ID đơn giá
+            - paragraph [ref=e1670]: node_definition_id
+            - paragraph [ref=e1671]: UUID
+            - paragraph [ref=e1672]: FK → workflow_node_definitions.id, NOT NULL
+            - paragraph [ref=e1673]: K01–K09
+            - paragraph [ref=e1674]: service_package_id
+            - paragraph [ref=e1675]: TEXT
+            - paragraph [ref=e1676]: FK → service_packages.id, NULL
+            - paragraph [ref=e1677]: Áp dụng riêng cho Gói; NULL là mọi Gói
+            - paragraph [ref=e1678]: task_type_id
+            - paragraph [ref=e1679]: TEXT
+            - paragraph [ref=e1680]: FK → task_types.id, NULL
+            - paragraph [ref=e1681]: Áp dụng riêng cho Hạng mục
+            - paragraph [ref=e1682]: role_code
+            - paragraph [ref=e1683]: TEXT
+            - paragraph [ref=e1684]: NOT NULL
+            - paragraph [ref=e1685]: Vai trò nhận khoán
+            - paragraph [ref=e1686]: pay_component_code
+            - paragraph [ref=e1687]: TEXT
+            - paragraph [ref=e1688]: NOT NULL
+            - paragraph [ref=e1689]: Mã khoản lương/phụ cấp
+            - paragraph [ref=e1690]: base_amount
+            - paragraph [ref=e1691]: NUMERIC(14,2)
+            - paragraph [ref=e1692]: NOT NULL, CHECK >= 0
+            - paragraph [ref=e1693]: Số tiền
+            - paragraph [ref=e1694]: currency
+            - paragraph [ref=e1695]: CHAR(3)
+            - paragraph [ref=e1696]: NOT NULL, DEFAULT VND
+            - paragraph [ref=e1697]: Đơn vị tiền
+            - paragraph [ref=e1698]: conditions
+            - paragraph [ref=e1699]: JSONB
+            - paragraph [ref=e1700]: "NOT NULL, DEFAULT {}"
+            - paragraph [ref=e1701]: Điều kiện diện tích, khoảng cách, số thửa, hệ số…
+            - paragraph [ref=e1702]: effective_from, effective_to
+            - paragraph [ref=e1703]: DATE
+            - paragraph [ref=e1704]: effective_to có thể NULL
+            - paragraph [ref=e1705]: Khoảng hiệu lực đơn giá
+            - paragraph [ref=e1706]: is_active
+            - paragraph [ref=e1707]: BOOLEAN
+            - paragraph [ref=e1708]: NOT NULL, DEFAULT TRUE
+            - paragraph [ref=e1709]: Cho phép áp dụng
+            - paragraph [ref=e1710]: created_by
+            - paragraph [ref=e1711]: TEXT
+            - paragraph [ref=e1712]: FK → users.id
+            - paragraph [ref=e1713]: Giám đốc/kế toán cấu hình
+            - paragraph [ref=e1714]: created_at
+            - paragraph [ref=e1715]: TIMESTAMPTZ
+            - paragraph [ref=e1716]: NOT NULL
+            - paragraph [ref=e1717]: Ngày tạo
+            - paragraph [ref=e1718]: 4. Bảng hiện có cần sửa
+            - paragraph [ref=e1719]: task_pay_records — Bổ sung nguồn phát sinh khoán
+            - paragraph [ref=e1720]: Cột
+            - paragraph [ref=e1721]: Kiểu dữ liệu
+            - paragraph [ref=e1722]: Thao tác
+            - paragraph [ref=e1723]: Ý nghĩa
+            - paragraph [ref=e1724]: task_id
+            - paragraph [ref=e1725]: TEXT
+            - paragraph [ref=e1726]: GIỮ
+            - paragraph [ref=e1727]: Truy vết Task và tương thích dữ liệu cũ
+            - paragraph [ref=e1728]: task_node_id
+            - paragraph [ref=e1729]: UUID
+            - paragraph [ref=e1730]: THÊM FK → task_nodes.id
+            - paragraph [ref=e1731]: Node tạo khoản tiền
+            - paragraph [ref=e1732]: assignment_id
+            - paragraph [ref=e1733]: UUID
+            - paragraph [ref=e1734]: THÊM FK → task_node_assignments.id
+            - paragraph [ref=e1735]: Người + vai trò thực hiện
+            - paragraph [ref=e1736]: employee_id
+            - paragraph [ref=e1737]: TEXT
+            - paragraph [ref=e1738]: GIỮ/CHUẨN HÓA FK
+            - paragraph [ref=e1739]: Nhân viên nhận tiền
+            - paragraph [ref=e1740]: acceptance_id
+            - paragraph [ref=e1741]: UUID
+            - paragraph [ref=e1742]: THÊM FK → task_node_acceptances.id
+            - paragraph [ref=e1743]: Lần nghiệm thu cho phép trả
+            - paragraph [ref=e1744]: node_pay_rate_id
+            - paragraph [ref=e1745]: UUID
+            - paragraph [ref=e1746]: THÊM FK → node_pay_rates.id
+            - paragraph [ref=e1747]: Đơn giá đã sử dụng
+            - paragraph [ref=e1748]: pay_component_code
+            - paragraph [ref=e1749]: TEXT
+            - paragraph [ref=e1750]: THÊM
+            - paragraph [ref=e1751]: Loại khoản lương
+            - paragraph [ref=e1752]: amount
+            - paragraph [ref=e1753]: NUMERIC(14,2)
+            - paragraph [ref=e1754]: GIỮ/CHUẨN HÓA
+            - paragraph [ref=e1755]: Số tiền snapshot, không tính lại theo giá mới
+            - paragraph [ref=e1756]: calculation_snapshot
+            - paragraph [ref=e1757]: JSONB
+            - paragraph [ref=e1758]: THÊM
+            - paragraph [ref=e1759]: Rate, điều kiện, hệ số và phép tính
+            - paragraph [ref=e1760]: idempotency_key
+            - paragraph [ref=e1761]: TEXT
+            - paragraph [ref=e1762]: THÊM UNIQUE
+            - paragraph [ref=e1763]: Chống sinh khoản lương hai lần
+            - paragraph [ref=e1764]: payroll_period_id
+            - paragraph [ref=e1765]: TEXT hoặc kiểu hiện tại
+            - paragraph [ref=e1766]: GIỮ FK → payroll_periods.id
+            - paragraph [ref=e1767]: Kỳ lương
+            - paragraph [ref=e1768]: payment_status
+            - paragraph [ref=e1769]: TEXT
+            - paragraph [ref=e1770]: MỞ RỘNG CHECK
+            - paragraph [ref=e1771]: ELIGIBLE/APPROVED/LOCKED/PAID/VOID
+            - paragraph [ref=e1772]: created_at
+            - paragraph [ref=e1773]: TIMESTAMPTZ
+            - paragraph [ref=e1774]: GIỮ
+            - paragraph [ref=e1775]: Ngày tạo khoản
+            - paragraph [ref=e1776]: 5. Bảy bảng hiện có chỉ dùng lại
+            - paragraph [ref=e1777]: Bảng
+            - paragraph [ref=e1778]: Vai trò
+            - paragraph [ref=e1779]: Ghi chú thay đổi
+            - paragraph [ref=e1780]: projects_tasks
+            - paragraph [ref=e1781]: Task chính của một Hạng mục
+            - paragraph [ref=e1782]: Không thêm workflow_id/current_node trong thiết kế chuẩn
+            - paragraph [ref=e1783]: task_types
+            - paragraph [ref=e1784]: Danh mục Hạng mục đúng theo Gói
+            - paragraph [ref=e1785]: Dùng FK trong mapping và bảng giá
+            - paragraph [ref=e1786]: service_packages
+            - paragraph [ref=e1787]: Gói Đo Vẽ/Pháp Lý/Xây Dựng
+            - paragraph [ref=e1788]: Dùng FK; không lưu tên Gói tự do
+            - paragraph [ref=e1789]: service_lines
+            - paragraph [ref=e1790]: Hạng mục khách mua trong hợp đồng
+            - paragraph [ref=e1791]: Mỗi Service Line tạo đúng một Task chính
+            - paragraph [ref=e1792]: users
+            - paragraph [ref=e1793]: Tài khoản thao tác
+            - paragraph [ref=e1794]: Dùng cho created_by, reviewer, actor
+            - paragraph [ref=e1795]: employees
+            - paragraph [ref=e1796]: Nhân viên
+            - paragraph [ref=e1797]: Nguồn chuẩn cho phân công và nhận lương
+            - paragraph [ref=e1798]: payroll_periods
+            - paragraph [ref=e1799]: Kỳ lương
+            - paragraph [ref=e1800]: Khóa các khoản đã chốt theo tháng
+            - paragraph [ref=e1801]: 6. Dữ liệu nào lưu JSONB?
+            - paragraph [ref=e1802]: Bảng.cột
+            - paragraph [ref=e1803]: Nội dung linh hoạt
+            - paragraph [ref=e1804]: Không dùng để thay thế
+            - paragraph [ref=e1805]: workflow_versions.definition
+            - paragraph [ref=e1806]: Nodes, edges, vị trí kéo thả, checklist, điều kiện chuyển bước
+            - paragraph [ref=e1807]: ID, trạng thái xuất bản và quan hệ FK
+            - paragraph [ref=e1808]: workflow_instances.definition_snapshot
+            - paragraph [ref=e1809]: Bản chụp workflow tại lúc Task bắt đầu
+            - paragraph [ref=e1810]: Trạng thái phiên chạy
+            - paragraph [ref=e1811]: task_nodes.config_snapshot
+            - paragraph [ref=e1812]: Checklist, minh chứng, role, lịch, chính sách khoán tại Node
+            - paragraph [ref=e1813]: Status và các mốc thời gian cần truy vấn
+            - paragraph [ref=e1814]: task_node_events.payload
+            - paragraph [ref=e1815]: Chi tiết thay đổi theo từng loại event
+            - paragraph [ref=e1816]: event_type, actor và created_at
+            - paragraph [ref=e1817]: task_node_acceptances.submission_payload
+            - paragraph [ref=e1818]: Checklist/minh chứng tại lần gửi duyệt
+            - paragraph [ref=e1819]: decision và reviewer
+            - paragraph [ref=e1820]: node_pay_rates.conditions
+            - paragraph [ref=e1821]: Điều kiện, hệ số linh hoạt
+            - paragraph [ref=e1822]: Số tiền cơ bản và thời gian hiệu lực
+            - paragraph [ref=e1823]: task_pay_records.calculation_snapshot
+            - paragraph [ref=e1824]: Phép tính lương tại thời điểm nghiệm thu
+            - paragraph [ref=e1825]: amount, employee và trạng thái thanh toán
+            - paragraph [ref=e1826]: 7. Luồng dữ liệu chuẩn
+            - paragraph [ref=e1827]: Service Line → Task → Workflow Instance → Task Nodes → Assignments → Acceptance → Pay Records
+            - paragraph [ref=e1828]:
+              - generic [ref=e1829]: •
+              - text: Chỉ Node được nghiệm thu ACCEPTED mới đủ điều kiện tạo khoản khoán.
+            - paragraph [ref=e1830]:
+              - generic [ref=e1831]: •
+              - text: Một Node có thể có một hoặc nhiều người; vai trò và tiền khoán tách theo assignment.
+            - paragraph [ref=e1832]:
+              - generic [ref=e1833]: •
+              - text: Workflow đã chạy giữ snapshot cũ dù Giám đốc xuất bản phiên bản mới.
+            - paragraph [ref=e1834]:
+              - generic [ref=e1835]: •
+              - text: Mọi bảng public khi triển khai trên Supabase phải bật RLS và có policy theo vai trò.
+            - paragraph [ref=e1836]: Chưa thực hiện migration. Trước khi viết SQL cần đối chiếu kiểu khóa chính thực tế của các bảng hiện có, đặc biệt users, employees, projects_tasks, task_types, service_packages và payroll_periods.
+        - generic [ref=e1837]:
+          - link "Mở trong tab mới" [ref=e1838] [cursor=pointer]:
+            - /url: blob:http://127.0.0.1:3000/e9883c27-06b6-4ee8-b1b0-224eaa619ba6
+          - link "Tải xuống" [ref=e1843] [cursor=pointer]:
+            - /url: blob:http://127.0.0.1:3000/e9883c27-06b6-4ee8-b1b0-224eaa619ba6

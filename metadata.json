@@ -1,0 +1,6 @@
+{
+  "name": "Chi tiết Tiến độ Node thực thi",
+  "description": "Hệ thống quản lý tiến độ quy trình khảo sát, đo đạc và thẩm định hồ sơ địa chính",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

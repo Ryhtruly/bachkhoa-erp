@@ -2,13 +2,14 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any
-from services import zalo_service
-from services import telegram_service
+from src.services import zalo_service
+from src.services import telegram_service
 from src.db.database import get_db
-from src.db.models import Contract, Receivable, ProjectTask, Customer
-from core import hr_engine
+from sqlalchemy import text
+from src.db.models import Contract, Receivable, Customer
+from src.core import hr_engine
 
-router = APIRouter(prefix="/webhook", tags=["Webhooks & Automations"])
+router = APIRouter(prefix="/webhook", tags=["11. System & Webhooks"])
 
 class ZaloWebhookPayload(BaseModel):
     event_name: str
@@ -50,8 +51,13 @@ async def receive_hanet_webhook(request: Request):
     except Exception as e:
         return {"status": "error", "detail": str(e)}
 
+from src.core.auth import require_permission, User
+
 @router.post("/trigger-debt-reminders")
-def trigger_debt_reminders(db: Session = Depends(get_db)):
+def trigger_debt_reminders(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read"))
+):
     try:
         reminded_count = 0
         receivables = db.query(Receivable).filter(Receivable.remaining_amount > 0).all()
@@ -69,9 +75,15 @@ def trigger_debt_reminders(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/trigger-daily-care-cron")
-def trigger_daily_care_cron(db: Session = Depends(get_db)):
+def trigger_daily_care_cron(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "read"))
+):
     try:
-        completed_tasks = db.query(ProjectTask).filter(ProjectTask.status == "Hoàn thành").all()
-        return {"status": "success", "message": f"Đã quét {len(completed_tasks)} hồ sơ hoàn thành để CSKH định kỳ."}
+        completed_count = db.execute(text(
+            "select count(*) from public.workflow_instances where status = 'completed'"
+        )).scalar_one()
+        return {"status": "success", "message": f"Đã quét {completed_count} hạng mục hoàn thành để CSKH định kỳ."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

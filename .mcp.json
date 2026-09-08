@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "node",
+      "args": [".gitnexus/run.cjs", "mcp"],
+      "cwd": "${workspaceRoot}"
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium"]
+    }
+  }
+}

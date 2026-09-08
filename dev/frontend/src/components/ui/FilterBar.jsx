@@ -1,0 +1,249 @@
+import React, { useState, useEffect, memo } from 'react';
+import { Search, Filter, X, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import DatePicker from './DatePicker';
+import Select from './Select';
+
+/**
+ * FilterBar — Thanh tìm kiếm + lọc dữ liệu dùng chung
+ */
+const FilterBar = memo(function FilterBar({
+  search = '',
+  onSearchChange,
+  searchPlaceholder = 'Tìm kiếm...',
+  filters = [],
+  values = {},
+  onFilterChange,
+  onReset,
+  actions,
+  activeCount,
+  month,
+  onMonthChange,
+  date,
+  onDateChange,
+  dateLabel = 'Chọn ngày',
+  dateFilterMode,
+  onDateFilterModeChange,
+  year,
+  onYearChange,
+  sort,
+  onSortChange,
+  sortOptions,
+}) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [localSearch, setLocalSearch] = useState(search);
+
+  // Sync external search prop to local
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (onSearchChange && localSearch !== search) {
+        onSearchChange(localSearch);
+      }
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [localSearch, onSearchChange, search]);
+
+  const computedActive = activeCount ??
+    filters.filter((f) => values[f.key] && values[f.key] !== 'All' && values[f.key] !== '').length;
+
+  const hasActive = localSearch.trim() !== ''
+    || computedActive > 0
+    || Boolean(month)
+    || Boolean(date)
+    || Boolean(year);
+  return (
+    <div className="filter-bar-modern">
+      {/* Row 1: Search + Controls */}
+      <div className="filter-bar-modern__top">
+        <div className="filter-bar-modern__search-wrap">
+          <Search size={18} className="search-icon" />
+          <input
+            type="text"
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="filter-bar-modern__search"
+            aria-label="Tìm kiếm"
+          />
+          {localSearch && (
+            <button
+              className="filter-bar-modern__clear-search"
+              onClick={() => setLocalSearch('')}
+              aria-label="Xóa tìm kiếm"
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        <div className="filter-bar-modern__controls">
+          {month !== undefined && (dateFilterMode === undefined || dateFilterMode === 'month') && (
+            <DatePicker
+              selectionMode="month"
+              value={year !== undefined && month ? `${year}-${month}` : month}
+              onChange={(value) => {
+                if (year !== undefined) {
+                  onYearChange?.(value ? value.slice(0, 4) : '');
+                  onMonthChange?.(value ? value.slice(5, 7) : '');
+                } else {
+                  onMonthChange?.(value);
+                }
+              }}
+              placeholder="Chọn tháng"
+              dialogLabel="Chọn tháng lọc dữ liệu"
+            />
+          )}
+
+          {date !== undefined && dateFilterMode !== 'month' && dateFilterMode !== 'year' && (
+            <DatePicker
+              value={date}
+              onChange={onDateChange}
+              placeholder={dateLabel}
+            />
+          )}
+
+          {dateFilterMode === 'year' && year !== undefined && (
+            <div className="filter-bar-modern__control-group">
+              <span className="filter-bar-modern__control-label">Năm:</span>
+              <input
+                type="number"
+                className="filter-bar-modern__control-input"
+                value={year || ''}
+                onChange={e => onYearChange && onYearChange(e.target.value)}
+                placeholder="YYYY"
+                min="2020"
+                max="2099"
+                style={{ width: 100 }}
+              />
+            </div>
+          )}
+
+          {onDateFilterModeChange && (
+            <div className="filter-bar-modern__control-group">
+              <span className="filter-bar-modern__control-label">Lọc theo:</span>
+              <Select
+                className="ui-select--compact"
+                ariaLabel="Lọc theo"
+                value={dateFilterMode || 'day'}
+                onChange={onDateFilterModeChange}
+                options={[
+                  { value: 'day', label: 'Ngày' },
+                  { value: 'month', label: 'Tháng' },
+                  { value: 'year', label: 'Năm' },
+                ]}
+              />
+            </div>
+          )}
+
+          {sort !== undefined && (
+            <div className="filter-bar-modern__control-group">
+              <span className="filter-bar-modern__control-label">Sắp xếp:</span>
+              <Select
+                className="ui-select--compact"
+                ariaLabel="Sắp xếp"
+                value={sort || (sortOptions?.[0]?.value ?? 'desc')}
+                onChange={(value) => onSortChange && onSortChange(value)}
+                options={sortOptions || [
+                  { value: 'desc', label: 'Mới nhất' },
+                  { value: 'asc', label: 'Cũ nhất' },
+                ]}
+              />
+            </div>
+          )}
+
+          {filters.length > 0 && (
+            <button
+              className={`btn-filter-toggle ${showAdvanced ? 'active' : ''}`}
+              onClick={() => setShowAdvanced((v) => !v)}
+              aria-expanded={showAdvanced}
+            >
+              <Filter size={16} />
+              <span>Bộ lọc</span>
+              {computedActive > 0 && (
+                <span className="filter-badge">{computedActive}</span>
+              )}
+              {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          )}
+
+          {hasActive && onReset && (
+            <button
+              className="btn-filter-reset"
+              onClick={() => {
+                setLocalSearch('');
+                onReset();
+              }}
+              title="Xóa bộ lọc"
+            >
+              <RotateCcw size={16} />
+              <span className="reset-text">Đặt lại</span>
+            </button>
+          )}
+
+          {actions && <div className="filter-bar-modern__actions">{actions}</div>}
+        </div>
+      </div>
+
+      {/* Row 2: Advanced filters */}
+      <div className={`filter-bar-modern__advanced-wrap ${showAdvanced ? 'expanded' : ''}`}>
+        <div className="filter-bar-modern__advanced">
+          {filters.map((f) => (
+            <div key={f.key} className="filter-bar-modern__field" style={{ width: f.width || 200 }}>
+              <label htmlFor={`filter-${f.key}`}>{f.label}</label>
+              {f.type === 'select' && (
+                <Select
+                  id={`filter-${f.key}`}
+                  value={values[f.key] ?? 'All'}
+                  onChange={(value) => onFilterChange?.(f.key, value)}
+                  className="ui-select--field"
+                  options={[
+                    ...(!(f.options || []).some(opt => opt.value === 'All' || opt.value === '')
+                      ? [{ value: 'All', label: f.allLabel || (f.label ? `Tất cả ${f.label.toLowerCase()}` : 'Tất cả') }]
+                      : []),
+                    ...(f.options || []).map((opt) => ({ value: opt.value, label: opt.label ?? opt.value })),
+                  ]}
+                />
+              )}
+              {f.type === 'date' && (
+                <input
+                  type="date"
+                  id={`filter-${f.key}`}
+                  value={values[f.key] ?? ''}
+                  onChange={(e) => onFilterChange?.(f.key, e.target.value)}
+                  className="custom-date-input"
+                />
+              )}
+              {f.type === 'daterange' && (
+                <div className="filter-bar-modern__daterange">
+                  <input
+                    type="date"
+                    id={`filter-${f.key}-from`}
+                    value={values[`${f.key}_from`] ?? ''}
+                    onChange={(e) => onFilterChange?.(`${f.key}_from`, e.target.value)}
+                    className="custom-date-input"
+                    placeholder="Từ ngày"
+                  />
+                  <span className="daterange-sep">-</span>
+                  <input
+                    type="date"
+                    id={`filter-${f.key}-to`}
+                    value={values[`${f.key}_to`] ?? ''}
+                    onChange={(e) => onFilterChange?.(`${f.key}_to`, e.target.value)}
+                    className="custom-date-input"
+                    placeholder="Đến ngày"
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export default FilterBar;

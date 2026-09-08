@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1.7
+
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+# The production image contains only runtime dependencies. Tests, migration
+# helpers and local development dependencies stay outside this image.
+COPY requirements.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --no-compile -r requirements.txt
+
+# Run the API without root privileges. The generated-document directories are
+# prepared before switching users because /app/static/contracts is a named
+# volume in the production compose file.
+RUN groupadd --system --gid 10001 app \
+    && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app \
+    && mkdir -p /app/static/contracts /app/static/generated_docs /app/static/generated_quotes \
+    && chown -R app:app /app
+
+COPY --chown=app:app src ./src
+COPY --chown=app:app static ./static
+
+USER app
+
+EXPOSE 8080
+STOPSIGNAL SIGTERM
+
+CMD ["uvicorn", "src.index:app", "--host", "0.0.0.0", "--port", "8080"]

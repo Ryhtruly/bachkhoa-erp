@@ -1,0 +1,198 @@
+import React from 'react';
+
+/**
+ * Badge — Nhãn trạng thái dùng chung
+ *
+ * Props:
+ *   children: string
+ *   variant?: 'success'|'danger'|'warning'|'info'|'neutral'|'orange'
+ *   dot?: boolean   — hiển thị chấm tròn trước text
+ *   size?: 'sm'|'md'
+ *
+ * Hoặc dùng presets:
+ *   statusMap: Record<string, variant> để map tự động
+ */
+export function Badge({ children, variant = 'neutral', dot = false, size = 'md' }) {
+  return (
+    <span className={`badge badge--${variant} badge--${size}`}>
+      {dot && <span className="badge__dot" />}
+      {children}
+    </span>
+  );
+}
+
+
+/**
+ * StatusBadge — Badge tự động map trạng thái theo domain
+ * Đã có preset cho: hồ sơ, hợp đồng, lead pipeline
+ *
+ * Props:
+ *   status: string
+ *   domain?: 'hoso' | 'hopdong' | 'lead' | 'default'
+ */
+const STATUS_MAPS = {
+  tasks: {
+    'completed': 'success',
+    'in_progress': 'info',
+    'pending': 'warning',
+    'cancelled': 'neutral',
+    'Hoàn thành': 'success',
+    'Nộp thành công - Chờ kết quả': 'success',
+    'Đang xử lý': 'info',
+    'Mới tiếp nhận': 'info',
+    'Sắp đến hạn': 'warning',
+    'Trễ hạn': 'danger',
+    'Đã hủy': 'neutral',
+  },
+  hoso: {
+    'completed': 'success',
+    'in_progress': 'info',
+    'pending': 'warning',
+    'cancelled': 'neutral',
+    'Hoàn thành': 'success',
+    'Nộp thành công - Chờ kết quả': 'success',
+    'Đang xử lý': 'info',
+    'Mới tiếp nhận': 'info',
+    'Sắp đến hạn': 'warning',
+    'Trễ hạn': 'danger',
+    'Đã hủy': 'neutral',
+  },
+  contracts: {
+    'settled': 'success',
+    'partial': 'info',
+    'overdue': 'danger',
+    'not_started': 'neutral',
+    'refunded': 'warning',
+    'written_off': 'purple',
+    'overpaid': 'purple',
+    'Đã tất toán': 'success',
+    'Đã thanh toán': 'success',
+    'Thu một phần': 'info',
+    'Chờ thanh toán': 'warning',
+    'Chưa thu': 'neutral',
+    'Còn nợ': 'warning',
+    'Quá hạn': 'danger',
+    'Đã hoàn tiền': 'warning',
+    'Đã miễn giảm': 'purple',
+    'Đã miễn giảm/xóa': 'purple',
+    'Đã xóa nợ': 'purple',
+    'Nộp thừa': 'purple',
+    'Nộp thừa tiền': 'purple',
+    // Tiến độ hợp đồng ở danh sách. "Xong, còn nợ" là việc đang chờ người đi
+    // đòi tiền — phải bật lên khỏi nền, không được xám như hợp đồng đã huỷ.
+    'Hoàn thành': 'success',
+    'Xong, còn nợ': 'warning',
+    'Đang thực hiện': 'info',
+    // Quy trình đang chạy nhưng có bước không ai trỏ tới — chạy tới đó là tắc.
+    'Thiếu đường nối': 'danger',
+    'Chưa có quy trình': 'neutral',
+    'Đã huỷ': 'neutral',
+    'Đã hủy': 'neutral',
+  },
+  debt: {
+    'settled': 'success',
+    'partial': 'info',
+    'overdue': 'danger',
+    'not_started': 'neutral',
+    'refunded': 'warning',
+    'written_off': 'purple',
+    'overpaid': 'purple',
+    'Đã thanh toán': 'success',
+    'Đã thu đủ': 'success',
+    'Thu một phần': 'info',
+    'Chờ thu': 'info',
+    'Quá hạn': 'danger',
+    'Chưa thu': 'neutral',
+    'Đã hoàn tiền': 'warning',
+    'Đã miễn giảm': 'purple',
+    'Đã miễn giảm/xóa': 'purple',
+    'Đã xóa nợ': 'purple',
+    'Nộp thừa': 'purple',
+    'Nộp thừa tiền': 'purple',
+  },
+  hopdong: {
+    'settled': 'success',
+    'partial': 'info',
+    'overdue': 'danger',
+    'not_started': 'neutral',
+    'refunded': 'warning',
+    'written_off': 'purple',
+    'overpaid': 'purple',
+    'Đã tất toán': 'success',
+    'Đã thanh toán': 'success',
+    'Thu một phần': 'info',
+    'Chờ thanh toán': 'warning',
+    'Còn nợ': 'warning',
+    'Quá hạn': 'danger',
+    'Đã hoàn tiền': 'warning',
+    'Đã miễn giảm/xóa': 'purple',
+    'Nộp thừa': 'purple',
+  },
+  lead: {
+    'Chốt': 'success',
+    'Đàm phán': 'info',
+    'Báo giá': 'warning',
+    'Tiếp cận': 'neutral',
+    'Từ chối': 'danger',
+  },
+};
+
+const STATUS_LABELS = {
+  not_started: 'Chưa bắt đầu',
+  in_progress: 'Đang thực hiện',
+  completed: 'Hoàn thành',
+  cancelled: 'Đã hủy',
+  ready: 'Sẵn sàng',
+  draft: 'Bản nháp',
+  pending: 'Chờ xử lý',
+  approved: 'Đã duyệt',
+  rejected: 'Từ chối',
+  closed: 'Đã đóng',
+  settled: 'Đã tất toán',
+  partial: 'Thu một phần',
+  overdue: 'Quá hạn',
+  refunded: 'Đã hoàn tiền',
+  written_off: 'Đã xóa nợ',
+  overpaid: 'Nộp thừa tiền',
+  CASH: 'Tiền mặt',
+  BANK_TRANSFER: 'Chuyển khoản',
+  COMPANY: 'Công ty',
+  INTERNAL: 'Nội bộ'
+};
+
+export function StatusBadge({ status, domain = 'default' }) {
+  const map = STATUS_MAPS[domain] ?? {};
+  const variant = map[status] ?? 'neutral';
+  const label = STATUS_LABELS[status] || status || '—';
+  return <Badge variant={variant} dot>{label}</Badge>;
+}
+
+
+/**
+ * WarningBadge — Badge cảnh báo deadline
+ */
+export function WarningBadge({ warning }) {
+  const variantMap = {
+    'Hoàn thành': 'success',
+    'Trong hạn': 'info',
+    'Sắp đến hạn': 'warning',
+    'Trễ hạn': 'danger',
+    'Chưa có deadline': 'neutral',
+  };
+  return <Badge variant={variantMap[warning] ?? 'neutral'} dot>{warning || '—'}</Badge>;
+}
+
+
+/**
+ * Tag — Nhãn nhỏ không có trạng thái (VD: loại dịch vụ, phòng ban)
+ */
+export function Tag({ children, color }) {
+  return (
+    <span
+      className="tag"
+      style={color ? { background: color + '22', color } : undefined}
+    >
+      {children}
+    </span>
+  );
+}

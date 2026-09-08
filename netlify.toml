@@ -1,0 +1,30 @@
+# Netlify Configuration for Bach Khoa ERP
+
+[build]
+  base = "dev/frontend"
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# 1. Reverse Proxy API về server backend
+# LƯU Ý: Thay 'https://your-backend-api.com' bằng tên miền hoặc IP backend thực tế của bạn (Render, Railway, VPS...)
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://your-backend-api.com/api/:splat"
+#   status = 200
+#   force = true
+
+# 2. Reverse Proxy file tĩnh (hợp đồng, hồ sơ) về backend
+# [[redirects]]
+#   from = "/static/*"
+#   to = "https://your-backend-api.com/static/:splat"
+#   status = 200
+#   force = true
+
+# 3. SPA Fallback: Chống lỗi 404 khi truy cập hoặc F5 các trang con (/intake, /crm, /contracts...)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

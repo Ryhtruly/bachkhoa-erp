@@ -1,14 +1,20 @@
 def calculate_quote(service_type: str, area_sqm: float, location_zone: int) -> float:
     """
-    Mock pricing engine.
+    Pricing engine.
     Calculates the final quote based on service type, area, and location.
-    location_zone: 1 (Urban), 2 (Suburban), 3 (Remote)
+    Supports both standard English codes and existing database data values.
     """
     base_rates = {
+        # Standard English codes
+        "Survey": 5000000,
+        "Staking": 3000000,
+        "AsBuilt": 10000000,
+        "Renewal": 7000000,
+        # Database data record values (Vietnamese string matching)
         "Đo hiện trạng": 5000000,
         "Cắm mốc": 3000000,
         "Hoàn công": 10000000,
-        "Cấp đổi": 7000000
+        "Cấp đổi": 7000000,
     }
     
     base = base_rates.get(service_type, 4000000)

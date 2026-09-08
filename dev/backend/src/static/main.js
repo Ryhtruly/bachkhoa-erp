@@ -138,15 +138,15 @@ async function loadDashboard() {
       return
     }
     d.recent_hoso.forEach(h => {
-      const s = h["Trạng thái"] || ""
+      const s = h.status || ""
       const cls = s === "Hoàn thành" ? "badge badge-success" : s.includes("Hủy") ? "badge badge-danger" : (s.includes("Chờ")||s.includes("Đang")) ? "badge badge-warning" : "badge badge-default"
       tbody.innerHTML += `<tr>
-        <td><strong>${h["Mã hồ sơ"]||""}</strong></td>
-        <td>${h["Tên khách hàng"]||""}</td>
-        <td>${h["Loại dịch vụ"]||""}</td>
-        <td>${h["Khu vực/Phường"]||""}</td>
-        <td>${h["Phụ trách chính"]||""}</td>
-        <td>${h["Deadline"]||""}</td>
+        <td><strong>${h.id||h.task_id||""}</strong></td>
+        <td>${h.customer_name||""}</td>
+        <td>${h.service_type||""}</td>
+        <td>${h.ward||""}</td>
+        <td>${h.assignee_name||""}</td>
+        <td>${h.deadline||""}</td>
         <td><span class="${cls}">${s}</span></td>
       </tr>`
     })
@@ -191,13 +191,13 @@ function renderHoso() {
   }
 
   pageItems.forEach(h => {
-    const s = h["Trạng thái"] || ""
+    const s = h.status || ""
     const cls = s === "Hoàn thành" ? "badge badge-success" : s.includes("Hủy") ? "badge badge-danger" : (s.includes("Chờ")||s.includes("Đang")) ? "badge badge-warning" : "badge badge-default"
-    const w = h["Cảnh báo"] || "Trong hạn"
+    const w = h.warning || "Trong hạn"
     const wCls = w === "XONG" ? "badge badge-success" : w === "QUÁ HẠN" ? "badge badge-danger" : "badge badge-default"
 
     const actions = `
-      <select class="btn btn-secondary btn-xs" style="font-size:0.7rem;height:26px;padding:0 6px;" onchange="updateHosoStatus('${h["Mã hồ sơ"]}', this.value)">
+      <select class="btn btn-secondary btn-xs" style="font-size:0.7rem;height:26px;padding:0 6px;" onchange="updateHosoStatus('${h.id||h.task_id}', this.value)">
         <option value="" disabled selected>Cập nhật</option>
         <option value="Mới tiếp nhận">Mới tiếp nhận</option>
         <option value="Chờ khảo sát">Chờ khảo sát</option>
@@ -210,14 +210,14 @@ function renderHoso() {
       </select>`
 
     tbody.innerHTML += `<tr>
-      <td><strong class="mono">${h["Mã hồ sơ"]||""}</strong></td>
-      <td>${h["Tên khách hàng"]||""}</td>
-      <td class="mono">${h["SĐT"]||"—"}</td>
-      <td>${h["Loại dịch vụ"]||""}</td>
-      <td>${h["Khu vực/Phường"]||""}</td>
-      <td>${h["Phụ trách chính"]||""}</td>
-      <td>${h["Hỗ trợ"]||"—"}</td>
-      <td class="mono">${h["Deadline"]||""}</td>
+      <td><strong class="mono">${h.id||h.task_id||""}</strong></td>
+      <td>${h.customer_name||""}</td>
+      <td class="mono">${h.phone||"—"}</td>
+      <td>${h.service_type||""}</td>
+      <td>${h.ward||""}</td>
+      <td>${h.assignee_name||""}</td>
+      <td>${h.support_name||"—"}</td>
+      <td class="mono">${h.deadline||""}</td>
       <td><span class="${wCls}">${w}</span></td>
       <td><span class="${cls}">${s}</span></td>
       <td>${actions}</td>
@@ -231,11 +231,11 @@ function filterHosoTable() {
   const q = document.getElementById("hoso-search-input").value.toLowerCase()
   app.hoso.forEach(h => {
     h._hidden = !(
-      (h["Mã hồ sơ"]||"").toLowerCase().includes(q) ||
-      (h["Tên khách hàng"]||"").toLowerCase().includes(q) ||
-      (h["Khu vực/Phường"]||"").toLowerCase().includes(q) ||
-      (h["Loại dịch vụ"]||"").toLowerCase().includes(q) ||
-      (h["Phụ trách chính"]||"").toLowerCase().includes(q)
+      (h.id||h.task_id||"").toLowerCase().includes(q) ||
+      (h.customer_name||"").toLowerCase().includes(q) ||
+      (h.ward||"").toLowerCase().includes(q) ||
+      (h.service_type||"").toLowerCase().includes(q) ||
+      (h.assignee_name||"").toLowerCase().includes(q)
     )
   })
   app.pagination.hoso.page = 1
@@ -312,12 +312,12 @@ async function handleCreateHoso(e) {
   }
 }
 
-async function updateHosoStatus(maHs, newStatus) {
-  if (!confirm(`Chuyển "${maHs}" sang trạng thái "${newStatus}"?`)) return
+async function updateHosoStatus(dossierId, newStatus) {
+  if (!confirm(`Chuyển "${dossierId}" sang trạng thái "${newStatus}"?`)) return
   try {
     const res = await fetch("/api/hoso/update-status", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ Mã_hồ_sơ: maHs, Trạng_thái: newStatus })
+      body: JSON.stringify({ Mã_hồ_sơ: dossierId, Trạng_thái: newStatus })
     })
     if (res.ok) {
       toast("Đã cập nhật trạng thái!", "success")
@@ -346,11 +346,11 @@ async function loadHopdong() {
     const s2 = document.getElementById("form-tc-hopdong")
     if (s1) {
       s1.innerHTML = '<option value="">— Chọn —</option>'
-      app.hoso.forEach(h => { if (h["Mã hồ sơ"]) s1.add(new Option(`${h["Mã hồ sơ"]} — ${h["Tên khách hàng"]}`, h["Mã hồ sơ"])) })
+      app.hoso.forEach(h => { if (h.id || h.task_id) s1.add(new Option(`${h.id || h.task_id} — ${h.customer_name}`, h.id || h.task_id)) })
     }
     if (s2) {
       s2.innerHTML = '<option value="None">Không liên kết</option>'
-      app.contracts.forEach(c => { if (c["Mã hợp đồng"]) s2.add(new Option(`${c["Mã hợp đồng"]} — ${c["Tên khách hàng"]}`, c["Mã hợp đồng"])) })
+      app.contracts.forEach(c => { if (c.id || c.contract_id) s2.add(new Option(`${c.id || c.contract_id} — ${c.customer_name}`, c.id || c.contract_id)) })
     }
   } catch {
     toast("Lỗi tải hợp đồng", "error")
@@ -365,24 +365,24 @@ function renderContracts() {
     return
   }
   app.contracts.forEach(c => {
-    const s = c["Tình trạng"] || "Chờ thanh toán"
+    const s = c.status || "Chờ thanh toán"
     const cls = s === "Đã tất toán" ? "badge badge-success" : s === "Quá hạn thanh toán" ? "badge badge-danger" : "badge badge-warning"
 
     let docLink = `<span style="color:var(--text-tertiary);font-size:0.78rem;">—</span>`
-    const gc = c["Ghi chú"] || ""
+    const gc = c.notes || ""
     if (gc.includes("/static/generated_contracts/")) {
       const url = gc.split("File Hợp đồng: ")[1] || gc
       docLink = `<a href="${url}" class="btn btn-secondary btn-xs" download><i data-lucide="download"></i> File</a>`
     }
 
     tbody.innerHTML += `<tr>
-      <td><strong class="mono">${c["Mã hợp đồng"]||""}</strong></td>
-      <td class="mono">${c["Mã hồ sơ"]||"—"}</td>
-      <td>${c["Tên khách hàng"]||""}</td>
-      <td>${c["Dịch vụ"]||""}</td>
-      <td class="mono">${fmt(c["Giá trị hợp đồng"]||c["Giá trị HĐ"])}</td>
-      <td class="mono text-success">${fmt(c["Đã thu"]||c["Đã thanh toán"])}</td>
-      <td class="mono"><strong style="color:${(c["Còn nợ"]||0) > 0 ? 'var(--red-400)' : 'var(--green-400)'}">${fmt(c["Còn nợ"]||c["Công nợ"])}</strong></td>
+      <td><strong class="mono">${c.id||c.contract_id||""}</strong></td>
+      <td class="mono">${c.task_id||"—"}</td>
+      <td>${c.customer_name||""}</td>
+      <td>${c.service_type||""}</td>
+      <td class="mono">${fmt(c.total_value||c.contract_value)}</td>
+      <td class="mono text-success">${fmt(c.paid_amount)}</td>
+      <td class="mono"><strong style="color:${(c.remaining_balance||0) > 0 ? 'var(--red-400)' : 'var(--green-400)'}">${fmt(c.remaining_balance)}</strong></td>
       <td><span class="${cls}">${s}</span></td>
       <td>${docLink}</td>
     </tr>`
@@ -391,18 +391,18 @@ function renderContracts() {
 }
 
 function populateContractFormFromHoso() {
-  const maHs = document.getElementById("form-hd-hoso-select").value
-  const hs = app.hoso.find(h => h["Mã hồ sơ"] === maHs)
+  const dossierId = document.getElementById("form-hd-hoso-select").value
+  const hs = app.hoso.find(h => (h.id || h.task_id) === dossierId)
   if (!hs) return
   ;["form-hd-name","form-hd-phone","form-hd-address"].forEach(id => document.getElementById(id).value = "")
   const nameEl = document.getElementById("form-hd-name")
-  if (nameEl) nameEl.value = hs["Tên khách hàng"] || ""
+  if (nameEl) nameEl.value = hs.customer_name || ""
   const phoneEl = document.getElementById("form-hd-phone")
-  if (phoneEl) phoneEl.value = hs["SĐT"] || ""
+  if (phoneEl) phoneEl.value = hs.phone || ""
   const addrEl = document.getElementById("form-hd-address")
-  if (addrEl) addrEl.value = hs["Khu vực/Phường"] || ""
+  if (addrEl) addrEl.value = hs.ward || ""
   const svcEl = document.getElementById("form-hd-service")
-  if (svcEl && hs["Loại dịch vụ"]) svcEl.value = hs["Loại dịch vụ"]
+  if (svcEl && hs.service_type) svcEl.value = hs.service_type
 }
 
 async function handleGenerateContract(e) {
@@ -411,17 +411,17 @@ async function handleGenerateContract(e) {
   if (!val || val <= 0) { toast("Nhập giá trị hợp đồng hợp lệ", "error"); return }
 
   const payload = {
-    SO_HOP_DONG: document.getElementById("form-hd-code").value,
-    MA_HO_SO: document.getElementById("form-hd-hoso-select").value,
-    TEN_KHACH_HANG: document.getElementById("form-hd-name").value,
-    SO_DIEN_THOAI: document.getElementById("form-hd-phone").value,
-    KHACH_HANG_EMAIL: "admin@nhadatbachkhoa.com",
-    LOAI_DICH_VU: document.getElementById("form-hd-service").value,
-    DIA_CHI: document.getElementById("form-hd-address").value,
-    GIA_TRI_HOP_DONG: val,
-    NGAY_KY: document.getElementById("form-hd-signdate").value,
-    NGAY_HET_HAN: document.getElementById("form-hd-enddate").value,
-    Sale_nguồn: document.getElementById("form-hd-sale").value
+    contract_id: document.getElementById("form-hd-code").value,
+    task_id: document.getElementById("form-hd-hoso-select").value,
+    customer_name: document.getElementById("form-hd-name").value,
+    phone: document.getElementById("form-hd-phone").value,
+    customer_email: "admin@nhadatbachkhoa.com",
+    service_type: document.getElementById("form-hd-service").value,
+    address: document.getElementById("form-hd-address").value,
+    contract_value: val,
+    date_signed: document.getElementById("form-hd-signdate").value,
+    due_date: document.getElementById("form-hd-enddate").value,
+    sales_source: document.getElementById("form-hd-sale").value
   }
   try {
     const res = await fetch("/api/hopdong/generate", {
@@ -460,19 +460,19 @@ async function loadThuchi() {
       return
     }
     list.forEach(t => {
-      const isChi = t["Loại Thu/Chi"] === "Chi"
-      const cls = isChi ? "badge badge-danger" : "badge badge-success"
-      const amtCls = isChi ? "text-danger" : "text-success"
-      const prefix = isChi ? "−" : "+"
+      const isExpense = t.type === "Chi" || t.transaction_type === "Chi"
+      const cls = isExpense ? "badge badge-danger" : "badge badge-success"
+      const amtCls = isExpense ? "text-danger" : "text-success"
+      const prefix = isExpense ? "−" : "+"
       tbody.innerHTML += `<tr>
-        <td class="mono">${t["Ngày"]||""}</td>
-        <td><strong class="mono">${t["Mã phiếu"]||t["Số chứng từ"]||""}</strong></td>
-        <td class="mono">${t["Mã hồ sơ"]||"—"}</td>
-        <td>${t["Diễn giải"]||""}</td>
-        <td><span class="${cls}">${t["Loại Thu/Chi"]||t["Loại"]}</span></td>
-        <td>${t["Người nhận/Nộp"]||""}</td>
-        <td class="mono"><strong class="${amtCls}">${prefix}${fmt(t["Số tiền"])}</strong></td>
-        <td>${t["Hình thức"]||""}</td>
+        <td class="mono">${t.date || t.transaction_date || ""}</td>
+        <td><strong class="mono">${t.id || ""}</strong></td>
+        <td class="mono">${t.task_id || t.project_id || "—"}</td>
+        <td>${t.description || ""}</td>
+        <td><span class="${cls}">${t.type || t.transaction_type || ""}</span></td>
+        <td>${t.partner || t.payer_payee || ""}</td>
+        <td class="mono"><strong class="${amtCls}">${prefix}${fmt(t.amount)}</strong></td>
+        <td>${t.payment_method || ""}</td>
       </tr>`
     })
   } catch {
@@ -525,7 +525,7 @@ async function loadPayroll() {
     const tbody = document.getElementById("payroll-table-body")
     tbody.innerHTML = ""
 
-    const hsSet = new Set(list.map(r => r["Mã hồ sơ"]))
+    const hsSet = new Set(list.map(r => r.task_id || r.id))
     document.getElementById("payroll-count").textContent = hsSet.size
 
     let total = 0
@@ -535,18 +535,18 @@ async function loadPayroll() {
       return
     }
     list.forEach(r => {
-      const val = parseFloat(r["Tổng nhận"] || r["Số tiền khoán"] || 0)
+      const val = parseFloat(r.amount || r.total_amount || 0)
       total += val
       tbody.innerHTML += `<tr>
-        <td><strong>${r["Nhân sự"]||""}</strong></td>
-        <td class="mono">${r["Mã hồ sơ"]||""}</td>
-        <td>${r["Công đoạn khoán"]||""}</td>
-        <td class="mono">${fmt(r["Số tiền khoán"])}</td>
-        <td class="mono">${fmt(r["Phụ cấp"])}</td>
-        <td class="mono">${fmt(r["Thưởng/Phạt"])}</td>
+        <td><strong>${r.employee_name||""}</strong></td>
+        <td class="mono">${r.task_id||""}</td>
+        <td>${r.task_name||""}</td>
+        <td class="mono">${fmt(r.amount)}</td>
+        <td class="mono">${fmt(r.allowance || 0)}</td>
+        <td class="mono">${fmt(r.bonus_penalty || 0)}</td>
         <td class="mono"><strong class="text-success">${fmt(val)}</strong></td>
-        <td class="mono">${r["Ngày chốt"]||""}</td>
-        <td style="font-size:0.78rem;color:var(--text-tertiary)">${r["Ghi chú"]||""}</td>
+        <td class="mono">${r.closing_date||""}</td>
+        <td style="font-size:0.78rem;color:var(--text-tertiary)">${r.notes||""}</td>
       </tr>`
     })
     document.getElementById("payroll-total-amount").textContent = fmt(total)

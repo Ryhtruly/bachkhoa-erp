@@ -4,4 +4,24 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+    exclude: ['**/node_modules/**', '**/.git/**', 'e2e/**'],
+  },
+  server: {
+    watch: {
+      usePolling: process.env.VITE_USE_POLLING === 'true',
+    },
+    proxy: {
+      '/api': {
+        target: process.env.VITE_BACKEND_TARGET || 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+      '/static': {
+        target: process.env.VITE_BACKEND_TARGET || 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+    },
+  },
 })

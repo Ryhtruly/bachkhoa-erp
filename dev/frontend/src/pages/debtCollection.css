@@ -1,0 +1,790 @@
+/* Thu Công Nợ — màn hình của Kế toán.
+   Dùng lại token màu/khoảng cách sẵn có để khớp với tab Hợp đồng. */
+
+.debt {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+
+.debt__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 2px;
+}
+.debt__eyebrow {
+  display: inline-block;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-tertiary, #64748b);
+  margin-bottom: 3px;
+}
+.debt__head h2 { margin: 0 0 2px 0; font-size: 1.25rem; font-weight: 800; }
+.debt__head p { margin: 0; color: var(--text-tertiary); font-size: 0.82rem; max-width: 65ch; }
+.debt__head .btn { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.debt__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.debt__sync-note {
+  color: var(--text-tertiary);
+  font-size: 0.73rem;
+  white-space: nowrap;
+}
+
+/* ── 4 Thẻ chỉ số tổng hợp tinh gọn, hiện đại ────────────────────── */
+.debt__totals-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.debt__total-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.debt__total-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.debt__total-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.debt__total-card--primary .debt__total-icon {
+  background: var(--blue-50, #eff6ff);
+  color: var(--blue-600, #2563eb);
+}
+.debt__total-card--highlight .debt__total-icon {
+  background: var(--amber-50, #fef3c7);
+  color: var(--amber-600, #d97706);
+}
+.debt__total-card--danger {
+  background: #fff7f7;
+  border-color: #fecaca;
+}
+.debt__total-card--danger .debt__total-icon {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.debt__total-card--danger .debt__total-content strong {
+  color: #b91c1c;
+}
+.debt__total-card--waiting {
+  background: #f7faff;
+  border-color: #bfdbfe;
+}
+.debt__total-card--waiting .debt__total-icon {
+  background: #dbeafe;
+  color: #2563eb;
+}
+.debt__total-card--waiting .debt__total-content strong {
+  color: #1d4ed8;
+}
+
+.debt__total-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.debt__total-content span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-tertiary, #64748b);
+  margin-bottom: 2px;
+}
+
+.debt__total-content strong {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-primary, #0f172a);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.debt__total-content strong small {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
+  margin-left: 2px;
+}
+
+.debt__total-content p {
+  margin: 3px 0 0 0;
+  font-size: 0.74rem;
+  color: var(--text-tertiary, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.debt__total-card--highlight {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.debt__filter-wrap {
+  margin: 4px 0 10px 0;
+}
+
+.debt__filter-wrap .filter-bar-modern {
+  margin-bottom: 0;
+}
+.debt__filter-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 0.74rem;
+}
+.debt__filter-summary > span:first-child {
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.debt__filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 999px;
+  background: var(--bg-surface, #f8fafc);
+  color: var(--text-secondary);
+}
+.debt__total strong { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.debt__total--money { background: #fffbeb; border-color: #fcd34d; }
+.debt__total--money strong { color: #b45309; }
+.debt__total--settled { background: #f0fdf4; border-color: #86efac; }
+.debt__total--settled strong { color: #15803d; }
+
+/* ── Danh sách hồ sơ đang nợ ───────────────────────────────────── */
+.debt__list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.debt__card {
+  padding: 14px 18px;
+  background: #fff;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.debt__card:hover {
+  border-color: var(--border-default, #cbd5e1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+@keyframes debt-override-alert-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.18), 0 4px 14px rgba(239, 68, 68, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.24), 0 7px 20px rgba(239, 68, 68, 0.2);
+  }
+}
+
+.debt__card.is-override-alert,
+.debt__card.is-override-alert:hover {
+  border: 1.5px solid #ef4444;
+  background: #fff8f8;
+  animation: debt-override-alert-pulse 1.8s ease-in-out infinite;
+}
+
+.debt__card.is-settled-after-override,
+.debt__card.is-settled-after-override:hover {
+  border: 1.5px solid #22c55e;
+  background: #f7fff9;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.12), 0 4px 14px rgba(34, 197, 94, 0.08);
+}
+
+.debt__age.is-override-badge {
+  border: 1px solid #fca5a5;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 800;
+}
+.debt__age.is-settled-badge {
+  border: 1px solid #86efac;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 800;
+}
+
+.debt__alert-override {
+  margin: 2px 0;
+  padding: 9px 12px;
+  border-left: 3px solid #ef4444;
+  border-radius: 5px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 0.82rem;
+}
+.debt__alert-override strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.debt__alert-override p {
+  margin: 0;
+  color: #7f1d1d;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.debt__settled-confirmation {
+  margin: 2px 0;
+  padding: 9px 12px;
+  border-left: 3px solid #22c55e;
+  border-radius: 5px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.82rem;
+}
+.debt__settled-confirmation strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.debt__settled-confirmation p {
+  margin: 0;
+  color: #14532d;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .debt__card.is-override-alert,
+  .debt__card.is-override-alert:hover { animation: none; }
+}
+
+.debt__card-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 960px) {
+  .debt__card-layout {
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+    align-items: stretch;
+    gap: 20px;
+  }
+}
+
+.debt__card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.debt__card-right {
+  display: flex;
+  flex-direction: column;
+}
+
+.debt__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.debt__contract {
+  display: block;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+.debt__customer { display: block; margin: 2px 0; font-size: 1.05rem; font-weight: 700; }
+.debt__service { color: var(--text-tertiary); font-size: 0.8rem; }
+
+/* Hồ sơ treo càng lâu càng phải đập vào mắt — đó là việc cần đòi trước. */
+.debt__age {
+  flex-shrink: 0;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+.debt__age.is-late { background: #fee2e2; color: #991b1b; }
+
+.debt__bar {
+  height: 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+.debt__bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #10b981;
+}
+
+.debt__figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 14px;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+.debt__figures span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary, #475569);
+}
+.debt__figures strong {
+  color: var(--text-primary, #0f172a);
+  font-variant-numeric: tabular-nums;
+}
+.debt__figures .is-owed strong {
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.debt__card .btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+
+/* ── Khung Lịch Sử Thu Tiền (Bên Phải) ────────────────────────── */
+.debt__history-box {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px 14px;
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.debt__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.debt__history-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.debt__history-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  background: #e2e8f0;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.debt__history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 185px;
+  overflow-y: auto;
+}
+
+.debt__history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.debt__history-item.is-pending {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.debt__history-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.debt__history-date {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.debt__history-amount {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.debt__history-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.73rem;
+}
+
+.debt__history-method {
+  color: var(--text-secondary);
+}
+
+.debt__history-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debt__history-nobill {
+  color: var(--text-tertiary);
+  font-size: 0.72rem;
+}
+
+.debt__history-status {
+  font-size: 0.71rem;
+  font-weight: 600;
+}
+
+.debt__history-status.is-approved {
+  color: #16a34a;
+}
+
+.debt__history-status.is-waiting {
+  color: #d97706;
+}
+
+.debt__history-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 70px;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+/* ── Rỗng và lỗi ──────────────────────────────────────────────── */
+.debt__msg { margin: 0; color: var(--text-tertiary); font-size: 0.88rem; }
+.debt__msg--error { display: grid; gap: 12px; justify-items: start; color: #b91c1c; }
+
+.debt__empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--bg-card, #f8fafc);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm, 8px);
+  color: var(--text-tertiary);
+}
+.debt__empty svg { color: #16a34a; }
+.debt__empty strong { color: var(--text-primary); font-size: 1rem; }
+.debt__empty span { max-width: 46ch; font-size: 0.85rem; line-height: 1.55; }
+
+/* ── Hộp thoại ghi nhận ───────────────────────────────────────── */
+.debt__form { display: flex; flex-direction: column; gap: 14px; }
+.debt__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.debt__req { color: #dc2626; text-transform: none; letter-spacing: 0; }
+.debt__form-hint {
+  margin: 0;
+  padding: 11px 13px;
+  background: #f8fafc;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+.debt__warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.82rem;
+}
+.debt__form-footer { display: flex; justify-content: flex-end; gap: 10px; }
+
+.debt__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.debt__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.debt__age--waiting { background: #dbeafe; color: #1e40af; }
+
+/* Hộp xác nhận giao khi còn nợ — phải nói rõ hệ quả trước khi bấm */
+.debt__confirm {
+  padding: 14px 16px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+}
+.debt__confirm-line {
+  display: flex; justify-content: space-between;
+  margin: 0 0 5px; font-size: 0.86rem;
+}
+.debt__confirm-line strong { font-variant-numeric: tabular-nums; }
+.debt__confirm-line.is-owed { color: #b91c1c; }
+.debt__confirm-ask { margin: 14px 0 8px; font-size: 0.92rem; line-height: 1.5; }
+.debt__confirm-note { margin: 0; color: #78350f; font-size: 0.8rem; line-height: 1.55; }
+
+/* Nói rõ đang chờ ai — thay cho một cái nút bấm vào là báo lỗi */
+.debt__blocked {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 11px;
+  background: #f1f5f9;
+  border-left: 3px solid #94a3b8;
+  color: #475569;
+  font-size: 0.81rem;
+}
+.debt__age--blocked { background: #f1f5f9; color: #475569; }
+
+/* Đang chờ người khác làm — thông tin, không phải cảnh báo. */
+.debt__waiting {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 8px 11px;
+  background: #fff7ed;
+  border-left: 3px solid var(--orange-400, #fb923c);
+  color: #9a3412;
+  font-size: 0.81rem;
+}
+
+/* Phiếu kế toán đã gửi, đang nằm chờ giám đốc. Là biên nhận cho người vừa gửi,
+   nên phải khác màu hai khối trên — đây là việc đã làm, không phải việc kẹt. */
+.debt__pending {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  padding: 8px 11px;
+  background: #eff6ff;
+  border-left: 3px solid #3b82f6;
+  color: #1d4ed8;
+  font-size: 0.81rem;
+}
+
+@media (max-width: 1100px) {
+  .debt__totals-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .debt__head {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .debt__head-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .debt__sync-note {
+    white-space: normal;
+  }
+
+  .debt__totals-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .debt__total-card {
+    min-width: 0;
+    padding: 11px 13px;
+  }
+
+  .debt__total-content p {
+    white-space: normal;
+  }
+
+  .debt__filter-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+}
+
+/* ============================================================
+   Dark Mode Support for Debt Collection
+   ============================================================ */
+
+[data-theme='dark'] .debt__total-card,
+[data-theme='dark'] .debt__card {
+  background: var(--bg-card);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .debt__total-card--highlight {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+[data-theme='dark'] .debt__total-card--danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+[data-theme='dark'] .debt__total-card--danger .debt__total-icon {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+[data-theme='dark'] .debt__total-card--danger .debt__total-content strong {
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .debt__total-card--waiting {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(96, 165, 250, 0.32);
+}
+
+[data-theme='dark'] .debt__total-card--waiting .debt__total-icon {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .debt__total-card--waiting .debt__total-content strong {
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .debt__filter-chip {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .debt__history-box {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .debt__history-item {
+  background: var(--bg-card);
+  border-color: var(--border-subtle);
+}
+
+[data-theme='dark'] .debt__history-item.is-pending {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+[data-theme='dark'] .debt__history-count {
+  background: var(--border-hover);
+  color: var(--text-primary);
+}
+
+[data-theme='dark'] .debt__figures {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+
+[data-theme='dark'] .debt__form-hint {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .debt__age {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .debt__age.is-late {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+}
+
+[data-theme='dark'] .debt__age--waiting {
+  background: rgba(59, 130, 246, 0.18);
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .debt__age--blocked {
+  background: var(--bg-surface);
+  color: var(--text-tertiary);
+}
+
+[data-theme='dark'] .debt__bar {
+  background: var(--border-default);
+}
+
+[data-theme='dark'] .debt__confirm {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+[data-theme='dark'] .debt__confirm-note {
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .debt__blocked {
+  background: var(--bg-surface);
+  border-left-color: var(--border-hover);
+  color: var(--text-secondary);
+}
+
+[data-theme='dark'] .debt__waiting {
+  background: rgba(249, 115, 22, 0.12);
+  border-left-color: var(--orange-500);
+  color: #fb923c;
+}
+
+[data-theme='dark'] .debt__pending {
+  background: rgba(59, 130, 246, 0.12);
+  border-left-color: #3b82f6;
+  color: #93c5fd;
+}

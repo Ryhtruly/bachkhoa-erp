@@ -1,0 +1,360 @@
+{
+  "info": {
+    "name": "Bách Khoa ERP - RBAC API Collection (100% Endpoints)",
+    "description": "Bộ Postman Collection tự động test Phân quyền RBAC cho 97 REST Endpoints của Bách Khoa ERP Backend.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "YOUR_ADMIN_JWT_TOKEN",
+      "type": "string"
+    },
+    {
+      "key": "salesToken",
+      "value": "YOUR_SALES_JWT_TOKEN",
+      "type": "string"
+    },
+    {
+      "key": "accountantToken",
+      "value": "YOUR_ACCOUNTANT_JWT_TOKEN",
+      "type": "string"
+    },
+    {
+      "key": "surveyToken",
+      "value": "YOUR_SURVEY_STAFF_JWT_TOKEN",
+      "type": "string"
+    },
+    {
+      "key": "legalToken",
+      "value": "YOUR_LEGAL_STAFF_JWT_TOKEN",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Authentication (Đăng Nhập)",
+      "item": [
+        {
+          "name": "POST /api/login (Login Admin/User)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"admin\", \"password\": \"admin123\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/me (Thông tin User đang Login)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Sổ Quỹ & Tài Chính (Finance - Kế toán)",
+      "item": [
+        {
+          "name": "GET /api/thuchi (Danh sách Thu Chi - Finance Read)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accountantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/thuchi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "thuchi"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/thuchi (Tạo phiếu Thu/Chi - Finance Create)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accountantToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"Lo\\u1ea1i_Thu_Chi\": \"Thu\", \"S\\u1ed1_ti\\u1ec1n\": 5000000, \"Di\\u1ec5n_gi\\u1ea3i\": \"Thu ti\\u1ec1n c\\u1ecdc h\\u1ee3p \\u0111\\u1ed3ng BK-2026-001\", \"Ng\\u01b0\\u1eddi_nh\\u1eadn_N\\u1ed9p\": \"Nguy\\u1ec5n V\\u0103n A\", \"H\\u00ecnh_th\\u1ee9c\": \"Chuy\\u1ec3n kho\\u1ea3n\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/thuchi",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "thuchi"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/luong (Danh sách Lương Khoán - Payroll Read)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accountantToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/luong",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "luong"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Hồ Sơ & Node Công Việc (Tasks - Đo vẽ / Pháp lý)",
+      "item": [
+        {
+          "name": "GET /api/tasks (Danh sách Hồ sơ - Workflow Read)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{surveyToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/tasks/stats (Thống kê Hồ sơ - Workflow Read)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{surveyToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/tasks/update-status (Cập nhật Trạng thái Task Node)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{surveyToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"M\\u00e3_h\\u1ed3_s\\u01a1\": \"BK-HS-001\", \"Tr\\u1ea1ng_th\\u00e1i\": \"Ho\\u00e0n th\\u00e0nh\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/update-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tasks",
+                "update-status"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. CRM & Báo Giá (CRM - Sales)",
+      "item": [
+        {
+          "name": "GET /api/crm/stats (Thống kê CRM Lead - CRM Read)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{salesToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/crm/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "crm",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/quotations/calculate (Tính dự toán Báo giá - PUBLIC)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"area\": 100, \"service_type\": \"\\u0110o hi\\u1ec7n tr\\u1ea1ng\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/quotations/calculate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "quotations",
+                "calculate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Trang Tổng Quan (Dashboard - User Login)",
+      "item": [
+        {
+          "name": "GET /api/dashboard/summary (Tổng quan hệ thống)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{salesToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/summary",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "summary"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/dashboard/charts (Biểu đồ doanh thu/nợ)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard/charts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard",
+                "charts"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

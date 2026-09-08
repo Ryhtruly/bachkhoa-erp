@@ -1,0 +1,140 @@
+name: bachkhoa-erp-dev
+
+services:
+  redis-contracts:
+    image: redis:7.4.9-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./dev/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # Cài thêm phụ thuộc chỉ dùng khi dev (pytest, Faker) rồi mới chạy server.
+    # Có pip cache dùng chung nên lần thứ hai trở đi gần như tức thì.
+    command:
+      - sh
+      - -c
+      - >-
+        pip install -q -r /app/requirements-dev.txt &&
+        exec uvicorn src.index:app --host 0.0.0.0 --port 8080 --reload
+    env_file:
+      - ./dev/backend/.env
+    environment:
+      REDIS_URL: redis://redis-contracts:6379/0
+      WATCHFILES_FORCE_POLLING: "true"
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: wiki-files
+      MINIO_PUBLIC_URL: http://localhost:9000
+      # DB kiểm thử là một service riêng, gọi bằng TÊN. Bản trước cho
+      # bachkhoa-pg-test dùng chung network namespace của backend, nên mỗi lần
+      # recreate backend là nó chết theo và phải dựng lại schema từ đầu.
+      TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@pg-test:5432/bachkhoa_test
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./dev/backend/src:/app/src
+      - ./dev/backend/static:/app/static
+      # Mount cả tests: không mount thì mỗi lần sửa test phải `docker cp` lại,
+      # và quên copy một lần là chạy nhầm bản cũ rồi tưởng đã xanh.
+      - ./dev/backend/tests:/app/tests
+      - ./dev/backend/requirements.txt:/app/requirements.txt:ro
+      - ./dev/backend/requirements-dev.txt:/app/requirements-dev.txt:ro
+      # Hai thứ bộ test đọc tới nhưng KHÔNG phải mã chạy: file migration (test
+      # đối chiếu nội dung SQL) và thư mục scripts (test import trực tiếp).
+      # Chỉ đọc — không đường nào ghi ngược ra repo.
+      - ./supabase:/app/supabase:ro
+      - ./dev/backend/scripts:/app/scripts:ro
+      - pip_cache:/root/.cache/pip
+    depends_on:
+      redis-contracts:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      pg-test:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./dev/frontend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      VITE_BACKEND_TARGET: http://backend:8080
+      VITE_USE_POLLING: "true"
+    ports:
+      - "127.0.0.1:3000:5173"
+    volumes:
+      - ./dev/frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY in dev/backend/.env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in dev/backend/.env}
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Postgres cho pytest. KHÔNG phải DB ứng dụng — conftest.py từ chối chạy nếu
+  # TEST_DATABASE_URL trùng DATABASE_URL, và đó là hàng rào duy nhất ngăn bộ test
+  # xoá dữ liệu thật. Dùng pg17 cho khớp major version của live, vì schema được
+  # dựng bằng pg_dump từ live.
+  pg-test:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bachkhoa_test
+    volumes:
+      - pg_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  frontend-node-modules:
+  minio_data:
+  pg_test_data:
+  pip_cache:

@@ -1,0 +1,349 @@
+/* ─── Page shell: sticky sub-tabs + content filling all remaining space ─── */
+/* .tab-pane.active in index.css sets display:block at (0,0,2,0) specificity;
+   match all three classes so this rule always wins regardless of CSS load order. */
+/* height:100% cannot resolve here because .main/the tab wrapper only ever
+   grow to fit content (no definite height for a percentage to reference) —
+   anchor to the viewport directly instead so everything below (flex:1,
+   height:100%) has a real box to distribute into. */
+.tab-pane.active.hr-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--header-h, 56px) - 6px);
+  min-height: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 0;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.hr-page__tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 4px 16px 0;
+}
+
+.hr-page__content {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.hr-page__content > * {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* Employee master-detail workspace */
+
+.hr-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) 1fr;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-card);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+/* ─── List (left) ─── */
+.hr-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border-default);
+}
+
+.hr-list__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hr-list__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hr-list__title-row h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hr-list__search {
+  position: relative;
+}
+
+.hr-list__search svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.hr-list__search input {
+  padding-left: 38px;
+}
+
+.hr-list__items {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.hr-list__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-left: 4px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms var(--ease-out), border-color 150ms var(--ease-out);
+}
+
+.hr-list__item:hover {
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+}
+
+.hr-list__item.active {
+  border-left-color: var(--orange-500);
+  background: rgba(235, 74, 35, 0.06);
+}
+
+.hr-list__item-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hr-list__item-sub {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hr-list__empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+/* ─── Avatar ─── */
+.hr-avatar {
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ─── Detail (right) ─── */
+.hr-detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.hr-detail__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.hr-detail__back {
+  display: none;
+}
+
+.hr-detail__hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 18px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hr-detail__hero-avatar-wrap {
+  position: relative;
+  width: 130px;
+  height: 130px;
+}
+
+.hr-detail__hero-avatar {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 42px;
+  font-weight: 700;
+  box-shadow: var(--shadow-glow-orange);
+}
+
+.hr-detail__hero-avatar--img {
+  object-fit: cover;
+}
+
+.hr-detail__hero-avatar-upload {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+.hr-detail__hero-avatar-upload:hover {
+  background: var(--orange-500);
+  color: #fff;
+  border-color: var(--orange-500);
+}
+
+.hr-detail__hero-name {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.hr-detail__hero-id {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+}
+
+.hr-detail__hero-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.hr-detail__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.hr-detail__body {
+  padding: 8px 18px 20px;
+}
+
+.hr-detail__field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.hr-detail__field-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  min-height: 22px;
+  word-break: break-word;
+}
+
+.hr-detail__field-value--muted {
+  color: var(--text-tertiary);
+}
+
+.hr-detail__account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ─── Responsive: stack on narrow screens ─── */
+@media (max-width: 1023px) {
+  .hr-workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - var(--header-h) - 32px);
+  }
+
+  .hr-workspace.has-selection .hr-list {
+    display: none;
+  }
+
+  .hr-workspace:not(.has-selection) .hr-detail {
+    display: none;
+  }
+
+  .hr-detail__back {
+    display: inline-flex;
+  }
+}
+
+/* ─── Print: only the detail panel ─── */
+@media print {
+  .sidebar,
+  .top-header,
+  .hr-list,
+  .hr-detail__actions,
+  .hr-detail__back {
+    display: none !important;
+  }
+
+  .hr-workspace {
+    display: block !important;
+    height: auto !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .hr-detail {
+    overflow: visible !important;
+  }
+}

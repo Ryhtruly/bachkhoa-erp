@@ -1,0 +1,179 @@
+/* ── Chi tiết Hồ Sơ Pháp Lý ──────────────────────────────────────────────────
+   Bố cục theo trạng thái hiểu biết: phần hệ thống đã biết sẵn, và phần chỉ có
+   sau khi nhân viên đi nộp mang biên nhận về. Tiền tố .legal-* dùng riêng cho
+   màn này để không đụng specificity với .form-row/.form-grid dùng chung.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Dải định danh: mã hợp đồng là mã sổ sách nên để font mono, không phải văn xuôi. */
+.legal-detail__identity {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.legal-detail__identity-code {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.legal-detail__identity-code span {
+  font-family: var(--font-sans, inherit);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.legal-detail__identity-name {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.legal-detail__section {
+  margin-top: 18px;
+}
+
+.legal-detail__section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: var(--text-tertiary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* Vạch nhỏ đầu tiêu đề — đánh dấu nhóm, không phải trang trí. */
+.legal-detail__section-title::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--orange-500);
+}
+
+.legal-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 22px;
+}
+
+.legal-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.legal-field--wide { grid-column: 1 / -1; }
+
+.legal-field__label {
+  color: var(--text-tertiary);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Chiều cao ô giá trị khoá đúng bằng chiều cao ô nhập (44px) để chuyển
+   Xem ↔ Sửa không làm cả khung nhảy lên nhảy xuống. */
+.legal-field__value {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 2px;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.legal-field--wide .legal-field__value { align-items: flex-start; padding-top: 12px; }
+
+.legal-field__value--muted { color: var(--text-tertiary); font-weight: 400; }
+.legal-field__value--code { font-family: var(--font-mono); font-weight: 600; }
+
+.legal-field__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--orange-600);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.legal-field__link:hover { text-decoration: underline; }
+
+/* ── Khối biên nhận — điểm nhấn duy nhất của màn này ──────────────────────
+   Khi chưa có biên nhận: nói rõ đang chờ gì, thay vì bốn dấu gạch trống rỗng. */
+.legal-receipt {
+  display: grid;
+  gap: 10px;
+  padding: 13px 15px;
+  border: 1px dashed color-mix(in srgb, var(--orange-500) 45%, var(--border-default));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--orange-500) 4%, transparent);
+}
+
+.legal-receipt--filled {
+  border-style: solid;
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+}
+
+.legal-receipt__pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--text-secondary);
+}
+
+.legal-receipt__pending svg { flex-shrink: 0; margin-top: 1px; color: var(--orange-500); }
+.legal-receipt__pending strong { display: block; color: var(--text-primary); font-size: 0.88rem; }
+.legal-receipt__pending span { font-size: 0.8rem; }
+
+.legal-receipt__code {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.legal-receipt__dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 22px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.legal-detail__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.legal-detail__footer .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+@media (max-width: 640px) {
+  .legal-detail__grid,
+  .legal-receipt__dates { grid-template-columns: minmax(0, 1fr); }
+}

@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Files, Loader, AlertTriangle, DollarSign, Clock } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { StatsGrid, StatCard, StatusBadge } from '../components/ui';
+import PendingApprovals from '../features/approvals/PendingApprovals';
+import { apiFetch } from '../lib/api';
+
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
-export default function Dashboard() {
+export default function Dashboard({ user }) {
   const [stats, setStats] = useState({
-    total_hoso: 0,
+    total_tasks: 0,
     in_progress: 0,
     overdue: 0,
     revenue: 0,
@@ -15,7 +19,7 @@ export default function Dashboard() {
     debt_val: 0
   });
 
-  const [recentHoso, setRecentHoso] = useState([]);
+  const [recentTasks, setRecentTasks] = useState([]);
   const [chartData, setChartData] = useState({
     lineData: [],
     barData: [],
@@ -32,17 +36,15 @@ export default function Dashboard() {
     const fetchDashboard = async () => {
       try {
         const [resSummary, resCharts] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/dashboard/summary'),
-          fetch('http://127.0.0.1:8000/api/dashboard/charts')
+          apiFetch('/api/dashboard/summary'),
+          apiFetch('/api/dashboard/charts')
         ]);
-        if (resSummary.ok) {
-          const data = await resSummary.json();
-          setStats(data.stats);
-          setRecentHoso(data.recent_hoso);
+        if (resSummary) {
+          setStats(resSummary.stats || {});
+          setRecentTasks(resSummary.recent_tasks || resSummary.recent_hoso || []);
         }
-        if (resCharts.ok) {
-          const data = await resCharts.json();
-          setChartData(data);
+        if (resCharts) {
+          setChartData(resCharts);
         }
       } catch (err) {
         console.error('Error fetching dashboard:', err);
@@ -80,46 +82,54 @@ export default function Dashboard() {
     <section className="tab-pane active" id="tab-dashboard">
       
       {/* Welcome Banner */}
-      <div className="card glass-card" style={{ marginBottom: '24px', padding: '28px', background: 'linear-gradient(135deg, rgba(235, 74, 35, 0.05), rgba(249, 115, 22, 0.15))', border: '1px solid rgba(235, 74, 35, 0.2)', position: 'relative', overflow: 'hidden' }}>
+      <div className="card glass-card" style={{ marginBottom: '16px', padding: '20px', background: 'linear-gradient(135deg, rgba(235, 74, 35, 0.05), rgba(249, 115, 22, 0.15))', border: '1px solid rgba(235, 74, 35, 0.2)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--orange-600)', marginBottom: '6px' }}>Chào buổi {new Date().getHours() < 12 ? 'sáng' : 'chiều'}, Lê Văn Dựng! 👋</h2>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--orange-600)', marginBottom: '6px' }}>Chào buổi {new Date().getHours() < 12 ? 'sáng' : 'chiều'}, {user?.full_name || user?.username || 'bạn'}! 👋</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: 500 }}>Dưới đây là bức tranh tài chính và tiến độ công việc tổng quan của công ty. Mọi thứ đang trong tầm kiểm soát!</p>
         </div>
         <div style={{ position: 'absolute', right: '-5%', top: '-50%', width: '300px', height: '300px', background: 'radial-gradient(circle, rgba(235,74,35,0.15) 0%, transparent 70%)', borderRadius: '50%' }}></div>
       </div>
 
-      <div className="stats-grid" id="dashboard-stats" style={{ marginBottom: '24px' }}>
-        <div className="stat-card card">
-          <div className="stat-icon purple"><Files /></div>
-          <div className="stat-info">
-            <h3>{loading ? '—' : stats.total_hoso}</h3>
-            <p>Tổng hồ sơ</p>
-          </div>
-        </div>
-        <div className="stat-card card">
-          <div className="stat-icon amber"><Loader /></div>
-          <div className="stat-info">
-            <h3>{loading ? '—' : stats.in_progress}</h3>
-            <p>Đang xử lý</p>
-          </div>
-        </div>
-        <div className="stat-card card">
-          <div className="stat-icon red"><AlertTriangle /></div>
-          <div className="stat-info">
-            <h3>{loading ? '—' : stats.overdue}</h3>
-            <p>Hồ sơ quá hạn</p>
-          </div>
-        </div>
-        <div className="stat-card card">
-          <div className="stat-icon green"><DollarSign /></div>
-          <div className="stat-info">
-            <h3>{loading ? '—' : formatVND(stats.revenue)}</h3>
-            <p>Thực thu</p>
-          </div>
-        </div>
+      {/* Việc đang chặn người khác phải đứng TRƯỚC mọi thống kê — kế toán ghi tiền
+          xong là hồ sơ treo cho tới khi giám đốc duyệt. Tự ẩn khi không còn phiếu nào. */}
+      <div style={{ marginBottom: '16px' }}>
+        <PendingApprovals />
       </div>
 
-      <div className="balance-strip card" style={{ marginBottom: '24px' }}>
+      <StatsGrid>
+        <StatCard
+          label="Tổng hồ sơ"
+          value={stats.total_tasks || stats.total_hoso || 0}
+          icon={<Files size={24} />}
+          iconVariant="purple"
+          loading={loading}
+        />
+        <StatCard
+          label="Đang xử lý"
+          value={stats.in_progress}
+          icon={<Loader size={24} />}
+          iconVariant="orange"
+          loading={loading}
+        />
+        <StatCard
+          label="Hồ sơ quá hạn"
+          value={stats.overdue}
+          icon={<AlertTriangle size={24} />}
+          iconVariant="red"
+          loading={loading}
+        />
+        <StatCard
+          label="Thực thu"
+          value={stats.revenue}
+          icon={<DollarSign size={24} />}
+          iconVariant="green"
+          format="currency"
+          loading={loading}
+        />
+      </StatsGrid>
+
+
+      <div className="balance-strip card" style={{ marginBottom: '16px' }}>
         <div className="balance-item">
           <span>Giá trị HĐ</span>
           <h4>{loading ? '—' : formatVND(stats.contract_val)}</h4>
@@ -135,7 +145,7 @@ export default function Dashboard() {
       </div>
 
       {/* CHARTS SECTION */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '12px', marginBottom: '16px' }}>
         
         {/* Line Chart */}
         <div className="card glass-card" style={{ padding: '20px', gridColumn: '1 / -1' }}>
@@ -283,8 +293,8 @@ export default function Dashboard() {
       </div>
 
       {/* RECENT HOSO TABLE */}
-      <div className="card glass-card" style={{ padding: '24px' }}>
-        <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div className="card glass-card" style={{ padding: '18px' }}>
+        <div className="flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Clock size={16} color="var(--purple-400)" />
             Hồ sơ mới tiếp nhận
@@ -309,12 +319,12 @@ export default function Dashboard() {
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>Đang tải dữ liệu...</td>
                 </tr>
-              ) : recentHoso.length === 0 ? (
+              ) : recentTasks.length === 0 ? (
                 <tr>
                   <td colSpan="7" style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Chưa có dữ liệu</td>
                 </tr>
               ) : (
-                recentHoso.map((hs, i) => (
+                recentTasks.map((hs, i) => (
                   <tr key={i}>
                     <td><strong>{hs.id}</strong></td>
                     <td>{hs.customer_name}</td>
@@ -322,7 +332,7 @@ export default function Dashboard() {
                     <td>{hs.area}</td>
                     <td>{hs.pic_main}</td>
                     <td>{hs.deadline}</td>
-                    <td><span className="badge badge-primary">{hs.status}</span></td>
+                    <td><StatusBadge status={hs.status} domain="tasks" /></td>
                   </tr>
                 ))
               )}

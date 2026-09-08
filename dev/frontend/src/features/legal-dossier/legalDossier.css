@@ -1,0 +1,384 @@
+/* Bộ nút xử lý hồ sơ pháp lý — dùng chung ở trang Pháp lý và Lịch trình.
+   Dùng lại token màu/khoảng cách sẵn có để khớp với tab Hợp đồng. */
+
+.legal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.legal-actions__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.legal-actions__pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.legal-actions__pill--warning { background: #fef3c7; color: #92400e; }
+.legal-actions__pill--info    { background: #dbeafe; color: #1e40af; }
+.legal-actions__pill--danger  { background: #fee2e2; color: #991b1b; }
+.legal-actions__pill--success { background: #dcfce7; color: #166534; }
+.legal-actions__pill--neutral { background: #e2e8f0; color: #475569; }
+
+.legal-actions__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-size: 0.78rem;
+}
+
+.legal-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.legal-actions__buttons .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legal-actions__done {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.84rem;
+}
+
+.legal-actions__form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.legal-actions__form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.legal-actions__form textarea {
+  height: auto;
+  padding: 12px 16px;
+  line-height: 1.5;
+}
+
+/* Cảnh báo khi chọn "Chờ đo vẽ" — thao tác này đẩy việc sang phòng ban khác,
+   phải nói rõ trước khi bấm chứ không để họ ngạc nhiên sau. */
+.legal-actions__warn {
+  margin: 0;
+  padding: 10px 12px;
+  background: #fff7ed;
+  border-left: 3px solid var(--orange-500, #eb4a23);
+  color: #9a3412;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.legal-actions__form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+/* Khung vòng đời hồ sơ khi xem trong sơ đồ quy trình */
+.legal-node-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.legal-node-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Chế độ CHỈ ĐỌC — giám đốc xem trong sơ đồ quy trình, không có nút thao tác */
+.legal-actions__readonly {
+  margin: 0;
+  padding: 9px 12px;
+  background: #f1f5f9;
+  border-left: 3px solid #94a3b8;
+  color: #475569;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+/* Ô điền số biên nhận ngay tại Node nộp cơ quan (Lịch nhân viên pháp lý) */
+.legal-receipt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 16px;
+  background: var(--bg-card, #f8fafc);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 8px);
+}
+.legal-receipt-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.legal-receipt-panel__view {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.legal-receipt-panel__view-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.legal-receipt-panel__code {
+  font-size: 0.98rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--text-primary);
+}
+.legal-receipt-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.legal-receipt-panel__badge.is-info    { background: #dbeafe; color: #1e40af; }
+.legal-receipt-panel__badge.is-success { background: #dcfce7; color: #166534; }
+.legal-receipt-panel__badge.is-warning { background: #fef3c7; color: #92400e; }
+.legal-receipt-panel__badge.is-neutral { background: #e2e8f0; color: #475569; }
+.legal-receipt-panel__view-meta {
+  font-size: 0.82rem;
+  color: var(--text-tertiary);
+}
+.legal-receipt-panel__view-meta .is-overdue {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #b91c1c;
+  font-weight: 700;
+}
+.legal-receipt-panel__muted {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+.legal-receipt-panel__empty {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.82rem;
+}
+.legal-receipt-panel__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.legal-receipt-panel__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.legal-receipt-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.legal-receipt-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.legal-receipt-panel__spacer { flex: 1; }
+.legal-receipt-panel__actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 520px) {
+  .legal-receipt-panel__row { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   Kho giấy tờ hồ sơ pháp lý — ba ngăn theo giai đoạn của chuỗi K.
+   ========================================================================== */
+
+.dd { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+
+.dd-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.dd-head h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-primary, #0f172a);
+}
+.dd-head h3 svg { color: #c23816; }
+.dd-head > span { font-size: 12px; color: var(--text-secondary, #64748b); }
+.dd-head strong { color: #c23816; }
+
+.dd-loading, .dd-empty, .dd-error {
+  margin: 0;
+  padding: 12px 4px;
+  font-size: 12.5px;
+  color: var(--text-secondary, #94a3b8);
+}
+.dd-error { color: #b91c1c; }
+
+.dd-folder {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.dd-folder.is-open { border-color: rgba(203, 213, 225, 1); }
+
+.dd-folder__bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: #f8fafc;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dd-folder__bar:hover { background: #f1f5f9; }
+.dd-folder__bar svg { color: #94a3b8; flex: none; }
+.dd-folder__bar strong { font-size: 13px; font-weight: 700; color: var(--text-primary, #0f172a); }
+.dd-folder__bar em { font-style: normal; font-size: 11.5px; color: var(--text-secondary, #94a3b8); }
+
+.dd-folder__count { margin-left: auto; font-size: 11.5px; color: var(--text-secondary, #64748b); }
+
+.dd-folder__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #64748b;
+  flex: none;
+}
+.dd-folder__state.is-open { background: rgba(16, 185, 129, 0.14); color: #059669; }
+
+.dd-folder__body {
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.dd-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+}
+.dd-file:hover { background: #f8fafc; }
+
+.dd-icon.is-image { color: #0891b2; }
+.dd-icon.is-sheet { color: #059669; }
+.dd-icon.is-doc { color: #1d4ed8; }
+
+.dd-file__name {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d4ed8;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46%;
+}
+.dd-file__name:hover { text-decoration: underline; }
+
+.dd-file__meta {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-secondary, #94a3b8);
+  white-space: nowrap;
+}
+
+.dd-file__remove {
+  border: 0;
+  background: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  flex: none;
+}
+.dd-file__remove:hover { color: #b91c1c; background: rgba(239, 68, 68, 0.1); }
+
+.dd-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 9px 14px;
+  border: 1.5px dashed rgba(203, 213, 225, 1);
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+}
+.dd-upload:hover { border-color: #eb4a23; color: #c23816; }
+.dd-upload input { display: none; }
+
+.dd-locked {
+  margin: 4px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+}
+.dd-locked strong { color: #64748b; font-weight: 700; }

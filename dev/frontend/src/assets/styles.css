@@ -301,10 +301,12 @@ label {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .stat-icon i { width: 24px; height: 24px; }
-.stat-icon.purple { background: #fff0eb; color: var(--orange-500); } /* Reused purple class to orange for ease */
-.stat-icon.amber { background: #fef3c7; color: var(--amber-500); }
-.stat-icon.red { background: #fee2e2; color: var(--red-500); }
-.stat-icon.green { background: #d1fae5; color: var(--green-600); }
+.stat-icon.purple { background: rgba(139, 92, 246, 0.14); color: var(--purple-500, #8b5cf6); }
+.stat-icon.orange { background: rgba(235, 74, 35, 0.14); color: var(--orange-500, #eb4a23); }
+.stat-icon.amber { background: rgba(245, 158, 11, 0.14); color: var(--amber-500, #f59e0b); }
+.stat-icon.red { background: rgba(239, 68, 68, 0.14); color: var(--red-500, #ef4444); }
+.stat-icon.green { background: rgba(16, 185, 129, 0.14); color: var(--green-600, #10b981); }
+.stat-icon.blue { background: rgba(59, 130, 246, 0.14); color: var(--blue-500, #3b82f6); }
 .stat-info h3 { font-size: 1.8rem; font-weight: 800; line-height: 1.1; color: var(--text-primary); }
 .stat-info p { font-size: 0.75rem; color: var(--text-tertiary); margin-top: 4px; text-transform: uppercase; font-weight: 600; }
 
@@ -380,6 +382,10 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none; transition: 0.3s;
 }
+/* Modal LỒNG bên trong một modal khác (vd hộp chọn lý do mở từ trong modal việc
+   của nhân viên, z-index 120) phải nổi lên trên, nếu không nó nằm sau lớp nền
+   modal cha → bấm không được, nhìn như bị đơ. */
+.modal-overlay.modal-overlay--top { z-index: 200; }
 .modal-overlay.open { opacity: 1; pointer-events: auto; }
 .modal {
   width: 560px; max-width: 92vw; max-height: 85vh;

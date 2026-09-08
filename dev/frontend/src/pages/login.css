@@ -1,0 +1,500 @@
+/* Trang đăng nhập — giữ nguyên bố cục kỹ thuật của mẫu, dùng palette sáng để
+   tăng độ thoáng, độ tương phản và khả năng đọc trong môi trường văn phòng.
+
+   Mọi selector đều nằm dưới `.bk-login`. Mẫu gốc viết cho một trang HTML đứng
+   một mình nên dùng selector trần (`h1`, `form`, `input`, `.top`, `.body`…);
+   thả nguyên vào app sẽ đè lên toàn bộ giao diện còn lại. */
+
+.bk-login {
+  --ink: #F4F6F9;
+  --ink-2: #FFFFFF;
+  --rail: rgba(255, 255, 255, .92);
+  --line: rgba(28, 39, 57, .10);
+  --line-2: rgba(28, 39, 57, .22);
+  --fg: #172033;
+  --fg-2: #566176;
+  --fg-3: #7D889A;
+  --acc: #E86832;
+  --acc-dim: rgba(232, 104, 50, .11);
+  --ok: #34875A;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'Be Vietnam Pro', system-ui, sans-serif;
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(232, 104, 50, .09), transparent 32%),
+    linear-gradient(145deg, #FFFFFF 0%, var(--ink) 58%, #EEF1F5 100%);
+  color: var(--fg);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+[data-theme='dark'] .bk-login {
+  --ink: #0B0F19;
+  --ink-2: #111827;
+  --rail: rgba(15, 23, 42, .92);
+  --line: rgba(148, 163, 184, .13);
+  --line-2: rgba(148, 163, 184, .3);
+  --fg: #F8FAFC;
+  --fg-2: #CBD5E1;
+  --fg-3: #94A3B8;
+  --acc: #F06A36;
+  --acc-dim: rgba(240, 106, 54, .16);
+  --ok: #58B87B;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(240, 106, 54, .13), transparent 32%),
+    linear-gradient(145deg, #111827 0%, var(--ink) 58%, #070A11 100%);
+}
+.bk-login *,
+.bk-login *::before,
+.bk-login *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.bk-login .grid-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  opacity: .72;
+}
+.bk-login .vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(110% 85% at 28% 44%, rgba(255, 255, 255, .42), transparent 58%, rgba(23, 32, 51, .045) 100%);
+}
+[data-theme='dark'] .bk-login .vignette {
+  background: radial-gradient(120% 80% at 30% 45%, transparent 40%, rgba(0, 0, 0, .5) 100%);
+}
+
+/* ── khung chính ─────────────────────────────────────────────── */
+.bk-login .frame {
+  position: relative;
+  height: 100vh;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+/* ── thanh trên ──────────────────────────────────────────────── */
+.bk-login .top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--line);
+  gap: 32px;
+}
+.bk-login .brand {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+.bk-login .brand img {
+  display: block;
+  width: clamp(120px, 11vw, 145px);
+  height: auto;
+  border-radius: 3px;
+}
+.bk-login .top-tools { display: flex; align-items: center; gap: 14px; }
+.bk-login .theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--ink-2);
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color .18s, background .18s, transform .18s;
+}
+.bk-login .theme-toggle:hover { border-color: var(--acc); transform: translateY(-1px); }
+.bk-login .theme-toggle:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.bk-login .theme-toggle span { font-size: 16px; line-height: 1; }
+.bk-login .meta { display: flex; gap: 0; font-family: var(--mono); font-size: 10px; }
+.bk-login .meta div { padding: 0 18px; border-left: 1px solid var(--line); text-align: right; }
+.bk-login .meta div:first-child { border: 0; }
+.bk-login .meta dt {
+  color: var(--fg-3);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  font-size: 9px;
+  margin-bottom: 3px;
+}
+.bk-login .meta dd { color: var(--fg-2); }
+.bk-login .live { color: var(--ok); }
+.bk-login .live b {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+  margin-right: 6px;
+  vertical-align: middle;
+  animation: bk-login-blink 2.4s infinite;
+}
+@keyframes bk-login-blink { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
+
+/* ── thân: 2 cột ─────────────────────────────────────────────── */
+.bk-login .body { display: grid; grid-template-columns: 1fr 424px; min-height: 0; }
+
+/* cột trái */
+.bk-login .stage {
+  position: relative;
+  display: grid;
+  /* Cột này có 5 khối: thước · tiêu đề · bản vẽ · dải số liệu · chú thích.
+     Mẫu chỉ khai 3 hàng nên hàng co giãn rơi vào TIÊU ĐỀ — nó phình ra nuốt hết
+     chỗ dư, đẩy bản vẽ xuống và ghìm hình lại nhỏ. Chỗ dư phải thuộc về bản vẽ. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  padding: 0 0 0 28px;
+  border-right: 1px solid var(--line);
+  min-width: 0;
+  /* Không có dòng này thì cột tự cao theo bản vẽ và đẩy dải số liệu tràn xuống
+     đè lên chân trang. Chiều cao phải do màn hình quyết định, bản vẽ co theo. */
+  min-height: 0;
+}
+.bk-login .ruler {
+  display: flex;
+  height: 26px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--fg-3);
+  align-items: flex-end;
+  overflow: hidden;
+}
+.bk-login .ruler span {
+  flex: none;
+  width: 104px;
+  border-left: 1px solid var(--line);
+  padding: 0 0 5px 6px;
+  letter-spacing: .08em;
+}
+
+.bk-login .hero { padding: 44px 40px 0 0; max-width: 640px; }
+.bk-login .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin-bottom: 20px;
+}
+.bk-login .eyebrow i { width: 6px; height: 6px; background: var(--acc); border-radius: 50%; flex: none; }
+.bk-login h1 {
+  font-size: clamp(30px, 3.1vw, 46px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -.022em;
+}
+.bk-login h1 em { font-style: normal; color: var(--acc); }
+.bk-login .lede {
+  margin-top: 18px;
+  color: var(--fg-2);
+  font-size: 14.5px;
+  line-height: 1.65;
+  max-width: 480px;
+}
+
+/* bản vẽ */
+.bk-login .plot { position: relative; display: flex; align-items: center; padding: 8px 40px 0 0; min-height: 0; overflow: hidden; }
+/* Bản vẽ lấp chỗ còn lại của cột, nhưng có trần: chữ số đo nằm trong SVG nên nó
+   phóng to cùng hình, để nở tự do thì trên màn rộng chữ to gấp đôi phần còn lại
+   của trang. Trần 420px giữ tỉ lệ phóng trong khoảng 0,86–1,4. */
+.bk-login .plot svg { width: 100%; height: 100%; max-height: min(100%, 420px); overflow: visible; }
+.bk-login .plot [fill="#A79C91"] { fill: var(--fg-2); }
+.bk-login .plot [fill="#6E655C"] { fill: var(--fg-3); }
+.bk-login .plot [stroke="#6E655C"] { stroke: var(--fg-3); }
+.bk-login .trace { stroke-dasharray: 8 5; animation: bk-login-march 3.4s linear infinite; }
+@keyframes bk-login-march { to { stroke-dashoffset: -26 } }
+.bk-login .vtx { animation: bk-login-pulse 2.8s ease-in-out infinite; }
+.bk-login .vtx:nth-child(2n) { animation-delay: .7s; }
+@keyframes bk-login-pulse { 0%, 100% { r: 4 } 50% { r: 5.4 } }
+
+/* dải dữ liệu + chú thích, dính sát đáy cột trái */
+.bk-login .strip { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); }
+.bk-login .strip div { padding: 13px 18px; border-left: 1px solid var(--line); font-family: var(--mono); }
+.bk-login .strip div:first-child { border-left: 0; padding-left: 0; }
+.bk-login .strip dt {
+  font-size: 9px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-bottom: 5px;
+}
+.bk-login .strip dd { font-size: 13px; color: var(--fg); }
+.bk-login .keys {
+  display: flex;
+  gap: 22px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--fg-2);
+  letter-spacing: .04em;
+}
+.bk-login .keys span { display: flex; align-items: center; gap: 7px; }
+.bk-login .sw { width: 9px; height: 9px; border: 1px solid var(--fg-3); }
+.bk-login .sw.on { border-color: var(--acc); background: var(--acc-dim); }
+.bk-login .sw.dash { border-style: dashed; border-color: var(--acc); }
+
+/* ── cột phải: khay đăng nhập ────────────────────────────────── */
+.bk-login .rail {
+  background: var(--rail);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  box-shadow: -18px 0 44px rgba(23, 32, 51, .055);
+  backdrop-filter: blur(14px);
+}
+.bk-login .rail-hd { display: flex; align-items: center; gap: 14px; padding: 20px 30px; border-bottom: 1px solid var(--line); }
+.bk-login .num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--acc);
+  border: 1px solid var(--acc);
+  padding: 5px 8px;
+  line-height: 1;
+  flex: none;
+}
+.bk-login .rail-hd h2 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.bk-login .rail-hd p {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-top: 4px;
+}
+
+.bk-login form { padding: 30px; align-self: center; width: 100%; }
+.bk-login label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .17em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin-bottom: 9px;
+}
+.bk-login .field { margin-bottom: 24px; }
+.bk-login input[type=text],
+.bk-login input[type=password] {
+  width: 100%;
+  background: rgba(255, 255, 255, .76);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 15px;
+  padding: 12px 13px;
+  outline: none;
+  transition: border-color .18s, box-shadow .18s, background .18s;
+}
+.bk-login input::placeholder { color: var(--fg-3); }
+.bk-login input:focus {
+  background: #FFFFFF;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-dim);
+}
+[data-theme='dark'] .bk-login input[type=text],
+[data-theme='dark'] .bk-login input[type=password] { background: rgba(11, 15, 25, .56); }
+[data-theme='dark'] .bk-login input:focus { background: #111827; }
+.bk-login .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 26px; }
+.bk-login .check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--fg-2);
+  cursor: pointer;
+  user-select: none;
+}
+.bk-login .check input { position: absolute; opacity: 0; pointer-events: none; }
+.bk-login .box { width: 14px; height: 14px; border: 1px solid var(--fg-3); flex: none; position: relative; transition: .15s; }
+.bk-login .check input:checked + .box { border-color: var(--acc); background: var(--acc); }
+.bk-login .check input:checked + .box::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid #FFFFFF;
+  border-width: 0 2px 2px 0;
+  transform: rotate(42deg);
+}
+.bk-login .check input:focus-visible + .box { outline: 2px solid var(--acc); outline-offset: 2px; }
+.bk-login .row a { font-size: 12.5px; color: var(--fg-2); text-decoration: none; border-bottom: 1px solid var(--line-2); }
+.bk-login .row a:hover { color: var(--acc); border-color: var(--acc); }
+
+.bk-login .go {
+  width: 100%;
+  background: var(--acc);
+  border: 0;
+  color: #1A0C05;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  padding: 15px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: .15s;
+}
+.bk-login .go:hover { background: #F5854F; }
+.bk-login .go:active { transform: scale(.99); }
+.bk-login .go:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+/* Đang gửi: nút phải nhìn ra là đang bận và không bấm lại được. */
+.bk-login .go:disabled { cursor: wait; opacity: .62; }
+.bk-login .go:disabled:hover { background: var(--acc); }
+.bk-login .go:disabled:active { transform: none; }
+
+/* Báo lỗi — nằm ngay trên nút, trong khay. Dùng đúng bộ màu và chữ mono của
+   khay nên nó đọc như một dòng trạng thái của hệ thống, không phải hộp cảnh
+   báo mượn từ nơi khác. */
+.bk-login .alarm {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 20px;
+  padding: 11px 13px;
+  border-left: 2px solid var(--acc);
+  background: var(--acc-dim);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+.bk-login .alarm b {
+  flex: none;
+  color: var(--acc);
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.bk-login .rail-ft {
+  display: flex;
+  justify-content: space-between;
+  padding: 15px 30px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.bk-login .info-box {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--fg-3);
+  background: var(--line);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fg-2);
+}
+
+.bk-login .success-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-bottom: 20px;
+  padding: 11px 13px;
+  border-left: 2px solid var(--ok);
+  background: rgba(52, 135, 90, 0.12);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fg);
+}
+.bk-login .success-box b {
+  flex: none;
+  color: var(--ok);
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.bk-login .otp-input {
+  text-align: center;
+  font-size: 24px !important;
+  letter-spacing: 12px !important;
+  font-weight: 700 !important;
+}
+
+.bk-login .actions-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.bk-login .btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--fg-2);
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-2);
+  transition: .15s;
+}
+.bk-login .btn-link:hover:not(:disabled) {
+  color: var(--acc);
+  border-color: var(--acc);
+}
+.bk-login .btn-link:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  border-color: transparent;
+}
+
+/* ── thanh dưới ──────────────────────────────────────────────── */
+.bk-login .bot {
+  display: flex;
+  justify-content: space-between;
+  padding: 13px 28px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+@media (max-width: 980px) {
+  .bk-login { overflow-y: auto; }
+  .bk-login .frame { height: auto; min-height: 100vh; }
+  .bk-login .body { grid-template-columns: 1fr; }
+  .bk-login .stage { border-right: 0; border-bottom: 1px solid var(--line); padding-right: 28px; }
+  .bk-login .hero,
+  .bk-login .plot { padding-right: 0; }
+  .bk-login .strip { grid-template-columns: repeat(2, 1fr); }
+  .bk-login .strip div:nth-child(3) { border-left: 0; padding-left: 0; }
+  .bk-login .meta div:nth-child(1) { display: none; }
+  .bk-login .rail { box-shadow: none; }
+}
+@media (max-width: 640px) {
+  .bk-login .meta { display: none; }
+  .bk-login .brand img { width: min(145px, 48vw); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bk-login *, .bk-login *::before, .bk-login *::after { animation: none !important; transition: none !important; }
+}
