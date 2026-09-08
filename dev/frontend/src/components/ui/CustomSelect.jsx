@@ -17,7 +17,7 @@ export default function CustomSelect({
   const containerRef = useRef(null);
   const menuRef = useRef(null);
 
-  // Normalize options to array of { value, label }
+  // Normalize options to array of { value, label, title, description }
   const normalizedOptions = options.map(opt => {
     if (Array.isArray(opt)) {
       return { value: opt[0], label: opt[1] };
@@ -26,6 +26,8 @@ export default function CustomSelect({
       return {
         value: opt.value !== undefined ? opt.value : opt.id,
         label: opt.label !== undefined ? opt.label : (opt.name !== undefined ? opt.name : opt.value),
+        title: opt.title !== undefined ? opt.title : opt.description,
+        description: opt.description,
       };
     }
     return { value: opt, label: String(opt) };
@@ -130,9 +132,15 @@ export default function CustomSelect({
                 onClick={() => handleSelect(opt.value)}
                 role="option"
                 aria-selected={isSelected}
+                title={opt.title || opt.description || undefined}
               >
                 <span className="custom-select-option-check">{isSelected && <Check size={15} />}</span>
-                <span className="custom-select-option-text">{opt.label}</span>
+                <span className="custom-select-option-content">
+                  <span className="custom-select-option-text">{opt.label}</span>
+                  {opt.description && (
+                    <span className="custom-select-option-desc">{opt.description}</span>
+                  )}
+                </span>
               </div>
             );
           })}

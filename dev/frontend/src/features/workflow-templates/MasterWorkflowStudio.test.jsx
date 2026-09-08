@@ -15,6 +15,7 @@ vi.mock('@xyflow/react', () => ({
   Background: () => null,
   Controls: () => null,
   Handle: () => null,
+  MiniMap: () => null,
   MarkerType: { ArrowClosed: 'arrowclosed' },
   Position: { Left: 'left', Right: 'right' },
   ReactFlow: ({ children, nodes = [], nodeTypes = {}, onNodeClick }) => (
@@ -170,26 +171,46 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(await screen.findByRole('tab', { name: 'Đo Vẽ', selected: true })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /hạng mục/i })).toHaveValue('tt_001')
 
-    // Tên mẫu mặc định hiển thị trên ô nhập tên tự do
+    // Tên mẫu mặc định hiển thị trên dropdown mẫu
     await waitFor(() => {
-      expect(screen.getByDisplayValue('Quy trình Tách thửa chuẩn - V1')).toBeInTheDocument()
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
     })
-
-    // Ghi chú hiển thị
-    expect(screen.getByDisplayValue('Mẫu quy trình cơ bản')).toBeInTheDocument()
-
-    // Cờ mặc định được tick
-    expect(screen.getByRole('checkbox', { name: /mặc định của combo/i })).toBeChecked()
 
     // Node trên canvas hiển thị
     expect(screen.getByText('Tiếp nhận hồ sơ')).toBeInTheDocument()
     expect(screen.getByText('Khảo sát thực địa')).toBeInTheDocument()
   })
 
+  it('hiển thị ghi chú định hướng "Quy trình này dùng cho..." khi rê chuột vào dòng tên quy trình trong dropdown', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    // Bấm mở dropdown mẫu quy trình
+    const templateTrigger = document.querySelector('.workflow-template-select .custom-select-trigger')
+    fireEvent.click(templateTrigger)
+
+    // Option trong dropdown có title và description
+    const menu = await screen.findByRole('listbox')
+    const option = within(menu).getByRole('option', { name: /Quy trình Tách thửa chuẩn - V1/ })
+    expect(option).toHaveAttribute('title', 'Quy trình này dùng cho: Mẫu quy trình cơ bản')
+    expect(within(option).getByText('Quy trình này dùng cho: Mẫu quy trình cơ bản')).toBeInTheDocument()
+  })
+
   it('cho phép Giám đốc đặt tên checklist hoàn toàn tự do', async () => {
     render(<MasterWorkflowStudio />)
 
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
     // Click vào node K01 trên canvas để mở Inspector
     const nodeK01 = screen.getByTestId('flow-node-k01')
@@ -208,7 +229,11 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
   it('cho phép thêm mục checklist mới với tên tự do và gán tài liệu đầu ra', async () => {
     render(<MasterWorkflowStudio />)
 
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
     const nodeK01 = screen.getByTestId('flow-node-k01')
     fireEvent.click(nodeK01)
@@ -231,13 +256,13 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(targetDocSelect).toBeInTheDocument()
     fireEvent.change(targetDocSelect, { target: { value: 'dt_01' } })
 
-    // Nhãn giấy tờ hiển thị trong thẻ tag
+    // Nhãn giấy tờ hiển thị trong thẻ chip
     await waitFor(() => {
-      expect(document.querySelector('.mws-doc-tag')).toHaveTextContent('Bản vẽ trích đo địa chính')
+      expect(screen.getByText('Bản vẽ trích đo địa chính')).toBeInTheDocument()
     })
   })
 
-  it('lưu mẫu quy trình thành công khi bấm [Lưu mẫu quy trình]', async () => {
+  it('lưu mẫu quy trình thành công khi bấm [Lưu mẫu] và cập nhật dropdown ngay lập tức', async () => {
     apiFetch.mockImplementation((path, opts) => {
       if (opts?.method === 'PUT') {
         return Promise.resolve({
@@ -255,15 +280,23 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
 
     render(<MasterWorkflowStudio />)
 
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
-    // Đổi tên mẫu
-    const nameInput = screen.getByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    // Bấm nút Lưu mẫu trên toolbar
+    const saveToolbarBtn = screen.getByRole('button', { name: /^lưu mẫu$/i })
+    fireEvent.click(saveToolbarBtn)
+
+    // Modal lưu mẫu quy trình mở ra
+    const nameInput = await screen.findByPlaceholderText(/VD: Quy trình Cắm mốc chuẩn/i)
     fireEvent.change(nameInput, { target: { value: 'Quy trình Tách thửa chuẩn - Đã sửa' } })
 
-    // Bấm nút Lưu mẫu
-    const saveBtn = screen.getByRole('button', { name: /lưu mẫu quy trình/i })
-    fireEvent.click(saveBtn)
+    // Bấm nút Lưu mẫu quy trình trong modal
+    const confirmSaveBtn = screen.getByRole('button', { name: /lưu mẫu quy trình/i })
+    fireEvent.click(confirmSaveBtn)
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
@@ -323,7 +356,11 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     })
 
     render(<MasterWorkflowStudio />)
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
     // Click node K01 để mở inspector
     const nodeK01 = screen.getByTestId('flow-node-k01')
@@ -351,12 +388,12 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
 
   it('khởi tạo luồng mẫu không bao giờ có node K05 mà dùng K05a (Đo vẽ) hoặc K05b (Pháp lý)', () => {
     const surveyFlow = makeStarterFlow({ id: 'sp_001', name: 'Đo Vẽ' })
-    const surveyCodes = surveyFlow.nodes.map(n => n.data.code)
+    const surveyCodes = surveyFlow.nodes.map((n) => n.data.code)
     expect(surveyCodes).not.toContain('K05')
     expect(surveyCodes).toContain('K05a')
 
     const legalFlow = makeStarterFlow({ id: 'sp_002', name: 'Pháp Lý' })
-    const legalCodes = legalFlow.nodes.map(n => n.data.code)
+    const legalCodes = legalFlow.nodes.map((n) => n.data.code)
     expect(legalCodes).not.toContain('K05')
     expect(legalCodes).toContain('K05b')
   })
