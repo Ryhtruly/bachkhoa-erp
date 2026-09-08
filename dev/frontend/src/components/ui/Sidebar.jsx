@@ -16,7 +16,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <img src="/src/assets/logo.png" alt="Logo" className="brand-img" />
+        <img src="/logo.png" alt="Logo Bách Khoa ERP" className="brand-img" />
       </div>
       <nav className="nav">
         <div className="nav-label">Điều hướng</div>

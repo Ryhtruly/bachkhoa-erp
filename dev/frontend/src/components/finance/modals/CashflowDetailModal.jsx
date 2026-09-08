@@ -269,7 +269,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                 <tr>
                   <td colSpan={2} style={{ width: '40%', textAlign: 'center', padding: '15px 10px', verticalAlign: 'middle', fontWeight: 'bold' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                      <img src="/src/assets/logo.png" alt="LOGO" style={{ height: 42, objectFit: 'contain' }} />
+                      <img src="/logo.png" alt="Logo Bách Khoa ERP" style={{ height: 42, objectFit: 'contain' }} />
                       <span style={{ fontSize: '0.75rem', letterSpacing: 0.5, opacity: 0.8 }}>BÁCH KHOA ERP</span>
                     </div>
                   </td>

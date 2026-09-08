@@ -1,16 +1,56 @@
-# React + Vite
+# Bách Khoa ERP — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Frontend của Bách Khoa ERP, hệ thống quản trị doanh nghiệp cho Công ty TNHH Kiến trúc Xây dựng và Đo đạc Bản đồ Bách Khoa.
 
-Currently, two official plugins are available:
+## Công nghệ
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React và Vite
+- React Flow cho thiết kế quy trình
+- Recharts cho biểu đồ và trực quan hóa dữ liệu
+- Vitest và Testing Library cho kiểm thử giao diện
 
-## React Compiler
+## Chạy local
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```powershell
+npm ci
+npm run dev
+```
 
-## Expanding the Oxlint configuration
+Mặc định Vite chạy tại `http://localhost:5173`. Khi chạy local, các request `/api/*` và `/static/*` được proxy tới Backend tại `http://127.0.0.1:8080`.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Nếu Backend chạy ở địa chỉ khác, thiết lập biến môi trường trước khi khởi động Vite:
+
+```powershell
+$env:VITE_BACKEND_TARGET = "http://127.0.0.1:8080"
+npm run dev
+```
+
+## Kiểm thử và build
+
+```powershell
+npm test
+npm run build
+```
+
+Thư mục build production là `dist/`.
+
+## Triển khai Netlify
+
+Cấu hình Netlify nằm ở [`../../netlify.toml`](../../netlify.toml). Site sử dụng `dev/frontend` làm thư mục build, chạy `npm run build` và publish `dist/`.
+
+Các rule trong [`public/_redirects`](public/_redirects) chuyển tiếp:
+
+- `/api/*` tới Backend production `https://bendbk.wiai.vn/api/*`.
+- `/static/*` tới Backend production `https://bendbk.wiai.vn/static/*`.
+- Các route còn lại tới `index.html` để hỗ trợ SPA routing.
+
+Khi thay đổi domain Backend, cập nhật `public/_redirects` trước khi deploy lại Frontend.
+
+## Cấu trúc chính
+
+- `src/App.jsx`: shell và điều hướng chính của ứng dụng.
+- `src/pages/`: các màn hình nghiệp vụ.
+- `src/components/`: thành phần giao diện dùng chung.
+- `src/features/`: các nhóm tính năng chuyên biệt.
+- `src/lib/api.js`: client gọi API và cache dữ liệu ngắn hạn.
+- `public/`: asset tĩnh được giữ nguyên khi Vite build.
