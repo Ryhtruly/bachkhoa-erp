@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ArrowRight, MessageSquareQuote, Pause, PauseCircle } from 'lucide-react'
 
 import Modal from '../../components/ui/Modal'
 
@@ -18,6 +19,7 @@ import Modal from '../../components/ui/Modal'
  * ── SURVEYOR đi tiếp một nhịp nữa ───────────────────────────────────────────
  * Bản vẽ sai ranh nghĩa là phải kéo bước ĐO VẼ về sửa. Đó là việc nặng — mở lại
  * những bước đã nghiệm thu xong — nên không dừng ở đây mà mở tiếp bảng chọn node.
+ * Chọn lý do tạm dừng một bước — Thiết kế chuẩn Card sections theo Design System (Hình 1).
  */
 
 export const PAUSE_REASONS = [
@@ -64,45 +66,76 @@ export default function PauseReasonModal({ open, onClose, onConfirm, busy = fals
             disabled={!ready || busy}
             onClick={() => onConfirm?.({ reason_type: reason, note: note.trim() })}
           >
-            {reason === 'SURVEYOR' ? 'Tiếp tục chọn bước' : 'Tạm dừng'}
+            {reason === 'SURVEYOR' ? (
+              <>
+                <span>Tiếp tục chọn bước</span>
+                <ArrowRight size={15} />
+              </>
+            ) : (
+              <>
+                <Pause size={15} />
+                <span>Tạm dừng</span>
+              </>
+            )}
           </button>
         </div>
       }
     >
-      <ul className="eiw-reasons">
-        {PAUSE_REASONS.map(item => (
-          <li key={item.code}>
-            <label className={`eiw-reason${reason === item.code ? ' is-picked' : ''}`}>
-              <input
-                type="radio"
-                name="pause-reason"
-                value={item.code}
-                checked={reason === item.code}
-                onChange={() => setReason(item.code)}
-              />
-              <span className="eiw-reason__body">
-                <b>{item.label}</b>
-                <span>{item.detail}</span>
-              </span>
-            </label>
-          </li>
-        ))}
-      </ul>
+      <div className="eiw-modal-sections">
+        {/* Khối 1: Nguyên nhân tạm dừng */}
+        <section className="eiw-modal__section">
+          <div className="eiw-modal__section-head">
+            <PauseCircle size={16} />
+            <span>Nguyên nhân tạm dừng</span>
+          </div>
 
-      <label className="eiw-modal__field">
-        <span>Đang chờ gì</span>
-        <textarea
-          rows={3}
-          value={note}
-          placeholder="Ví dụ: Chờ chi cục thuế ra thông báo, hẹn tuần sau."
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
-      {!noteReady && note.length > 0 && (
-        <p className="eiw-modal__warn">
-          Ghi rõ hơn một chút — người tiếp nhận sau đọc đúng dòng này để biết hồ sơ đang đứng ở đâu.
-        </p>
-      )}
+          <ul className="eiw-reasons">
+            {PAUSE_REASONS.map(item => (
+              <li key={item.code}>
+                <label className={`eiw-reason${reason === item.code ? ' is-picked' : ''}`}>
+                  <input
+                    type="radio"
+                    name="pause-reason"
+                    value={item.code}
+                    checked={reason === item.code}
+                    onChange={() => setReason(item.code)}
+                  />
+                  <span className="eiw-reason__body">
+                    <b>{item.label}</b>
+                    <span>{item.detail}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Khối 2: Chi tiết lý do & ghi chú */}
+        <section className="eiw-modal__section">
+          <div className="eiw-modal__section-head">
+            <MessageSquareQuote size={16} />
+            <span>Chi tiết lý do & ghi chú</span>
+          </div>
+
+          <label className="eiw-modal__field">
+            <span className="eiw-modal__field-label">
+              Đang chờ gì <em className="eiw-modal__req">*</em>
+            </span>
+            <textarea
+              rows={3}
+              value={note}
+              className="eiw-modal__textarea"
+              placeholder="Ví dụ: Chờ chi cục thuế ra thông báo, hẹn tuần sau."
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          {!noteReady && note.length > 0 && (
+            <p className="eiw-modal__warn">
+              Ghi rõ hơn một chút — người tiếp nhận sau đọc đúng dòng này để biết hồ sơ đang đứng ở đâu.
+            </p>
+          )}
+        </section>
+      </div>
     </Modal>
   )
 }

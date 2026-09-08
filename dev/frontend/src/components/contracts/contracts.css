@@ -5376,9 +5376,7 @@
    sắc — lớp phủ thì không con nào chạm tới được. Chiều sâu do bóng hắt ra
    ngoài panel đảm nhiệm, cũng không bị con nào che. */
 .workflow-designer .workflow-inspector {
-  /* Viền giữ chỗ để bề rộng nội dung không đổi, nhưng KHÔNG vẽ: nó nằm dưới
-     các con nên đoạn nào con tô nền đè lên là đoạn đó lệch sắc. */
-  border-left: 1px solid transparent;
+  border-left: 1px solid var(--border-subtle, #e2e8f0);
   box-shadow: -10px 0 26px -12px rgba(15, 23, 42, 0.16);
 }
 /* Vạch mép vẽ bằng lớp phủ nằm TRÊN mọi con: dải cam, cột nhãn hổ phách, vùng
@@ -5392,11 +5390,14 @@
   width: 1px;
   background: color-mix(in srgb, var(--orange-500) 18%, #d9d2c9);
   pointer-events: none;
+  display: none !important;
 }
 [data-theme='dark'] .workflow-designer .workflow-inspector::before {
   background: color-mix(in srgb, var(--orange-500) 22%, #3d3428);
+  display: none !important;
 }
 [data-theme='dark'] .workflow-designer .workflow-inspector {
+  border-left-color: rgba(51, 65, 85, 0.7);
   box-shadow: -10px 0 26px -12px rgba(0, 0, 0, 0.5);
 }
 

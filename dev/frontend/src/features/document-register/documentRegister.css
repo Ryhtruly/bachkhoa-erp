@@ -1686,3 +1686,78 @@
   box-shadow: none;
 }
 
+/* ── Thanh điều hướng tab cấp cao (Workflow Studio & Document Register) ── */
+.doc-templates-main-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: 42px;
+  padding: 0;
+  background: var(--bg-card, #ffffff);
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+
+[data-theme='dark'] .doc-templates-main-tabs {
+  background: #0f172a;
+  border-bottom-color: rgba(51, 65, 85, 0.7);
+}
+
+.doc-templates-main-tab {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-tertiary, #64748b);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  position: relative;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.doc-templates-main-tab svg {
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+.doc-templates-main-tab:hover {
+  color: var(--orange-500, #eb4a23);
+}
+
+.doc-templates-main-tab.is-active {
+  color: var(--orange-600, #c23816);
+  border-bottom: 2px solid var(--orange-500, #eb4a23);
+  font-weight: 700;
+  background: transparent;
+}
+
+.doc-templates-main-tab:focus-visible {
+  outline: 2px solid var(--orange-500, #eb4a23);
+  outline-offset: -2px;
+}
+
+[data-theme='dark'] .doc-templates-main-tab {
+  color: #94a3b8;
+}
+
+[data-theme='dark'] .doc-templates-main-tab:hover {
+  color: var(--orange-400, #ff7a53);
+}
+
+[data-theme='dark'] .doc-templates-main-tab.is-active {
+  color: var(--orange-400, #ff7a53);
+  border-bottom-color: var(--orange-400, #ff7a53);
+  background: transparent;
+}
+
+
+

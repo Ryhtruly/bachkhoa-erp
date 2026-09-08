@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   Controls,
   Handle,
   MarkerType,
+  MiniMap,
   Position,
   ReactFlow,
   addEdge,
@@ -12,29 +13,36 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
-  AlertCircle,
+  AlignHorizontalSpaceAround,
   ArrowDown,
   ArrowUp,
-  CheckSquare,
-  Clock,
+  Banknote,
+  Check,
+  CheckCircle2,
+  CircleDashed,
+  Clock3,
   Copy,
-  FileStack,
-  FileText,
-  Layers,
-  LayoutGrid,
+  FileCheck2,
+  GitBranch,
+  ListChecks,
+  LockKeyhole,
+  Pencil,
   Plus,
   Save,
-  Sliders,
   Star,
   Trash2,
+  UserRound,
+  UserRoundCog,
   Workflow,
   X,
 } from 'lucide-react'
 
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import CustomSelect from '../../components/ui/CustomSelect'
+import Modal from '../../components/ui/Modal'
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch, peekApiCache } from '../../lib/api'
+import '../../components/contracts/contracts.css'
 import './masterWorkflowStudio.css'
 
 // ── Danh mục Phòng ban chuẩn Bách Khoa ERP ──
@@ -44,6 +52,30 @@ export const STANDARD_DEPARTMENTS = [
   { value: 'LEGAL', label: 'Phòng Pháp lý' },
   { value: 'ACCOUNTING', label: 'Phòng Kế toán' },
   { value: 'ADMIN', label: 'Ban Giám đốc' },
+]
+
+export const POOL_DEPARTMENTS = [
+  ['SALES', 'Phòng Sale/CSKH'],
+  ['SURVEY', 'Phòng Đo vẽ'],
+  ['LEGAL', 'Phòng Pháp lý'],
+  ['ACCOUNTING', 'Phòng Kế toán'],
+  ['ADMIN', 'Ban Giám đốc'],
+]
+
+export const ASSIGNMENT_ROLES = [
+  ['MAIN', 'Phụ trách chính'],
+  ['ASSISTANT', 'Phối hợp / phụ'],
+  ['WRITER', 'Soạn hồ sơ'],
+  ['SUBMITTER', 'Đi nộp hồ sơ'],
+  ['REVIEWER', 'Nghiệm thu'],
+]
+
+export const APPROVER_ROLES = [
+  ['admin', 'Giám đốc'],
+  ['accountant', 'Kế toán'],
+  ['legal_staff', 'Nhân viên pháp lý'],
+  ['survey_staff', 'Nhân viên đo vẽ'],
+  ['sales', 'Sales'],
 ]
 
 export function normalizeDepartmentCode(code) {
@@ -62,52 +94,117 @@ export function departmentLabel(code) {
   return STANDARD_DEPARTMENTS.find((d) => d.value === norm)?.label || code || 'Phòng ban'
 }
 
-// ── Custom Node cho Studio ──
+export function roleLabel(code) {
+  return ASSIGNMENT_ROLES.find((item) => item[0] === code)?.[1] || code
+}
+
+// ── Multi-select vai trò nhận việc ──
+function RoleMultiSelect({
+  label,
+  value = [],
+  options = [],
+  disabled = false,
+  onChange,
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef(null)
+  const selected = Array.isArray(value) ? value : []
+  const selectedLabel = selected.length
+    ? selected.map((code) => options.find((o) => o[0] === code)?.[1] || code).join(', ')
+    : '— Chọn vai trò —'
+
+  useEffect(() => {
+    if (!open) return undefined
+    const closeOnOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', closeOnOutside)
+    return () => document.removeEventListener('mousedown', closeOnOutside)
+  }, [open])
+
+  const toggleRole = (roleCode) => {
+    const next = selected.includes(roleCode)
+      ? selected.filter((item) => item !== roleCode)
+      : [...selected, roleCode]
+    onChange?.(next)
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className={`custom-select-container workflow-role-select ${open ? 'is-open' : ''} ${disabled ? 'is-disabled' : ''}`}
+    >
+      {label && <span className="custom-select-label">{label}</span>}
+      <button
+        type="button"
+        className="custom-select-trigger"
+        aria-label={label}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span className={`custom-select-value ${selected.length ? '' : 'is-placeholder'}`}>
+          {selectedLabel}
+        </span>
+        <span className="custom-select-chevron">▾</span>
+      </button>
+      {open && (
+        <div className="custom-select-menu" role="listbox" aria-label={label}>
+          {options.map(([code, optionLabel]) => {
+            const checked = selected.includes(code)
+            return (
+              <button
+                key={code}
+                type="button"
+                className={`custom-select-option ${checked ? 'is-selected' : ''}`}
+                role="option"
+                aria-selected={checked}
+                onClick={() => toggleRole(code)}
+              >
+                <span className="custom-select-option-check">{checked && <Check size={15} />}</span>
+                <span className="custom-select-option-text">{optionLabel}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Custom Node cho Studio (đồng bộ giao diện với ContractWorkflowDesigner) ──
 function StudioWorkflowNode({ id, data, selected }) {
   const checklistCount = data.checklist?.length || 0
-  const docsCount = (data.checklist || []).reduce(
-    (acc, item) => acc + (item.output_documents?.length || 0),
-    0
-  )
+  const poolDept = departmentLabel(data.poolDepartmentCode)
   const durationText = []
   if (data.durationDays > 0) durationText.push(`${data.durationDays} ngày`)
   if (data.durationHours > 0) durationText.push(`${data.durationHours} giờ`)
+  if (data.durationMinutes > 0) durationText.push(`${data.durationMinutes} phút`)
 
   return (
-    <div className={`mws-node${selected ? ' is-selected' : ''}`}>
-      <Handle type="target" position={Position.Left} className="mws-node__handle" />
-      <div className="mws-node__head">
-        <span className="mws-node__code">{data.code || 'K--'}</span>
-        {data.poolDepartmentCode && (
-          <span className="mws-node__dept">{departmentLabel(data.poolDepartmentCode)}</span>
-        )}
+    <div className={`workflow-node${selected ? ' workflow-node--selected' : ''}`}>
+      <Handle type="target" position={Position.Left} className="workflow-node__handle" />
+      <div className="workflow-node__topline">
+        <span className="workflow-node__code">{data.code || 'K--'}</span>
+        <span
+          className="workflow-node__status-dot"
+          style={{ background: data.isStart ? '#22a06b' : '#94a3b8' }}
+          title={data.isStart ? 'Node bắt đầu (Sẵn sàng)' : 'Chờ kích hoạt'}
+        />
       </div>
-      <div className="mws-node__body">
-        <div className="mws-node__title">{data.label || 'Bước quy trình'}</div>
-        <div className="mws-node__stats">
-          <span className="mws-node__stat-badge" title="Mục checklist">
-            <CheckSquare size={12} /> {checklistCount}
-          </span>
-          {docsCount > 0 && (
-            <span className="mws-node__stat-badge" title="Loại giấy đầu ra đính kèm">
-              <FileText size={12} /> {docsCount} giấy
-            </span>
-          )}
-          {durationText.length > 0 && (
-            <span className="mws-node__stat-badge" title="Thời hạn xử lý tiêu chuẩn">
-              <Clock size={12} /> {durationText.join(' ')}
-            </span>
-          )}
+      <strong>{data.label || 'Bước quy trình'}</strong>
+      <div className="workflow-node__meta">
+        <span><ListChecks size={13} /> {checklistCount} mục</span>
+        <span><UserRoundCog size={13} /> {poolDept}</span>
+      </div>
+      {durationText.length > 0 && (
+        <div className="workflow-node__deadline">
+          <Clock3 size={13} /> Hạn: {durationText.join(' ')}
         </div>
-        {(data.requiresGovSubmission || data.createsSurveyRecord || data.isHandover) && (
-          <div className="mws-node__flags">
-            {data.requiresGovSubmission && <span className="mws-node__flag-dot">Một cửa</span>}
-            {data.createsSurveyRecord && <span className="mws-node__flag-dot">Khảo sát</span>}
-            {data.isHandover && <span className="mws-node__flag-dot">Bàn giao</span>}
-          </div>
-        )}
-      </div>
-      <Handle type="source" position={Position.Right} className="mws-node__handle" />
+      )}
+      <Handle type="source" position={Position.Right} className="workflow-node__handle" />
     </div>
   )
 }
@@ -277,13 +374,15 @@ export function makeStarterFlow(packageObj) {
   const nodes = starterDefs.map((item, index) => ({
     id: item.code.toLowerCase(),
     type: 'studioNode',
-    position: { x: 80 + index * 270, y: 180 + (index % 2) * 60 },
+    position: { x: 80 + index * 280, y: 180 },
     data: {
       code: item.code,
       label: item.label,
       poolDepartmentCode: item.dept,
+      claimRoles: ['MAIN'],
       durationDays: item.days,
       durationHours: item.hours,
+      durationMinutes: 0,
       requiresGovSubmission: Boolean(item.requiresGovSubmission),
       createsSurveyRecord: Boolean(item.createsSurveyRecord),
       isHandover: Boolean(item.isHandover),
@@ -292,6 +391,7 @@ export function makeStarterFlow(packageObj) {
         name: cl.name,
         required: cl.required !== false,
         require_evidence: Boolean(cl.require_evidence),
+        approver_role: 'admin',
         output_documents: cl.output_documents || [],
       })),
       description: item.description || '',
@@ -316,10 +416,10 @@ function flowToGraphJson(nodes, edges, startNode) {
   const graphNodes = {}
   const ui = {}
 
-  nodes.forEach(node => {
+  nodes.forEach((node) => {
     const transitions = {}
     edges
-      .filter(edge => edge.source === node.id)
+      .filter((edge) => edge.source === node.id)
       .forEach((edge, index) => {
         transitions[`COMPLETED_${index + 1}`] = edge.target
       })
@@ -333,17 +433,20 @@ function flowToGraphJson(nodes, edges, startNode) {
       is_handover: Boolean(node.data.isHandover),
       duration_days: Number(node.data.durationDays) || 0,
       duration_hours: Number(node.data.durationHours) || 0,
+      duration_minutes: Number(node.data.durationMinutes) || 0,
       pool_department_code: node.data.poolDepartmentCode || null,
-      checklist: (node.data.checklist || []).map(item => {
+      claim_roles: node.data.claimRoles || ['MAIN'],
+      checklist: (node.data.checklist || []).map((item) => {
         const itemObj = {
           key: item.key,
           name: item.name,
           required: item.required !== false,
           require_evidence: Boolean(item.require_evidence),
+          approver_role: item.approver_role || 'admin',
         }
         const validDocs = (item.output_documents || [])
-          .filter(doc => doc.template_id)
-          .map(doc => ({
+          .filter((doc) => doc.template_id)
+          .map((doc) => ({
             template_id: doc.template_id,
             min_count: Math.max(1, Number(doc.min_count) || 1),
             required_before_submit: doc.required_before_submit !== false,
@@ -375,22 +478,25 @@ function graphJsonToFlow(graph, packageObj) {
   const nodes = entries.map(([key, value], index) => ({
     id: key,
     type: 'studioNode',
-    position: graph.ui?.[key] || { x: 80 + index * 270, y: 180 + (index % 2) * 60 },
+    position: graph.ui?.[key] || { x: 80 + index * 280, y: 180 },
     data: {
       code: value.task_code || key.toUpperCase(),
       label: value.name || key,
       description: value.description || '',
       poolDepartmentCode: value.pool_department_code || '',
+      claimRoles: Array.isArray(value.claim_roles) && value.claim_roles.length > 0 ? value.claim_roles : ['MAIN'],
       durationDays: Number(value.duration_days) || 0,
       durationHours: Number(value.duration_hours) || 0,
+      durationMinutes: Number(value.duration_minutes) || 0,
       requiresGovSubmission: Boolean(value.requires_gov_submission),
       createsSurveyRecord: Boolean(value.creates_survey_record),
       isHandover: Boolean(value.is_handover),
-      checklist: (value.checklist || []).map(item => ({
+      checklist: (value.checklist || []).map((item) => ({
         key: item.key || `cl_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
         name: item.name || '',
         required: item.required !== false,
         require_evidence: Boolean(item.require_evidence),
+        approver_role: item.approver_role || 'admin',
         output_documents: item.output_documents || [],
       })),
     },
@@ -405,7 +511,7 @@ function graphJsonToFlow(graph, packageObj) {
         source: sourceKey,
         target: targetKey,
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: 2, stroke: '#f97316' },
+        style: { strokeWidth: 2, stroke: '#94a3b8' },
       })
     })
   })
@@ -426,7 +532,7 @@ export default function MasterWorkflowStudio() {
   const [docTemplates, setDocTemplates] = useState(() => {
     if (typeof peekApiCache !== 'function') return []
     const rawDocs = peekApiCache('/api/document-register/templates')?.data?.groups || []
-    return (rawDocs || []).flatMap(g => g.items || g.templates || [])
+    return (rawDocs || []).flatMap((g) => g.items || g.templates || [])
   })
 
   // Selection
@@ -454,27 +560,52 @@ export default function MasterWorkflowStudio() {
   const [startNode, setStartNode] = useState('')
   const [selectedNodeId, setSelectedNodeId] = useState(null)
 
+  // Inspector States
+  const [inspectorTab, setInspectorTab] = useState('node') // 'node' | 'assignment' | 'transition'
+  const [isEditingDesc, setIsEditingDesc] = useState(false)
+  const [outputDocModalItemKey, setOutputDocModalItemKey] = useState(null)
+  const [dragChecklistIndex, setDragChecklistIndex] = useState(null)
+
   // UI States
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [nodePickerOpen, setNodePickerOpen] = useState(false)
+  const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [workItems, setWorkItems] = useState([])
 
   // Load catalogs on mount
   useEffect(() => {
     async function init() {
       try {
-        const [pkgRes, nodeRes, docRes] = await Promise.all([
-          apiFetch('/api/catalog/service-packages'),
-          apiFetch('/api/document-register/workflow-nodes'),
-          apiFetch('/api/document-register/templates'),
+        const [pkgRes, nodeRes, docRes, workItemRes] = await Promise.all([
+          apiFetch('/api/catalog/service-packages').catch((err) => {
+            console.error('Lỗi tải service-packages:', err)
+            return { data: [] }
+          }),
+          apiFetch('/api/document-register/workflow-nodes').catch((err) => {
+            console.error('Lỗi tải workflow-nodes:', err)
+            return { data: [] }
+          }),
+          apiFetch('/api/document-register/templates').catch((err) => {
+            console.error('Lỗi tải templates:', err)
+            return { data: { groups: [] } }
+          }),
+          apiFetch('/api/catalog/work-items').catch((err) => {
+            console.error('Lỗi tải work-items:', err)
+            return { data: [] }
+          }),
         ])
         const pkgs = pkgRes?.data || []
+        if (pkgs.length === 0) {
+          addToast?.('Không thể tải danh mục gói & hạng mục', 'error')
+        }
         setPackageTree(pkgs)
         setCatalogNodes(nodeRes?.data || [])
         const rawDocs = docRes?.data?.groups || []
-        const flatDocs = (rawDocs || []).flatMap(g => g.items || g.templates || [])
+        const flatDocs = (rawDocs || []).flatMap((g) => g.items || g.templates || [])
         setDocTemplates(flatDocs)
+        setWorkItems(workItemRes?.data || [])
 
         if (pkgs.length > 0) {
           setSelectedPackageId(pkgs[0].id)
@@ -489,12 +620,17 @@ export default function MasterWorkflowStudio() {
     init()
   }, [addToast])
 
+  const workItemOptions = useMemo(
+    () => (workItems || []).map((wi) => ({ value: wi.id, label: wi.name })),
+    [workItems]
+  )
+
   const currentPackage = useMemo(
-    () => packageTree.find(p => p.id === selectedPackageId),
+    () => packageTree.find((p) => p.id === selectedPackageId),
     [packageTree, selectedPackageId]
   )
   const currentTaskType = useMemo(
-    () => currentPackage?.task_types?.find(t => t.id === selectedTaskTypeId),
+    () => currentPackage?.task_types?.find((t) => t.id === selectedTaskTypeId),
     [currentPackage, selectedTaskTypeId]
   )
 
@@ -504,14 +640,11 @@ export default function MasterWorkflowStudio() {
     if (!docTemplates || docTemplates.length === 0) return []
     return docTemplates
       .filter((tpl) => {
-        // Chỉ lấy tài liệu đầu ra (Công ty soạn lập hoặc Cơ quan cấp), LOẠI TRỪ Khách hàng cung cấp
         if (tpl.source === 'KHACH_HANG') return false
 
-        // 1. Nếu có task_type_id cụ thể
         if (tpl.task_type_id) {
           return Boolean(selectedTaskTypeId) && tpl.task_type_id === selectedTaskTypeId
         }
-        // 2. Nếu có danh sách applicabilities
         if (Array.isArray(tpl.applicabilities) && tpl.applicabilities.length > 0) {
           return tpl.applicabilities.some((app) => {
             if (app.applicability_type === 'TASK_TYPE') {
@@ -526,11 +659,9 @@ export default function MasterWorkflowStudio() {
             return false
           })
         }
-        // 3. Nếu không có applicabilities và không gắn task_type_id
         return true
       })
       .map((tpl) => {
-        // Tìm node_code tương ứng theo cấu hình trong Danh mục mẫu giấy tờ
         const matchingApp = (tpl.applicabilities || []).find((app) => {
           if (app.applicability_type === 'TASK_TYPE' && app.task_type_id === selectedTaskTypeId) return true
           if (app.applicability_type === 'PACKAGE' && app.service_package_id === selectedPackageId) return true
@@ -546,7 +677,7 @@ export default function MasterWorkflowStudio() {
 
   // Load templates when Combo (Package + TaskType) changes
   const loadTemplates = useCallback(
-    async (pkgId, typeId) => {
+    async (pkgId, typeId, preferredTemplateId = null) => {
       if (!pkgId || !typeId) return
       setLoading(true)
       try {
@@ -556,15 +687,20 @@ export default function MasterWorkflowStudio() {
         const list = res?.data || []
         setTemplates(list)
 
-        const pkg = packageTree.find(p => p.id === pkgId)
+        const pkg = packageTree.find((p) => p.id === pkgId)
         if (list.length > 0) {
-          // Select default template first, or the first template
-          const def = list.find(t => t.is_default) || list[0]
-          setSelectedTemplateId(def.id)
-          setTemplateName(def.name || '')
-          setTemplateDescription(def.description || '')
-          setIsDefault(Boolean(def.is_default))
-          const flow = graphJsonToFlow(def.graph, pkg)
+          let chosen = null
+          if (preferredTemplateId) {
+            chosen = list.find((t) => t.id === preferredTemplateId)
+          }
+          if (!chosen) {
+            chosen = list.find((t) => t.is_default) || list[0]
+          }
+          setSelectedTemplateId(chosen.id)
+          setTemplateName(chosen.name || '')
+          setTemplateDescription(chosen.description || '')
+          setIsDefault(Boolean(chosen.is_default))
+          const flow = graphJsonToFlow(chosen.graph, pkg)
           setNodes(flow.nodes)
           setEdges(flow.edges)
           setStartNode(flow.startNode)
@@ -599,7 +735,7 @@ export default function MasterWorkflowStudio() {
 
   const handleSelectPackage = (pkgId) => {
     setSelectedPackageId(pkgId)
-    const pkg = packageTree.find(p => p.id === pkgId)
+    const pkg = packageTree.find((p) => p.id === pkgId)
     if (pkg?.task_types?.length > 0) {
       setSelectedTaskTypeId(pkg.task_types[0].id)
     } else {
@@ -608,11 +744,11 @@ export default function MasterWorkflowStudio() {
   }
 
   const handleSelectTemplate = (templateId) => {
-    if (templateId === 'NEW') {
+    if (templateId === 'NEW' || templateId === '__CREATE_NEW__') {
       handleCreateNew()
       return
     }
-    const tpl = templates.find(t => t.id === templateId)
+    const tpl = templates.find((t) => t.id === templateId)
     if (!tpl) return
     setSelectedTemplateId(tpl.id)
     setTemplateName(tpl.name || '')
@@ -666,7 +802,7 @@ export default function MasterWorkflowStudio() {
     setNodes((nds) =>
       nds.map((node, index) => ({
         ...node,
-        position: { x: 80 + index * 270, y: 180 + (index % 2) * 60 },
+        position: { x: 80 + index * 280, y: 180 },
       }))
     )
     addToast?.('Đã căn lề tự động các node trên sơ đồ', 'success')
@@ -676,7 +812,7 @@ export default function MasterWorkflowStudio() {
     setNodePickerOpen(false)
     const newId = `${catalogItem.code.toLowerCase()}_${Date.now().toString(36).substr(-4)}`
     const lastNode = nodes[nodes.length - 1]
-    const nextX = lastNode ? lastNode.position.x + 270 : 80
+    const nextX = lastNode ? lastNode.position.x + 280 : 80
     const nextY = lastNode ? lastNode.position.y : 180
 
     const newNode = {
@@ -688,8 +824,10 @@ export default function MasterWorkflowStudio() {
         label: catalogItem.name,
         description: catalogItem.description || '',
         poolDepartmentCode: defaultDeptForCode(catalogItem.code),
+        claimRoles: ['MAIN'],
         durationDays: 1,
         durationHours: 0,
+        durationMinutes: 0,
         requiresGovSubmission: catalogItem.code === 'K05b',
         createsSurveyRecord: catalogItem.code === 'K02',
         isHandover: catalogItem.code === 'K06',
@@ -699,6 +837,7 @@ export default function MasterWorkflowStudio() {
             name: `Nhiệm vụ bước ${catalogItem.code}`,
             required: true,
             require_evidence: false,
+            approver_role: 'admin',
             output_documents: [],
           },
         ],
@@ -707,6 +846,7 @@ export default function MasterWorkflowStudio() {
 
     setNodes((nds) => [...nds, newNode])
     setSelectedNodeId(newId)
+    setInspectorTab('node')
     addToast?.(`Đã thêm bước [${catalogItem.code}] ${catalogItem.name}`, 'success')
   }
 
@@ -748,10 +888,9 @@ export default function MasterWorkflowStudio() {
         addToast?.(`Đã cập nhật mẫu quy trình “${trimmedName}” thành công!`, 'success')
       }
 
-      await loadTemplates(selectedPackageId, selectedTaskTypeId)
-      if (res?.data?.id) {
-        setSelectedTemplateId(res.data.id)
-      }
+      const savedId = res?.data?.id || selectedTemplateId
+      setSaveModalOpen(false)
+      await loadTemplates(selectedPackageId, selectedTaskTypeId, savedId)
     } catch (err) {
       addToast?.(err.message || 'Lỗi khi lưu mẫu quy trình', 'error')
     } finally {
@@ -815,7 +954,7 @@ export default function MasterWorkflowStudio() {
     addToast?.('Đã xóa node khỏi sơ đồ', 'info')
   }
 
-  // Checklist manipulations on selectedNode with functional setNodes
+  // Checklist manipulations
   const addChecklistItem = () => {
     if (!selectedNodeId) return
     const newItem = {
@@ -823,6 +962,7 @@ export default function MasterWorkflowStudio() {
       name: '',
       required: true,
       require_evidence: false,
+      approver_role: 'admin',
       output_documents: [],
     }
     setNodes((nds) =>
@@ -874,6 +1014,20 @@ export default function MasterWorkflowStudio() {
     )
   }
 
+  const reorderChecklistItems = (fromIndex, toIndex) => {
+    if (!selectedNodeId || fromIndex === toIndex) return
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== selectedNodeId) return n
+        const current = [...(n.data?.checklist || [])]
+        if (fromIndex < 0 || fromIndex >= current.length || toIndex < 0 || toIndex >= current.length) return n
+        const [moved] = current.splice(fromIndex, 1)
+        current.splice(toIndex, 0, moved)
+        return { ...n, data: { ...n.data, checklist: current } }
+      })
+    )
+  }
+
   const addOutputDoc = (itemKey, templateId) => {
     if (!templateId || !selectedNodeId) return
     const template = docTemplates.find((d) => d.id === templateId)
@@ -890,7 +1044,7 @@ export default function MasterWorkflowStudio() {
             ...item,
             output_documents: [
               ...docs,
-              { template_id: template.id, template_name: template.name },
+              { template_id: template.id, template_name: template.name, required_before_submit: true },
             ],
           }
         })
@@ -917,11 +1071,22 @@ export default function MasterWorkflowStudio() {
     )
   }
 
+  const displayNodes = useMemo(
+    () =>
+      nodes.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          isStart: n.id === startNode,
+        },
+      })),
+    [nodes, startNode]
+  )
+
   return (
-    <div className="mws-container">
-      {/* ── Top Bar ── */}
+    <div className="workflow-designer mws-container">
+      {/* ── Top Bar: Combo Selection (Gói Dịch Vụ & Hạng Mục) ── */}
       <header className="mws-topbar">
-        {/* Row 1: Combo Selection & Top Action Buttons */}
         <div className="mws-topbar__row1">
           <div className="mws-combo-bar">
             {/* Gói dịch vụ */}
@@ -961,510 +1126,780 @@ export default function MasterWorkflowStudio() {
               />
             </div>
           </div>
-
-          <div className="mws-template-actions">
-            <button
-              type="button"
-              className="mws-btn"
-              onClick={handleCreateNew}
-              title="Tạo quy trình mẫu mới cho combo này"
-            >
-              <Plus size={15} /> Tạo mẫu mới
-            </button>
-            <button
-              type="button"
-              className="mws-btn"
-              disabled={selectedTemplateId === 'NEW' || !selectedTemplateId}
-              onClick={handleDuplicate}
-              title="Nhân bản mẫu hiện tại"
-            >
-              <Copy size={15} /> Nhân bản
-            </button>
-            <button
-              type="button"
-              className="mws-btn mws-btn--primary"
-              disabled={saving}
-              onClick={handleSave}
-              title="Lưu mẫu quy trình vào hệ thống"
-            >
-              <Save size={15} /> {saving ? 'Đang lưu…' : 'Lưu mẫu quy trình'}
-            </button>
-            <button
-              type="button"
-              className="mws-btn mws-btn--danger"
-              disabled={!selectedTemplateId || selectedTemplateId === 'NEW'}
-              onClick={() => setConfirmDeleteOpen(true)}
-              title="Xóa mẫu quy trình này"
-            >
-              <Trash2 size={15} /> Xóa
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Template Configuration Card Strip */}
-        <div className="mws-template-card-strip">
-          {/* 1. Bộ chọn Bản Mẫu chuẩn CustomSelect */}
-          <div className="mws-strip-field mws-strip-field--template">
-            <label className="mws-field-label">Bản mẫu quy trình</label>
-            <CustomSelect
-              aria-label="Chọn mẫu quy trình"
-              className="mws-custom-select mws-template-select"
-              value={selectedTemplateId || ''}
-              options={[
-                ...templates.map((tpl) => ({
-                  value: tpl.id,
-                  label: `${tpl.name}${tpl.is_default ? ' ★ (Mặc định)' : ''}`,
-                })),
-                ...(selectedTemplateId === 'NEW'
-                  ? [{ value: 'NEW', label: '✨ Mẫu mới (chưa lưu)' }]
-                  : []),
-              ]}
-              onChange={(val) => handleSelectTemplate(val)}
-              placeholder="— Chọn mẫu —"
-            />
-          </div>
-
-          {/* 2. Ô nhập Tên mẫu */}
-          <div className="mws-strip-field mws-strip-field--name">
-            <label className="mws-field-label">Tên mẫu quy trình</label>
-            <input
-              type="text"
-              className="mws-name-input"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Tên mẫu quy trình (VD: Đo vẽ cắm mốc chuẩn - V1)..."
-            />
-          </div>
-
-          {/* 3. Ô nhập Ghi chú */}
-          <div className="mws-strip-field mws-strip-field--desc">
-            <label className="mws-field-label">Ghi chú định hướng</label>
-            <input
-              type="text"
-              className="mws-desc-input"
-              value={templateDescription}
-              onChange={(e) => setTemplateDescription(e.target.value)}
-              placeholder="Ghi chú định hướng / lời dặn cho nhân viên khi áp dụng mẫu này..."
-            />
-          </div>
-
-          {/* 4. Nút gạt Đặt làm mặc định */}
-          <div className="mws-strip-field mws-strip-field--default">
-            <label className="mws-field-label">Áp dụng</label>
-            <label className={`mws-default-toggle${isDefault ? ' is-default' : ''}`}>
-              <input
-                type="checkbox"
-                aria-label="Mặc định của combo"
-                checked={isDefault}
-                onChange={(e) => setIsDefault(e.target.checked)}
-              />
-              <Star size={14} fill={isDefault ? '#f59e0b' : 'none'} color={isDefault ? '#f59e0b' : '#64748b'} />
-              <span>{isDefault ? 'Mặc định Combo' : 'Đặt làm mặc định'}</span>
-            </label>
-          </div>
         </div>
       </header>
 
-      {/* ── Main Body: Canvas + Inspector ── */}
-      <div className="mws-body">
-        {/* Canvas Area */}
-        <div className="mws-canvas-area">
-          {/* Floating Toolbar */}
-          <div className="mws-canvas-toolbar">
-            <div className="mws-add-node-dropdown">
-              <button
-                type="button"
-                className="mws-btn"
-                onClick={() => setNodePickerOpen((v) => !v)}
-              >
-                <Plus size={14} /> Thêm node bước
-              </button>
-              {nodePickerOpen && (
-                <div className="mws-catalog-menu">
-                  {catalogNodes.map((cat) => (
+      {/* ── Canvas Toolbar: Đồng bộ với ContractWorkflowDesigner (media_1788839002191.png) ── */}
+      <div className="workflow-designer__toolbar mws-toolbar">
+        <div className="workflow-designer__toolbar-actions">
+          {/* 1. Dropdown chọn Mẫu quy trình (có tooltip định hướng khi rê chuột) */}
+          <div className="workflow-template-picker">
+            <CustomSelect
+              aria-label="Mẫu quy trình"
+              className="workflow-template-select"
+              value={selectedTemplateId || ''}
+              options={[
+                ...(templates || []).map((template) => {
+                  const isComboMatch =
+                    template.service_package_id === selectedPackageId &&
+                    template.task_type_id === selectedTaskTypeId
+                  const star = template.is_default ? ' ★ (Mặc định)' : (isComboMatch ? ' (Combo)' : '')
+                  const note = template.description?.trim()
+                    ? `Quy trình này dùng cho: ${template.description}`
+                    : 'Quy trình chuẩn cho hạng mục này'
+                  return {
+                    value: template.id,
+                    label: `${template.name}${star} · V${template.version || 1}`,
+                    title: note,
+                    description: note,
+                  }
+                }),
+                ...(selectedTemplateId === 'NEW'
+                  ? [
+                      {
+                        value: 'NEW',
+                        label: '✨ Mẫu mới (chưa lưu)',
+                        title: 'Mẫu quy trình mới đang thiết kế',
+                        description: 'Mẫu quy trình mới đang thiết kế',
+                      },
+                    ]
+                  : []),
+                {
+                  value: '__CREATE_NEW__',
+                  label: '+ Tự thiết kế (Mẫu mới)',
+                  title: 'Tạo quy trình mẫu mới hoàn toàn',
+                  description: 'Tạo quy trình mẫu mới hoàn toàn',
+                },
+              ]}
+              onChange={(val) => {
+                if (val === '__CREATE_NEW__') {
+                  handleCreateNew()
+                } else {
+                  handleSelectTemplate(val)
+                }
+              }}
+              placeholder="— Chọn mẫu quy trình —"
+            />
+          </div>
+
+          {/* 2. Nút Thêm node */}
+          <div className="workflow-node-picker">
+            <button
+              type="button"
+              className="workspace-icon-button"
+              title="Thêm node"
+              aria-expanded={nodePickerOpen}
+              aria-haspopup="listbox"
+              onClick={() => setNodePickerOpen((v) => !v)}
+            >
+              <Plus size={16} /> Thêm node
+            </button>
+            {nodePickerOpen && (
+              <>
+                <div
+                  className="workflow-node-picker__backdrop"
+                  onClick={() => setNodePickerOpen(false)}
+                />
+                <div className="workflow-node-picker__menu" role="listbox">
+                  {catalogNodes.map((item) => (
                     <button
-                      key={cat.code}
+                      key={item.code}
                       type="button"
-                      className="mws-catalog-item"
-                      onClick={() => handleAddNodeFromCatalog(cat)}
+                      role="option"
+                      className="workflow-node-picker__item"
+                      onClick={() => handleAddNodeFromCatalog(item)}
                     >
-                      <span className="mws-catalog-code">{cat.code}</span>
-                      <div className="mws-catalog-text">
-                        <span className="mws-catalog-title">{cat.name}</span>
-                        <span className="mws-catalog-desc">{cat.description}</span>
-                      </div>
+                      <span className="workflow-node-picker__code">{item.code}</span>
+                      <span>
+                        <strong>{item.name}</strong>
+                        {item.description && <em>{item.description}</em>}
+                      </span>
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              className="mws-btn"
-              onClick={handleAutoLayout}
-              title="Căn lề tự động các node"
-            >
-              <LayoutGrid size={14} /> Căn lề tự động
-            </button>
+              </>
+            )}
           </div>
 
+          {/* 3. Nút Căn */}
+          <button
+            type="button"
+            className="workspace-icon-button"
+            onClick={handleAutoLayout}
+            title="Căn lề tự động các node"
+          >
+            <AlignHorizontalSpaceAround size={16} /> Căn
+          </button>
+
+          {/* 4. Nút Lưu mẫu */}
+          <button
+            type="button"
+            className="workspace-icon-button btn-primary"
+            onClick={() => setSaveModalOpen(true)}
+            title="Lưu mẫu"
+            aria-label="Lưu mẫu"
+          >
+            <Save size={15} /> Lưu mẫu
+          </button>
+
+          {/* 5. Nút Nhân bản */}
+          <button
+            type="button"
+            className="workspace-icon-button"
+            disabled={selectedTemplateId === 'NEW' || !selectedTemplateId}
+            onClick={handleDuplicate}
+            title="Nhân bản mẫu hiện tại"
+          >
+            <Copy size={15} /> Nhân bản
+          </button>
+
+          {/* 6. Nút Xóa */}
+          <button
+            type="button"
+            className="workspace-icon-button danger-icon-button"
+            disabled={!selectedTemplateId || selectedTemplateId === 'NEW'}
+            onClick={() => setConfirmDeleteOpen(true)}
+            title="Xóa mẫu quy trình này"
+          >
+            <Trash2 size={15} /> Xóa
+          </button>
+        </div>
+      </div>
+
+      {/* ── Main Body: Canvas + Inspector 3 Tab ── */}
+      <div className="workflow-designer__body mws-body">
+        {/* Canvas Area */}
+        <div className="workflow-designer__canvas mws-canvas-area">
           <ReactFlow
-            nodes={nodes}
+            nodes={displayNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
             nodeTypes={NODE_TYPES}
-            onNodeClick={(_evt, node) => setSelectedNodeId(node.id)}
+            onNodeClick={(_evt, node) => {
+              setSelectedNodeId(node.id)
+              setIsEditingDesc(false)
+            }}
+            onPaneClick={() => {
+              setSelectedNodeId(null)
+              setIsEditingDesc(false)
+            }}
             fitView
             minZoom={0.2}
             maxZoom={1.5}
           >
-            <Background gap={18} size={1} color="#e2e8f0" />
-            <Controls />
+            <Background gap={20} size={1} color="var(--workflow-grid, #e2e8f0)" />
+            <Controls position="bottom-left" showInteractive={false} />
+            <MiniMap
+              position="bottom-right"
+              pannable
+              zoomable
+              nodeColor={(node) => (node.id === startNode ? '#22a06b' : '#94a3b8')}
+            />
           </ReactFlow>
         </div>
 
-        {/* Node Inspector Panel (Right) */}
-        {selectedNode && (
-          <aside className="mws-inspector">
-            <div className="mws-inspector__head">
-              <div className="mws-inspector__title">
-                <Workflow size={16} color="var(--orange-500, #f97316)" />
-                <span>Chi tiết bước [{selectedNode.data.code}]</span>
-              </div>
+        {/* Bảng Inspector bên phải (Chuẩn 3 Tab của ContractWorkflowDesigner) */}
+        <aside className="workflow-inspector mws-inspector">
+          <div className="workflow-inspector__tabs">
+            {[
+              ['node', 'Node'],
+              ['assignment', 'Phân công'],
+              ['transition', 'Điều kiện'],
+            ].map(([key, label]) => (
               <button
                 type="button"
-                className="mws-icon-btn is-danger"
-                title="Xóa bước này khỏi sơ đồ"
-                onClick={() => handleDeleteNode(selectedNode.id)}
+                key={key}
+                className={inspectorTab === key ? 'active' : ''}
+                onClick={() => setInspectorTab(key)}
               >
-                <Trash2 size={15} />
+                {label}
               </button>
-            </div>
+            ))}
+          </div>
 
-            <div className="mws-inspector__body">
-              {/* 1. Thông tin bước */}
-              <div className="mws-inspector__section">
-                <div className="mws-inspector__sec-title">
-                  <div className="mws-sec-title-left">
-                    <Sliders size={13} />
-                    <span>Thông tin cơ bản</span>
+          {!selectedNode ? (
+            <div className="workflow-inspector__empty">
+              <CircleDashed size={28} />
+              <strong>Chọn một Node</strong>
+              <span>Thông tin, checklist, phân công và điều kiện chuyển bước sẽ hiện ở đây.</span>
+            </div>
+          ) : inspectorTab === 'node' ? (
+            <div className="workflow-inspector__content wf-node-panel">
+              <div className="wf-node-panel__fixed">
+                {/* 1. Lưới cấu hình Node theo chuẩn contracts.css (.wf-node-grid) */}
+                <div className="wf-node-grid">
+                  <div className="wf-node-grid__row">
+                    <span className="wf-node-grid__label">Tên bước</span>
+                    <div className="wf-node-grid__value">
+                      <input
+                        type="text"
+                        className="mws-node-title-input"
+                        value={selectedNode.data.label || ''}
+                        onChange={(e) => updateSelectedNodeData({ label: e.target.value })}
+                        placeholder="Tên bước thực hiện..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="wf-node-grid__row">
+                    <span className="wf-node-grid__label">Mô tả</span>
+                    <div className="wf-node-grid__value wf-node-grid__value--desc">
+                      {isEditingDesc ? (
+                        <textarea
+                          rows={2}
+                          autoFocus
+                          placeholder="Việc phải làm ở bước này…"
+                          value={selectedNode.data.description || ''}
+                          onChange={(e) => updateSelectedNodeData({ description: e.target.value })}
+                          onBlur={() => setIsEditingDesc(false)}
+                        />
+                      ) : (
+                        <>
+                          <p>{selectedNode.data.description || '—'}</p>
+                          <button
+                            type="button"
+                            className="wf-node-grid__edit"
+                            onClick={() => setIsEditingDesc(true)}
+                            title="Sửa mô tả bước"
+                            aria-label="Sửa mô tả bước"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. Đội ngũ Bể việc - contracts.css dùng display: contents để tạo dòng Phòng ban & Vai trò */}
+                  <section className="workflow-pool-config" aria-label="Đội ngũ nhận việc">
+                    <div className="workflow-pool-config__heading">
+                      <span>Đội ngũ</span>
+                      <strong>Bể việc</strong>
+                    </div>
+                    <div className="workflow-pool-config__department">
+                      <span className="workflow-pool-config__label">Phòng ban nhận việc</span>
+                      <CustomSelect
+                        aria-label="Phòng ban phụ trách"
+                        value={normalizeDepartmentCode(selectedNode.data.poolDepartmentCode)}
+                        options={STANDARD_DEPARTMENTS}
+                        placeholder="— Chọn phòng ban —"
+                        onChange={(val) =>
+                          updateSelectedNodeData({
+                            poolDepartmentCode: val,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="workflow-pool-config__roles">
+                      <RoleMultiSelect
+                        label="Vai trò được nhận việc"
+                        value={selectedNode.data.claimRoles || ['MAIN']}
+                        options={ASSIGNMENT_ROLES}
+                        onChange={(claimRoles) => updateSelectedNodeData({ claimRoles })}
+                      />
+                    </div>
+                  </section>
+
+                  {/* 3. Thời hạn SLA - contracts.css dùng display: contents để tạo dòng Thời lượng */}
+                  <section className="workflow-duration-editor" aria-label="Thời hạn xử lý Node">
+                    <div className="workflow-duration-editor__heading">
+                      <span>Thời hạn xử lý tiêu chuẩn</span>
+                      <strong>
+                        {[
+                          Number(selectedNode.data.durationDays) ? `${selectedNode.data.durationDays} ngày` : null,
+                          Number(selectedNode.data.durationHours) ? `${selectedNode.data.durationHours} giờ` : null,
+                          Number(selectedNode.data.durationMinutes) ? `${selectedNode.data.durationMinutes} phút` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || 'Không đặt hạn'}
+                      </strong>
+                    </div>
+                    <div className="workflow-duration-editor__fields">
+                      {[
+                        ['durationDays', 'Ngày', 365],
+                        ['durationHours', 'Giờ', 23],
+                        ['durationMinutes', 'Phút', 59],
+                      ].map(([field, label, max]) => (
+                        <label key={field}>
+                          <input
+                            type="number"
+                            min="0"
+                            max={max}
+                            step="1"
+                            aria-label={label}
+                            value={selectedNode.data[field] ?? ''}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              updateSelectedNodeData({
+                                [field]: raw === '' ? '' : Math.min(max, Math.max(0, Math.trunc(Number(raw) || 0))),
+                              })
+                            }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              {/* 4. Dải tiêu đề Checklist */}
+              <div className="wcl-section-head">
+                <div className="wcl-section-head__meta">
+                  <div className="wcl-section-title">
+                    <span className="wcl-section-dot" />
+                    Danh sách checklist
+                    <em>· {selectedNode.data.checklist?.length || 0} mục</em>
                   </div>
                 </div>
-                <div className="mws-form-group">
-                  <label className="mws-form-label">Tên bước thực hiện</label>
-                  <input
-                    type="text"
-                    className="mws-form-input"
-                    value={selectedNode.data.label || ''}
-                    onChange={(e) => updateSelectedNodeData({ label: e.target.value })}
-                    placeholder="VD: Tiếp nhận hồ sơ & Ký HĐ..."
-                  />
+                <div className="wcl-section-actions">
+                  <button
+                    type="button"
+                    className="wcl-btn wcl-btn--primary wcl-btn--icon"
+                    onClick={addChecklistItem}
+                    title="Thêm mục checklist"
+                    aria-label="Thêm mục"
+                  >
+                    <Plus size={15} />
+                  </button>
                 </div>
-                <div className="mws-form-group">
-                  <label className="mws-form-label">Phòng ban phụ trách</label>
+              </div>
+
+              {/* 5. Vùng cuộn Checklist cards */}
+              <div className="wf-node-panel__scroll">
+                {(selectedNode.data.checklist || []).length === 0 ? (
+                  <div className="workflow-inspector__empty compact">
+                    <ListChecks size={24} />
+                    <span>Chưa có checklist. Bấm "+" để thêm nhiệm vụ.</span>
+                  </div>
+                ) : (
+                  (selectedNode.data.checklist || []).map((item, index) => (
+                    <div
+                      className={`workflow-checklist-card${dragChecklistIndex === index ? ' is-dragging' : ''}`}
+                      key={item.key || index}
+                      onDragOver={(e) => {
+                        if (dragChecklistIndex !== null) e.preventDefault()
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        if (dragChecklistIndex !== null && dragChecklistIndex !== index) {
+                          reorderChecklistItems(dragChecklistIndex, index)
+                        }
+                        setDragChecklistIndex(null)
+                      }}
+                    >
+                      {/* Hàng 1: Badge cam số lượng giấy đầu ra, input sửa tên nhiệm vụ, nút X, nút + tròn xanh */}
+                      <div className="wcl-top">
+                        <span
+                          className="wcl-count"
+                          draggable
+                          onDragStart={() => setDragChecklistIndex(index)}
+                          onDragEnd={() => setDragChecklistIndex(null)}
+                          title={`${(item.output_documents || []).length} giấy tờ đầu ra — kéo để sắp xếp thứ tự`}
+                        >
+                          {(item.output_documents || []).length}
+                        </span>
+                        <input
+                          className="wcl-name-inline"
+                          value={item.name || ''}
+                          title={item.name || 'Chưa đặt tên'}
+                          placeholder="Nhập tên nhiệm vụ tự do..."
+                          onChange={(e) => updateChecklistItem(item.key, { name: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="wcl-x"
+                          onClick={() => removeChecklistItem(item.key)}
+                          title="Xóa mục checklist này"
+                          aria-label="Xóa mục checklist"
+                        >
+                          <X size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="wcl-add-doc"
+                          onClick={() => setOutputDocModalItemKey(item.key)}
+                          title="Thêm giấy tờ đầu ra cho mục này"
+                          aria-label="Thêm giấy tờ đầu ra cho mục này"
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </div>
+
+                      {/* Hàng 2: Tài liệu đầu ra */}
+                      <div className="wcl-prop wcl-prop--output">
+                        <span className="wcl-prop__label"><FileCheck2 size={13} /> Tài liệu đầu ra</span>
+                        {(item.output_documents || []).length > 0 ? (
+                          <div className="wcl-output-panel">
+                            <div className="wcl-output-panel__scroll">
+                              {item.output_documents.map((doc, docIdx) => {
+                                const tpl = docTemplates.find((d) => d.id === doc.template_id)
+                                const tenTaiLieu = doc.template_name || tpl?.name || doc.template_id
+                                return (
+                                  <div className="wcl-output-row" key={`${doc.template_id}-${docIdx}`}>
+                                    <div className="wcl-output-row__top" title={tenTaiLieu}>
+                                      <span className="wcl-chip wcl-chip--doc">
+                                        <FileCheck2 size={12} />
+                                        {tenTaiLieu}
+                                      </span>
+                                      <label className="wcl-output-row__req">
+                                        <input
+                                          type="checkbox"
+                                          checked={doc.required_before_submit !== false}
+                                          onChange={(e) => {
+                                            const nextDocs = item.output_documents.map((d) =>
+                                              d.template_id === doc.template_id
+                                                ? { ...d, required_before_submit: e.target.checked }
+                                                : d
+                                            )
+                                            updateChecklistItem(item.key, { output_documents: nextDocs })
+                                          }}
+                                        />
+                                        bắt buộc
+                                      </label>
+                                      <button
+                                        type="button"
+                                        className="wcl-chip__x"
+                                        onClick={() => removeOutputDoc(item.key, doc.template_id)}
+                                        title={`Bỏ ${tenTaiLieu}`}
+                                        aria-label={`Bỏ ${tenTaiLieu}`}
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="wcl-prop__none">Chưa gán giấy tờ đầu ra</span>
+                        )}
+                      </div>
+
+                      {/* Hàng 3: Công việc (Gắn gói khoán) */}
+                      <div className="wcl-prop wcl-prop--pay">
+                        <span className="wcl-prop__label"><Banknote size={13} /> Công việc</span>
+                        <div className="wcl-prop__field">
+                          {item.compensation?.is_payable ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                              <CustomSelect
+                                aria-label="Chọn công việc khoán"
+                                className="wcl-work-item-select"
+                                value={
+                                  item.compensation?.work_item_id ||
+                                  workItems.find((w) => w.name === item.compensation?.work_item_name)?.id ||
+                                  ''
+                                }
+                                placeholder="— Chọn công việc —"
+                                options={
+                                  item.compensation?.work_item_name &&
+                                  !workItems.some(
+                                    (w) =>
+                                      w.id === item.compensation?.work_item_id ||
+                                      w.name === item.compensation?.work_item_name
+                                  )
+                                    ? [
+                                        {
+                                          value: item.compensation.work_item_id || 'custom',
+                                          label: item.compensation.work_item_name,
+                                        },
+                                        ...workItemOptions,
+                                      ]
+                                    : workItemOptions
+                                }
+                                onChange={(val) => {
+                                  const selectedWi = workItems.find((w) => w.id === val)
+                                  if (selectedWi) {
+                                    updateChecklistItem(item.key, {
+                                      compensation: {
+                                        is_payable: true,
+                                        work_item_id: selectedWi.id,
+                                        work_item_name: selectedWi.name,
+                                      },
+                                    })
+                                  }
+                                }}
+                              />
+                              <button
+                                type="button"
+                                className="wcl-prop__clear"
+                                onClick={() => updateChecklistItem(item.key, { compensation: { is_payable: false } })}
+                                title="Bỏ gói khoán"
+                                aria-label="Bỏ gói khoán"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="wcl-add-inline"
+                              onClick={() => {
+                                const defaultWi = workItems[0]
+                                updateChecklistItem(item.key, {
+                                  compensation: {
+                                    is_payable: true,
+                                    work_item_id: defaultWi?.id || '',
+                                    work_item_name: defaultWi?.name || 'Gói khoán theo hạng mục',
+                                  },
+                                })
+                              }}
+                            >
+                              <Plus size={13} /> Gắn gói khoán
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Hàng 3b: Lương khoán (định mức động từ CSDL theo công việc đã chọn) */}
+                      {item.compensation?.is_payable && (() => {
+                        const currentWiId =
+                          item.compensation?.work_item_id ||
+                          workItems.find((w) => w.name === item.compensation?.work_item_name)?.id
+                        const currentWi = workItems.find((w) => w.id === currentWiId)
+                        const rates = currentWi?.rates || []
+                        const shortRoleLabel = (code) =>
+                          ({ MAIN: 'Chính', ASSISTANT: 'Phụ', SUBMITTER: 'Nộp' }[code] || code)
+                        return (
+                          <div className="wcl-prop wcl-prop--rate">
+                            <span className="wcl-prop__label"><Banknote size={13} /> Lương khoán</span>
+                            <div className="wcl-prop__field wcl-rate-summary">
+                              {rates.length > 0 ? (
+                                rates.map((r) => (
+                                  <span key={r.id || r.role_code} className={`wcl-rr${Number(r.amount) > 0 ? '' : ' is-zero'}`}>
+                                    {shortRoleLabel(r.role_code)}:{' '}
+                                    <strong>{Number(r.amount || 0).toLocaleString('vi-VN')}đ</strong>
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="wcl-rate-empty">Chưa thiết lập định mức</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Hàng 4: Người duyệt (CustomSelect chuẩn project) */}
+                      <div className="wcl-prop">
+                        <span className="wcl-prop__label"><UserRound size={13} /> Duyệt</span>
+                        <div className="wcl-prop__field">
+                          <CustomSelect
+                            aria-label="Người duyệt"
+                            className="wcl-approver-select"
+                            value={item.approver_role || 'admin'}
+                            options={APPROVER_ROLES}
+                            onChange={(val) => updateChecklistItem(item.key, { approver_role: val })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* 6. Chân Inspector: Nút "Node bắt đầu" */}
+              <div className="wf-node-panel__foot">
+                <button
+                  type="button"
+                  className={`workflow-start-node-dashed-btn${startNode === selectedNode.id ? ' is-active' : ''}`}
+                  onClick={() => setStartNode(selectedNode.id)}
+                >
+                  <CheckCircle2 size={15} />
+                  {startNode === selectedNode.id ? 'Node bắt đầu' : 'Đặt làm node bắt đầu'}
+                </button>
+              </div>
+            </div>
+          ) : inspectorTab === 'assignment' ? (
+            /* Tab Phân công */
+            <div className="workflow-inspector__content workflow-assignment-panel">
+              <div className="workflow-inspector__section-title">
+                <div>
+                  <span>Cấu hình nhận việc từ Bể việc</span>
+                  <strong>{selectedNode.data.code}</strong>
+                </div>
+              </div>
+
+              <div className="workflow-pool-config">
+                <div className="workflow-pool-config__heading">
+                  <span>Đội ngũ tiếp nhận</span>
+                  <strong>Bể việc</strong>
+                </div>
+                <div className="workflow-pool-config__department">
+                  <span className="workflow-pool-config__label">Phòng ban nhận việc</span>
                   <CustomSelect
-                    className="mws-custom-select mws-dept-select"
+                    aria-label="Phòng ban nhận việc"
                     value={normalizeDepartmentCode(selectedNode.data.poolDepartmentCode)}
                     options={STANDARD_DEPARTMENTS}
                     onChange={(val) => updateSelectedNodeData({ poolDepartmentCode: val })}
-                    aria-label="Phòng ban phụ trách"
+                  />
+                </div>
+                <div className="workflow-pool-config__roles">
+                  <RoleMultiSelect
+                    label="Vai trò được nhận việc"
+                    value={selectedNode.data.claimRoles || ['MAIN']}
+                    options={ASSIGNMENT_ROLES}
+                    onChange={(claimRoles) => updateSelectedNodeData({ claimRoles })}
                   />
                 </div>
               </div>
 
-              {/* 2. SLA Tiêu Chuẩn */}
-              <div className="mws-inspector__section">
-                <div className="mws-inspector__sec-title">
-                  <div className="mws-sec-title-left">
-                    <Clock size={13} />
-                    <span>Thời hạn SLA tiêu chuẩn</span>
-                  </div>
-                </div>
-                <div className="mws-sla-grid">
-                  <div className="mws-form-group">
-                    <label className="mws-form-label">Số ngày</label>
-                    <div className="mws-input-with-unit">
-                      <input
-                        type="number"
-                        min="0"
-                        className="mws-form-input"
-                        value={selectedNode.data.durationDays ?? 0}
-                        onChange={(e) =>
-                          updateSelectedNodeData({ durationDays: parseInt(e.target.value, 10) || 0 })
-                        }
-                      />
-                      <span className="mws-input-unit">ngày</span>
-                    </div>
-                  </div>
-                  <div className="mws-form-group">
-                    <label className="mws-form-label">Số giờ</label>
-                    <div className="mws-input-with-unit">
-                      <input
-                        type="number"
-                        min="0"
-                        max="23"
-                        className="mws-form-input"
-                        value={selectedNode.data.durationHours ?? 0}
-                        onChange={(e) =>
-                          updateSelectedNodeData({ durationHours: parseInt(e.target.value, 10) || 0 })
-                        }
-                      />
-                      <span className="mws-input-unit">giờ</span>
-                    </div>
-                  </div>
-                </div>
+              <div className="workflow-note-box" style={{ marginTop: 16 }}>
+                <LockKeyhole size={16} />
+                Khi khởi tạo hợp đồng thực tế từ mẫu này, các nhân viên thuộc phòng ban và vai trò trên sẽ thấy việc trong Bể việc để nhận và xử lý.
               </div>
-
-              {/* 3. Đặc tính nghiệp vụ (Thẻ chọn hiện đại) */}
-              <div className="mws-inspector__section">
-                <div className="mws-inspector__sec-title">
-                  <div className="mws-sec-title-left">
-                    <Layers size={13} />
-                    <span>Đặc tính nghiệp vụ</span>
-                  </div>
-                </div>
-                <div className="mws-flag-card-group">
-                  <label className={`mws-flag-card${selectedNode.data.requiresGovSubmission ? ' is-active' : ''}`}>
+            </div>
+          ) : (
+            /* Tab Điều kiện */
+            <div className="workflow-inspector__content">
+              <div className="workflow-section-block">
+                <label className="workflow-section-block__label">ĐIỀU KIỆN KÍCH HOẠT</label>
+                <div className="workflow-trigger-group">
+                  <label className="workflow-trigger-item">
                     <input
                       type="checkbox"
                       checked={Boolean(selectedNode.data.requiresGovSubmission)}
-                      onChange={(e) =>
-                        updateSelectedNodeData({ requiresGovSubmission: e.target.checked })
-                      }
+                      onChange={(e) => updateSelectedNodeData({ requiresGovSubmission: e.target.checked })}
                     />
-                    <div className="mws-flag-card__icon">🏛️</div>
-                    <div className="mws-flag-card__content">
-                      <div className="mws-flag-card__title">Nộp cơ quan nhà nước</div>
-                      <div className="mws-flag-card__subtitle">Theo dõi một cửa & biên nhận hẹn trả</div>
+                    <div className="workflow-trigger-item__info">
+                      <strong>Yêu cầu nộp cơ quan nhà nước</strong>
+                      <span>Theo dõi một cửa & biên nhận hẹn trả kết quả</span>
                     </div>
                   </label>
 
-                  <label className={`mws-flag-card${selectedNode.data.createsSurveyRecord ? ' is-active' : ''}`}>
+                  <label className="workflow-trigger-item">
                     <input
                       type="checkbox"
                       checked={Boolean(selectedNode.data.createsSurveyRecord)}
-                      onChange={(e) =>
-                        updateSelectedNodeData({ createsSurveyRecord: e.target.checked })
-                      }
+                      onChange={(e) => updateSelectedNodeData({ createsSurveyRecord: e.target.checked })}
                     />
-                    <div className="mws-flag-card__icon">📐</div>
-                    <div className="mws-flag-card__content">
-                      <div className="mws-flag-card__title">Khảo sát / Đo đạc thực địa</div>
-                      <div className="mws-flag-card__subtitle">Tạo biên bản đo đạc hiện trường & mốc ranh</div>
+                    <div className="workflow-trigger-item__info">
+                      <strong>Bước đo vẽ</strong>
+                      <span>Tạo biên bản khảo sát hiện trường & toạ độ mốc ranh</span>
                     </div>
                   </label>
 
-                  <label className={`mws-flag-card${selectedNode.data.isHandover ? ' is-active' : ''}`}>
+                  <label className="workflow-trigger-item">
                     <input
                       type="checkbox"
                       checked={Boolean(selectedNode.data.isHandover)}
                       onChange={(e) => updateSelectedNodeData({ isHandover: e.target.checked })}
                     />
-                    <div className="mws-flag-card__icon">🤝</div>
-                    <div className="mws-flag-card__content">
-                      <div className="mws-flag-card__title">Bàn giao hồ sơ khách hàng</div>
-                      <div className="mws-flag-card__subtitle">Chốt công nợ & nghiệm thu bàn giao</div>
+                    <div className="workflow-trigger-item__info">
+                      <strong>Bước bàn giao</strong>
+                      <span>Bàn giao hồ sơ cho khách hàng & chốt công nợ</span>
                     </div>
                   </label>
                 </div>
               </div>
 
-              {/* 4. Checklist Tự Do */}
-              <div className="mws-inspector__section">
-                <div className="mws-inspector__sec-title">
-                  <div className="mws-sec-title-left">
-                    <CheckSquare size={13} />
-                    <span>Checklist nhiệm vụ</span>
-                    <span className="mws-cl-counter">({selectedNode.data.checklist?.length || 0})</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="mws-cl-add-btn"
-                    onClick={addChecklistItem}
-                    title="Thêm nhiệm vụ checklist mới"
-                  >
-                    <Plus size={13} /> Thêm mục
-                  </button>
-                </div>
-
-                <div className="mws-checklist-list">
-                  {(selectedNode.data.checklist || []).map((item, idx) => (
-                    <div key={item.key} className="mws-checklist-card">
-                      <div className="mws-checklist-header">
-                        <span className="mws-cl-index">#{idx + 1}</span>
-                        {/* Tên checklist TỰ DO */}
-                        <input
-                          type="text"
-                          className="mws-checklist-name-input"
-                          placeholder="Nhập tên nhiệm vụ tự do..."
-                          value={item.name}
-                          onChange={(e) =>
-                            updateChecklistItem(item.key, { name: e.target.value })
-                          }
-                        />
-                        <div className="mws-checklist-actions">
-                          <button
-                            type="button"
-                            className="mws-icon-btn"
-                            title="Lên trên"
-                            disabled={idx === 0}
-                            onClick={() => moveChecklistItem(item.key, 'up')}
-                          >
-                            <ArrowUp size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="mws-icon-btn"
-                            title="Xuống dưới"
-                            disabled={idx === (selectedNode.data.checklist?.length || 0) - 1}
-                            onClick={() => moveChecklistItem(item.key, 'down')}
-                          >
-                            <ArrowDown size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="mws-icon-btn is-danger"
-                            title="Xóa mục checklist này"
-                            onClick={() => removeChecklistItem(item.key)}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="mws-checklist-toggles">
-                        <label className={`mws-cl-toggle-chip${item.required !== false ? ' is-active' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={item.required !== false}
-                            onChange={(e) =>
-                              updateChecklistItem(item.key, { required: e.target.checked })
-                            }
-                          />
-                          <span>Bắt buộc hoàn thành</span>
-                        </label>
-                        <label className={`mws-cl-toggle-chip${Boolean(item.require_evidence) ? ' is-active' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(item.require_evidence)}
-                            onChange={(e) =>
-                              updateChecklistItem(item.key, {
-                                require_evidence: e.target.checked,
-                              })
-                            }
-                          />
-                          <span>Cần tài liệu minh chứng</span>
-                        </label>
-                      </div>
-
-                      {/* Tài liệu đầu ra đính kèm - LỌC THEO ĐÚNG COMBO */}
-                      <div className="mws-checklist-docs">
-                        <div className="mws-cl-docs-header">
-                          <FileText size={12} />
-                          <span>Giấy tờ đầu ra ({item.output_documents?.length || 0})</span>
-                        </div>
-                        {item.output_documents?.length > 0 && (
-                          <div className="mws-checklist-doc-tags">
-                            {item.output_documents.map((doc) => {
-                              const tplName =
-                                doc.template_name ||
-                                docTemplates.find((d) => d.id === doc.template_id)?.name ||
-                                doc.template_id
-                              return (
-                                <span key={doc.template_id} className="mws-doc-tag">
-                                  <FileText size={11} />
-                                  <span className="mws-doc-tag-name">{tplName}</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeOutputDoc(item.key, doc.template_id)}
-                                    title="Gỡ loại giấy tờ này"
-                                  >
-                                    ×
-                                  </button>
-                                </span>
-                              )
-                            })}
-                          </div>
-                        )}
-                        <select
-                          className="mws-doc-select"
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              addOutputDoc(item.key, e.target.value)
-                            }
-                          }}
-                        >
-                          <option value="">
-                            {nodeSpecificDocs.length > 0
-                              ? `+ Gắn giấy tờ đầu ra bước ${currentNodeCode}… (${nodeSpecificDocs.length} mẫu chuẩn)`
-                              : `+ Gắn loại giấy tờ đầu ra… (${applicableComboOutputDocs.length} mẫu trong combo)`}
-                          </option>
-
-                          {/* Nhóm 1: Các mẫu chuẩn đúng cho bước này theo cấu hình Danh mục mẫu giấy tờ */}
-                          {nodeSpecificDocs.length > 0 && (
-                            <optgroup label={`★ Khuyến nghị cho bước [${currentNodeCode}] (${nodeSpecificDocs.length} mẫu)`}>
-                              {nodeSpecificDocs.map((dt) => {
-                                const isAttached = (item.output_documents || []).some((d) => d.template_id === dt.id)
-                                return (
-                                  <option key={dt.id} value={dt.id} disabled={isAttached}>
-                                    {isAttached ? '✓ ' : ''}[{DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}] {dt.name}
-                                  </option>
-                                )
-                              })}
-                            </optgroup>
-                          )}
-
-                          {/* Nhóm 2: Các mẫu đầu ra khác trong Combo */}
-                          {otherComboDocs.length > 0 && (
-                            <optgroup label="Các mẫu đầu ra khác trong Combo">
-                              {otherComboDocs.map((dt) => {
-                                const isAttached = (item.output_documents || []).some((d) => d.template_id === dt.id)
-                                const nodeHint = dt.assigned_node_code ? ` (Bước ${dt.assigned_node_code})` : ''
-                                return (
-                                  <option key={dt.id} value={dt.id} disabled={isAttached}>
-                                    {isAttached ? '✓ ' : ''}[{DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}] {dt.name}{nodeHint}
-                                  </option>
-                                )
-                              })}
-                            </optgroup>
-                          )}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-                  {(selectedNode.data.checklist || []).length === 0 && (
-                    <div className="mws-cl-empty">
-                      <CheckSquare size={20} />
-                      <span>Chưa có mục checklist nào. Bấm <strong>"+ Thêm mục"</strong> để tạo nhiệm vụ tự do.</span>
-                    </div>
-                  )}
+              <div className="workflow-inspector__section-title">
+                <div>
+                  <span>Đường chuyển bước</span>
+                  <strong>{edges.filter((edge) => edge.source === selectedNode.id).length} nhánh</strong>
                 </div>
               </div>
 
-              {/* 5. Ghi chú & Lời dặn */}
-              <div className="mws-inspector__section">
-                <div className="mws-inspector__sec-title">
-                  <div className="mws-sec-title-left">
-                    <FileText size={13} />
-                    <span>Lời dặn & Hướng dẫn kỹ thuật</span>
-                  </div>
-                </div>
-                <textarea
-                  className="mws-form-textarea"
-                  rows={3}
-                  value={selectedNode.data.description || ''}
-                  onChange={(e) => updateSelectedNodeData({ description: e.target.value })}
-                  placeholder="Lời dặn hoặc lưu ý nghiệp vụ cho nhân viên khi thực hiện bước này..."
-                />
-              </div>
+              {edges
+                .filter((edge) => edge.source === selectedNode.id)
+                .map((edge, eIdx) => {
+                  const targetNode = nodes.find((n) => n.id === edge.target)
+                  return (
+                    <div className="workflow-transition-card" key={edge.id || eIdx}>
+                      <GitBranch size={16} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                          Sau khi hoàn thành bước {selectedNode.data.code}
+                        </div>
+                        <strong>→ [{targetNode?.data?.code || 'K--'}] {targetNode?.data?.label || edge.target}</strong>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-icon btn-ghost btn-sm is-danger"
+                        onClick={() => setEdges((eds) => eds.filter((e) => e.id !== edge.id))}
+                        title="Xóa nhánh này"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )
+                })}
             </div>
-          </aside>
-        )}
+          )}
+        </aside>
       </div>
+
+      {/* Modal Lưu Mẫu Quy Trình */}
+      <Modal
+        open={saveModalOpen}
+        onClose={() => setSaveModalOpen(false)}
+        title="Lưu mẫu quy trình"
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, width: '100%' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setSaveModalOpen(false)}
+            >
+              Huỷ
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={saving || templateName.trim().length < 2}
+              onClick={handleSave}
+            >
+              <Save size={15} /> {saving ? 'Đang lưu…' : 'Lưu mẫu quy trình'}
+            </button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700 }}>
+              Tên mẫu quy trình <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="VD: Quy trình Cắm mốc chuẩn - V1"
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700 }}>
+              Ghi chú định hướng (Quy trình này dùng cho...)
+            </label>
+            <textarea
+              className="form-control"
+              rows={3}
+              value={templateDescription}
+              onChange={(e) => setTemplateDescription(e.target.value)}
+              placeholder="Ghi chú định hướng, ví dụ: Quy trình này dùng cho các thửa đất có tranh chấp ranh giới, hồ sơ trích lục phức tạp..."
+            />
+            <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+              Ghi chú này sẽ hiện ra khi rê chuột vào tên quy trình trong danh sách chọn mẫu.
+            </small>
+          </div>
+
+          <label className={`mws-default-toggle${isDefault ? ' is-default' : ''}`} style={{ marginTop: 4 }}>
+            <input
+              type="checkbox"
+              aria-label="Mặc định của combo"
+              checked={isDefault}
+              onChange={(e) => setIsDefault(e.target.checked)}
+            />
+            <Star size={14} fill={isDefault ? '#f59e0b' : 'none'} color={isDefault ? '#f59e0b' : '#64748b'} />
+            <span>{isDefault ? 'Mặc định Combo' : 'Đặt làm mặc định cho Combo'}</span>
+          </label>
+        </div>
+      </Modal>
 
       {/* Confirmation Modal Xóa Mẫu */}
       <ConfirmationModal
@@ -1476,6 +1911,160 @@ export default function MasterWorkflowStudio() {
         confirmLabel="Xác nhận xóa"
         variant="danger"
       />
+
+      {/* Modal Chọn Tài Liệu Đầu Ra */}
+      <Modal
+        open={Boolean(outputDocModalItemKey)}
+        onClose={() => setOutputDocModalItemKey(null)}
+        title="Chọn tài liệu đầu ra"
+        id="mws-output-documents-modal"
+        size="lg"
+        className="workflow-output-documents-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setOutputDocModalItemKey(null)}
+          >
+            Xong
+          </button>
+        }
+      >
+        <div className="wcl-output-modal">
+          <p className="wcl-output-modal__hint">
+            Chọn các loại giấy tờ đầu ra mà checklist này cần tạo ra. Có thể chọn nhiều loại, hệ thống sẽ tự đưa vào cấu trúc hồ sơ sau khi duyệt.
+          </p>
+          {applicableComboOutputDocs.length === 0 ? (
+            <div className="wcl-output-modal__empty">
+              Chưa có tài liệu đầu ra nào phù hợp với Combo này.
+            </div>
+          ) : (
+            <div className="wcl-output-modal__groups">
+              {nodeSpecificDocs.length > 0 && (
+                <section className="wcl-output-modal__group wcl-output-modal__group--cong-ty">
+                  <div className="wcl-output-modal__group-head">
+                    <div>
+                      <h3 className="wcl-output-modal__group-title">
+                        ★ Khuyến nghị cho bước [{currentNodeCode}]
+                      </h3>
+                      <p className="wcl-output-modal__group-hint">
+                        Các tài liệu đầu ra chuẩn được gắn với mã bước này
+                      </p>
+                    </div>
+                    <span className="wcl-output-modal__group-count">
+                      {nodeSpecificDocs.length} loại
+                    </span>
+                  </div>
+                  <div
+                    className="wcl-output-modal__grid"
+                    role="listbox"
+                    aria-label="Khuyến nghị cho bước"
+                    aria-multiselectable="true"
+                  >
+                    {nodeSpecificDocs.map((dt) => {
+                      const currentItem = (selectedNode?.data?.checklist || []).find(
+                        (it) => it.key === outputDocModalItemKey
+                      )
+                      const isSelected = (currentItem?.output_documents || []).some(
+                        (d) => d.template_id === dt.id
+                      )
+                      return (
+                        <button
+                          type="button"
+                          key={dt.id}
+                          role="option"
+                          aria-selected={isSelected}
+                          className={`wcl-output-modal__option${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => {
+                            if (isSelected) {
+                              removeOutputDoc(outputDocModalItemKey, dt.id)
+                            } else {
+                              addOutputDoc(outputDocModalItemKey, dt.id)
+                            }
+                          }}
+                        >
+                          <span className="wcl-output-modal__check" aria-hidden="true">
+                            {isSelected ? <Check size={14} /> : null}
+                          </span>
+                          <span className="wcl-output-modal__name">{dt.name}</span>
+                          <span className="wcl-output-modal__source">
+                            {DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}
+                          </span>
+                          <span className="wcl-output-modal__meta">
+                            Bước [{dt.assigned_node_code}] · Mẫu chuẩn
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {otherComboDocs.length > 0 && (
+                <section className="wcl-output-modal__group wcl-output-modal__group--co-quan">
+                  <div className="wcl-output-modal__group-head">
+                    <div>
+                      <h3 className="wcl-output-modal__group-title">
+                        Các mẫu đầu ra khác trong Combo
+                      </h3>
+                      <p className="wcl-output-modal__group-hint">
+                        Các tài liệu đầu ra dùng chung cho gói dịch vụ & hạng mục này
+                      </p>
+                    </div>
+                    <span className="wcl-output-modal__group-count">
+                      {otherComboDocs.length} loại
+                    </span>
+                  </div>
+                  <div
+                    className="wcl-output-modal__grid"
+                    role="listbox"
+                    aria-label="Các mẫu đầu ra khác trong combo"
+                    aria-multiselectable="true"
+                  >
+                    {otherComboDocs.map((dt) => {
+                      const currentItem = (selectedNode?.data?.checklist || []).find(
+                        (it) => it.key === outputDocModalItemKey
+                      )
+                      const isSelected = (currentItem?.output_documents || []).some(
+                        (d) => d.template_id === dt.id
+                      )
+                      return (
+                        <button
+                          type="button"
+                          key={dt.id}
+                          role="option"
+                          aria-selected={isSelected}
+                          className={`wcl-output-modal__option${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => {
+                            if (isSelected) {
+                              removeOutputDoc(outputDocModalItemKey, dt.id)
+                            } else {
+                              addOutputDoc(outputDocModalItemKey, dt.id)
+                            }
+                          }}
+                        >
+                          <span className="wcl-output-modal__check" aria-hidden="true">
+                            {isSelected ? <Check size={14} /> : null}
+                          </span>
+                          <span className="wcl-output-modal__name">{dt.name}</span>
+                          <span className="wcl-output-modal__source">
+                            {DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}
+                          </span>
+                          <span className="wcl-output-modal__meta">
+                            {dt.assigned_node_code
+                              ? `Bước [${dt.assigned_node_code}]`
+                              : 'Dùng chung cho combo'}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

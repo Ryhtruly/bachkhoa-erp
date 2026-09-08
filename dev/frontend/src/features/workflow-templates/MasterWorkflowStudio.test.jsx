@@ -15,6 +15,7 @@ vi.mock('@xyflow/react', () => ({
   Background: () => null,
   Controls: () => null,
   Handle: () => null,
+  MiniMap: () => null,
   MarkerType: { ArrowClosed: 'arrowclosed' },
   Position: { Left: 'left', Right: 'right' },
   ReactFlow: ({ children, nodes = [], nodeTypes = {}, onNodeClick }) => (
@@ -140,6 +141,26 @@ const mockWorkflowTemplates = [
   },
 ]
 
+const mockWorkItems = [
+  {
+    id: 'wi_survey_stakeout',
+    name: 'Cắm mốc',
+    code: 'SURVEY_STAKEOUT',
+    rates: [
+      { id: 'wr_01', role_code: 'MAIN', amount: 1200000 },
+      { id: 'wr_02', role_code: 'ASSISTANT', amount: 300000 },
+    ],
+  },
+  {
+    id: 'wi_survey_gps',
+    name: 'Đo GPS',
+    code: 'SURVEY_GPS',
+    rates: [
+      { id: 'wr_03', role_code: 'MAIN', amount: 800000 },
+    ],
+  },
+]
+
 describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', () => {
   beforeEach(() => {
     apiFetch.mockImplementation((path) => {
@@ -151,6 +172,9 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
       }
       if (path === '/api/document-register/templates') {
         return Promise.resolve(mockDocTemplates)
+      }
+      if (path === '/api/catalog/work-items') {
+        return Promise.resolve({ data: mockWorkItems })
       }
       if (path.startsWith('/api/contracts/workflow/templates')) {
         return Promise.resolve({ data: mockWorkflowTemplates })
@@ -170,26 +194,46 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(await screen.findByRole('tab', { name: 'Đo Vẽ', selected: true })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /hạng mục/i })).toHaveValue('tt_001')
 
-    // Tên mẫu mặc định hiển thị trên ô nhập tên tự do
+    // Tên mẫu mặc định hiển thị trên dropdown mẫu
     await waitFor(() => {
-      expect(screen.getByDisplayValue('Quy trình Tách thửa chuẩn - V1')).toBeInTheDocument()
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
     })
-
-    // Ghi chú hiển thị
-    expect(screen.getByDisplayValue('Mẫu quy trình cơ bản')).toBeInTheDocument()
-
-    // Cờ mặc định được tick
-    expect(screen.getByRole('checkbox', { name: /mặc định của combo/i })).toBeChecked()
 
     // Node trên canvas hiển thị
     expect(screen.getByText('Tiếp nhận hồ sơ')).toBeInTheDocument()
     expect(screen.getByText('Khảo sát thực địa')).toBeInTheDocument()
   })
 
+  it('hiển thị ghi chú định hướng "Quy trình này dùng cho..." khi rê chuột vào dòng tên quy trình trong dropdown', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    // Bấm mở dropdown mẫu quy trình
+    const templateTrigger = document.querySelector('.workflow-template-select .custom-select-trigger')
+    fireEvent.click(templateTrigger)
+
+    // Option trong dropdown có title và description
+    const menu = await screen.findByRole('listbox')
+    const option = within(menu).getByRole('option', { name: /Quy trình Tách thửa chuẩn - V1/ })
+    expect(option).toHaveAttribute('title', 'Quy trình này dùng cho: Mẫu quy trình cơ bản')
+    expect(within(option).getByText('Quy trình này dùng cho: Mẫu quy trình cơ bản')).toBeInTheDocument()
+  })
+
   it('cho phép Giám đốc đặt tên checklist hoàn toàn tự do', async () => {
     render(<MasterWorkflowStudio />)
 
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
     // Click vào node K01 trên canvas để mở Inspector
     const nodeK01 = screen.getByTestId('flow-node-k01')
@@ -208,7 +252,11 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
   it('cho phép thêm mục checklist mới với tên tự do và gán tài liệu đầu ra', async () => {
     render(<MasterWorkflowStudio />)
 
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
     const nodeK01 = screen.getByTestId('flow-node-k01')
     fireEvent.click(nodeK01)
@@ -223,21 +271,27 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     fireEvent.change(newInput, { target: { value: 'Lập biên bản thỏa thuận ranh' } })
     expect(screen.getByDisplayValue('Lập biên bản thỏa thuận ranh')).toBeInTheDocument()
 
-    // Gán tài liệu đầu ra từ dropdown của mục mới thêm
-    const docSelects = screen.getAllByRole('combobox').filter((el) =>
-      el.textContent.includes('Gắn giấy tờ đầu ra') || el.textContent.includes('Gắn loại giấy tờ đầu ra')
-    )
-    const targetDocSelect = docSelects[docSelects.length - 1]
-    expect(targetDocSelect).toBeInTheDocument()
-    fireEvent.change(targetDocSelect, { target: { value: 'dt_01' } })
+    // Gán tài liệu đầu ra: bấm nút + tròn xanh của mục mới thêm
+    const addDocButtons = screen.getAllByTitle('Thêm giấy tờ đầu ra cho mục này')
+    const targetAddDocBtn = addDocButtons[addDocButtons.length - 1]
+    expect(targetAddDocBtn).toBeInTheDocument()
+    fireEvent.click(targetAddDocBtn)
 
-    // Nhãn giấy tờ hiển thị trong thẻ tag
+    // Modal chọn tài liệu đầu ra mở ra
+    const docOption = await screen.findByRole('option', { name: /Bản vẽ trích đo địa chính/i })
+    fireEvent.click(docOption)
+
+    // Bấm nút Xong đóng modal
+    const doneBtn = screen.getByRole('button', { name: /xong/i })
+    fireEvent.click(doneBtn)
+
+    // Nhãn giấy tờ hiển thị trong thẻ chip
     await waitFor(() => {
-      expect(document.querySelector('.mws-doc-tag')).toHaveTextContent('Bản vẽ trích đo địa chính')
+      expect(screen.getByText('Bản vẽ trích đo địa chính')).toBeInTheDocument()
     })
   })
 
-  it('lưu mẫu quy trình thành công khi bấm [Lưu mẫu quy trình]', async () => {
+  it('lưu mẫu quy trình thành công khi bấm [Lưu mẫu] và cập nhật dropdown ngay lập tức', async () => {
     apiFetch.mockImplementation((path, opts) => {
       if (opts?.method === 'PUT') {
         return Promise.resolve({
@@ -255,15 +309,23 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
 
     render(<MasterWorkflowStudio />)
 
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
-    // Đổi tên mẫu
-    const nameInput = screen.getByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    // Bấm nút Lưu mẫu trên toolbar
+    const saveToolbarBtn = screen.getByRole('button', { name: /^lưu mẫu$/i })
+    fireEvent.click(saveToolbarBtn)
+
+    // Modal lưu mẫu quy trình mở ra
+    const nameInput = await screen.findByPlaceholderText(/VD: Quy trình Cắm mốc chuẩn/i)
     fireEvent.change(nameInput, { target: { value: 'Quy trình Tách thửa chuẩn - Đã sửa' } })
 
-    // Bấm nút Lưu mẫu
-    const saveBtn = screen.getByRole('button', { name: /lưu mẫu quy trình/i })
-    fireEvent.click(saveBtn)
+    // Bấm nút Lưu mẫu quy trình trong modal
+    const confirmSaveBtn = screen.getByRole('button', { name: /lưu mẫu quy trình/i })
+    fireEvent.click(confirmSaveBtn)
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
@@ -323,7 +385,11 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     })
 
     render(<MasterWorkflowStudio />)
-    await screen.findByDisplayValue('Quy trình Tách thửa chuẩn - V1')
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
 
     // Click node K01 để mở inspector
     const nodeK01 = screen.getByTestId('flow-node-k01')
@@ -339,8 +405,12 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(deptOptions).toContain('Phòng Kế toán')
     expect(deptOptions).toContain('Ban Giám đốc')
 
-    // Kiểm tra dropdown tài liệu đầu ra CHỈ chứa tài liệu thuộc combo này (dt_combo_1)
-    expect(screen.getByText(/Biên bản cắm mốc ranh giới/)).toBeInTheDocument()
+    // Bấm nút + tròn xanh của checklist để mở modal tài liệu đầu ra
+    const addDocBtn = screen.getByTitle('Thêm giấy tờ đầu ra cho mục này')
+    fireEvent.click(addDocBtn)
+
+    // Kiểm tra modal tài liệu đầu ra CHỈ chứa tài liệu thuộc combo này (dt_combo_1)
+    expect(await screen.findByText(/Biên bản cắm mốc ranh giới/)).toBeInTheDocument()
 
     // KHÔNG chứa tài liệu thuộc combo khác
     expect(screen.queryByText(/Hồ sơ cấp đổi sổ đỏ/)).not.toBeInTheDocument()
@@ -351,13 +421,96 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
 
   it('khởi tạo luồng mẫu không bao giờ có node K05 mà dùng K05a (Đo vẽ) hoặc K05b (Pháp lý)', () => {
     const surveyFlow = makeStarterFlow({ id: 'sp_001', name: 'Đo Vẽ' })
-    const surveyCodes = surveyFlow.nodes.map(n => n.data.code)
+    const surveyCodes = surveyFlow.nodes.map((n) => n.data.code)
     expect(surveyCodes).not.toContain('K05')
     expect(surveyCodes).toContain('K05a')
 
     const legalFlow = makeStarterFlow({ id: 'sp_002', name: 'Pháp Lý' })
-    const legalCodes = legalFlow.nodes.map(n => n.data.code)
+    const legalCodes = legalFlow.nodes.map((n) => n.data.code)
     expect(legalCodes).not.toContain('K05')
     expect(legalCodes).toContain('K05b')
+  })
+
+  it('thẻ checklist hiển thị đúng 4 hàng theo chuẩn format: badge đếm giấy, Chưa gán giấy tờ đầu ra, Công việc khoán, và CustomSelect người duyệt', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    const nodeK01 = screen.getByTestId('flow-node-k01')
+    fireEvent.click(nodeK01)
+
+    // Kiểm tra card checklist
+    const checklistCard = await screen.findByDisplayValue('Kiểm tra giấy tờ pháp lý ban đầu')
+    expect(checklistCard).toBeInTheDocument()
+
+    // Hàng 1: Badge tròn cam đếm số lượng tài liệu đầu ra = 0
+    const countBadge = document.querySelector('.workflow-checklist-card .wcl-count')
+    expect(countBadge).toHaveTextContent('0')
+
+    // Hàng 1: Nút + tròn xanh thêm tài liệu đầu ra
+    expect(screen.getByTitle('Thêm giấy tờ đầu ra cho mục này')).toBeInTheDocument()
+
+    // Hàng 2: Chưa gán giấy tờ đầu ra
+    expect(screen.getByText('Chưa gán giấy tờ đầu ra')).toBeInTheDocument()
+
+    // Hàng 3: Công việc & Gắn gói khoán
+    expect(screen.getByText('Công việc')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Gắn gói khoán/i })).toBeInTheDocument()
+
+    // Hàng 4: Duyệt & CustomSelect người duyệt
+    expect(screen.getByText('Duyệt')).toBeInTheDocument()
+    const approverSelect = screen.getByRole('combobox', { name: /người duyệt/i })
+    expect(approverSelect).toBeInTheDocument()
+    expect(approverSelect).toHaveValue('admin')
+
+    // Thử đổi người duyệt sang Kế toán bằng CustomSelect
+    fireEvent.change(approverSelect, { target: { value: 'accountant' } })
+    expect(approverSelect).toHaveValue('accountant')
+  })
+
+  it('cho phép gắn gói khoán và chọn công việc khoán từ danh mục CustomSelect', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    const nodeK01 = screen.getByTestId('flow-node-k01')
+    fireEvent.click(nodeK01)
+
+    // Bấm nút Gắn gói khoán
+    const addCompBtn = await screen.findByRole('button', { name: /Gắn gói khoán/i })
+    fireEvent.click(addCompBtn)
+
+    // Lúc này xuất hiện CustomSelect chọn công việc khoán
+    const workItemSelect = await screen.findByRole('combobox', { name: /chọn công việc khoán/i })
+    expect(workItemSelect).toBeInTheDocument()
+
+    // Hàng Lương khoán hiển thị theo dữ liệu định mức của Cắm mốc (Chính: 1.200.000đ, Phụ: 300.000đ)
+    expect(screen.getByText('Lương khoán')).toBeInTheDocument()
+    expect(screen.getByText(/1\.200\.000đ/)).toBeInTheDocument()
+    expect(screen.getByText(/300\.000đ/)).toBeInTheDocument()
+
+    // Đổi công việc sang Đo GPS
+    fireEvent.change(workItemSelect, { target: { value: 'wi_survey_gps' } })
+    expect(workItemSelect).toHaveValue('wi_survey_gps')
+
+    // Lương khoán cập nhật sang mức của Đo GPS (Chính: 800.000đ)
+    expect(screen.getByText(/800\.000đ/)).toBeInTheDocument()
+
+    // Bấm nút Bỏ gói khoán
+    const clearBtn = screen.getByRole('button', { name: /bỏ gói khoán/i })
+    fireEvent.click(clearBtn)
+
+    // Quay lại nút Gắn gói khoán ban đầu
+    // Quay lại nút Gắn gói khoán ban đầu và hàng Lương khoán ẩn đi
+    expect(await screen.findByRole('button', { name: /Gắn gói khoán/i })).toBeInTheDocument()
+    expect(screen.queryByText('Lương khoán')).not.toBeInTheDocument()
   })
 })

@@ -11,16 +11,14 @@
   overflow: hidden;
 }
 
-/* ── Top Bar: Combo & Template Controls ── */
+/* ── Top Bar: Combo Selection ── */
 .mws-topbar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px 20px;
+  padding: 10px 18px;
   background: var(--bg-card, #ffffff);
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
-  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.04);
-  z-index: 100;
+  border-bottom: 1px solid var(--border-subtle, #e2e8f0);
+  z-index: 20;
   flex-shrink: 0;
 }
 
@@ -47,7 +45,7 @@
 
 .mws-group-label {
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 750;
   color: var(--text-tertiary, #64748b);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -102,180 +100,161 @@
   width: 220px;
 }
 
-/* Chuẩn hóa CustomSelect trong Topbar & Inspector */
-.mws-custom-select {
+/* ── Canvas Toolbar ── */
+.mws-toolbar {
   position: relative;
-}
-
-.mws-custom-select .custom-select-trigger {
-  min-height: 38px;
-  height: 38px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 8px;
-  border-color: var(--border-default, #cbd5e1);
-  background: var(--bg-card, #ffffff);
-}
-
-.mws-custom-select.is-open .custom-select-trigger {
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
-}
-
-.mws-custom-select .custom-select-menu {
-  top: calc(100% + 4px);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(15, 23, 42, 0.06);
-  z-index: 1050;
-}
-
-.mws-template-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.mws-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 38px;
-  min-height: 38px;
-  padding: 0 13px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 8px;
-  border: 1px solid var(--border-default, #cbd5e1);
-  background: var(--bg-card, #ffffff);
-  color: var(--text-primary, #0f172a);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.mws-btn:hover:not(:disabled) {
-  background: var(--bg-hover, #f8fafc);
-  border-color: var(--border-strong, #94a3b8);
-}
-
-.mws-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.mws-btn--primary {
-  background: linear-gradient(135deg, var(--orange-500, #f97316), var(--orange-600, #ea580c));
-  color: #ffffff;
-  border-color: transparent;
-  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.25);
-}
-
-.mws-btn--primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--orange-600, #ea580c), var(--orange-700, #c2410c));
-  box-shadow: 0 4px 10px rgba(234, 88, 12, 0.35);
-}
-
-.mws-btn--danger {
-  color: #ef4444;
-  border-color: #fecaca;
-  background: #fef2f2;
-}
-
-.mws-btn--danger:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #f87171;
-}
-
-/* ── Top Bar Row 2: Template Card Strip ── */
-.mws-template-card-strip {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 10px 14px;
+  justify-content: space-between;
+  padding: 8px 18px;
   background: var(--bg-surface, #f8fafc);
-  border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 10px;
-  flex-wrap: wrap;
-}
-
-.mws-strip-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.mws-field-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-secondary, #64748b);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin: 0;
-  user-select: none;
-}
-
-.mws-strip-field--template {
-  width: 250px;
-  min-width: 220px;
-}
-
-.mws-strip-field--name {
-  flex: 1 1 240px;
-  min-width: 200px;
-}
-
-.mws-strip-field--desc {
-  flex: 1.5 1 300px;
-  min-width: 240px;
-}
-
-.mws-strip-field--default {
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  z-index: 40;
   flex-shrink: 0;
 }
 
-.mws-name-input {
-  height: 38px;
-  min-height: 38px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 8px;
+.mws-toolbar .workflow-designer__toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.mws-toolbar .workflow-template-picker {
+  min-width: 280px;
+  max-width: 440px;
+  flex: 0 1 360px;
+}
+
+/* ── Menu Thêm Node (Popup nổi đặc, không bị inspector đè hoặc xuyên thấu) ── */
+.mws-toolbar .workflow-node-picker {
+  position: relative;
+  z-index: 100;
+}
+
+.mws-toolbar .workflow-node-picker__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+  background: transparent !important;
+}
+
+
+.mws-toolbar .workflow-node-picker__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 999;
+  width: 380px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px;
   border: 1px solid var(--border-default, #cbd5e1);
-  background: var(--bg-card, #ffffff);
+  border-radius: 12px;
+  background: #ffffff !important;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.22), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme='dark'] .mws-toolbar .workflow-node-picker__menu {
+  background: #1e293b !important;
+  border-color: #334155;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6) !important;
+}
+
+.mws-toolbar .workflow-node-picker__item {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: var(--text-primary, #0f172a);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.mws-toolbar .workflow-node-picker__item:hover {
+  background: color-mix(in srgb, var(--orange-500, #eb4a23) 10%, transparent);
+}
+
+.mws-toolbar .workflow-node-picker__code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--orange-500, #eb4a23) 12%, transparent);
+  color: var(--orange-600, #c23816);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.mws-toolbar .workflow-node-picker__item strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text-primary, #0f172a);
+}
+
+.mws-toolbar .workflow-node-picker__item em {
+  display: block;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--text-tertiary, #64748b);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* ── Body: Canvas + Inspector ── */
+.mws-body {
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.mws-canvas-area {
+  position: relative;
   width: 100%;
-  box-sizing: border-box;
-  transition: all 0.15s ease;
+  height: 100%;
+  min-height: 0;
+  background: color-mix(in srgb, var(--bg-deep, #f8fafc) 75%, var(--bg-card, #ffffff));
 }
 
-.mws-name-input:focus {
-  outline: none;
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+.mws-canvas-area .react-flow {
+  width: 100%;
+  height: 100%;
 }
 
-.mws-desc-input {
-  height: 38px;
-  min-height: 38px;
-  padding: 0 12px;
-  font-size: 13px;
-  border-radius: 8px;
-  border: 1px solid var(--border-default, #cbd5e1);
+.mws-inspector {
+  width: 360px;
+  height: 100%;
+  border-left: 1px solid var(--border-default, #e2e8f0);
   background: var(--bg-card, #ffffff);
-  color: var(--text-secondary, #334155);
-  width: 100%;
-  box-sizing: border-box;
-  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.03);
 }
 
-.mws-desc-input:focus {
-  outline: none;
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+.mws-inspector::before {
+  display: none !important;
+  content: none !important;
 }
 
+/* Default Star Toggle */
 .mws-default-toggle {
   display: inline-flex;
   align-items: center;
@@ -316,719 +295,219 @@
   pointer-events: none;
 }
 
-/* ── Main Body: Canvas + Inspector ── */
-.mws-body {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
-}
-
-/* ── Canvas Area ── */
-.mws-canvas-area {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  position: relative;
-  background: #fafafa;
-}
-
-.mws-canvas-toolbar {
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  z-index: 5;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(8px);
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid var(--border-default, #e2e8f0);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
-}
-
-.mws-add-node-dropdown {
-  position: relative;
-}
-
-.mws-catalog-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  width: 280px;
-  max-height: 340px;
-  overflow-y: auto;
-  background: #ffffff;
-  border: 1px solid var(--border-default, #cbd5e1);
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.12);
-  z-index: 20;
-  padding: 6px;
-}
-
-.mws-catalog-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-
-.mws-catalog-item:hover {
-  background: #f1f5f9;
-}
-
-.mws-catalog-code {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 38px;
-  height: 24px;
-  padding: 0 6px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 750;
-  background: #e0f2fe;
-  color: #0369a1;
-}
-
-.mws-catalog-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.mws-catalog-title {
-  display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #0f172a;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.mws-catalog-desc {
-  display: block;
-  font-size: 11px;
-  color: #64748b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ── Custom ReactFlow Studio Node ── */
-.mws-node {
-  width: 240px;
-  background: #ffffff;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  overflow: hidden;
-}
-
-.mws-node:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
-}
-
-.mws-node.is-selected {
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2), 0 8px 20px rgba(0, 0, 0, 0.1);
-}
-
-.mws-node__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.mws-node__code {
-  font-size: 11px;
-  font-weight: 800;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.mws-node__dept {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #e2e8f0;
-  color: #475569;
-}
-
-.mws-node__body {
-  padding: 10px 12px;
-}
-
-.mws-node__title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 6px;
-  line-height: 1.35;
-}
-
-.mws-node__stats {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 11px;
-  color: #64748b;
-}
-
-.mws-node__stat-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f1f5f9;
-  font-weight: 600;
-}
-
-.mws-node__flags {
-  display: flex;
-  gap: 4px;
-  margin-top: 6px;
-}
-
-.mws-node__flag-dot {
-  font-size: 9.5px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-weight: 700;
-  background: #f3e8ff;
-  color: #7e22ce;
-}
-
-/* ── Inspector Panel (Right) ── */
-.mws-inspector {
-  width: 380px;
-  flex-shrink: 0;
-  background: #ffffff;
-  border-left: 1px solid var(--border-default, #e2e8f0);
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.03);
-  z-index: 5;
-}
-
-.mws-inspector__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
-  background: #f8fafc;
-}
-
-.mws-inspector__title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 750;
-  color: #0f172a;
-}
-
-.mws-inspector__body {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 18px;
-  padding-bottom: 85px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.mws-inspector__section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mws-inspector__sec-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 750;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-tertiary, #64748b);
-  border-bottom: 1px solid var(--border-subtle, #f1f5f9);
-  padding-bottom: 6px;
-}
-
-.mws-sec-title-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.mws-cl-counter {
-  color: var(--orange-600, #ea580c);
-  font-weight: 750;
-}
-
-.mws-cl-add-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 9px;
-  font-size: 11.5px;
-  font-weight: 650;
-  color: var(--orange-600, #ea580c);
-  background: #fff7ed;
-  border: 1px solid #ffedd5;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.mws-cl-add-btn:hover {
-  background: #ffedd5;
-  border-color: #fed7aa;
-}
-
-.mws-form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.mws-form-label {
-  font-size: 12px;
-  font-weight: 650;
-  color: var(--text-secondary, #475569);
-  margin: 0;
-}
-
-.mws-form-input {
-  height: 38px;
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 550;
-  border-radius: 8px;
-  border: 1px solid var(--border-default, #cbd5e1);
-  background: var(--bg-card, #ffffff);
-  color: var(--text-primary, #0f172a);
-  transition: all 0.15s ease;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.mws-form-input:focus {
-  outline: none;
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
-}
-
-.mws-input-with-unit {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-}
-
-.mws-input-with-unit .mws-form-input {
-  padding-right: 48px;
-}
-
-.mws-input-unit {
-  position: absolute;
-  right: 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-tertiary, #94a3b8);
-  pointer-events: none;
-}
-
-.mws-sla-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-/* ── Đặc tính nghiệp vụ (Thẻ chọn hiện đại) ── */
-.mws-flag-card-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mws-flag-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 9px;
-  border: 1px solid var(--border-default, #e2e8f0);
-  background: var(--bg-surface, #f8fafc);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  user-select: none;
-}
-
-.mws-flag-card input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  width: 1px;
-  height: 1px;
-}
-
-.mws-flag-card:hover {
-  border-color: var(--border-strong, #cbd5e1);
-  background: #ffffff;
-}
-
-.mws-flag-card.is-active {
-  background: #fff7ed;
-  border-color: #fdba74;
-  box-shadow: 0 1px 4px rgba(234, 88, 12, 0.08);
-}
-
-.mws-flag-card__icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.mws-flag-card__content {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.mws-flag-card__title {
-  font-size: 12.5px;
-  font-weight: 650;
-  color: var(--text-primary, #0f172a);
-}
-
-.mws-flag-card.is-active .mws-flag-card__title {
-  color: #c2410c;
-}
-
-.mws-flag-card__subtitle {
-  font-size: 11px;
-  color: var(--text-tertiary, #64748b);
-}
-
-/* ── Checklist Cards in Inspector ── */
-.mws-checklist-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mws-checklist-card {
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border-default, #e2e8f0);
-  background: var(--bg-card, #ffffff);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  transition: all 0.15s ease;
-}
-
-.mws-checklist-card:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.06);
-}
-
-.mws-checklist-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mws-cl-index {
-  font-size: 11px;
-  font-weight: 750;
-  color: var(--text-tertiary, #94a3b8);
-  background: var(--bg-deep, #f1f5f9);
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.mws-checklist-name-input {
-  flex: 1;
-  height: 34px;
-  padding: 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  border: 1px solid var(--border-default, #cbd5e1);
-  border-radius: 7px;
-  background: #ffffff;
-  color: var(--text-primary, #0f172a);
-}
-
-.mws-checklist-name-input:focus {
-  outline: none;
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
-}
-
-.mws-checklist-actions {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
-}
-
-.mws-icon-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #64748b;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.mws-icon-btn:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #0f172a;
-}
-
-.mws-icon-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-.mws-icon-btn.is-danger:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  color: #ef4444;
-}
-
-.mws-checklist-toggles {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.mws-cl-toggle-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-secondary, #475569);
-  cursor: pointer;
-  user-select: none;
-}
-
-.mws-cl-toggle-chip input {
-  cursor: pointer;
-  accent-color: var(--orange-600, #ea580c);
-}
-
-.mws-cl-toggle-chip.is-active {
-  color: var(--text-primary, #0f172a);
-}
-
-/* ── Tài liệu đầu ra đính kèm ── */
-.mws-checklist-docs {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border-default, #e2e8f0);
-}
-
-.mws-cl-docs-header {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-tertiary, #64748b);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.mws-checklist-doc-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.mws-doc-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #15803d;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.mws-doc-tag-name {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mws-doc-tag button {
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  opacity: 0.7;
-  transition: opacity 0.1s ease;
-}
-
-.mws-doc-tag button:hover {
-  opacity: 1;
-}
-
+/* Output Doc Select */
 .mws-doc-select {
-  height: 32px;
+  width: 100%;
   font-size: 12px;
-  font-weight: 550;
-  padding: 0 10px;
   border-radius: 6px;
   border: 1px dashed var(--border-default, #cbd5e1);
   background: var(--bg-surface, #f8fafc);
+  padding: 4px 8px;
   color: var(--text-secondary, #475569);
   cursor: pointer;
-  transition: all 0.15s ease;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .mws-doc-select:hover {
-  border-color: var(--orange-500, #f97316);
-  color: var(--orange-600, #ea580c);
-  background: #ffffff;
+  border-color: var(--orange-500, #ea580c);
+  color: var(--orange-600, #c2410c);
+  background: #fff7ed;
 }
 
-.mws-doc-select optgroup {
-  font-weight: 700;
-  font-size: 11px;
-  color: var(--text-secondary, #475569);
-  background: #f1f5f9;
-  padding: 4px;
+/* Transitions Card in Tab 3 */
+.workflow-transition-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-surface, #f8fafc);
+  margin-top: 8px;
 }
 
-.mws-doc-select option {
-  font-weight: 500;
-  font-size: 12px;
+.workflow-transition-card strong {
+  font-size: 13px;
   color: var(--text-primary, #0f172a);
-  background: #ffffff;
-  padding: 4px 8px;
 }
 
-.mws-doc-select option:disabled {
+[data-theme='dark'] .mws-topbar,
+[data-theme='dark'] .mws-toolbar,
+[data-theme='dark'] .mws-inspector {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .mws-canvas-area {
+  background: #0f172a;
+}
+
+/* Input tên bước trong wf-node-grid */
+.mws-inspector .wf-node-grid__value input.mws-node-title-input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+  outline: none;
+  box-shadow: none;
+}
+
+.mws-inspector .wf-node-grid__value input.mws-node-title-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── Checklist Card Đồng Bộ Theo Format Chuẩn (contracts.css & media_1788840138080.png) ── */
+.mws-inspector .workflow-checklist-card {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--np-card-line, #cbd5e1);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--bg-card, #ffffff);
+}
+
+.mws-inspector .wcl-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--np-card-head, #eef4fa);
+}
+
+.mws-inspector .wcl-name-inline {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 8px;
+  background: var(--bg-card, #ffffff);
+  color: #1e3a5f;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.mws-inspector .wcl-name-inline:focus {
+  outline: none;
+  border-color: var(--orange-500, #ea580c);
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.12);
+}
+
+.mws-inspector .wcl-add-doc {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: var(--np-add-bg, #dcf3e3);
+  color: var(--np-add-ink, #1f7a42);
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.mws-inspector .wcl-add-doc:hover {
+  background: #cbf0d5;
+  transform: scale(1.05);
+}
+
+.mws-inspector .wcl-x {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary, #64748b);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.mws-inspector .wcl-x:hover {
+  color: var(--red-500, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* CustomSelect cho hàng Duyệt & Công việc trong checklist */
+.mws-inspector .wcl-approver-select,
+.mws-inspector .wcl-work-item-select {
+  width: 100%;
+}
+
+.mws-inspector .wcl-approver-select .custom-select-trigger,
+.mws-inspector .wcl-work-item-select .custom-select-trigger {
+  min-height: 34px;
+  height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #ffffff);
+}
+
+.mws-inspector .wcl-approver-select .custom-select-trigger:hover:not(:disabled),
+.mws-inspector .wcl-work-item-select .custom-select-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong, #94a3b8);
+  background: var(--bg-surface, #f8fafc);
+}
+
+.mws-inspector .wcl-approver-select .custom-select-menu,
+.mws-inspector .wcl-work-item-select .custom-select-menu {
+  z-index: 1100;
+  min-width: 220px;
+}
+
+.mws-inspector .wf-node-panel__scroll:has(.custom-select-container.is-open),
+.mws-inspector .workflow-checklist-card:has(.custom-select-container.is-open) {
+  overflow: visible;
+}
+
+/* ── Lương khoán readout trong Checklist Inspector ── */
+.mws-inspector .wcl-rate-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  padding: 4px 0;
+}
+
+.mws-inspector .wcl-rate-summary .wcl-rr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary, #475569);
+}
+
+.mws-inspector .wcl-rate-summary .wcl-rr strong {
+  color: #059669;
+  font-weight: 700;
+}
+
+.mws-inspector .wcl-rate-summary .wcl-rr.is-zero strong {
+  color: var(--text-tertiary, #94a3b8);
+  font-weight: 500;
+}
+
+.mws-inspector .wcl-rate-summary .wcl-rate-empty {
+  font-size: 12px;
   color: var(--text-tertiary, #94a3b8);
   font-style: italic;
 }
 
-.mws-cl-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 20px 14px;
-  border: 1px dashed var(--border-default, #cbd5e1);
-  border-radius: 8px;
-  color: var(--text-tertiary, #94a3b8);
-  font-size: 12px;
-  text-align: center;
-}
 
-.mws-form-textarea {
-  padding: 8px 12px;
-  font-size: 13px;
-  border-radius: 8px;
-  border: 1px solid var(--border-default, #cbd5e1);
-  background: var(--bg-card, #ffffff);
-  color: var(--text-primary, #0f172a);
-  line-height: 1.4;
-  resize: vertical;
-  box-sizing: border-box;
-  width: 100%;
-}
-
-.mws-form-textarea:focus {
-  outline: none;
-  border-color: var(--orange-500, #f97316);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
-}
-
-/* ── Top Level Main Tabs ── */
-.doc-templates-main-tabs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 18px;
-  background: var(--bg-card, #ffffff);
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
-}
-
-.doc-templates-main-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: var(--text-secondary, #64748b);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.doc-templates-main-tab:hover {
-  color: var(--text-primary, #0f172a);
-  background: var(--bg-hover, #f1f5f9);
-}
-
-.doc-templates-main-tab.is-active {
-  color: var(--orange-600, #ea580c);
-  background: color-mix(in srgb, var(--orange-500, #f97316) 10%, transparent);
-}

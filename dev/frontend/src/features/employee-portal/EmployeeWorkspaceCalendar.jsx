@@ -627,9 +627,11 @@ export function NodeActionBar({
       >
         <CheckCircle2 size={14} /> {isResubmission ? 'Nộp nghiệm thu lại' : 'Nộp nghiệm thu'}
       </button>
-      <small style={{ marginTop: 6, display: 'block', opacity: 0.7 }}>
-        {lyDoKhoa || 'Nộp một lần cả nhiệm vụ, minh chứng và sổ giấy tờ — Giám đốc duyệt một lần.'}
-      </small>
+      {lyDoKhoa && (
+        <small className="eiw-gate__lock-reason">
+          {lyDoKhoa}
+        </small>
+      )}
 
       <ModalThieuTaiLieu
         open={Boolean(thieu)}
