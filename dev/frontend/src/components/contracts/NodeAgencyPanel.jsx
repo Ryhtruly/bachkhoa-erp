@@ -60,6 +60,7 @@ function Row({ label, children }) {
 export default function NodeAgencyPanel({
   taskNodeId,
   nodeCode,
+  taskNode,
   addToast,
   onChanged,
   readOnly = true,
@@ -111,9 +112,28 @@ export default function NodeAgencyPanel({
     );
   }
 
-  if (loading || !dossier) return null;
+  if (loading) return null;
 
-  const paused = dossier.status === 'PENDING';
+  if (!dossier) {
+    if (taskNode?.pause_reason_type) {
+      const pauseReason = taskNode.pause_reason_type;
+      return (
+        <section className="wf-agency" aria-label={title}>
+          <div className="wf-agency__paused" role="status">
+            <Pause size={13} />
+            <strong>ĐANG TẠM DỪNG:</strong>
+            <span>{taskNode.paused_note || 'Chờ giải quyết tạm dừng'}</span>
+            <b>[{PAUSE_LABELS[pauseReason] || pauseReason}]</b>
+          </div>
+        </section>
+      );
+    }
+    return null;
+  }
+
+  const paused = dossier.status === 'PENDING' || Boolean(taskNode?.pause_reason_type);
+  const activePauseReason = taskNode?.pause_reason_type || dossier.sub_status;
+  const activePauseNote = taskNode?.paused_note || pauseNote(dossier) || dossier.status_label;
   const latestSubmit = latestSubmission(dossier);
   const receiptCode = latestSubmit?.receipt_code || dossier.latest_receipt_code || null;
   const dueDate = latestSubmit?.expected_return_date || null;
@@ -127,9 +147,9 @@ export default function NodeAgencyPanel({
         <div className="wf-agency__paused" role="status">
           <Pause size={13} />
           <strong>ĐANG TẠM DỪNG:</strong>
-          <span>{pauseNote(dossier) || dossier.status_label}</span>
-          {dossier.sub_status && (
-            <b>[{PAUSE_LABELS[dossier.sub_status] || dossier.sub_status}]</b>
+          <span>{activePauseNote}</span>
+          {activePauseReason && (
+            <b>[{PAUSE_LABELS[activePauseReason] || activePauseReason}]</b>
           )}
         </div>
       )}

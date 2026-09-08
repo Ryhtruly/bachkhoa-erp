@@ -152,6 +152,8 @@ describe('ContractWorkflowDesigner workflow activation', () => {
   it('shows the Vietnamese outcome label and placeholder for node acceptance', () => {
     renderDesigner();
 
+    expect(screen.queryByText('Chờ duyệt nghiệm thu')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
     expect(screen.getByText('Kết quả xử lý')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '— Chọn kết quả —' })).toBeInTheDocument();
   });
@@ -232,6 +234,25 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     ));
   });
 
+  it('thông báo checklist tự mở Dropup và focus đúng checklist result', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ active: true, pendingChecklistReview: true })}
+        workItems={[workItem]}
+        capabilities={{ review_workflow_checklist: true }}
+        targetTaskNodeId="task-1"
+        targetType="checklist_review"
+        targetId="result-1"
+        targetNonce={42}
+        addToast={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Chờ duyệt/ })).toHaveAttribute('aria-expanded', 'true');
+    const target = await screen.findByTestId('review-target-result-1');
+    await waitFor(() => expect(target).toHaveFocus());
+  });
+
   it('duyệt loại giấy runtime bằng đúng endpoint/body, refresh sau từng quyết định', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ status: 'success' }), { status: 200 })));
     const onPersisted = vi.fn(() => Promise.resolve());
@@ -259,7 +280,9 @@ describe('ContractWorkflowDesigner workflow activation', () => {
       />
     );
 
-    const approveRow = screen.getByText('Ảnh hiện trạng').closest('.wf-check-type');
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
+    const reviewInbox = document.querySelector('.workflow-review-inbox');
+    const approveRow = within(reviewInbox).getByText('Ảnh hiện trạng').closest('.wf-check-type');
     fireEvent.click(within(approveRow).getByRole('button', { name: 'Đạt' }));
     await waitFor(() => expect(goiToi(fetchMock, '/document-types/TYPE-APPROVE/review')).toHaveLength(1));
     expect(goiToi(fetchMock, '/document-types/TYPE-APPROVE/review')[0]).toEqual([
@@ -271,7 +294,7 @@ describe('ContractWorkflowDesigner workflow activation', () => {
       reason: null,
     });
 
-    const rejectRow = screen.getByText('Biên nhận hồ sơ').closest('.wf-check-type');
+    const rejectRow = within(reviewInbox).getByText('Biên nhận hồ sơ').closest('.wf-check-type');
     fireEvent.click(within(rejectRow).getByRole('button', { name: 'Không đạt' }));
     fireEvent.change(within(rejectRow).getByLabelText('Lý do không đạt'), {
       target: { value: '  Thiếu dấu tiếp nhận  ' },
@@ -283,6 +306,131 @@ describe('ContractWorkflowDesigner workflow activation', () => {
       reason: 'Thiếu dấu tiếp nhận',
     });
     await waitFor(() => expect(onPersisted).toHaveBeenCalledTimes(2));
+  });
+
+  it('node K01 chờ nghiệm thu hiển thị loại giấy runtime và không nhúng sổ legacy', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      status: 'success', data: [], groups: [],
+    }), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const serviceLine = makeServiceLine({
+      active: true,
+      pendingChecklistReview: true,
+      runtimeDocumentTypes: [{
+        id: 'TYPE-CCCD',
+        name: 'CCCD của khách hàng',
+        source: 'KHACH_HANG',
+        status: 'pending_review',
+        file_count: 1,
+        files: [{ document_id: 'DOC-CCCD', file_name: 'cccd-mat-truoc.jpg' }],
+      }],
+    });
+    serviceLine.workflow.execution_nodes[0] = {
+      ...serviceLine.workflow.execution_nodes[0],
+      status: 'submitted',
+      pending_acceptance_id: 'ACCEPTANCE-1',
+    };
+
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={serviceLine}
+        contractId="HD-1"
+        workItems={[workItem]}
+        documentTemplates={[]}
+        plannedNodeByTemplate={{}}
+        capabilities={{
+          review_workflow_node: true,
+          review_workflow_checklist: true,
+        }}
+        addToast={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('Chờ duyệt nghiệm thu')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sổ giấy tờ khách cung cấp')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
+    const inbox = document.querySelector('.workflow-review-inbox');
+    expect(within(inbox).getByText('CCCD của khách hàng')).toBeInTheDocument();
+    fireEvent.click(within(inbox).getByRole('button', { name: 'Xem 1 file của CCCD của khách hàng' }));
+    expect(screen.getByText('cccd-mat-truoc.jpg')).toBeInTheDocument();
+    await waitFor(() => expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes('/document-register/register')),
+    ).toBe(false));
+  });
+
+  it('danh sách chính chỉ hiện trạng thái, Dropup chỉ duyệt loại đang chờ', () => {
+    const runtimeTypes = [
+      {
+        id: 'TYPE-DONE', name: 'Biên bản đã đạt', source: 'CONG_TY', status: 'approved',
+        file_count: 1, files: [{ document_id: 'DOC-DONE', file_name: 'done.pdf' }],
+      },
+      {
+        id: 'TYPE-WAIT', name: 'Ảnh đang chờ', source: 'CONG_TY', status: 'pending_review',
+        file_count: 1, files: [{ document_id: 'DOC-WAIT', file_name: 'wait.jpg' }],
+      },
+    ];
+    renderDesigner({ active: true, pendingChecklistReview: true, runtimeDocumentTypes: runtimeTypes });
+
+    const mainPanel = document.querySelector('.wf-node-panel__scroll');
+    expect(within(mainPanel).getByText('Biên bản đã đạt')).toBeInTheDocument();
+    expect(within(mainPanel).getByText('Ảnh đang chờ')).toBeInTheDocument();
+    expect(within(mainPanel).queryByRole('button', { name: 'Đạt' })).not.toBeInTheDocument();
+    expect(within(mainPanel).queryByRole('button', { name: 'Không đạt' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
+    const inbox = document.querySelector('.workflow-review-inbox');
+    expect(within(inbox).queryByText('Biên bản đã đạt')).not.toBeInTheDocument();
+    const pendingRow = within(inbox).getByText('Ảnh đang chờ').closest('.wf-check-type');
+    expect(within(pendingRow).getByRole('button', { name: 'Đạt' })).toBeInTheDocument();
+    expect(within(pendingRow).getByRole('button', { name: 'Không đạt' })).toBeInTheDocument();
+  });
+
+  it('checklist đã đạt mọi loại giấy biến mất khỏi Dropup Chờ duyệt', () => {
+    renderDesigner({
+      active: true,
+      pendingChecklistReview: true,
+      runtimeDocumentTypes: [{
+        id: 'TYPE-DONE', name: 'Biên bản đã đạt', source: 'CONG_TY', status: 'approved',
+        file_count: 1, files: [{ document_id: 'DOC-DONE', file_name: 'done.pdf' }],
+      }],
+    });
+
+    expect(screen.getByRole('button', { name: /Chờ duyệt/ })).toBeDisabled();
+    expect(screen.getByText('Không có yêu cầu mới')).toBeInTheDocument();
+  });
+
+  it('không hiện lại phiếu Nghiệm thu Node cũ khi mọi loại giấy runtime đã đạt', () => {
+    const serviceLine = makeServiceLine({
+      active: true,
+      pendingChecklistReview: true,
+      runtimeDocumentTypes: [{
+        id: 'TYPE-DONE', name: 'Hợp đồng dịch vụ đã ký', source: 'CONG_TY', status: 'approved',
+        file_count: 1, files: [{ document_id: 'DOC-DONE', file_name: 'hop-dong.pdf' }],
+      }],
+    });
+    serviceLine.workflow.execution_nodes[0] = {
+      ...serviceLine.workflow.execution_nodes[0],
+      status: 'submitted',
+      pending_acceptance_id: 'ACCEPTANCE-STALE',
+    };
+
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={serviceLine}
+        workItems={[workItem]}
+        documentTemplates={[]}
+        plannedNodeByTemplate={{}}
+        capabilities={{
+          review_workflow_node: true,
+          review_workflow_checklist: true,
+        }}
+        addToast={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Chờ duyệt/ })).toBeDisabled();
+    expect(screen.queryByText('Nghiệm thu Node')).not.toBeInTheDocument();
+    expect(screen.queryByText('Kết quả xử lý')).not.toBeInTheDocument();
   });
 
   it('giữ nguyên lỗi API duyệt loại giấy trên toast và không refresh sai', async () => {
@@ -311,7 +459,9 @@ describe('ContractWorkflowDesigner workflow activation', () => {
       />
     );
 
-    fireEvent.click(within(screen.getByText('Phiếu tiếp nhận').closest('.wf-check-type'))
+    fireEvent.click(screen.getByRole('button', { name: /Chờ duyệt/ }));
+    fireEvent.click(within(within(document.querySelector('.workflow-review-inbox'))
+      .getByText('Phiếu tiếp nhận').closest('.wf-check-type'))
       .getByRole('button', { name: 'Đạt' }));
 
     await waitFor(() => expect(addToast).toHaveBeenCalledWith(
@@ -345,7 +495,8 @@ describe('ContractWorkflowDesigner workflow activation', () => {
   it('shows cumulative processing time and marks an unfinished end date as planned', () => {
     renderDesigner({ active: true });
 
-    expect(screen.getByText('KẾT THÚC DỰ KIẾN')).toBeInTheDocument();
+    expect(screen.getByText('HẠN CHÓT')).toBeInTheDocument();
+    expect(screen.getByText('ĐÃ LÀM:')).toBeInTheDocument();
     expect(screen.getByText('1 ngày 1 giờ 1 phút')).toBeInTheDocument();
   });
 
@@ -725,6 +876,45 @@ describe('Panel chi tiết Node — bố cục', () => {
 
     expect(document.querySelector('.wf-node-money__text'))
       .toHaveTextContent('1.230.000/12.300.000 VND');
+  });
+
+  it('K06 đặt yêu cầu duyệt nợ giữa thanh tiền và hàng Nhân sự, đồng thời focus từ chuông', async () => {
+    const handoverState = {
+      debt: { remaining: 11070000 },
+      debt_request: {
+        id: 'REQ-1', status: 'pending', requester_name: 'Nguyễn Văn A',
+        remaining_amount_snapshot: 11070000,
+        reason: 'Khách cần nhận hồ sơ để hoàn tất khoản vay',
+        promised_payment_date: '2026-09-15',
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(
+      JSON.stringify({ data: handoverState }), { status: 200 },
+    ))));
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ active: true, taskCode: 'K06' })}
+        contractTotalValue={12300000}
+        contractPaidAmount={1230000}
+        workItems={[workItem]}
+        documentTemplates={[]}
+        plannedNodeByTemplate={{}}
+        capabilities={{ review_workflow_node: true, review_workflow_checklist: true }}
+        targetTaskNodeId="task-1"
+        targetType="debt_review"
+        targetId="REQ-1"
+        targetNonce={9}
+        addToast={vi.fn()}
+      />,
+    );
+
+    const card = await screen.findByTestId('debt-review-card');
+    const fixed = document.querySelector('.wf-node-panel__fixed');
+    const money = document.querySelector('.wf-node-money');
+    const people = document.querySelector('.wf-node-grid');
+    expect([...fixed.children].indexOf(money)).toBeLessThan([...fixed.children].indexOf(card));
+    expect([...fixed.children].indexOf(card)).toBeLessThan([...fixed.children].indexOf(people));
+    await waitFor(() => expect(card).toHaveFocus());
   });
 
   it('Node không phải K06 thì KHÔNG có thanh tiền', () => {
@@ -1132,3 +1322,59 @@ describe('Giấy chưa gán vào bước nào chỉ CẢNH BÁO, không chặn k
     });
   });
 });
+
+describe('Dropdown chọn Mẫu quy trình (CustomSelect)', () => {
+  it('hiển thị dropdown chuẩn CustomSelect với các mẫu có sẵn và cho phép chọn mẫu', async () => {
+    const templates = [
+      {
+        id: 'TPL_1',
+        name: 'Quy trình Cắm mốc chuẩn',
+        version: 1,
+        is_default: true,
+        graph: {
+          nodes: [{ id: 'k01', label: 'Khảo sát', category_code: 'K01' }],
+          edges: [],
+          start_node: 'k01',
+        },
+      },
+    ];
+
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        templates={templates}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Kiểm tra custom select container và combobox
+    const select = screen.getByRole('combobox', { name: /Mẫu quy trình/i });
+    expect(select).toBeInTheDocument();
+
+    // Trigger hiển thị placeholder "Tự thiết kế"
+    const trigger = screen.getByRole('button', { name: /Tự thiết kế/i });
+    expect(trigger).toBeInTheDocument();
+
+    // Mở dropdown CustomSelect
+    fireEvent.click(trigger);
+
+    // Mẫu chuẩn hiển thị trong menu lựa chọn
+    const menu = document.querySelector('.custom-select-menu');
+    expect(menu).toBeInTheDocument();
+    const option = within(menu).getByText(/Quy trình Cắm mốc chuẩn/);
+    expect(option).toBeInTheDocument();
+
+    // Chọn mẫu chuẩn
+    fireEvent.click(option);
+
+    // Giá trị được áp dụng lên trigger
+    expect(trigger).toHaveTextContent(/Quy trình Cắm mốc chuẩn/);
+
+    // Mở lại và chọn lại "Tự thiết kế"
+    fireEvent.click(trigger);
+    const customOption = within(document.querySelector('.custom-select-menu')).getByText('Tự thiết kế');
+    fireEvent.click(customOption);
+    expect(trigger).toHaveTextContent('Tự thiết kế');
+  });
+});
+

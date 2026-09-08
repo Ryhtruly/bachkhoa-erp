@@ -24,7 +24,7 @@ from src.contracts import (
     query_contract_read_model
 )
 from src.finance.repository import priority_multiplier
-from src.dossiers.checklist_document_types import review_type
+from src.dossiers.checklist_document_types import SOURCE_LABELS, review_type, runtime_schema_ready
 from src.contracts.workflow_runtime import (
     NODES_SUBMITTED_TO_AGENCY,
     TaskClaimConflict,
@@ -66,6 +66,42 @@ DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingm
 
 
 logger = logging.getLogger(__name__)
+
+
+_WORKSPACE_CHECKLIST_DOCUMENT_TYPES_QUERY = text(
+    """
+    select t.id, t.checklist_result_id, t.template_id, t.name, t.source,
+           t.origin, t.status, t.rejection_reason,
+           (
+             select nullif(to_jsonb(change_file)->>'change_reason', '')
+             from public.checklist_result_document_type_files change_file
+             where change_file.document_type_id = t.id
+               and nullif(to_jsonb(change_file)->>'change_reason', '') is not null
+             order by coalesce(change_file.removed_at, change_file.created_at) desc,
+                      change_file.document_id desc
+             limit 1
+           ) as employee_change_reason
+    from public.checklist_result_document_types t
+    where t.checklist_result_id = any(:checklist_result_ids)
+      and t.is_active
+    order by t.checklist_result_id, t.created_at, t.id
+    """
+)
+
+_WORKSPACE_CHECKLIST_DOCUMENT_TYPE_FILES_QUERY = text(
+    """
+    select f.document_type_id, d.id as document_id, d.file_name, d.content_type,
+           to_jsonb(f)->>'change_reason' as change_reason
+    from public.checklist_result_document_type_files f
+    join public.checklist_result_document_types t on t.id = f.document_type_id
+    join public.dossier_documents d on d.id = f.document_id
+    where t.checklist_result_id = any(:checklist_result_ids)
+      and t.is_active
+      and f.is_active
+      and d.doc_status = 'DANG_DUNG'
+    order by f.document_type_id, f.created_at, d.id
+    """
+)
 
 
 def render_current_contract_document(db: Session, contract_id: str) -> Response:
@@ -169,7 +205,19 @@ class WorkflowRevisionPayload(BaseModel):
 class WorkflowTemplateIn(BaseModel):
     name: str = Field(min_length=2, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
+    service_package_id: str | None = None
+    task_type_id: str | None = None
+    is_default: bool = False
     graph: dict
+
+
+class WorkflowTemplateUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    service_package_id: str | None = None
+    task_type_id: str | None = None
+    is_default: bool | None = None
+    graph: dict | None = None
 
 
 class WorkflowAssignmentPayload(BaseModel):
@@ -922,10 +970,25 @@ def get_contract_workspace(
                 ),
                 {"workflow_instance_id": workflow_row["workflow_instance_id"]},
             ).mappings().all()]
+            graph = workflow_row["graph"] or {}
+            graph_nodes = graph.get("nodes", {}) if isinstance(graph, dict) else {}
+            node_order = _workflow_node_order(graph)
+
             node_by_id = {node["id"]: node for node in execution_nodes}
             for node in execution_nodes:
                 node["assignments"] = []
                 node["checklist_results"] = []
+                definition = graph_nodes.get(node["node_key"], {}) if isinstance(graph_nodes, dict) else {}
+                node["name"] = definition.get("name") or definition.get("label") or node["node_code"]
+                node["sequence_index"] = node_order.get(node["node_key"], len(node_order))
+
+            execution_nodes.sort(
+                key=lambda item: (
+                    item.get("sequence_index", 999),
+                    item.get("occurrence_no") or 1,
+                    item.get("node_code") or "",
+                )
+            )
 
             assignment_rows = db.execute(
                 text(
@@ -994,13 +1057,64 @@ def get_contract_workspace(
                 {"workflow_instance_id": workflow_row["workflow_instance_id"]},
             ).mappings().all()
             checklist_by_id = {}
+            runtime_types_available = bool(
+                checklist_rows and runtime_schema_ready(db)
+            )
             for checklist in checklist_rows:
                 checklist = dict(checklist)
                 checklist["compensation_assignments"] = []
+                if runtime_types_available:
+                    checklist["document_types"] = []
                 checklist_by_id[checklist["id"]] = checklist
                 target = node_by_id.get(checklist["task_node_id"])
                 if target is not None:
                     target["checklist_results"].append(checklist)
+
+            # Runtime document types are the source of truth once the additive
+            # schema is present. Always expose the key (including an empty list)
+            # so the director UI does not fall back to the legacy K01 register.
+            checklist_result_ids = list(checklist_by_id)
+            if runtime_types_available:
+                document_type_by_id = {}
+                for row in db.execute(
+                    _WORKSPACE_CHECKLIST_DOCUMENT_TYPES_QUERY,
+                    {"checklist_result_ids": checklist_result_ids},
+                ).mappings().all():
+                    document_type = {
+                        "id": row["id"],
+                        "template_id": row["template_id"],
+                        "name": row["name"],
+                        "source": row["source"],
+                        "source_label": SOURCE_LABELS.get(row["source"], row["source"]),
+                        "origin": row["origin"],
+                        "status": row["status"],
+                        "rejection_reason": row["rejection_reason"],
+                        "employee_change_reason": row.get("employee_change_reason"),
+                        "files": [],
+                        "file_count": 0,
+                    }
+                    document_type_by_id[row["id"]] = document_type
+                    checklist_by_id[row["checklist_result_id"]]["document_types"].append(
+                        document_type
+                    )
+
+                for row in db.execute(
+                    _WORKSPACE_CHECKLIST_DOCUMENT_TYPE_FILES_QUERY,
+                    {"checklist_result_ids": checklist_result_ids},
+                ).mappings().all():
+                    document_type = document_type_by_id.get(row["document_type_id"])
+                    if document_type is None:
+                        continue
+                    document_type["files"].append({
+                        "document_id": row["document_id"],
+                        "file_name": row["file_name"],
+                        "content_type": row["content_type"],
+                        "change_reason": row["change_reason"],
+                    })
+
+                for checklist in checklist_by_id.values():
+                    for document_type in checklist["document_types"]:
+                        document_type["file_count"] = len(document_type["files"])
 
             if can_view_compensation and checklist_by_id:
                 compensation_rows = db.execute(
@@ -1146,10 +1260,10 @@ def get_contract_workspace(
         workflow_templates = [dict(row) for row in db.execute(
             text(
                 """
-                select id, code, version, name, description, graph
+                select id, code, version, name, description, service_package_id, task_type_id, is_default, graph
                 from public.workflow_templates
                 where status = 'published'
-                order by name, version desc
+                order by is_default desc, name, version desc
                 """
             )
         ).mappings().all()]
@@ -1187,7 +1301,7 @@ def get_contract_workspace(
                     where wi.is_active
                       and wr.status = 'published'
                       and current_date <@ wr.effective_period
-                    order by wi.name, wr.role_code
+                    order by wi.name, case when wr.role_code = 'MAIN' then 0 when wr.role_code = 'ASSISTANT' then 1 else 2 end, wr.role_code
                     """
                 )
             ).mappings().all()
@@ -1315,23 +1429,86 @@ def save_service_line_workflow_draft(
 
 @router.get("/workflow/templates")
 def list_workflow_templates(
+    package_id: str | None = None,
+    task_type_id: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("workflow", "read")),
 ):
-    """Danh sách mẫu quy trình đang dùng được, kèm cờ cho biết mẫu nào tự tạo."""
-    rows = db.execute(
+    """Danh sách mẫu quy trình đang dùng được, hỗ trợ lọc theo Gói + Hạng mục."""
+    cache_key = f"bachkhoa:catalog:workflow_templates:{package_id or 'all'}:{task_type_id or 'all'}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return {"data": cached}
+
+    query = """
+        select t.id, t.code, t.version, t.name, t.description,
+               t.service_package_id, t.task_type_id, t.is_default,
+               t.graph,
+               t.created_by is not null as tu_tao,
+               u.username as nguoi_tao,
+               (select count(*) from jsonb_object_keys(t.graph->'nodes')) as so_buoc,
+               t.updated_at
+        from public.workflow_templates t
+        left join public.users u on u.id = t.created_by
+        where t.status = 'published'
+    """
+    params = {}
+    if package_id:
+        query += " and t.service_package_id = :package_id"
+        params["package_id"] = package_id
+    if task_type_id:
+        query += " and t.task_type_id = :task_type_id"
+        params["task_type_id"] = task_type_id
+
+    query += " order by t.is_default desc, t.created_by is not null, t.name, t.version desc"
+
+    rows = db.execute(text(query), params).mappings().all()
+    results = [dict(row) for row in rows]
+    for r in results:
+        if r.get("updated_at") and hasattr(r["updated_at"], "isoformat"):
+            r["updated_at"] = r["updated_at"].isoformat()
+
+    set_cached_json(cache_key, results, ttl_seconds=3600)
+    return {"data": results}
+
+
+@router.get("/workflow/templates/default")
+def get_default_workflow_template(
+    package_id: str,
+    task_type_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "read")),
+):
+    """Lấy mẫu quy trình mặc định cho Combo (Gói + Hạng mục) để tự nạp vào Hợp đồng."""
+    cache_key = f"bachkhoa:catalog:workflow_template_default:{package_id}:{task_type_id}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return {"data": cached}
+
+    row = db.execute(
         text("""
             select t.id, t.code, t.version, t.name, t.description,
+                   t.service_package_id, t.task_type_id, t.is_default,
+                   t.graph,
                    t.created_by is not null as tu_tao,
                    u.username as nguoi_tao,
                    (select count(*) from jsonb_object_keys(t.graph->'nodes')) as so_buoc
             from public.workflow_templates t
             left join public.users u on u.id = t.created_by
             where t.status = 'published'
-            order by t.created_by is not null, t.name, t.version desc
-        """)
-    ).mappings().all()
-    return {"data": [dict(row) for row in rows]}
+              and t.service_package_id = :package_id
+              and t.task_type_id = :task_type_id
+              and t.is_default = true
+            order by t.version desc
+            limit 1
+        """),
+        {"package_id": package_id, "task_type_id": task_type_id},
+    ).mappings().first()
+
+    data = dict(row) if row else None
+    if data:
+        set_cached_json(cache_key, data, ttl_seconds=3600)
+    return {"data": data}
 
 
 @router.post("/workflow/templates")
@@ -1362,18 +1539,120 @@ def create_workflow_template(
     if existing_template:
         raise HTTPException(status_code=409, detail=f"Đã có mẫu tên “{template_name}”. Đặt tên khác.")
 
+    if payload.is_default and payload.service_package_id and payload.task_type_id:
+        db.execute(
+            text("""
+                update public.workflow_templates
+                set is_default = false, updated_at = now()
+                where service_package_id = :package_id
+                  and task_type_id = :task_type_id
+                  and is_default = true
+            """),
+            {"package_id": payload.service_package_id, "task_type_id": payload.task_type_id}
+        )
+
     code = f"WF_TUTAO_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     row = db.execute(
         text("""
             insert into public.workflow_templates
-                (code, version, name, description, status, graph, created_by)
+                (code, version, name, description, service_package_id, task_type_id, is_default, status, graph, created_by)
             values
-                (:code, 1, :name, :description, 'published', cast(:graph as jsonb), :user_id)
-            returning id, code, name
+                (:code, 1, :name, :description, :package_id, :task_type_id, :is_default, 'published', cast(:graph as jsonb), :user_id)
+            returning id, code, name, service_package_id, task_type_id, is_default
         """),
-        {"code": code, "name": template_name, "description": (payload.description or "").strip() or None,
-         "graph": json.dumps(graph, ensure_ascii=False), "user_id": user.id},
+        {
+            "code": code,
+            "name": template_name,
+            "description": (payload.description or "").strip() or None,
+            "package_id": payload.service_package_id,
+            "task_type_id": payload.task_type_id,
+            "is_default": bool(payload.is_default),
+            "graph": json.dumps(graph, ensure_ascii=False),
+            "user_id": user.id,
+        },
     ).mappings().first()
+    db.commit()
+    invalidate_cache("bachkhoa:catalog:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    return {"data": dict(row)}
+
+
+@router.put("/workflow/templates/{template_id}")
+def update_workflow_template(
+    template_id: str,
+    payload: WorkflowTemplateUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """Cập nhật mẫu quy trình (tên, ghi chú, combo, cờ mặc định, cấu trúc đồ thị)."""
+    current = db.execute(
+        text("select id, code, name, created_by, service_package_id, task_type_id, is_default from public.workflow_templates where id = :i"),
+        {"i": template_id},
+    ).mappings().first()
+    if not current:
+        raise HTTPException(status_code=404, detail="Không tìm thấy mẫu quy trình")
+
+    updates = []
+    params = {"id": template_id}
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if len(name) < 2:
+            raise HTTPException(status_code=422, detail="Tên mẫu phải có ít nhất 2 ký tự")
+        duplicate = db.execute(
+            text("select 1 from public.workflow_templates where lower(name) = lower(:n) and id != :id limit 1"),
+            {"n": name, "id": template_id}
+        ).scalar()
+        if duplicate:
+            raise HTTPException(status_code=409, detail=f"Đã có mẫu tên “{name}”. Đặt tên khác.")
+        updates.append("name = :name")
+        params["name"] = name
+
+    if payload.description is not None:
+        updates.append("description = :description")
+        params["description"] = payload.description.strip() or None
+
+    target_package_id = payload.service_package_id if payload.service_package_id is not None else current["service_package_id"]
+    target_task_type_id = payload.task_type_id if payload.task_type_id is not None else current["task_type_id"]
+
+    if payload.service_package_id is not None:
+        updates.append("service_package_id = :package_id")
+        params["package_id"] = payload.service_package_id
+
+    if payload.task_type_id is not None:
+        updates.append("task_type_id = :task_type_id")
+        params["task_type_id"] = payload.task_type_id
+
+    if payload.is_default is not None:
+        updates.append("is_default = :is_default")
+        params["is_default"] = bool(payload.is_default)
+        if payload.is_default and target_package_id and target_task_type_id:
+            db.execute(
+                text("""
+                    update public.workflow_templates
+                    set is_default = false, updated_at = now()
+                    where service_package_id = :package_id
+                      and task_type_id = :task_type_id
+                      and is_default = true
+                      and id != :id
+                """),
+                {"package_id": target_package_id, "task_type_id": target_task_type_id, "id": template_id}
+            )
+
+    if payload.graph is not None:
+        try:
+            graph = validate_workflow_graph(db, payload.graph, require_connected=True)
+        except WorkflowValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        updates.append("graph = cast(:graph as jsonb)")
+        params["graph"] = json.dumps(graph, ensure_ascii=False)
+
+    if not updates:
+        return {"data": dict(current)}
+
+    updates.append("updated_at = now()")
+    query = f"update public.workflow_templates set {', '.join(updates)} where id = :id returning id, code, name, description, service_package_id, task_type_id, is_default, graph"
+    row = db.execute(text(query), params).mappings().first()
     db.commit()
     invalidate_cache("bachkhoa:catalog:*")
     invalidate_cache("bachkhoa:contract_workspace:*")
@@ -1398,10 +1677,10 @@ def delete_workflow_template(
 
     db.execute(text("delete from public.workflow_templates where id = :i"), {"i": template_id})
     db.commit()
-    # Xoá rồi mà cache còn giữ thì mẫu đã chết vẫn nằm trong ô chọn cả tiếng.
     invalidate_cache("bachkhoa:catalog:*")
     invalidate_cache("bachkhoa:contract_workspace:*")
     return {"data": {"id": template_id, "name": row["name"]}}
+
 
 
 @router.post("/workflow/{service_line_id}/activate")
@@ -1696,6 +1975,9 @@ def review_checklist_document_type(
     invalidate_cache("bachkhoa:contract_workspace:*")
     invalidate_cache("bachkhoa:notifications:summary:*")
     invalidate_cache("task_pool:*")
+    if result.get("node_finalized"):
+        invalidate_money_caches()
+        invalidate_cache("employee_daily_summary:*")
     publish_timeline_change("document_type_reviewed", entity_id=type_id)
     if result.get("node_status") == "rework_required":
         publish_timeline_change("node_review_completed", entity_id=result.get("task_node_id"))

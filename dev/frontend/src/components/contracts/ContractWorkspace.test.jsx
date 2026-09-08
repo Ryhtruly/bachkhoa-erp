@@ -79,4 +79,43 @@ describe('ContractWorkspace realtime subscription', () => {
     await waitFor(() => expect(fetchSpy).not.toHaveBeenCalled())
     unmount()
   })
+
+  it('renders ContractHeaderDetails and toggles popover with customer details', async () => {
+    const { fireEvent, screen } = await import('@testing-library/react')
+    const { ContractHeaderDetails } = await import('./ContractWorkspace')
+
+    const mockContract = {
+      customer_name: 'Lê quang Tri',
+      customer_phone: '0834310460',
+      service_location: 'TP Thủ Đức',
+      service_area: 120,
+      total_value: 10000000,
+    }
+
+    const { unmount } = render(<ContractHeaderDetails contract={mockContract} />)
+
+    expect(screen.getByText('Lê quang Tri')).toBeInTheDocument()
+    expect(screen.getByText('0834310460')).toBeInTheDocument()
+    expect(screen.getByText('10.000.000₫')).toBeInTheDocument()
+
+    // Popover is closed initially
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Click Chi tiết button
+    const toggleBtn = screen.getByRole('button', { name: /Xem chi tiết thông tin/i })
+    fireEvent.click(toggleBtn)
+
+    // Popover is now open
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Thông tin hợp đồng')).toBeInTheDocument()
+    expect(screen.getByText('TP Thủ Đức')).toBeInTheDocument()
+    expect(screen.getByText('120 m²')).toBeInTheDocument()
+
+    // Close button works
+    const closeBtn = screen.getByRole('button', { name: 'Đóng chi tiết' })
+    fireEvent.click(closeBtn)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    unmount()
+  })
 })

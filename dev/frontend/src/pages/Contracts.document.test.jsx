@@ -12,7 +12,12 @@ const { addToast, apiFetch, fetchProtectedDocumentBlob, requestDocxSaveHandle, w
 }));
 
 vi.mock('../contexts/ToastContext', () => ({ useToast: () => ({ addToast }) }));
-vi.mock('../lib/api', () => ({ apiFetch, getAccessToken: () => 'access-token' }));
+vi.mock('../lib/api', () => ({
+  apiFetch,
+  getAccessToken: () => 'access-token',
+  peekApiCache: () => null,
+  prefetchApi: () => {},
+}));
 vi.mock('../lib/fileSave', () => ({
   fetchProtectedDocumentBlob,
   requestDocxSaveHandle,

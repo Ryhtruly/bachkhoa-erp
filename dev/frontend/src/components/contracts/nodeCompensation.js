@@ -11,5 +11,14 @@ export function payRateFor(workItem, roleCode) {
   if (!workItem) return 0;
   const rates = workItem.rates || [];
   const matched = roleCode && rates.find(rate => rate.role_code === roleCode);
-  return Number((matched || rates[0])?.amount || 0);
+  if (matched) return Number(matched.amount || 0);
+
+  const mainRate = rates.find(rate => rate.role_code === 'MAIN');
+  if (mainRate) return Number(mainRate.amount || 0);
+
+  const nonZeroRate = rates.find(rate => Number(rate.amount) > 0);
+  if (nonZeroRate) return Number(nonZeroRate.amount || 0);
+
+  return Number(rates[0]?.amount || 0);
 }
+

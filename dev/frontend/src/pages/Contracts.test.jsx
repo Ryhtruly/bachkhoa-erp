@@ -1,4 +1,5 @@
 import React from 'react'
+import { readFileSync } from 'node:fs'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -10,6 +11,11 @@ vi.mock('../contexts/ToastContext', () => ({ useToast: () => ({ addToast }) }))
 
 describe('Contracts', () => {
   afterEach(() => vi.unstubAllGlobals())
+
+  it('không gọi setter địa chỉ không tồn tại sau khi tạo hợp đồng', () => {
+    const source = readFileSync('src/pages/Contracts.jsx', 'utf8')
+    expect(source).not.toContain('setAddressLocation(')
+  })
 
   it('đánh dấu toàn dòng hợp đồng còn nợ để chạy viền cảnh báo đỏ', async () => {
     vi.stubGlobal('fetch', vi.fn((url) => {

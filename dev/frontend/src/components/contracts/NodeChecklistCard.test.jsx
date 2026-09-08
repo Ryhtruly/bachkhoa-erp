@@ -57,9 +57,18 @@ const RUNTIME_ITEM = {
         rejection_reason: null,
         file_count: 3,
         files: [
-          { document_id: 'DOC-1', file_name: 'mat-truoc.jpg', content_type: 'image/jpeg' },
-          { document_id: 'DOC-2', file_name: 'mat-sau.jpg', content_type: 'image/jpeg' },
-          { document_id: 'DOC-3', file_name: 'toan-canh.pdf', content_type: 'application/pdf' },
+          {
+            document_id: 'DOC-1', file_name: 'mat-truoc.jpg', content_type: 'image/jpeg',
+            status: 'approved',
+          },
+          {
+            document_id: 'DOC-2', file_name: 'mat-sau.jpg', content_type: 'image/jpeg',
+            status: 'pending_review', change_reason: 'Bổ sung mặt sau có chữ ký',
+          },
+          {
+            document_id: 'DOC-3', file_name: 'toan-canh.pdf', content_type: 'application/pdf',
+            status: 'rejected', rejection_reason: 'Trang cuối bị mờ',
+          },
         ],
       },
       {
@@ -105,6 +114,21 @@ describe('Tiền khoán suy từ bảng giá', () => {
 
   it('chưa chọn công việc thì bằng 0', () => {
     expect(payRateFor(null, 'MAIN')).toBe(0)
+  })
+
+  it('ưu tiên mức MAIN khi vai trò không khớp hoặc là vai trò duyệt (admin), không rơi vào mức 0đ của ASSISTANT', () => {
+    const gpsItem = {
+      id: 'WI-GPS',
+      name: 'Đo GPS',
+      rates: [
+        { role_code: 'ASSISTANT', amount: 0 },
+        { role_code: 'MAIN', amount: 1200000 },
+      ],
+    }
+    expect(payRateFor(gpsItem, 'MAIN')).toBe(1200000)
+    expect(payRateFor(gpsItem, 'admin')).toBe(1200000)
+    expect(payRateFor(gpsItem, 'ASSISTANT')).toBe(0)
+    expect(payRateFor(gpsItem, undefined)).toBe(1200000)
   })
 })
 
@@ -236,6 +260,12 @@ describe('Card checklist', () => {
     expect(screen.getByText('mat-truoc.jpg')).toBeInTheDocument()
     expect(screen.getByText('mat-sau.jpg')).toBeInTheDocument()
     expect(screen.getByText('toan-canh.pdf')).toBeInTheDocument()
+    const approvedFile = screen.getByText('mat-truoc.jpg').closest('.wf-check-type__file')
+    const rejectedFile = screen.getByText('toan-canh.pdf').closest('.wf-check-type__file')
+    expect(within(approvedFile).queryByText('Đạt')).not.toBeInTheDocument()
+    expect(within(rejectedFile).queryByText('Không đạt')).not.toBeInTheDocument()
+    expect(within(rejectedFile).queryByText('Trang cuối bị mờ')).not.toBeInTheDocument()
+    expect(screen.getByText('Bổ sung mặt sau có chữ ký')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Mở mat-sau.jpg/ }))
 
     expect(onOpenDocument).toHaveBeenCalledWith(expect.objectContaining({
@@ -260,7 +290,19 @@ describe('Card checklist', () => {
     expect(within(row).getAllByRole('button', { name: 'Không đạt' })).toHaveLength(1)
   })
 
-  it('từ chối runtime bắt nhập lý do và gửi đúng checklist/type/lý do đã trim', () => {
+  it('bấm tên loại giấy cũng xổ danh sách file để Giám đốc đọc', () => {
+    mount({ item: RUNTIME_ITEM, onApproveType: vi.fn(), onRejectType: vi.fn() })
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Mở file của loại giấy Ảnh hiện trạng thửa đất',
+    }))
+
+    expect(screen.getByText('mat-truoc.jpg')).toBeInTheDocument()
+    expect(screen.getByText('mat-sau.jpg')).toBeInTheDocument()
+    expect(screen.getByText('toan-canh.pdf')).toBeInTheDocument()
+  })
+
+  it('từ chối runtime mở modal, bắt nhập lý do và gửi đúng checklist/type/lý do đã trim', () => {
     const onRejectType = vi.fn()
     mount({
       item: RUNTIME_ITEM,
@@ -270,13 +312,47 @@ describe('Card checklist', () => {
 
     const row = screen.getByText('Ảnh hiện trạng thửa đất').closest('.wf-check-type')
     fireEvent.click(within(row).getByRole('button', { name: 'Không đạt' }))
-    expect(within(row).getByRole('button', { name: 'Xác nhận không đạt' })).toBeDisabled()
-    fireEvent.change(within(row).getByLabelText('Lý do không đạt'), {
+    const dialog = screen.getByRole('dialog', { name: 'Từ chối loại giấy Ảnh hiện trạng thửa đất' })
+    expect(within(dialog).getByRole('button', { name: 'Xác nhận không đạt' })).toBeDisabled()
+    fireEvent.change(within(dialog).getByLabelText('Lý do không đạt'), {
       target: { value: '  Trang hai bị mờ  ' },
     })
-    fireEvent.click(within(row).getByRole('button', { name: 'Xác nhận không đạt' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Xác nhận không đạt' }))
 
     expect(onRejectType).toHaveBeenCalledWith('CR-RUNTIME', 'TYPE-ANH', 'Trang hai bị mờ')
+  })
+
+  it('nút Đạt và Không đạt nằm duy nhất trên hàng tên loại giấy', () => {
+    mount({
+      item: RUNTIME_ITEM,
+      onApproveType: vi.fn(),
+      onRejectType: vi.fn(),
+    })
+
+    const row = screen.getByText('Ảnh hiện trạng thửa đất').closest('.wf-check-type')
+    const summary = row.querySelector('.wf-check-type__summary')
+    expect(summary).toContainElement(within(row).getByRole('button', { name: 'Đạt' }))
+    expect(summary).toContainElement(within(row).getByRole('button', { name: 'Không đạt' }))
+  })
+
+  it('loại nộp lại có badge Cập nhật lại và ghi chú nhân viên', () => {
+    mount({
+      item: {
+        ...RUNTIME_ITEM,
+        runtime: {
+          ...RUNTIME_ITEM.runtime,
+          document_types: [{
+            ...RUNTIME_ITEM.runtime.document_types[0],
+            employee_change_reason: 'Thay bản có đủ chữ ký',
+          }],
+        },
+      },
+      onApproveType: vi.fn(),
+      onRejectType: vi.fn(),
+    })
+
+    expect(screen.getByText('Cập nhật lại')).toBeInTheDocument()
+    expect(screen.getByText('Thay bản có đủ chữ ký')).toBeInTheDocument()
   })
 
   it('loại runtime không có file khóa cả Đạt và Không đạt', () => {
