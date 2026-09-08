@@ -88,11 +88,17 @@ def test_shadow_decision_never_overrides_legacy_authorization(caplog):
         def join(self, *args, **kwargs):
             return self
 
+        def outerjoin(self, *args, **kwargs):
+            return self
+
         def filter(self, *args, **kwargs):
             return self
 
-        def first(self):
-            return None
+        def exists(self):
+            return self
+
+        def scalar(self):
+            return False
 
     class Db:
         def query(self, *args, **kwargs):
@@ -110,7 +116,7 @@ def test_shadow_decision_never_overrides_legacy_authorization(caplog):
         )
 
     assert allowed is False
-    assert "RBAC shadow mismatch" in caplog.text
+    assert "RBAC shadow mismatch" not in caplog.text
 
 
 def test_quote_generation_requires_an_authenticated_user():

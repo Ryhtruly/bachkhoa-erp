@@ -1,41 +1,153 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState, startTransition } from 'react';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
-import Dashboard from './pages/Dashboard';
-import CRM from './pages/CRM';
-import CustomerDirectory from './pages/CustomerDirectory';
-import Tasks from './pages/Tasks';
-import LegalSubmissions from './pages/LegalSubmissions';
-import Settings from './pages/Settings';
-import Contracts from './pages/Contracts';
-import Cashflow from './pages/Cashflow';
-import KPI from './pages/KPI';
-import HumanResources from './pages/HumanResources';
-import ContractTimeline from './pages/ContractTimeline';
 import Login from './pages/Login';
 import SetPassword from './pages/SetPassword';
 import ChatWidget from './components/ChatWidget';
-import EmployeePortalDashboard from './features/employee-portal/EmployeePortalDashboard';
-import MyPayroll from './features/employee-portal/MyPayroll';
 import { apiFetch, clearAccessToken } from './lib/api';
-import { xinPhepRoiDi } from './lib/canhBaoChuaLuu';
+import { requestNavigationPermission } from './lib/unsavedChangesGuard';
 import { ToastProvider } from './contexts/ToastContext';
+import { safeViewTransition } from './lib/viewTransition';
+import TabSkeleton from './components/ui/TabSkeleton';
 import './index.css';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const CRM = lazy(() => import('./pages/CRM'));
+const CustomerDirectory = lazy(() => import('./pages/CustomerDirectory'));
+const Tasks = lazy(() => import('./pages/Tasks'));
+const LegalSubmissions = lazy(() => import('./pages/LegalSubmissions'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Contracts = lazy(() => import('./pages/Contracts'));
+const Cashflow = lazy(() => import('./pages/Cashflow'));
+const KPI = lazy(() => import('./pages/KPI'));
+const HumanResources = lazy(() => import('./pages/HumanResources'));
+const ContractTimeline = lazy(() => import('./pages/ContractTimeline'));
+const EmployeePortalDashboard = lazy(() => import('./features/employee-portal/EmployeePortalDashboard'));
+const MyPayroll = lazy(() => import('./features/employee-portal/MyPayroll'));
+const ApprovalQueue = lazy(() => import('./features/approvals/ApprovalQueue'));
+const DocumentTemplateSettings = lazy(() => import('./features/document-register/DocumentTemplateSettings'));
+const CustomerIntakePage = lazy(() => import('./pages/CustomerIntakePage'));
+
+const SIDEBAR_COLLAPSED_KEY = 'bachkhoa_sidebar_collapsed';
+const NAVIGATION_TARGET_PERMISSIONS = {
+  cashflow: 'finance',
+  contracts: 'contract',
+};
+
+function ActiveTabScreen({ Component, componentProps, pendingNavigation, onNavigationDelivered }) {
+  useEffect(() => {
+    if (!pendingNavigation) return undefined;
+
+    const timer = window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(pendingNavigation.eventName, {
+        detail: pendingNavigation.detail,
+      }));
+      onNavigationDelivered(pendingNavigation.id);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [onNavigationDelivered, pendingNavigation]);
+
+  return <Component {...componentProps} />;
+}
+
+const MemoizedActiveTabScreen = React.memo(ActiveTabScreen, (previous, next) => {
+  if (
+    previous.Component !== next.Component
+    || previous.pendingNavigation !== next.pendingNavigation
+    || previous.onNavigationDelivered !== next.onNavigationDelivered
+  ) {
+    return false;
+  }
+
+  const previousKeys = Object.keys(previous.componentProps);
+  const nextKeys = Object.keys(next.componentProps);
+  return previousKeys.length === nextKeys.length
+    && previousKeys.every(key => Object.is(previous.componentProps[key], next.componentProps[key]));
+});
 
 function App() {
   const [loggedIn, setLoggedIn] = useState(() => Boolean(localStorage.getItem('bachkhoa_access_token')));
+  const sessionActiveRef = useRef(loggedIn);
   const [workspace, setWorkspace] = useState('management');
   const [profile, setProfile] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(() => Boolean(localStorage.getItem('bachkhoa_access_token')));
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+  );
+  const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false);
+  const [activeNavigation, setActiveNavigation] = useState(null);
+  const navigationSequence = useRef(0);
+  const activeNavigationRef = useRef(null);
+  const queuedNavigationsRef = useRef([]);
+
+  const canAccessNavigationTarget = useCallback((targetTab) => {
+    if (!profile) return false;
+    if (workspace === 'employee') return targetTab === 'employee-dashboard';
+
+    const requiredPermission = NAVIGATION_TARGET_PERMISSIONS[targetTab];
+    return Boolean(requiredPermission && profile.permissions?.[requiredPermission]);
+  }, [profile, workspace]);
+
+  const queueTabNavigation = useCallback((targetTab, eventName, detail) => {
+    if (!sessionActiveRef.current || !canAccessNavigationTarget(targetTab)) return;
+
+    navigationSequence.current += 1;
+    const navigation = {
+      id: navigationSequence.current,
+      targetTab,
+      eventName,
+      detail,
+    };
+
+    if (activeNavigationRef.current) {
+      queuedNavigationsRef.current.push(navigation);
+      return;
+    }
+
+    activeNavigationRef.current = navigation;
+    setActiveNavigation(navigation);
+    setActiveTab(targetTab);
+  }, [canAccessNavigationTarget]);
+
+  const handleNavigationDelivered = useCallback((navigationId) => {
+    if (activeNavigationRef.current?.id !== navigationId) return;
+
+    const nextNavigation = queuedNavigationsRef.current.shift() || null;
+    activeNavigationRef.current = nextNavigation;
+    setActiveNavigation(nextNavigation);
+    if (nextNavigation) setActiveTab(nextNavigation.targetTab);
+  }, []);
+
+  const clearNavigationQueue = useCallback(() => {
+    queuedNavigationsRef.current = [];
+    activeNavigationRef.current = null;
+    setActiveNavigation(null);
+  }, []);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
+      return next;
+    });
+  };
 
   const handleLogin = (token, initialUser) => {
+    clearNavigationQueue();
+    sessionActiveRef.current = true;
     localStorage.setItem('bachkhoa_access_token', token);
     if (initialUser && initialUser.username) {
       setProfile(initialUser);
-      setWorkspace(initialUser.default_workspace === 'employee' ? 'employee' : 'management');
-      if (initialUser.default_workspace !== 'employee' && initialUser.username !== 'admin') {
-        setActiveTab(initialUser.permissions?.finance ? 'cashflow' : 'contracts');
+      const isEmp = initialUser.default_workspace === 'employee';
+      setWorkspace(isEmp ? 'employee' : 'management');
+      if (isEmp) {
+        setActiveTab('employee-dashboard');
+      } else if (initialUser.username === 'admin' || initialUser.is_director) {
+        setActiveTab('dashboard');
+      } else {
+        setActiveTab(initialUser.permissions?.finance ? 'cashflow' : (initialUser.permissions?.contract ? 'contracts' : 'tasks'));
       }
       setSessionLoading(false);
     } else {
@@ -44,13 +156,16 @@ function App() {
     setLoggedIn(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
+    sessionActiveRef.current = false;
+    clearNavigationQueue();
     clearAccessToken();
+    setSidebarOverlayOpen(false);
     setWorkspace('management');
     setProfile(null);
     setSessionLoading(false);
     setLoggedIn(false);
-  };
+  }, [clearNavigationQueue]);
 
   useEffect(() => {
     if (!loggedIn) {
@@ -59,9 +174,8 @@ function App() {
     }
     let mounted = true;
 
-    // Safety timeout: auto logout after 7s if /api/auth/me hangs
     const safetyTimer = setTimeout(() => {
-      if (mounted && sessionLoading) {
+      if (mounted) {
         console.warn('Authentication verification timed out.');
         handleLogout();
       }
@@ -71,9 +185,14 @@ function App() {
       .then((user) => {
         if (!mounted) return;
         setProfile(user);
-        setWorkspace(user.default_workspace === 'employee' ? 'employee' : 'management');
-        if (user.default_workspace !== 'employee' && user.username !== 'admin') {
-          setActiveTab(user.permissions?.finance ? 'cashflow' : 'contracts');
+        const isEmp = user.default_workspace === 'employee';
+        setWorkspace(isEmp ? 'employee' : 'management');
+        if (isEmp) {
+          setActiveTab('employee-dashboard');
+        } else if (user.username === 'admin' || user.is_director) {
+          setActiveTab('dashboard');
+        } else {
+          setActiveTab(user.permissions?.finance ? 'cashflow' : (user.permissions?.contract ? 'contracts' : 'tasks'));
         }
       })
       .catch((err) => {
@@ -89,7 +208,7 @@ function App() {
       mounted = false;
       clearTimeout(safetyTimer);
     };
-  }, [loggedIn]);
+  }, [handleLogout, loggedIn]);
 
   useEffect(() => {
     window.addEventListener('bachkhoa:unauthorized', handleLogout);
@@ -98,11 +217,33 @@ function App() {
 
   useEffect(() => {
     const openTimelineNode = (event) => {
-      setActiveTab('contracts');
-      window.dispatchEvent(new CustomEvent('bachkhoa:navigate-to-node', { detail: event.detail }));
+      queueTabNavigation('contracts', 'bachkhoa:navigate-to-node', event.detail);
     };
     window.addEventListener('bachkhoa:timeline-open-node', openTimelineNode);
     return () => window.removeEventListener('bachkhoa:timeline-open-node', openTimelineNode);
+  }, [queueTabNavigation]);
+
+  useEffect(() => {
+    if (!sidebarOverlayOpen) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setSidebarOverlayOpen(false);
+    };
+
+    document.body.classList.add('sidebar-overlay-active');
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.classList.remove('sidebar-overlay-active');
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [sidebarOverlayOpen]);
+
+  useEffect(() => {
+    const navigateFromFeature = (event) => {
+      if (event.detail?.tab) setActiveTab(event.detail.tab);
+    };
+    window.addEventListener('app:navigate', navigateFromFeature);
+    return () => window.removeEventListener('app:navigate', navigateFromFeature);
   }, []);
 
   if (window.location.pathname === '/set-password') {
@@ -113,6 +254,14 @@ function App() {
           handleLogin(token);
         }}
       />
+    );
+  }
+
+  if (window.location.pathname === '/intake' || window.location.pathname === '/yeu-cau-dich-vu') {
+    return (
+      <Suspense fallback={<TabSkeleton />}>
+        <CustomerIntakePage />
+      </Suspense>
     );
   }
 
@@ -154,6 +303,8 @@ function App() {
     { key: 'settings', Component: Settings, permission: 'settings', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'contracts', Component: Contracts, permission: 'contract', props: { user: profile, isDirector } },
     { key: 'timeline', Component: ContractTimeline, directorOnly: true, props: { user: profile, isDirector } },
+    { key: 'approvals', Component: ApprovalQueue, directorOnly: true, props: {} },
+    { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
     { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'debt-collection', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
@@ -174,68 +325,88 @@ function App() {
   const allowedEmployeeTabs = EMPLOYEE_TABS.filter(
     tab => !tab.permission || permissions[tab.permission]
   );
-  const employeeTab = employeeMode && !allowedEmployeeTabs.some(tab => tab.key === activeTab)
-    ? 'employee-dashboard'
-    : activeTab;
 
-  // Bấm sang tab khác khi sơ đồ quy trình còn thay đổi chưa lưu thì hỏi trước.
-  // Màn nào đang giữ dữ liệu dở tự đăng ký chốt chặn (xem lib/canhBaoChuaLuu).
-  const doiTab = async (tab) => {
-    if (tab === activeTab) { setActiveTab(tab); return; }
-    if (await xinPhepRoiDi()) setActiveTab(tab);
+  const currentAllowedTabs = employeeMode ? allowedEmployeeTabs : allowedTabs;
+  const effectiveTab = currentAllowedTabs.some(tab => tab.key === activeTab)
+    ? activeTab
+    : (currentAllowedTabs[0]?.key || (employeeMode ? 'employee-dashboard' : 'dashboard'));
+  const activeTabConfig = currentAllowedTabs.find(tab => tab.key === effectiveTab);
+  const ActiveTabComponent = activeTabConfig?.Component;
+
+  // Ask for confirmation before leaving if active screen has unsaved changes.
+  const handleTabChange = async (tab) => {
+    if (tab === effectiveTab) { setActiveTab(tab); return; }
+    if (await requestNavigationPermission()) {
+      clearNavigationQueue();
+      safeViewTransition(() => {
+        startTransition(() => {
+          setActiveTab(tab);
+        });
+      });
+    }
   };
 
   const handleNotificationNavigate = async (item) => {
-    // Bấm thông báo cũng là rời khỏi màn đang mở — hỏi y như bấm đổi tab.
-    if (!(await xinPhepRoiDi())) return;
-    // Phiếu chờ duyệt nằm bên Thu Chi, không nằm trong sơ đồ quy trình —
-    // đưa giám đốc thẳng tới đúng phiếu để bấm duyệt.
+    if (!(await requestNavigationPermission())) return;
     if (item.type === 'cashflow_approval') {
-      setActiveTab('cashflow');
-      window.dispatchEvent(new CustomEvent('bachkhoa:open-cashflow-voucher', {
-        detail: { voucherId: item.voucher_id, nonce: Date.now() },
-      }));
-      return;
-    }
-    // Nhân viên không có tab Hợp đồng (chỉ thấy không gian nhân viên) — phải mở thẳng
-    // đúng công việc trong lịch làm việc, thay vì chuyển tab không tồn tại.
-    if (employeeMode) {
-      window.dispatchEvent(new CustomEvent('bachkhoa:open-employee-task', {
-        detail: { taskNodeId: item.task_node_id, nonce: Date.now() },
-      }));
-      return;
-    }
-    setActiveTab('contracts');
-    window.dispatchEvent(new CustomEvent('bachkhoa:navigate-to-node', {
-      detail: {
-        contractId: item.contract_id,
-        serviceLineId: item.service_line_id,
-        nodeKey: item.node_key,
-        type: item.type,
-        // nonce để bấm lại đúng thông báo cũ vẫn điều hướng được (giá trị luôn khác nhau).
+      queueTabNavigation('cashflow', 'bachkhoa:open-cashflow-voucher', {
+        voucherId: item.voucher_id,
         nonce: Date.now(),
-      },
-    }));
+      });
+      return;
+    }
+    if (employeeMode) {
+      queueTabNavigation('employee-dashboard', 'bachkhoa:open-employee-task', {
+        taskNodeId: item.task_node_id,
+        nonce: Date.now(),
+      });
+      return;
+    }
+    queueTabNavigation('contracts', 'bachkhoa:navigate-to-node', {
+      contractId: item.contract_id,
+      serviceLineId: item.service_line_id,
+      nodeKey: item.node_key,
+      taskNodeId: item.task_node_id,
+      targetType: item.target_type || item.type,
+      targetId: item.target_id || item.ref_id,
+      nonce: Date.now(),
+    });
   };
 
   return (
     <ToastProvider>
-      <div className="app">
-        <TopHeader onLogout={handleLogout} user={profile} onNotificationNavigate={handleNotificationNavigate} />
+      <div className={`app${sidebarCollapsed ? ' app--sidebar-collapsed' : ''}${sidebarOverlayOpen ? ' app--sidebar-overlay-open' : ''}`}>
+        <TopHeader
+          onLogout={handleLogout}
+          user={profile}
+          onNotificationNavigate={handleNotificationNavigate}
+          sidebarOverlayOpen={sidebarOverlayOpen}
+          onSidebarOverlayToggle={() => setSidebarOverlayOpen(current => !current)}
+        />
         <div className="app-body">
           <Sidebar
-            activeTab={employeeMode ? employeeTab : activeTab}
-            setActiveTab={doiTab}
+            activeTab={effectiveTab}
+            setActiveTab={handleTabChange}
             mode={workspace}
             permissions={permissions}
             isDirector={isDirector}
+            collapsed={sidebarCollapsed}
+            overlayOpen={sidebarOverlayOpen}
+            onToggleCollapsed={toggleSidebarCollapsed}
+            onRequestClose={() => setSidebarOverlayOpen(false)}
           />
-          <main className={`main${activeTab === 'contracts' ? ' main--contract' : ''}${activeTab === 'timeline' ? ' main--timeline' : ''}${activeTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers'].includes(activeTab) ? ' main--list' : ''}`}>
-            {(employeeMode ? allowedEmployeeTabs : allowedTabs).map(({ key, Component, props }) => (
-              <div key={key} style={{ display: (employeeMode ? employeeTab : activeTab) === key ? 'block' : 'none' }}>
-                <Component {...(props || {})} />
-              </div>
-            ))}
+<main className={`main${effectiveTab === 'contracts' ? ' main--contract' : ''}${effectiveTab === 'timeline' ? ' main--timeline' : ''}${effectiveTab === 'wiki' ? ' main--hr' : ''}${['tasks', 'legal', 'customers', 'doc-templates'].includes(effectiveTab) ? ' main--list' : ''}${effectiveTab === 'employee-dashboard' ? ' main--employee' : ''}`}>
+            {ActiveTabComponent && (
+              <Suspense fallback={<TabSkeleton label="Đang tải phân hệ..." />}>
+                <MemoizedActiveTabScreen
+                  key={effectiveTab}
+                  Component={ActiveTabComponent}
+                  componentProps={activeTabConfig.props || {}}
+                  pendingNavigation={activeNavigation?.targetTab === effectiveTab ? activeNavigation : null}
+                  onNavigationDelivered={handleNavigationDelivered}
+                />
+              </Suspense>
+            )}
           </main>
         </div>
         {!employeeMode && <ChatWidget />}

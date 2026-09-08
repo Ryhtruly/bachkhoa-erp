@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DataTable, Badge, StatusBadge, SensitiveActionModal, FilterBar } from '../../ui';
+import { DataTable, StatusBadge, SensitiveActionModal, FilterBar } from '../../ui';
 import { fmt } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
-import { DollarSign, ArrowRightLeft, Printer, AlertTriangle, AlertCircle } from 'lucide-react';
+import { DollarSign, Printer, AlertTriangle, FileText, CheckCircle2, RotateCcw } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
-export default function ReceivablesScreen() {
+export default function ReceivablesScreen({ user }) {
   const printDocumentRef = useRef(null);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [refundModal, setRefundModal] = useState(null); // row to refund
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
@@ -28,11 +29,13 @@ export default function ReceivablesScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const d = await apiFetch(`${API}/api/finance/receivables`);
       setData(Array.isArray(d) ? d : []);
     } catch (e) {
       console.error(e);
+      setError('Không thể tải dữ liệu công nợ');
     } finally {
       setLoading(false);
     }
@@ -171,7 +174,7 @@ export default function ReceivablesScreen() {
   const footerRow = {
     index: '',
     contract_id: '',
-    customer_name: 'TỔNG CỘNG',
+    customer_name: 'Tổng cộng',
     total_value: fmt(totalValueSum),
     paid_amount: fmt(totalPaidSum),
     remaining_amount: fmt(totalRemaining),
@@ -206,7 +209,30 @@ export default function ReceivablesScreen() {
         {row.is_overpaid ? `Nộp thừa` : (v > 0 ? fmt(v) : '✓ Xong')}
       </span>
     )},
-    { key: 'due_date', label: 'Hạn thu', width: 110, render: v => <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.83rem' }}>{v || '—'}</span> },
+    { key: 'due_date', label: 'Hạn thu & Tuổi nợ', width: 145, render: (v, row) => {
+      const aging = calculateAging(v, row.remaining_amount || 0);
+      const agingLabels = {
+        settled: { label: 'Đã tất toán', cls: 'aging-badge--settled' },
+        in_term: { label: 'Trong hạn', cls: 'aging-badge--in-term' },
+        overdue_30: { label: 'Quá hạn ≤ 30 ngày', cls: 'aging-badge--overdue-30' },
+        overdue_60: { label: 'Quá hạn 31-60 ngày', cls: 'aging-badge--overdue-60' },
+        overdue_90: { label: 'Quá hạn 61-90 ngày', cls: 'aging-badge--overdue-90' },
+        overdue_plus: { label: 'Nợ xấu > 90 ngày', cls: 'aging-badge--overdue-plus' }
+      };
+      const badgeInfo = agingLabels[aging] || agingLabels.in_term;
+      const formattedDate = v ? (v.includes('-') ? v.split('-').reverse().join('/') : v) : '—';
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.84rem', fontWeight: 600 }}>{formattedDate}</span>
+          {row.remaining_amount > 0 && !row.is_overpaid && (
+            <span className={`aging-badge ${badgeInfo.cls}`}>
+              {badgeInfo.label}
+            </span>
+          )}
+        </div>
+      );
+    }},
     { key: 'status', label: 'Trạng thái', width: 140, align: 'center', render: (v, row) => (
       <StatusBadge
         status={
@@ -224,11 +250,7 @@ export default function ReceivablesScreen() {
       if (row.has_pending_refund) {
         return (
           <span
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              padding: '3px 8px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
-              background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a'
-            }}
+            className="badge badge--warning badge--sm"
             title={`Đã lập phiếu chi ${row.pending_refund_id} - Đang chờ Giám đốc duyệt`}
           >
             Chờ duyệt hoàn
@@ -240,7 +262,7 @@ export default function ReceivablesScreen() {
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            style={{ color: '#9333ea', borderColor: '#9333ea44', fontSize: '0.78rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            style={{ color: 'var(--purple-500, #a855f7)', borderColor: 'rgba(168, 85, 247, 0.3)', fontSize: '0.78rem', padding: '3px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
             onClick={() => setRefundModal(row)}
             title="Lập phiếu chi hoàn lại tiền nộp thừa cho khách hàng"
           >
@@ -253,23 +275,72 @@ export default function ReceivablesScreen() {
   ];
 
   return (
-    <div>
+    <div className="card card--workspace receivables-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <FinanceScreenHeader 
-        title="Công Nợ Phải Thu & Dư Nợ Khách Hàng"
+        title="Công nợ phải thu & dư nợ khách hàng"
         onRefresh={load}
         actions={
           <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Printer size={15} /> In Sổ Công Nợ
+            <Printer size={15} /> In sổ công nợ
           </button>
         }
-        subtitle={
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-            {overdueCount > 0 && <span style={{ color: '#ef4444', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertTriangle size={14} /> {overdueCount} khoản nợ quá hạn</span>}
-            {overpaidCount > 0 && <span style={{ color: '#9333ea', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}><AlertCircle size={14} /> {overpaidCount} HĐ nộp thừa ({fmt(totalExcess)})</span>}
-            <span>Tổng còn phải thu: <strong style={{ color: '#ef4444' }}>{fmt(totalRemaining)}</strong></span>
-          </div>
-        } 
+        subtitle="Quản lý chi tiết dư nợ theo từng hợp đồng, theo dõi tuổi nợ và xử lý khoản nộp thừa"
       />
+
+      {error && (
+        <div role="alert" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#991b1b' }}>
+          <span>{error}</span>
+          <button type="button" onClick={() => load()} className="btn btn-secondary" style={{ height: 32, padding: '0 12px', fontSize: '0.82rem' }}>Thử lại</button>
+        </div>
+      )}
+
+      {/* 4 Thẻ KPI Công nợ nhanh */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(79, 70, 229, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FileText size={20} color="#6366f1" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>Tổng giá trị HĐ</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalValueSum)}</div>
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <CheckCircle2 size={20} color="#10b981" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>Đã thu hồi</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#10b981', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalPaidSum)}</div>
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <AlertTriangle size={20} color="#ef4444" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>
+              Còn phải thu {overdueCount > 0 && <span style={{ color: '#ef4444', fontWeight: 800 }}>({overdueCount} quá hạn)</span>}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ef4444', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalRemaining)}</div>
+          </div>
+        </div>
+
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 18px', border: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(147, 51, 234, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <RotateCcw size={20} color="#a855f7" />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>
+              Nộp thừa / Hoàn {overpaidCount > 0 && <span style={{ color: '#a855f7', fontWeight: 800 }}>({overpaidCount} HĐ)</span>}
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#a855f7', fontFamily: 'monospace', marginTop: 2 }}>{fmt(totalExcess)}</div>
+          </div>
+        </div>
+      </div>
+
       <FilterBar
         search={search}
         onSearchChange={setSearch}
@@ -344,17 +415,18 @@ export default function ReceivablesScreen() {
       {filteredData.length > 0 && (
         <SummaryStrip
           countText={`${filteredData.length} hợp đồng`}
-          totalText="Tổng còn phải thu"
-          totalAmount={filteredData.reduce((s, r) => s + (r.is_overpaid ? 0 : (r.remaining_amount || 0)), 0)}
+          items={[
+            { label: 'Tổng còn phải thu', value: filteredData.reduce((s, r) => s + (r.is_overpaid ? 0 : (r.remaining_amount || 0)), 0), color: '#ef4444' }
+          ]}
         />
       )}
 
       <DataTable columns={cols} data={filteredData} loading={loading} rowKey="id"
-        emptyText="Không tìm thấy công nợ phù hợp bộ lọc" pageSize={15}
+        emptyText="Không tìm thấy công nợ phù hợp bộ lọc" pageSize={10}
         rowClassName={row => row.overdue ? 'row-overdue' : ''}
       />
 
-      <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '277mm', pointerEvents: 'none' }}>
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
         <FinancePrintReport
           documentRef={printDocumentRef}
           title="Sổ Công Nợ Phải Thu"
@@ -368,6 +440,11 @@ export default function ReceivablesScreen() {
           columns={printColumns}
           rows={data}
           footerRow={footerRow}
+          signers={[
+            { role: 'Người lập biểu', name: user?.full_name || user?.username || '', note: '(Ký, họ tên)' },
+            { role: 'Kế toán trưởng', note: '(Ký, họ tên)' },
+            { role: 'Giám đốc', note: '(Ký, họ tên, đóng dấu)' },
+          ]}
           emptyText="Chưa có công nợ phải thu"
         />
       </div>

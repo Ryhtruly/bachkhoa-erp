@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ShieldAlert, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, ShieldAlert } from 'lucide-react';
 import Modal from './Modal';
 
 /**

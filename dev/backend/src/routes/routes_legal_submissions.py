@@ -17,13 +17,13 @@ router = APIRouter(prefix="/api/legal-submissions", tags=["Legal Submissions"])
 GOV_STATUSES = ["Đang chi nhánh", "Hoàn thành", "Rút hồ sơ", "Trả công văn"]
 
 _LIST_BASE_SQL = f"""
-    select s.id, s.task_node_id, s.service_line_id, s.contract_id, s.dossier_name,
+    select s.id, s.task_node_id, s.service_line_id, s.contract_id, s.dossier_id, s.dossier_name,
            s.case_description, s.assigned_employee_id, s.contact_phone, s.receipt_code,
            s.receipt_photo_url, s.dossier_file_url, s.linked_survey_folder_url,
            s.payment_status, s.legacy_gov_status as gov_status,
            -- Cùng một quy tắc khoá với bên Đo vẽ, do backend quyết định.
            s.legacy_gov_status = any({TERMINAL_SQL_ARRAY}) as is_locked,
-           s.received_date, s.expected_return_date,
+           s.received_date, s.expected_return_date, s.submitted_agency,
            s.is_first_submission, s.previous_submission_id, s.note, s.created_at, s.updated_at,
            sl.service_type as service_line_name, e.full_name as assigned_employee_name
     from public.legal_submissions s
@@ -43,6 +43,7 @@ class LegalSubmissionUpdateSchema(BaseModel):
     gov_status: Optional[str] = None
     received_date: Optional[str] = None
     expected_return_date: Optional[str] = None
+    submitted_agency: Optional[str] = None
     note: Optional[str] = None
 
 
@@ -117,6 +118,20 @@ def get_legal_submission_by_task_node(
         text(f"{_LIST_BASE_SQL} where s.task_node_id = :task_node_id order by s.created_at desc limit 1"),
         {"task_node_id": task_node_id},
     ).mappings().first()
+    if not row:
+        row = db.execute(
+            text(f"""
+                {_LIST_BASE_SQL}
+                where s.service_line_id = (
+                    select wi.service_line_id
+                    from public.task_nodes tn
+                    join public.workflow_instances wi on wi.id = tn.workflow_instance_id
+                    where tn.id = :task_node_id
+                )
+                order by s.created_at desc limit 1
+            """),
+            {"task_node_id": task_node_id},
+        ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Node này chưa có hồ sơ nộp cơ quan")
     return {"status": "success", "data": dict(row)}

@@ -4,11 +4,14 @@ import { useToast } from '../contexts/ToastContext';
 import { DataTable, StatusBadge, FilterBar } from '../components/ui';
 import ContractComposer from '../features/contracts/ContractComposer';
 import { fetchProtectedDocumentBlob, requestDocxSaveHandle, writeBlobToFileHandle } from '../lib/fileSave';
-import { apiFetch, getAccessToken } from '../lib/api';
+import { apiFetch, getAccessToken, peekApiCache, prefetchApi } from '../lib/api';
+import { safeViewTransition } from '../lib/viewTransition';
 import ContractDocumentViewer from '../components/contracts/ContractDocumentViewer';
 import '../components/contracts/contracts.css';
 
 import ContractWorkspace from '../components/contracts/ContractWorkspace';
+import ContractFileActions from '../features/contracts/ContractFileActions';
+import DocumentCabinet from '../features/contracts/DocumentCabinet';
 
 const CONTRACT_GROUPS_PER_PAGE = 15;
 function getContractId(contract) {
@@ -38,29 +41,93 @@ function getPaginationItems(currentPage, totalPages) {
 }
 
 export default function Contracts({ isDirector = false }) {
-  const [contracts, setContracts] = useState([]);
-  const [config, setConfig] = useState({ personnel: [], services: [] });
-  const [loading, setLoading] = useState(true);
+  const [contracts, setContracts] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      if (cached) return Array.isArray(cached) ? cached : cached.data || [];
+    }
+    return [];
+  });
+  const [config, setConfig] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/config');
+      if (cached) {
+        return {
+          personnel: Array.isArray(cached.personnel) ? cached.personnel : [],
+          services: Array.isArray(cached.services) ? cached.services : [],
+        };
+      }
+    }
+    return { personnel: [], services: [] };
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      if (cached) return false;
+    }
+    return true;
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [savingContract, setSavingContract] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState('');
   const [contractView, setContractView] = useState('list');
-  const [selectedContract, setSelectedContract] = useState(null);
+  const [selectedContract, setSelectedContract] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      const rows = Array.isArray(cached) ? cached : cached?.data || [];
+      return rows[0] || null;
+    }
+    return null;
+  });
   const [documentUrl, setDocumentUrl] = useState('');
   const [navTarget, setNavTarget] = useState(null);
   const navTargetContractRef = useRef(null);
   const { addToast } = useToast();
 
+  const prefetchContractData = useCallback((contract) => {
+    const cId = getContractId(contract);
+    if (!cId || typeof prefetchApi !== 'function') return;
+    const firstLineId = contract?.service_lines?.[0]?.id || '';
+    if (firstLineId) {
+      prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(cId)}&service_line_id=${encodeURIComponent(firstLineId)}`);
+    }
+    prefetchApi(`/api/contracts/workspace?contract_id=${encodeURIComponent(cId)}`);
+  }, []);
+
+  const prefetchWorkflow = useCallback((cId) => {
+    if (!cId || typeof prefetchApi !== 'function') return;
+    prefetchApi(`/api/contracts/workspace?contract_id=${encodeURIComponent(cId)}`);
+  }, []);
+
+  const switchContractView = useCallback((nextView) => {
+    safeViewTransition(() => {
+      setContractView(nextView);
+    });
+  }, []);
+
   // Điều hướng từ chuông thông báo — bấm 1 mục là nhảy thẳng tới đúng hợp đồng/Hạng mục/Node.
   useEffect(() => {
     const handler = (event) => {
-      const { contractId, serviceLineId, nodeKey, type, nonce } = event.detail || {};
+      const {
+        contractId, serviceLineId, nodeKey, taskNodeId,
+        targetType, targetId, type, nonce,
+      } = event.detail || {};
       if (!contractId) return;
       // Ghim lại hợp đồng đích: danh sách có phân trang, hợp đồng cần tới có thể không nằm
       // trong trang đang tải nên vòng fetch sau đó sẽ đá về hợp đồng đầu trang nếu không ghim.
       navTargetContractRef.current = contractId;
       setSelectedContract(current => (getContractId(current) === contractId ? current : { id: contractId }));
-      setNavTarget({ serviceLineId, nodeKey, type, nonce });
-      setContractView('workflow');
+      setNavTarget({
+        serviceLineId,
+        nodeKey,
+        taskNodeId,
+        targetType: targetType || type,
+        targetId,
+        nonce,
+      });
+      switchContractView('workflow');
     };
     window.addEventListener('bachkhoa:navigate-to-node', handler);
     return () => window.removeEventListener('bachkhoa:navigate-to-node', handler);
@@ -68,25 +135,34 @@ export default function Contracts({ isDirector = false }) {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterValues, setFilterValues] = useState({ task_type_id: 'All' });
-  const [danhMucLoc, setDanhMucLoc] = useState([]);
+  const [danhMucLoc, setDanhMucLoc] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/catalog/service-packages');
+      if (cached?.data) return cached.data;
+    }
+    return [];
+  });
   const [signedDate, setSignedDate] = useState('');
   const [sort, setSort] = useState('desc');
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    page_size: CONTRACT_GROUPS_PER_PAGE,
-    total_groups: 0,
-    total_contracts: 0,
-    total_pages: 0,
+  const [pagination, setPagination] = useState(() => {
+    if (typeof peekApiCache === 'function') {
+      const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      if (cached?.pagination) return cached.pagination;
+    }
+    return {
+      page: 1,
+      page_size: CONTRACT_GROUPS_PER_PAGE,
+      total_groups: 0,
+      total_contracts: 0,
+      total_pages: 0,
+    };
   });
 
   const [formData, setFormData] = useState({
     contract_id: '', customer_name: '', phone: '',
     customer_email: 'admin@nhadatbachkhoa.com', service_type: '',
     address: '', contract_value: '', date_signed: '', due_date: '', sales_source: ''
-  });
-  const [addressLocation, setAddressLocation] = useState({
-    provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '',
   });
 
   useEffect(() => {
@@ -123,6 +199,16 @@ export default function Contracts({ isDirector = false }) {
       const payload = await apiFetch(`/api/contracts/workspace-list?${params}`);
       const rows = Array.isArray(payload) ? payload : payload?.data || [];
       setContracts(rows);
+      if (rows.length > 0 && typeof prefetchApi === 'function') {
+        const warmUp = () => {
+          rows.slice(0, 3).forEach(row => prefetchContractData(row));
+        };
+        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+          window.requestIdleCallback(warmUp, { timeout: 1000 });
+        } else {
+          setTimeout(warmUp, 50);
+        }
+      }
       setSelectedContract(current => {
         const matched = rows.find(item => getContractId(item) === getContractId(current));
         if (matched) return matched;
@@ -137,9 +223,33 @@ export default function Contracts({ isDirector = false }) {
     } finally {
       setLoading(false);
     }
-  }, [addToast, filterValues.task_type_id, page, searchTerm, signedDate, sort]);
+  }, [addToast, filterValues.task_type_id, page, prefetchContractData, searchTerm, signedDate, sort]);
 
   const openContractModal = async () => {
+    setTemplatesLoading(true);
+    setTemplatesError('');
+    let catalog;
+    try {
+      catalog = await apiFetch('/api/contracts/templates');
+    } catch {
+      const message = 'Không thể tải mẫu hợp đồng để soạn hợp đồng mới';
+      setTemplates([]);
+      setTemplatesError(message);
+      addToast(message, 'error');
+      setTemplatesLoading(false);
+      return;
+    }
+
+    if (!Array.isArray(catalog) || catalog.length === 0) {
+      const message = 'Chưa có mẫu hợp đồng đã ban hành để soạn hợp đồng mới';
+      setTemplates([]);
+      setTemplatesError(message);
+      addToast(message, 'error');
+      setTemplatesLoading(false);
+      return;
+    }
+    setTemplates(catalog);
+
     try {
       const data = await apiFetch('/api/contracts/next-code');
       if (data?.contract_id) {
@@ -147,10 +257,13 @@ export default function Contracts({ isDirector = false }) {
       } else {
         addToast('Không thể tạo mã hợp đồng mới', 'error');
       }
+      setIsModalOpen(true);
     } catch {
       addToast('Không thể kết nối để tạo mã hợp đồng mới', 'error');
+      setIsModalOpen(true);
+    } finally {
+      setTemplatesLoading(false);
     }
-    setIsModalOpen(true);
   };
 
   useEffect(() => {
@@ -180,6 +293,50 @@ export default function Contracts({ isDirector = false }) {
       return;
     }
 
+    const sourceDocuments = Array.from(payload.source_documents || []);
+    const existingContractId = payload.existing_contract_id || '';
+    const contractPayload = { ...payload };
+    delete contractPayload.source_documents;
+    delete contractPayload.existing_contract_id;
+
+    const uploadSourceDocuments = async (contractId, files) => {
+      const failedFiles = files.filter(file => !file || file.size <= 0);
+      for (const file of files.filter(file => file && file.size > 0)) {
+        try {
+          const body = new FormData();
+          body.append('file', file);
+          await apiFetch(`/api/document-register/contracts/${encodeURI(contractId)}/source-documents`, {
+            method: 'POST',
+            body,
+            timeout: 60_000,
+          });
+        } catch (uploadError) {
+          console.warn(`Không tải được tài liệu nguồn ${file.name}:`, uploadError);
+          failedFiles.push(file);
+        }
+      }
+      return failedFiles;
+    };
+
+    // Hợp đồng đã tạo thành công ở lượt trước nhưng một vài tệp lỗi: chỉ tải lại
+    // đúng các tệp đó, tuyệt đối không tạo thêm một hợp đồng trùng.
+    if (existingContractId) {
+      setSavingContract(true);
+      try {
+        const failedFiles = await uploadSourceDocuments(existingContractId, sourceDocuments);
+        if (failedFiles.length > 0) {
+          addToast(`Còn ${failedFiles.length} tệp chưa tải được. Bạn có thể thử lại.`, 'error');
+          return { contract_id: existingContractId, failed_files: failedFiles };
+        }
+        addToast('Đã tải đủ hồ sơ khách gửi.', 'success');
+        setIsModalOpen(false);
+        if (page === 1) fetchContracts(); else setPage(1);
+        return { contract_id: existingContractId, failed_files: [] };
+      } finally {
+        setSavingContract(false);
+      }
+    }
+
     const safeCustName = (payload.customer_name || 'KhachHang').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]/g, '_');
     const safeContractId = (payload.contract_id || formData.contract_id || 'HD').replace(/[/\\?%*:|"<>]/g, '_');
     const suggestedFileName = `HopDong_${safeContractId}_${safeCustName}.docx`;
@@ -207,10 +364,10 @@ export default function Contracts({ isDirector = false }) {
       const data = await apiFetch('/api/contracts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, ...payload })
+        body: JSON.stringify({ ...formData, ...contractPayload })
       });
 
-      addToast('✅ Hợp đồng đã được lưu vào hệ thống!', 'success');
+      addToast('Hợp đồng đã được lưu vào hệ thống!', 'success');
       try {
         if (!data?.download_url) throw new Error('Không nhận được đường dẫn tài liệu Word');
         const documentBlob = await fetchProtectedDocumentBlob(data.download_url, getAccessToken());
@@ -233,11 +390,20 @@ export default function Contracts({ isDirector = false }) {
         addToast('Hợp đồng đã lưu nhưng chưa thể ghi tệp Word. Bạn có thể mở tài liệu để xem lại.', 'error');
       }
 
+      const savedContractId = data?.id || data?.contract_id || payload.contract_id;
+      const failedFiles = await uploadSourceDocuments(savedContractId, sourceDocuments);
+      if (failedFiles.length > 0) {
+        addToast(`Hợp đồng đã tạo, nhưng còn ${failedFiles.length} tệp chưa tải được. Chỉ cần bấm “Tải lại tệp lỗi”.`, 'error');
+        if (page === 1) fetchContracts(); else setPage(1);
+        return { contract_id: savedContractId, failed_files: failedFiles };
+      }
+      if (sourceDocuments.length > 0) addToast(`Đã lưu ${sourceDocuments.length} tài liệu khách gửi.`, 'success');
+
       setFormData(prev => ({ ...prev, contract_id: '', contract_value: '', address: '' }));
-      setAddressLocation({ provinceCode: '', provinceName: '', wardCode: '', wardName: '', detail: '', displayAddress: '' });
       setIsModalOpen(false);
       if (page === 1) fetchContracts();
       else setPage(1);
+      return { contract_id: savedContractId, failed_files: [] };
     } catch (err) {
       addToast('Lỗi: ' + (err.message || 'Không thể tạo hợp đồng'), 'error');
     } finally {
@@ -275,19 +441,19 @@ export default function Contracts({ isDirector = false }) {
     {
       key: 'id',
       label: 'Mã hợp đồng',
-      width: 145,
+      width: 120,
       render: (value) => <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{value}</span>
     },
     {
       key: 'customer_name',
       label: 'Khách hàng',
-      width: 160,
+      width: 140,
       render: (val) => <EllipsisCell value={val} />
     },
     {
       key: 'service_lines',
       label: 'Hạng mục',
-      width: 135,
+      width: 120,
       render: (lines = []) => (
         <span className="contract-service-summary">
           <Layers3 size={14} />
@@ -303,7 +469,7 @@ export default function Contracts({ isDirector = false }) {
       key: 'total_value',
       label: 'Giá trị / Còn nợ',
       align: 'right',
-      width: 172,
+      width: 145,
       render: (value, row) => (
         <span className="contract-money">
           <strong>{formatVND(value)}</strong>
@@ -320,14 +486,14 @@ export default function Contracts({ isDirector = false }) {
     {
       key: 'status',
       label: 'Trạng thái',
-      width: 155,
+      width: 130,
       render: (value) => <StatusBadge status={value || 'Chưa cập nhật'} domain="contracts" />
     },
     {
       key: 'file_link',
       label: 'File',
       align: 'center',
-      width: 68,
+      width: 50,
       render: (val) => val
         ? <button type="button" className="btn btn-secondary btn-xs contract-file-btn"
             title="Mở tài liệu hợp đồng" aria-label="Mở tài liệu hợp đồng" onClick={() => openContractDocument(val)}>
@@ -339,9 +505,8 @@ export default function Contracts({ isDirector = false }) {
 
   return (
     <section className={`tab-pane active contract-page${contractView === 'list' ? ' contract-page--list' : ''}`} id="tab-hopdong">
-      {contractView === 'list' ? (
-        <div className="contract-master-detail">
-          <header className="contract-pane-title">
+      <div className="contract-master-detail" style={{ display: contractView === 'list' ? 'flex' : 'none' }}>
+        <header className="contract-pane-title">
             <div><span>Danh sách hợp đồng</span><strong>{pagination.total_contracts || contracts.length}</strong></div>
             <button type="button" className="contract-add-button" onClick={openContractModal} title="Soạn hợp đồng mới">
               <Plus size={20} />
@@ -383,8 +548,12 @@ export default function Contracts({ isDirector = false }) {
                 loading={loading}
                 rowKey="id"
                 onRowClick={setSelectedContract}
+                onRowMouseEnter={prefetchContractData}
                 rowClassName={(row) => {
-                  return getContractId(row) === getContractId(selectedContract) ? 'contract-selected-row' : '';
+                  const classes = [];
+                  if (getContractId(row) === getContractId(selectedContract)) classes.push('contract-selected-row');
+                  if (Number(row.remaining_amount || 0) > 0.009) classes.push('contract-debt-row');
+                  return classes.join(' ');
                 }}
                 emptyText="Chưa có hợp đồng nào"
                 pageSize={0}
@@ -417,21 +586,65 @@ export default function Contracts({ isDirector = false }) {
                   <header>
                     <div className="contract-detail-pane__document"><FileText size={20} /></div>
                     <div className="contract-detail-pane__header-info"><span>Hợp đồng đang chọn</span><h3>{getContractId(selectedContract)}</h3></div>
+                    {/* `status` ĐÃ là trạng thái quy trình, không phải trạng thái
+                        hợp đồng: _resolve_contract_progress_status trả thẳng
+                        "Chưa có quy trình" khi chưa có workflow nào. Badge dùng
+                        chung đã map sẵn chuỗi đó sang màu xám. */}
                     <StatusBadge status={selectedContract.status || 'Chưa cập nhật'} domain="contracts" />
                   </header>
                   <div className="contract-detail-pane__content">
                     <div className="contract-detail-field"><UserRound size={17} /><div><span>Khách hàng</span><strong>{selectedContract.customer_name || 'Chưa cập nhật'}</strong></div></div>
                     <div className="contract-detail-field"><CalendarDays size={17} /><div><span>Ngày ký</span><strong>{selectedContract.date_signed || 'Chưa cập nhật'}</strong></div></div>
                     <div className="contract-detail-field"><CircleDollarSign size={17} /><div><span>Giá trị hợp đồng</span><strong>{formatVND(selectedContract.total_value)}</strong></div></div>
-                    <div className="contract-detail-field"><Layers3 size={17} /><div><span>Hạng mục</span><strong>{selectedContract.service_lines?.map(line => line.name).filter(Boolean).join(', ') || 'Chưa cập nhật'}</strong></div></div>
-                    <div className="contract-paper-preview">
-                      <FileText size={42} />
-                      <strong>Tài liệu hợp đồng</strong>
-                      <span>{selectedContract.file_link ? 'Đã có file hợp đồng' : 'Chưa đính kèm file hợp đồng'}</span>
-                      {selectedContract.file_link && <button type="button" onClick={() => openContractDocument(selectedContract.file_link)}><FileText size={15} /> Mở tài liệu</button>}
-                    </div>
+                    <div className="contract-detail-field"><Layers3 size={17} /><div><span>Gói &amp; Hạng mục</span>
+                      <strong className="contract-scope-value">
+                        {(selectedContract.service_lines || []).length === 0
+                          ? 'Chưa cập nhật'
+                          : (selectedContract.service_lines || []).map(line => (
+                            <span key={line.id || line.name} className="contract-scope-value">
+                              {line.service_package && (
+                                <span className="contract-scope-value__package">{line.service_package}</span>
+                              )}
+                              {line.name}
+                            </span>
+                          ))}
+                      </strong>
+                    </div></div>
+                    {/* Card "Tài liệu hợp đồng" cũ chiếm gần một phần ba sidebar
+                        chỉ để nói một câu; nút nét đứt "Giấy tờ khách hàng cung
+                        cấp" thì mở ra một sổ dài đẩy nút "Quy trình" khỏi khung
+                        nhìn. Thay cả hai bằng một hàng gọn và Tủ hồ sơ có chiều
+                        cao chặn cứng. */}
+                    <ContractFileActions
+                      contractId={getContractId(selectedContract)}
+                      fileLink={selectedContract.file_link}
+                      addToast={addToast}
+                      onView={openContractDocument}
+                      onUploaded={(data) => {
+                        if (!data?.file_link) return;
+                        // Cập nhật ngay tại chỗ để hàng "hợp đồng mẫu" trỏ vào
+                        // bản mới, rồi nạp lại danh sách cho các màn khác khớp theo.
+                        setSelectedContract(current => (current ? { ...current, file_link: data.file_link } : current));
+                        fetchContracts(false);
+                      }}
+                    />
+
+                    {/* Tủ hồ sơ gắn theo đúng cặp Gói + Hạng mục, nên phải
+                        truyền danh sách Hạng mục xuống: thiếu nó thì không lấy
+                        được nhãn bước và sổ rơi về mô hình đời 1. */}
+                    <DocumentCabinet
+                      contractId={getContractId(selectedContract)}
+                      serviceLines={selectedContract.service_lines || []}
+                      addToast={addToast}
+                    />
                   </div>
-                  <button type="button" className="btn btn-primary contract-workflow-action" onClick={() => setContractView('workflow')}>
+                  <button
+                    type="button"
+                    className="btn btn-primary contract-workflow-action"
+                    onClick={() => switchContractView('workflow')}
+                    onMouseEnter={() => prefetchWorkflow(getContractId(selectedContract))}
+                    onFocus={() => prefetchWorkflow(getContractId(selectedContract))}
+                  >
                     <WorkflowIcon size={17} /> Quy trình
                   </button>
                 </>
@@ -450,18 +663,22 @@ export default function Contracts({ isDirector = false }) {
             </aside>
           </div>
         </div>
-      ) : (
+
+      {contractView === 'workflow' && (
         <ContractWorkspace
           tab="workflow"
           contract={selectedContract}
           contracts={contracts}
           onContractChange={setSelectedContract}
-          onBack={() => setContractView('list')}
+          onBack={() => switchContractView('list')}
           addToast={addToast}
           targetServiceLineId={navTarget?.serviceLineId}
           targetNodeKey={navTarget?.nodeKey}
-          targetType={navTarget?.type}
+          targetTaskNodeId={navTarget?.taskNodeId}
+          targetType={navTarget?.targetType}
+          targetId={navTarget?.targetId}
           targetNonce={navTarget?.nonce}
+          isDirector={isDirector}
         />
       )}
 
@@ -472,6 +689,9 @@ export default function Contracts({ isDirector = false }) {
         code={formData.contract_id}
         services={config.services}
         isDirector={isDirector}
+        templates={templates}
+        templatesLoading={templatesLoading}
+        templatesError={templatesError}
         saving={savingContract}
         onClose={() => setIsModalOpen(false)}
         onSubmit={handleGenerateContract}

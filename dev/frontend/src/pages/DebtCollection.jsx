@@ -1,24 +1,37 @@
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import {
   AlertTriangle, CheckCircle2, Clock3, Lock, PackageCheck, Plus,
-  RefreshCw, Trash2, ArrowRightLeft, AlertCircle
+  RefreshCw, Trash2, ArrowRightLeft, AlertCircle, ReceiptText
 } from 'lucide-react'
 import Modal from '../components/ui/Modal'
-import { SensitiveActionModal, FilterBar } from '../components/ui'
+import { SensitiveActionModal, FilterBar, Select } from '../components/ui'
 import ReceiptFileInput from '../components/finance/ReceiptFileInput'
+import ReceiptLinks from '../components/finance/ReceiptLinks'
 import { buildPaymentFormData } from '../components/finance/paymentReceipts'
 import { useToast } from '../contexts/ToastContext'
-import { apiFetch } from '../lib/api'
+import { apiFetch, getAccessToken } from '../lib/api'
 import './debtCollection.css'
 
 /**
  * Thu Công Nợ — màn hình làm việc của Kế toán & Giám đốc.
  *
- * Danh sách này tự sinh từ những hồ sơ đã giao cho khách mà chưa thu đủ tiền.
- * Thu đủ thì dòng đó tự biến mất. Không ai phải đánh dấu gì.
+ * Danh sách này tự sinh từ dữ liệu thu tiền thật. Hồ sơ K06 từng được duyệt
+ * giao trước giữ lại một card lịch sử: đỏ khi còn nợ, xanh khi kế toán đã thu đủ.
  */
 
 const formatMoney = (v) => `${Number(v || 0).toLocaleString('vi-VN')}₫`
+
+const formatDate = (v) => {
+  if (!v) return ''
+  try {
+    const d = new Date(v)
+    if (isNaN(d.getTime())) return v
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}/${month}/${year}`
+  } catch { return v }
+}
 
 const getDaysDiff = (v) => {
   if (!v) return null
@@ -26,8 +39,9 @@ const getDaysDiff = (v) => {
   return d > 0 ? d : 0
 }
 
-export default function DebtCollection({ user = null, isDirector = false }) {
-  const { addToast } = useToast()
+export default function DebtCollection({ user = null, isDirector = false, initialSearch = '' }) {
+  const toast = useToast()
+  const addToast = toast?.addToast || (() => {})
   const [currentUser, setCurrentUser] = useState(user || null)
   const [rows, setRows] = useState([])
   const [meta, setMeta] = useState({ total: 0, total_remaining: 0 })
@@ -35,6 +49,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [error, setError] = useState('')
   const [recordingRow, setRecordingRow] = useState(null)
   const [writingOffRow, setWritingOffRow] = useState(null)
+  const realtimeRefreshRef = useRef(null)
 
   useEffect(() => {
     if (!user) {
@@ -59,10 +74,10 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   const [loadingTargets, setLoadingTargets] = useState(false)
 
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ amount: '', payment_method: 'Tiền mặt', note: '' })
+  const [form, setForm] = useState({ amount: '', payment_method: 'CASH', note: '' })
   const [receiptFiles, setReceiptFiles] = useState([])
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(initialSearch)
   const [filterDelivery, setFilterDelivery] = useState('All')
 
   const load = useCallback(async (showSpinner = true) => {
@@ -84,6 +99,62 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     const id = setInterval(() => load(false), 30000)
     return () => clearInterval(id)
   }, [load])
+
+  useEffect(() => {
+    if (!effectiveIsDirector) return undefined
+
+    let disposed = false
+    let abortController = null
+
+    const refreshFromRealtime = () => {
+      window.clearTimeout(realtimeRefreshRef.current)
+      realtimeRefreshRef.current = window.setTimeout(() => load(false), 150)
+    }
+    const subscribe = async () => {
+      while (!disposed) {
+        abortController = new AbortController()
+        try {
+          const token = getAccessToken?.()
+          if (!token) return
+          const response = await fetch('/api/contracts/timeline/events', {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+            cache: 'no-store',
+            signal: abortController.signal,
+          })
+          if (response.status === 401 || response.status === 403) return
+          if (!response.ok || !response.body) throw new Error('Mất kết nối cập nhật công nợ')
+
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          while (!disposed) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop() || ''
+            if (blocks.some((block) => block.includes('event: timeline-change'))) {
+              refreshFromRealtime()
+            }
+          }
+        } catch (streamError) {
+          if (disposed || streamError?.name === 'AbortError') return
+        }
+        if (!disposed) await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      }
+    }
+
+    subscribe()
+    return () => {
+      disposed = true
+      window.clearTimeout(realtimeRefreshRef.current)
+      abortController?.abort()
+    }
+  }, [load, effectiveIsDirector])
+
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch)
+  }, [initialSearch])
 
   const filteredRows = useMemo(() => {
     return rows.filter(r => {
@@ -110,6 +181,22 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     })
   }, [rows, search, filterDelivery])
 
+  const debtSummary = useMemo(() => {
+    const overdue = rows.filter(r => r.is_delivered && getDaysDiff(r.delivered_at) >= 7)
+    const awaitingDelivery = rows.filter(r => !r.is_delivered)
+    return {
+      overdueCount: overdue.length,
+      overdueAmount: overdue.reduce((sum, row) => sum + Number(row.remaining || 0), 0),
+      awaitingDeliveryCount: awaitingDelivery.length,
+    }
+  }, [rows])
+
+  const deliveryFilterLabel = {
+    delivered: 'Đã bàn giao',
+    undelivered: 'Chưa bàn giao',
+    late: 'Nợ quá 7 ngày',
+  }[filterDelivery]
+
   const handleOpenTransferDebt = async (r) => {
     setTransferringRow(r)
     setTargetContractId('')
@@ -117,16 +204,11 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     setEligibleTargets([])
     setLoadingTargets(true)
     try {
-      const res = await fetch(`/api/contracts/${encodeURIComponent(r.contract_id)}/eligible-carry-forward-targets`)
-      if (res.ok) {
-        const payload = await res.json()
-        const targets = payload.targets || []
-        setEligibleTargets(targets)
-        if (targets.length === 1) {
-          setTargetContractId(targets[0].id)
-        }
-      } else {
-        setEligibleTargets([])
+      const payload = await apiFetch(`/api/contracts/${encodeURIComponent(r.contract_id)}/eligible-carry-forward-targets`)
+      const targets = payload?.targets || []
+      setEligibleTargets(targets)
+      if (targets.length === 1) {
+        setTargetContractId(targets[0].id)
       }
     } catch {
       setEligibleTargets([])
@@ -144,22 +226,17 @@ export default function DebtCollection({ user = null, isDirector = false }) {
     try {
       // Thu theo HỢP ĐỒNG, không theo bước bàn giao: hợp đồng chưa chạy tới bước
       // đó, hoặc đã chốt bước đó rồi mà khách còn khất, đều phải ghi được.
-      const res = await fetch(`/api/handover/contracts/${encodeURIComponent(recordingRow.contract_id)}/payments`, {
+      await apiFetch(`/api/handover/contracts/${encodeURIComponent(recordingRow.contract_id)}/payments`, {
         method: 'POST',
         body: buildPaymentFormData(form, receiptFiles),
       })
-      const payload = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        addToast(payload.detail || 'Không ghi nhận được', 'error')
-        return
-      }
       addToast(`Đã ghi nhận ${formatMoney(form.amount)} — chờ giám đốc duyệt`, 'success')
       setRecordingRow(null)
-      setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+      setForm({ amount: '', payment_method: 'CASH', note: '' })
       setReceiptFiles([])
       load(false)
-    } catch {
-      addToast('Mất kết nối tới máy chủ', 'error')
+    } catch (err) {
+      addToast(err.message || 'Không ghi nhận được khoản thu', 'error')
     } finally {
       setSaving(false)
     }
@@ -174,7 +251,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason })
       })
-      addToast(`✅ Giám đốc đã duyệt xóa nợ / miễn giảm cho hợp đồng ${writingOffRow.contract_id}!`, 'success')
+      addToast(`Giám đốc đã duyệt xóa nợ / miễn giảm cho hợp đồng ${writingOffRow.contract_id}!`, 'success')
       setWritingOffRow(null)
       await load()
     } catch (err) {
@@ -196,7 +273,7 @@ export default function DebtCollection({ user = null, isDirector = false }) {
           reason: transferReason.trim()
         })
       })
-      addToast(`✅ Giám đốc đã duyệt chuyển nợ ${formatMoney(transferringRow.remaining)} sang hợp đồng ${targetContractId}!`, 'success')
+      addToast(`Giám đốc đã duyệt chuyển nợ ${formatMoney(transferringRow.remaining)} sang hợp đồng ${targetContractId}!`, 'success')
       setTransferringRow(null)
       setTargetContractId('')
       setTransferReason('')
@@ -209,30 +286,67 @@ export default function DebtCollection({ user = null, isDirector = false }) {
   }
 
   return (
-    <section className="debt">
+    <section className="debt card card--workspace debt-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <header className="debt__head">
         <div>
           <span className="debt__eyebrow">Kế toán & Giám đốc</span>
           <h2>Thu công nợ & Xử lý nợ tồn</h2>
-          <p>Mọi hợp đồng chưa thu đủ tiền, kể cả khi hồ sơ chưa tới bước bàn giao. Ghi nhận thu tiền, hoặc Giám đốc duyệt xóa nợ / chuyển nợ.</p>
+          <p>Đỏ: còn nợ · Xanh: đã thu đủ và phiếu thu đã được duyệt.</p>
         </div>
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => load()}>
-          <RefreshCw size={14} /> Làm mới
-        </button>
+        <div className="debt__head-actions">
+          <span className="debt__sync-note">Tự cập nhật mỗi 30 giây</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => load()}>
+            <RefreshCw size={14} /> Làm mới
+          </button>
+        </div>
       </header>
 
-      <div className="debt__totals">
-        <div className="debt__total">
-          <span>Hợp đồng đang nợ</span>
-          <strong>{meta.total}</strong>
+      <div className="debt__totals-grid">
+        <div className="debt__total-card debt__total-card--primary">
+          <div className="debt__total-icon">
+            <ReceiptText size={20} />
+          </div>
+          <div className="debt__total-content">
+            <span>Hợp đồng đang nợ</span>
+            <strong>{meta.total} <small>hồ sơ</small></strong>
+            <p>Hồ sơ chưa thu đủ 100%</p>
+          </div>
         </div>
-        <div className="debt__total debt__total--money">
-          <span>Tổng còn phải thu</span>
-          <strong>{formatMoney(meta.total_remaining)}</strong>
+        <div className="debt__total-card debt__total-card--highlight">
+          <div className="debt__total-icon">
+            <AlertCircle size={20} />
+          </div>
+          <div className="debt__total-content">
+            <span>Tổng còn phải thu</span>
+            <strong>{formatMoney(meta.total_remaining)}</strong>
+            <p>Cần tiếp tục đôn đốc thu nợ</p>
+          </div>
         </div>
+        <div className="debt__total-card debt__total-card--danger">
+          <div className="debt__total-icon"><AlertTriangle size={20} /></div>
+          <div className="debt__total-content">
+            <span>Cần ưu tiên</span>
+            <strong>{debtSummary.overdueCount} <small>hồ sơ</small></strong>
+            <p>Đã bàn giao quá 7 ngày · {formatMoney(debtSummary.overdueAmount)}</p>
+          </div>
+        </div>
+        <div className="debt__total-card debt__total-card--waiting">
+          <div className="debt__total-icon"><PackageCheck size={20} /></div>
+          <div className="debt__total-content">
+            <span>Chưa bàn giao</span>
+            <strong>{debtSummary.awaitingDeliveryCount} <small>hồ sơ đang chờ</small></strong>
+            <p>Cần theo dõi tiến độ hồ sơ</p>
+          </div>
+        </div>
+        {Number(meta.settled_after_override || 0) > 0 && (
+          <div className="debt__total debt__total--settled">
+            <span>Đã tất toán sau ngoại lệ</span>
+            <strong>{meta.settled_after_override}</strong>
+          </div>
+        )}
       </div>
 
-      <div style={{ margin: '16px 0' }}>
+      <div className="debt__filter-wrap">
         <FilterBar
           search={search}
           onSearchChange={setSearch}
@@ -255,6 +369,12 @@ export default function DebtCollection({ user = null, isDirector = false }) {
           onFilterChange={(_, v) => setFilterDelivery(v)}
           onReset={() => { setSearch(''); setFilterDelivery('All'); }}
         />
+        <div className="debt__filter-summary" aria-live="polite">
+          <span>Theo dữ liệu đã tải</span>
+          <span>{filteredRows.length}/{rows.length} hồ sơ đang hiển thị</span>
+          {search.trim() && <span className="debt__filter-chip">Từ khóa: {search.trim()}</span>}
+          {deliveryFilterLabel && <span className="debt__filter-chip">{deliveryFilterLabel}</span>}
+        </div>
       </div>
 
       {loading ? (
@@ -274,92 +394,185 @@ export default function DebtCollection({ user = null, isDirector = false }) {
         <ul className="debt__list">
           {filteredRows.map((r) => {
             const daysOverdue = getDaysDiff(r.delivered_at)
+            const hasDebtApproval = Boolean(
+              r.has_handover_debt_approval || r.completion_override
+            )
+            const isSettledAfterOverride = Boolean(
+              hasDebtApproval && (r.is_financially_settled || Number(r.remaining || 0) <= 0.009)
+            )
+            const isOverrideAlert = Boolean(
+              hasDebtApproval && !isSettledAfterOverride && Number(r.remaining || 0) > 0.009
+            )
             return (
-              <li key={r.contract_id} className="debt__card">
-                <div className="debt__card-head">
-                  <div>
-                    <span className="debt__contract">{r.contract_id}</span>
-                    <strong className="debt__customer">{r.customer_name || 'Chưa có tên khách'}</strong>
-                    <span className="debt__service">{r.service_type}</span>
-                  </div>
-                  {r.is_delivered ? (
-                    <span className={`debt__age${daysOverdue >= 7 ? ' is-late' : ''}`}>
-                      {daysOverdue === 0 ? 'Giao hôm nay' : `Đã giao ${daysOverdue} ngày`}
-                    </span>
-                  ) : (
-                    <span className={`debt__age ${r.blocked_reason ? 'debt__age--blocked' : 'debt__age--waiting'}`}>
-                      {r.blocked_reason ? 'Chờ pháp lý'
-                        : r.task_node_id ? 'Chưa bàn giao'
-                        : 'Chưa tới bước giao'}
-                    </span>
-                  )}
-                </div>
-
-                <div className="debt__bar" aria-hidden="true">
-                  <span style={{ width: `${Math.min(100, Math.round((r.paid / (r.total_value || 1)) * 100))}%` }} />
-                </div>
-
-                <div className="debt__figures">
-                  <span>Giá trị <strong>{formatMoney(r.total_value)}</strong></span>
-                  <span>Đã thu <strong>{formatMoney(r.paid)}</strong></span>
-                  <span className="is-owed">Còn thiếu <strong>{formatMoney(r.remaining)}</strong></span>
-                </div>
-
-                {/* Phiếu đã gửi nhưng chưa được duyệt thì công nợ chưa giảm. Không
-                    nói ra thì kế toán gửi xong nhìn thấy y hệt lúc chưa gửi. */}
-                {r.pending > 0 && (
-                  <p className="debt__pending">
-                    <Clock3 size={13} /> {formatMoney(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
-                  </p>
-                )}
-
-                {r.blocked_reason && (
-                  <p className="debt__blocked"><Lock size={13} /> {r.blocked_reason}</p>
-                )}
-
-                {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao.
-                    Hợp đồng chưa khai bước nào thì không có ai để chờ. */}
-                {r.task_node_id && !r.is_delivered && !r.blocked_reason && (
-                  <p className="debt__waiting">
-                    <PackageCheck size={13} /> Chờ {r.deliverer_name || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
-                  </p>
-                )}
-
-                <div className="debt__actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {r.remaining > 0 && (
-                    <>
-                      {!effectiveIsDirector && (
-                        <button type="button" className="btn btn-primary btn-sm"
-                          onClick={() => {
-                            setRecordingRow(r)
-                            setForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
-                            setReceiptFiles([])
-                          }}>
-                          <Plus size={14} /> Ghi nhận thanh toán
-                        </button>
+              <li
+                key={r.contract_id}
+                className={`debt__card${isOverrideAlert ? ' is-override-alert' : ''}${isSettledAfterOverride ? ' is-settled-after-override' : ''}`}
+              >
+                <div className="debt__card-layout">
+                  {/* Cột trái: Thông tin hợp đồng, công nợ, cảnh báo & thao tác */}
+                  <div className="debt__card-left">
+                    <div className="debt__card-head">
+                      <div>
+                        <span className="debt__contract">{r.contract_id}</span>
+                        <strong className="debt__customer">{r.customer_name || 'Chưa có tên khách'}</strong>
+                        <span className="debt__service">{r.service_type}</span>
+                      </div>
+                      {isSettledAfterOverride ? (
+                        <span className="debt__age is-settled-badge">Đã thu đủ tiền hợp đồng</span>
+                      ) : isOverrideAlert ? (
+                        <span className="debt__age is-override-badge">
+                          {r.is_delivered ? 'Đã giao sổ (Sếp duyệt nợ)' : 'Đã duyệt giao khi còn nợ'}
+                        </span>
+                      ) : r.is_delivered ? (
+                        <span className={`debt__age${daysOverdue >= 7 ? ' is-late' : ''}`}>
+                          {daysOverdue === 0 ? 'Giao hôm nay' : `Đã giao ${daysOverdue} ngày`}
+                        </span>
+                      ) : (
+                        <span className={`debt__age ${r.blocked_reason ? 'debt__age--blocked' : 'debt__age--waiting'}`}>
+                          {r.blocked_reason ? 'Chờ pháp lý'
+                            : r.task_node_id ? 'Chưa bàn giao'
+                            : 'Chưa tới bước giao'}
+                        </span>
                       )}
+                    </div>
 
-                      {effectiveIsDirector && (
+                    <div className="debt__bar" aria-hidden="true">
+                      <span style={{ width: `${Math.min(100, Math.round((r.paid / (r.total_value || 1)) * 100))}%` }} />
+                    </div>
+
+                    <div className="debt__figures">
+                      <span>Giá trị <strong>{formatMoney(r.total_value)}</strong></span>
+                      <span>Đã thu <strong>{formatMoney(r.paid)}</strong></span>
+                      <span className="is-owed">Còn thiếu <strong>{formatMoney(r.remaining)}</strong></span>
+                    </div>
+
+                    {/* Phiếu đã gửi nhưng chưa được duyệt thì công nợ chưa giảm */}
+                    {r.pending > 0 && (
+                      <p className="debt__pending">
+                        <Clock3 size={13} /> {formatMoney(r.pending)} đã gửi, chờ Giám đốc duyệt — duyệt xong mới trừ công nợ
+                      </p>
+                    )}
+
+                    {r.blocked_reason && (
+                      <p className="debt__blocked"><Lock size={13} /> {r.blocked_reason}</p>
+                    )}
+
+                    {isOverrideAlert && (
+                      <div className="debt__alert-override" role="alert">
+                        <strong><AlertTriangle size={15} /> Giám đốc đã duyệt giao hồ sơ khi còn công nợ</strong>
+                        <p>
+                          Lý do: <span>{r.handover_debt_reason || r.completion_override_reason || 'Chưa ghi lý do'}</span>
+                          {r.deliverer_name ? ` · Người giao: ${r.deliverer_name}` : ''}
+                        </p>
+                      </div>
+                    )}
+
+                    {isSettledAfterOverride && (
+                      <div className="debt__settled-confirmation" role="status">
+                        <strong><CheckCircle2 size={15} /> Đã thu đủ tiền hợp đồng</strong>
+                        <p>K06 đã được nghiệm thu và công nợ thực tế đã về 0 sau khi phiếu thu được duyệt.</p>
+                      </div>
+                    )}
+
+                    {/* Chỉ nói "chờ ai đó giao" khi quy trình thật sự có bước bàn giao */}
+                    {r.task_node_id && !r.is_delivered && !r.blocked_reason && (
+                      <p className="debt__waiting">
+                        <PackageCheck size={13} /> Chờ {r.deliverer_name || 'người phụ trách hồ sơ'} giao hồ sơ cho khách
+                      </p>
+                    )}
+
+                    <div className="debt__actions">
+                      {r.remaining > 0 && (
                         <>
-                          <button type="button" className="btn btn-secondary btn-sm"
-                            style={{ color: '#9333ea', borderColor: '#9333ea44' }}
-                            onClick={() => setWritingOffRow(r)}
-                            title="Giám đốc duyệt xóa nợ hoặc miễn giảm"
-                          >
-                            <Trash2 size={14} /> Xóa nợ / Miễn giảm
-                          </button>
+                          {!effectiveIsDirector && (
+                            <button type="button" className="btn btn-primary btn-sm"
+                              onClick={() => {
+                                setRecordingRow(r)
+                                setForm({ amount: '', payment_method: 'CASH', note: '' })
+                                setReceiptFiles([])
+                              }}>
+                              <Plus size={14} /> Ghi nhận thanh toán
+                            </button>
+                          )}
 
-                          <button type="button" className="btn btn-secondary btn-sm"
-                            style={{ color: '#2563eb', borderColor: '#2563eb44' }}
-                            onClick={() => handleOpenTransferDebt(r)}
-                            title="Giám đốc duyệt chuyển nợ sang hợp đồng mới"
-                          >
-                            <ArrowRightLeft size={14} /> Chuyển nợ sang HĐ mới
-                          </button>
+                          {effectiveIsDirector && (
+                            <>
+                              <button type="button" className="btn btn-secondary btn-sm"
+                                style={{ color: '#9333ea', borderColor: '#9333ea44' }}
+                                onClick={() => setWritingOffRow(r)}
+                                title="Giám đốc duyệt xóa nợ hoặc miễn giảm"
+                              >
+                                <Trash2 size={14} /> Xóa nợ / Miễn giảm
+                              </button>
+
+                              <button type="button" className="btn btn-secondary btn-sm"
+                                style={{ color: '#2563eb', borderColor: '#2563eb44' }}
+                                onClick={() => handleOpenTransferDebt(r)}
+                                title="Giám đốc duyệt chuyển nợ sang hợp đồng mới"
+                              >
+                                <ArrowRightLeft size={14} /> Chuyển nợ sang HĐ mới
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
-                    </>
-                  )}
+                    </div>
+                  </div>
+
+                  {/* Cột phải: Lịch sử các đợt ghi nhận thanh toán */}
+                  <div className="debt__card-right">
+                    <div className="debt__history-box">
+                      <div className="debt__history-head">
+                        <span className="debt__history-title">
+                          <ReceiptText size={14} /> Lịch sử thu tiền
+                        </span>
+                        <span className="debt__history-count">
+                          {(r.installments || []).length} đợt
+                        </span>
+                      </div>
+
+                      {r.installments && r.installments.length > 0 ? (
+                        <ul className="debt__history-list">
+                          {r.installments.map((inst) => (
+                            <li key={inst.id} className={`debt__history-item${inst.is_approved ? '' : ' is-pending'}`}>
+                              <div className="debt__history-item-top">
+                                <span className="debt__history-date">
+                                  {formatDate(inst.transaction_date)}
+                                </span>
+                                <strong className="debt__history-amount">
+                                  {formatMoney(inst.amount)}
+                                </strong>
+                              </div>
+                              <div className="debt__history-item-bottom">
+                                <span className="debt__history-method">
+                                  {inst.payment_method_label || (inst.payment_method === 'BANK_TRANSFER' || inst.payment_method === 'Chuyển khoản' ? 'Chuyển khoản' : 'Tiền mặt')}
+                                </span>
+                                <div className="debt__history-extra">
+                                  {inst.receipt_attachments?.length || inst.receipt_attachment_url ? (
+                                    <ReceiptLinks
+                                      attachments={inst.receipt_attachments}
+                                      legacyUrl={inst.receipt_attachment_url}
+                                      addToast={addToast}
+                                      compact
+                                    />
+                                  ) : (
+                                    <span className="debt__history-nobill" title="Chưa có ảnh bill">—</span>
+                                  )}
+                                  <span className={`debt__history-status${inst.is_approved ? ' is-approved' : ' is-waiting'}`}>
+                                    {inst.is_approved ? 'Đã duyệt' : 'Chờ duyệt'}
+                                  </span>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <div className="debt__history-empty">
+                          <span>Chưa có đợt thu nào</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </li>
             )
@@ -385,11 +598,15 @@ export default function DebtCollection({ user = null, isDirector = false }) {
               <ReceiptFileInput files={receiptFiles} onChange={setReceiptFiles} disabled={saving} />
             </div>
             <label>Hình thức
-              <select className="form-control" value={form.payment_method}
-                onChange={(e) => setForm({ ...form, payment_method: e.target.value })}>
-                <option>Tiền mặt</option>
-                <option>Chuyển khoản</option>
-              </select>
+              <Select
+                value={form.payment_method}
+                options={[
+                  { value: 'CASH', label: 'Tiền mặt' },
+                  { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+                ]}
+                onChange={(value) => setForm({ ...form, payment_method: value })}
+                className="ui-select--field"
+              />
             </label>
             <label>Ghi chú
               <input className="form-control" value={form.note}
@@ -505,23 +722,18 @@ export default function DebtCollection({ user = null, isDirector = false }) {
                 </div>
               ) : (
                 <>
-                  <select
-                    className="form-control"
+                  <Select
                     value={targetContractId}
-                    onChange={(e) => setTargetContractId(e.target.value)}
-                    style={{
-                      height: 44,
-                      fontWeight: 600,
-                      color: targetContractId ? '#0f172a' : '#64748b'
-                    }}
-                  >
-                    <option value="">-- Chọn hợp đồng nhận nợ ({eligibleTargets.length} hợp đồng khả dụng) --</option>
-                    {eligibleTargets.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.id} — {t.service_type} (Tổng: {formatMoney(t.total_value)} | Nợ hiện tại: {formatMoney(t.remaining_amount)})
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: `-- Chọn hợp đồng nhận nợ (${eligibleTargets.length} hợp đồng khả dụng) --` },
+                      ...eligibleTargets.map((t) => ({
+                        value: t.id,
+                        label: `${t.id} — ${t.service_type} (Tổng: ${formatMoney(t.total_value)} | Nợ hiện tại: ${formatMoney(t.remaining_amount)})`
+                      }))
+                    ]}
+                    onChange={(value) => setTargetContractId(value)}
+                    className="ui-select--field"
+                  />
 
                   {/* Thẻ xem trước kết quả gộp nợ */}
                   {selectedTarget && (

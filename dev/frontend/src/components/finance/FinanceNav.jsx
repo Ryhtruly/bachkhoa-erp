@@ -5,50 +5,50 @@ import {
   Hammer, UsersRound, Settings, Wallet, Layers, Users
 } from 'lucide-react';
 
-export const FINANCE_GROUPS = [
+const FINANCE_GROUPS = [
   {
     id: 'cashflow',
-    label: 'Dòng Tiền & Sổ Quỹ',
+    label: 'Dòng tiền & sổ quỹ',
     icon: Wallet,
     color: '#eb4a23',
     bgColor: 'rgba(235, 74, 35, 0.08)',
     tabs: [
-      { id: 'monthly-dashboard', label: 'Báo Cáo Tháng', icon: BarChart2, desc: 'Doanh số & chi phí tổng hợp' },
-      { id: 'cashflow-all', label: 'Nhật Ký Thu Chi', icon: Receipt, desc: 'Dòng tiền toàn hệ thống' },
-      { id: 'cashflow-cash', label: 'Quỹ Tiền Mặt', icon: Banknote, desc: 'Sổ quỹ tiền mặt thực tế' },
-      { id: 'cashflow-bank', label: 'Quỹ Ngân Hàng', icon: Building2, desc: 'Tài khoản ngân hàng' },
-      { id: 'cashflow-print', label: 'Chứng Từ In (Thu/Chi)', icon: FileText, desc: 'Phiếu thu/chi & TT 99/2025' },
+      { id: 'monthly-dashboard', label: 'Báo cáo tháng', icon: BarChart2, desc: 'Doanh số & chi phí tổng hợp' },
+      { id: 'cashflow-all', label: 'Nhật ký thu chi', icon: Receipt, desc: 'Dòng tiền toàn hệ thống' },
+      { id: 'cashflow-cash', label: 'Quỹ tiền mặt', icon: Banknote, desc: 'Sổ quỹ tiền mặt thực tế' },
+      { id: 'cashflow-bank', label: 'Quỹ ngân hàng', icon: Building2, desc: 'Tài khoản ngân hàng' },
+      { id: 'cashflow-print', label: 'Chứng từ in (Thu/Chi)', icon: FileText, desc: 'Phiếu thu/chi & TT 99/2025' },
     ]
   },
   {
     id: 'debt_advance',
-    label: 'Công Nợ & Tạm Ứng',
+    label: 'Công nợ & tạm ứng',
     icon: Layers,
     color: '#0284c7',
     bgColor: 'rgba(2, 132, 199, 0.08)',
     tabs: [
-      { id: 'debt-collection', label: 'Thu Công Nợ', icon: HandCoins, desc: 'Quản lý thu tiền theo đợt' },
-      { id: 'receivables', label: 'Công Nợ Phải Thu', icon: Receipt, desc: 'Sổ theo dõi nợ khách hàng' },
-      { id: 'advance-request', label: 'Đề Xuất Tạm Ứng', icon: PlusCircle, desc: 'Tạo & duyệt phiếu tạm ứng' },
-      { id: 'advance-clear', label: 'Quyết Toán Hoàn Ứng', icon: RotateCcw, desc: 'Hoàn ứng & đối trừ chi phí' },
+      { id: 'debt-collection', label: 'Thu công nợ', icon: HandCoins, desc: 'Quản lý thu tiền theo đợt' },
+      { id: 'receivables', label: 'Công nợ phải thu', icon: Receipt, desc: 'Sổ theo dõi nợ khách hàng' },
+      { id: 'advance-request', label: 'Đề xuất tạm ứng', icon: PlusCircle, desc: 'Gửi & theo dõi đề xuất tạm ứng' },
+      { id: 'advance-clear', label: 'Quyết toán hoàn ứng', icon: RotateCcw, desc: 'Hoàn ứng & đối trừ chi phí' },
     ]
   },
   {
     id: 'payroll_settings',
-    label: 'Lương 3P & Danh Mục',
+    label: 'Lương 3P & danh mục',
     icon: Users,
     color: '#059669',
     bgColor: 'rgba(5, 150, 105, 0.08)',
     tabs: [
-      { id: 'payroll-worker', label: 'Lương Khoán Nhiệm Vụ', icon: Hammer, desc: 'Lương 3P kỹ thuật & đo đạc' },
-      { id: 'bang-gia', label: 'Bảng Giá Khoán', icon: Banknote, desc: 'Đơn giá khoán công việc' },
-      { id: 'payroll-office', label: 'Lương VP & Hoa Hồng', icon: UsersRound, desc: 'Bảng lương văn phòng' },
-      { id: 'cashflow-settings', label: 'Thiết Lập Tài Chính', icon: Settings, desc: 'Danh mục thu/chi & cấu hình', directorOnly: true },
+      { id: 'payroll-worker', label: 'Lương khoán nhiệm vụ', icon: Hammer, desc: 'Lương 3P kỹ thuật & đo đạc' },
+      { id: 'bang-gia', label: 'Bảng giá khoán', icon: Banknote, desc: 'Đơn giá khoán công việc' },
+      { id: 'payroll-office', label: 'Lương VP & hoa hồng', icon: UsersRound, desc: 'Bảng lương văn phòng' },
+      { id: 'cashflow-settings', label: 'Thiết lập tài chính', icon: Settings, desc: 'Danh mục thu/chi & cấu hình', directorOnly: true },
     ]
   }
 ];
 
-export default function FinanceNav({ activeTab, onSelectTab, isDirector, user }) {
+export default function FinanceNav({ activeTab, onSelectTab, isDirector }) {
   const visibleGroups = useMemo(() => {
     return FINANCE_GROUPS.map(group => {
       let filteredTabs = group.tabs;
@@ -88,23 +88,28 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
 
   return (
     <div className="finance-grouped-nav-container" style={{
-      background: '#ffffff',
-      borderRadius: '16px',
+      background: 'var(--bg-card)',
+      borderRadius: '14px',
       border: '1px solid var(--border-default)',
-      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.03)',
-      padding: '14px 18px',
-      marginBottom: '8px'
+      boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
+      padding: '12px 16px',
+      marginBottom: 0
     }}>
       {/* ── Hàng 1: 3 Nhóm Chính (Group Switcher) ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        paddingBottom: '12px',
-        borderBottom: '1px solid var(--border-subtle)',
-        overflowX: 'auto',
-        scrollbarWidth: 'none'
-      }}>
+      <div
+        className="finance-grouped-nav__groups"
+        role="region"
+        aria-label="Nhóm phân hệ tài chính"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          paddingBottom: '12px',
+          borderBottom: '1px solid var(--border-subtle)',
+          overflowX: 'auto',
+          scrollbarWidth: 'none'
+        }}
+      >
         <span style={{
           fontSize: '0.76rem',
           fontWeight: 700,
@@ -114,7 +119,7 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
           whiteSpace: 'nowrap',
           marginRight: '4px'
         }}>
-          Phân Hệ:
+          Phân hệ:
         </span>
 
         {visibleGroups.map((group) => {
@@ -134,34 +139,34 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
                 fontSize: '0.85rem',
                 fontWeight: isSelected ? 700 : 600,
                 color: isSelected ? group.color : 'var(--text-secondary)',
-                backgroundColor: isSelected ? group.bgColor : '#f8fafc',
-                border: isSelected ? `1.5px solid ${group.color}40` : '1px solid #e2e8f0',
+                backgroundColor: isSelected ? group.bgColor : 'var(--bg-surface)',
+                border: isSelected ? `1.5px solid ${group.color}60` : '1px solid var(--border-default)',
                 cursor: 'pointer',
                 transition: 'all 0.2s ease',
                 whiteSpace: 'nowrap',
-                boxShadow: isSelected ? `0 2px 8px ${group.color}15` : 'none'
+                boxShadow: isSelected ? `0 2px 8px ${group.color}20` : 'none'
               }}
               onMouseEnter={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.backgroundColor = '#f1f5f9';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-card-hover, rgba(148, 163, 184, 0.12))';
                   e.currentTarget.style.color = 'var(--text-primary)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isSelected) {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
                   e.currentTarget.style.color = 'var(--text-secondary)';
                 }
               }}
             >
-              <GroupIcon size={16} color={isSelected ? group.color : '#64748b'} />
+              <GroupIcon size={16} color={isSelected ? group.color : 'var(--text-tertiary)'} />
               <span>{group.label}</span>
               <span style={{
                 fontSize: '0.72rem',
                 fontWeight: 700,
                 padding: '1px 6px',
                 borderRadius: '99px',
-                backgroundColor: isSelected ? group.color : '#cbd5e1',
+                backgroundColor: isSelected ? group.color : 'var(--border-hover)',
                 color: '#ffffff'
               }}>
                 {group.tabs.length}
@@ -172,14 +177,19 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
       </div>
 
       {/* ── Hàng 2: Các Tab Con Của Nhóm Đang Chọn (Pill Subtabs) ── */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        paddingTop: '12px',
-        overflowX: 'auto',
-        scrollbarWidth: 'thin'
-      }}>
+      <div
+        className="finance-grouped-nav__tabs"
+        role="region"
+        aria-label="Các màn hình tài chính"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          paddingTop: '12px',
+          overflowX: 'auto',
+          scrollbarWidth: 'thin'
+        }}
+      >
         {activeGroup.tabs.map((tab) => {
           const TabIcon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -206,9 +216,9 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
               }}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  e.currentTarget.style.backgroundColor = '#f8fafc';
+                  e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
                   e.currentTarget.style.color = 'var(--text-primary)';
-                  e.currentTarget.style.border = '1px solid #e2e8f0';
+                  e.currentTarget.style.border = '1px solid var(--border-subtle)';
                 }
               }}
               onMouseLeave={(e) => {
@@ -219,7 +229,7 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector, user })
                 }
               }}
             >
-              <TabIcon size={15} color={isActive ? '#ffffff' : '#64748b'} />
+              <TabIcon size={15} />
               <span>{tab.label}</span>
             </button>
           );

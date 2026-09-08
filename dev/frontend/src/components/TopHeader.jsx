@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Menu, RefreshCw, X } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import HeaderUserMenu from './HeaderUserMenu';
 import { applyTheme, getInitialTheme } from '../lib/theme';
 
-export default function TopHeader({ onLogout, user, onNotificationNavigate }) {
+export default function TopHeader({
+  onLogout,
+  user,
+  onNotificationNavigate,
+  sidebarOverlayOpen = false,
+  onSidebarOverlayToggle = () => {},
+}) {
   const [theme, setTheme] = useState(getInitialTheme);
   const [scrolled, setScrolled] = useState(false);
   // Chỉ 1 dropdown mở tại 1 thời điểm — mở cái mới tự đóng cái đang mở.
@@ -28,6 +34,16 @@ export default function TopHeader({ onLogout, user, onNotificationNavigate }) {
   return (
     <header className={`top-header${scrolled ? ' top-header--scrolled' : ''}`}>
       <div className="top-header__brand">
+        <button
+          type="button"
+          className="top-header__sidebar-toggle"
+          aria-label={sidebarOverlayOpen ? 'Đóng thanh điều hướng' : 'Mở thanh điều hướng'}
+          aria-controls="primary-sidebar"
+          aria-expanded={sidebarOverlayOpen}
+          onClick={onSidebarOverlayToggle}
+        >
+          {sidebarOverlayOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
         <svg
           className="top-header__brand-logo-svg"
           width="32"
@@ -70,7 +86,7 @@ export default function TopHeader({ onLogout, user, onNotificationNavigate }) {
           <div className="top-header__brand-sub">ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG</div>
         </div>
       </div>
-      <div className="header-actions">
+      <div className="header-actions top-header__actions">
         <button className="btn btn-secondary btn-icon btn-sm" onClick={() => window.location.reload()} title="Làm mới">
           <RefreshCw size={16} />
         </button>

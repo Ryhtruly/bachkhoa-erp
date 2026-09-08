@@ -1,0 +1,280 @@
+- generic [ref=e1]:
+  - generic [ref=e118]:
+    - banner [ref=e119]:
+      - generic [ref=e124]:
+        - generic [ref=e125]:
+          - generic [ref=e126]: BÁCH KH
+          - generic [ref=e130]: A
+        - generic [ref=e132]: ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG
+      - generic [ref=e133]:
+        - button "Làm mới" [ref=e134] [cursor=pointer]
+        - generic [ref=e140]:
+          - button "🌙" [ref=e141] [cursor=pointer]
+          - button "Thông báo việc cần xử lý" [ref=e144] [cursor=pointer]
+        - button "Ảnh đại diện dự phòng của admin admin" [ref=e150] [cursor=pointer]:
+          - generic "Ảnh đại diện dự phòng của admin" [ref=e151]: AD
+          - generic [ref=e152]: admin
+    - generic [ref=e155]:
+      - complementary "Điều hướng chính" [ref=e156]:
+        - generic [ref=e157]:
+          - generic [ref=e158]: Điều hướng
+          - button "Thu gọn thanh điều hướng" [expanded] [ref=e159] [cursor=pointer]
+        - navigation "Các phân hệ" [ref=e163]:
+          - button "Tổng Quan" [ref=e164] [cursor=pointer]
+          - button "CRM Bán Hàng" [ref=e171] [cursor=pointer]
+          - button "Khách Hàng" [ref=e175] [cursor=pointer]
+          - button "Hồ Sơ Đo Vẽ" [ref=e182] [cursor=pointer]
+          - button "Hồ Sơ Pháp Lý" [ref=e186] [cursor=pointer]
+          - button "Hợp Đồng" [ref=e192] [cursor=pointer]
+          - button "Quản Lý Timeline" [ref=e197] [cursor=pointer]
+          - button "Hàng Chờ Duyệt" [ref=e200] [cursor=pointer]
+          - button "Mẫu Giấy Tờ" [ref=e205] [cursor=pointer]
+          - button "Thu Chi Sổ Quỹ" [ref=e211] [cursor=pointer]
+          - button "KPI Nhân Sự" [ref=e216] [cursor=pointer]
+          - button "Nhân Sự & Đào Tạo" [ref=e219] [cursor=pointer]
+          - generic [ref=e223]: Hệ thống
+          - button "Cấu Hình" [ref=e224] [cursor=pointer]
+      - main [ref=e229]:
+        - generic [ref=e634]:
+          - generic [ref=e635]:
+            - generic [ref=e636]:
+              - generic [ref=e637]: Danh sách hợp đồng
+              - strong [ref=e638]: "13"
+            - button "Soạn hợp đồng mới" [ref=e639] [cursor=pointer]
+          - generic [ref=e641]:
+            - generic [ref=e642]:
+              - generic [ref=e645]:
+                - textbox "Tìm kiếm" [ref=e647]:
+                  - /placeholder: Tìm mã hợp đồng, khách hàng, địa điểm...
+                - generic [ref=e648]:
+                  - button "Chọn ngày ký" [ref=e650] [cursor=pointer]
+                  - generic [ref=e654]:
+                    - generic [ref=e655]: "Sắp xếp:"
+                    - button "Sắp xếp" [ref=e657] [cursor=pointer]:
+                      - generic [ref=e658]: Mới nhất
+                  - button "Bộ lọc" [ref=e661] [cursor=pointer]
+              - table [ref=e669]:
+                - rowgroup [ref=e670]:
+                  - row [ref=e671]:
+                    - columnheader "Mã hợp đồng" [ref=e672]
+                    - columnheader "Khách hàng" [ref=e674]
+                    - columnheader "Giá trị / Còn nợ" [ref=e676]
+                    - columnheader "Trạng thái" [ref=e678]
+                    - columnheader "File" [ref=e680]
+                - rowgroup [ref=e682]:
+                  - row [ref=e683] [cursor=pointer]:
+                    - cell "013/BK-2026" [ref=e684]
+                    - cell "nguyễn Hiếu" [ref=e685]
+                    - cell [ref=e687]:
+                      - generic [ref=e688]:
+                        - strong [ref=e689]: 1.000.000₫
+                        - emphasis [ref=e690]: còn 1.000.000₫
+                    - cell "Chưa có quy trình" [ref=e691]
+                    - cell [ref=e694]:
+                      - button "Mở tài liệu hợp đồng" [ref=e695]
+                  - row [ref=e699] [cursor=pointer]:
+                    - cell "012/BK-2026" [ref=e700]
+                    - cell "Lê quang Trí" [ref=e701]
+                    - cell [ref=e703]:
+                      - generic [ref=e704]:
+                        - strong [ref=e705]: 5.000.000₫
+                        - emphasis [ref=e706]: còn 5.000.000₫
+                    - cell "Chưa có quy trình" [ref=e707]
+                    - cell [ref=e710]:
+                      - button "Mở tài liệu hợp đồng" [ref=e711]
+                  - row [ref=e715] [cursor=pointer]:
+                    - cell "011/BK-2026" [ref=e716]
+                    - cell "Lê Quang Huy" [ref=e717]
+                    - cell [ref=e719]:
+                      - generic [ref=e720]:
+                        - strong [ref=e721]: 1.000.000₫
+                        - emphasis [ref=e722]: còn 1.000.000₫
+                    - cell "Chưa có quy trình" [ref=e723]
+                    - cell [ref=e726]:
+                      - button "Mở tài liệu hợp đồng" [ref=e727]
+                  - row [ref=e731] [cursor=pointer]:
+                    - cell "010/BK-2026" [ref=e732]
+                    - cell "Lê Quang Huy" [ref=e733]
+                    - cell [ref=e735]:
+                      - generic [ref=e736]:
+                        - strong [ref=e737]: 5.000.000₫
+                        - emphasis [ref=e738]: còn 5.000.000₫
+                    - cell "Chưa có quy trình" [ref=e739]
+                    - cell [ref=e742]:
+                      - button "Mở tài liệu hợp đồng" [ref=e743]
+                  - row [ref=e747] [cursor=pointer]:
+                    - cell "009/BK-2026" [ref=e748]
+                    - cell "nguyễn Hiếu" [ref=e749]
+                    - cell [ref=e751]:
+                      - generic [ref=e752]:
+                        - strong [ref=e753]: 10.000.000₫
+                        - emphasis [ref=e754]: còn 10.000.000₫
+                    - cell "Chưa có quy trình" [ref=e755]
+                    - cell [ref=e758]:
+                      - button "Mở tài liệu hợp đồng" [ref=e759]
+                  - row [ref=e763] [cursor=pointer]:
+                    - cell "008/BK-2026" [ref=e764]
+                    - cell "nguyễn Hiếu" [ref=e765]
+                    - cell [ref=e767]:
+                      - generic [ref=e768]:
+                        - strong [ref=e769]: 10.000.000₫
+                        - emphasis [ref=e770]: còn 10.000.000₫
+                    - cell "Chưa có quy trình" [ref=e771]
+                    - cell [ref=e774]:
+                      - button "Mở tài liệu hợp đồng" [ref=e775]
+                  - row [ref=e779] [cursor=pointer]:
+                    - cell "007/BK-2026" [ref=e780]
+                    - cell "Lê Quang Huy" [ref=e781]
+                    - cell [ref=e783]:
+                      - generic [ref=e784]:
+                        - strong [ref=e785]: 9.000.000₫
+                        - emphasis [ref=e786]: còn 9.000.000₫
+                    - cell "Chưa có quy trình" [ref=e787]
+                    - cell [ref=e790]:
+                      - button "Mở tài liệu hợp đồng" [ref=e791]
+                  - row [ref=e795] [cursor=pointer]:
+                    - cell "006/BK-2026" [ref=e796]
+                    - cell "Lê quang Trí" [ref=e797]
+                    - cell [ref=e799]:
+                      - generic [ref=e800]:
+                        - strong [ref=e801]: 9.000.000₫
+                        - emphasis [ref=e802]: còn 9.000.000₫
+                    - cell "Chưa có quy trình" [ref=e803]
+                    - cell [ref=e806]:
+                      - button "Mở tài liệu hợp đồng" [ref=e807]
+                  - row [ref=e811] [cursor=pointer]:
+                    - cell "005/BK-2026" [ref=e812]
+                    - cell "nguyễn Hiếu" [ref=e813]
+                    - cell [ref=e815]:
+                      - generic [ref=e816]:
+                        - strong [ref=e817]: 10.000.000₫
+                        - emphasis [ref=e818]: còn 10.000.000₫
+                    - cell "Đang thực hiện" [ref=e819]
+                    - cell [ref=e822]:
+                      - button "Mở tài liệu hợp đồng" [ref=e823]
+                  - row [ref=e827] [cursor=pointer]:
+                    - cell "004/BK-2026" [ref=e828]
+                    - cell "nguyễn Hiếu" [ref=e829]
+                    - cell [ref=e831]:
+                      - generic [ref=e832]:
+                        - strong [ref=e833]: 10.000.000₫
+                        - emphasis [ref=e834]: còn 10.000.000₫
+                    - cell "Chưa có quy trình" [ref=e835]
+                    - cell [ref=e838]:
+                      - button "Mở tài liệu hợp đồng" [ref=e839]
+                  - row [ref=e843] [cursor=pointer]:
+                    - cell "003/BK-2026" [ref=e844]
+                    - cell "xxxx" [ref=e845]
+                    - cell [ref=e847]:
+                      - generic [ref=e848]:
+                        - strong [ref=e849]: 10.000.000₫
+                        - emphasis [ref=e850]: đã thu đủ
+                    - cell "Hoàn thành" [ref=e851]
+                    - cell [ref=e854]:
+                      - button "Mở tài liệu hợp đồng" [ref=e855]
+                  - row [ref=e859] [cursor=pointer]:
+                    - cell "002/BK-2026" [ref=e860]
+                    - cell "Lê quang Trí" [ref=e861]
+                    - cell [ref=e863]:
+                      - generic [ref=e864]:
+                        - strong [ref=e865]: 10.000.000₫
+                        - emphasis [ref=e866]: còn 10.000.000₫
+                    - cell "Đang thực hiện" [ref=e867]
+                    - cell [ref=e870]:
+                      - button "Mở tài liệu hợp đồng" [ref=e871]
+                  - row [ref=e875] [cursor=pointer]:
+                    - cell "001/BK-2026" [ref=e876]
+                    - cell "Lê Quang Huy" [ref=e877]
+                    - cell [ref=e879]:
+                      - generic [ref=e880]:
+                        - strong [ref=e881]: 10.000.000₫
+                        - emphasis [ref=e882]: còn 10.000.000₫
+                    - cell "Đang thực hiện" [ref=e883]
+                    - cell [ref=e886]:
+                      - button "Mở tài liệu hợp đồng" [ref=e887]
+              - generic [ref=e891]:
+                - generic [ref=e892]: 1–13 / 13 hợp đồng
+                - generic [ref=e893]:
+                  - button "Trang đầu" [disabled] [ref=e894]
+                  - button "Trang trước" [disabled] [ref=e898]
+                  - button "Trang 1" [ref=e901] [cursor=pointer]: "1"
+                  - button "Trang sau" [disabled] [ref=e902]
+                  - button "Trang cuối" [disabled] [ref=e905]
+            - complementary [ref=e909]:
+              - generic [ref=e910]:
+                - generic [ref=e915]:
+                  - generic [ref=e916]: Hợp đồng đang chọn
+                  - heading "013/BK-2026" [level=3] [ref=e917]
+                - generic [ref=e918]: Chưa có quy trình
+              - generic [ref=e920]:
+                - generic [ref=e925]:
+                  - generic [ref=e926]: Khách hàng
+                  - strong [ref=e927]: nguyễn Hiếu
+                - generic [ref=e931]:
+                  - generic [ref=e932]: Ngày ký
+                  - strong [ref=e933]: 2026-08-27
+                - generic [ref=e938]:
+                  - generic [ref=e939]: Giá trị hợp đồng
+                  - strong [ref=e940]: 1.000.000₫
+                - generic [ref=e946]:
+                  - generic [ref=e947]: Hạng mục
+                  - strong [ref=e948]: Cắm mốc
+                - generic [ref=e949]:
+                  - strong [ref=e953]: Tài liệu hợp đồng
+                  - generic [ref=e954]: Đã có file hợp đồng
+                  - button "Mở tài liệu" [ref=e955] [cursor=pointer]
+                - button "Giấy tờ khách hàng cung cấp" [ref=e959] [cursor=pointer]
+              - button "Quy trình" [ref=e963] [cursor=pointer]
+    - button "Mở trợ lý nội bộ" [ref=e351]
+  - generic [ref=e632]: nguyễn Hiếu
+  - dialog [ref=e968]:
+    - generic [ref=e969]:
+      - generic [ref=e970]:
+        - heading "Tài liệu hợp đồng" [level=2] [ref=e971]
+        - button "Đóng" [active] [ref=e972] [cursor=pointer]
+      - generic "Nội dung tài liệu hợp đồng" [ref=e978]:
+        - article [ref=e981]:
+          - paragraph [ref=e982]: CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+          - paragraph [ref=e983]:
+            - generic [ref=e984]: Độc lập - Tự do - Hạnh phúc-------------------
+          - paragraph [ref=e985]: HỢP ĐỒNG DỊCH VỤ ĐO ĐẠC VÀ PHÁP LÝ BẢN ĐỒ
+          - paragraph [ref=e986]:
+            - generic [ref=e987]: "Số: {{SO_HOP_DONG}}Mã Hồ Sơ: {{MA_HO_SO}}"
+          - paragraph [ref=e988]:
+            - generic [ref=e989]: "Hôm nay, ngày {{NGAY_KY}}, tại văn phòng Công ty TNHH Kiến Trúc Xây Dựng & Đo Đạc Bản Đồ Bách Khoa, chúng tôi gồm có:"
+          - paragraph [ref=e990]: "BÊN A (KHÁCH HÀNG):"
+          - paragraph [ref=e991]:
+            - text: "Ông/Bà:"
+            - generic [ref=e992]: "{{TEN_KHACH_HANG}}"
+            - text: "Số điện thoại:"
+            - generic [ref=e993]: "{{SO_DIEN_THOAI}}"
+            - text: "Email:"
+            - generic [ref=e994]: "{{KHACH_HANG_EMAIL}}"
+            - text: "Địa chỉ bất động sản đo đạc:"
+            - generic [ref=e995]: "{{DIA_CHI}}"
+          - paragraph [ref=e996]: "BÊN B (ĐƠN VỊ THỰC HIỆN):"
+          - paragraph [ref=e997]:
+            - generic [ref=e998]: CÔNG TY TNHH KIẾN TRÚC XÂY DỰNG & ĐO ĐẠC BẢN ĐỒ BÁCH KHOA
+            - text: "Địa chỉ:"
+            - generic [ref=e999]: 83 Đặng Như Mai, Phường Cát Lái, Thành phố Thủ Đức, TP.HCM
+            - text: "Đại diện:"
+            - generic [ref=e1000]: "Ông Lê Văn Dựng - Chức vụ: Giám đốc"
+            - text: "Điện thoại:"
+            - generic [ref=e1001]: "0349792855 - Email: admin@nhadatbachkhoa.com"
+          - paragraph [ref=e1002]: "ĐIỀU 1: NỘI DUNG CÔNG VIỆC"
+          - paragraph [ref=e1003]:
+            - text: "Bên B thực hiện cho Bên A dịch vụ: {{LOAI_DICH_VU}}"
+            - generic [ref=e1004]: Tình trạng pháp lý và hiện trạng đo đạc theo các thỏa thuận kỹ thuật đi kèm tại địa chỉ nêu trên.
+          - paragraph [ref=e1005]: "ĐIỀU 2: GIÁ TRỊ HỢP ĐỒNG & THANH TOÁN"
+          - paragraph [ref=e1006]:
+            - text: "1. Tổng giá trị hợp đồng:"
+            - generic [ref=e1007]: "{{GIA_TRI_HOP_DONG}} VNĐ (Bằng chữ: ..............................................................)"
+            - text: "2. Phương thức thanh toán:"
+            - generic [ref=e1008]: Chuyển khoản hoặc tiền mặt theo thỏa thuận.
+            - text: "3. Thời hạn thực hiện dự kiến hoàn thành trước ngày: {{NGAY_HET_HAN}}."
+          - paragraph [ref=e1009]: "ĐIỀU 3: ĐIỀU KHOẢN CHUNG"
+          - paragraph [ref=e1010]:
+            - generic [ref=e1011]: Hai bên cam kết thực hiện đúng các điều khoản ghi trong hợp đồng. Hợp đồng được lập thành 02 bản có giá trị pháp lý như nhau, mỗi bên giữ 01 bản.
+          - paragraph [ref=e1012]:
+            - generic [ref=e1013]: ĐẠI DIỆN BÊN A ĐẠI DIỆN BÊN B
+            - text: (Ký, ghi rõ họ tên) (Ký, đóng dấu)

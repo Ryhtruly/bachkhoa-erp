@@ -1,0 +1,514 @@
+/* Tủ hồ sơ của một Hợp đồng — bốn ngăn, gắn theo đúng cặp Gói + Hạng mục.
+   Tách khỏi contractComposer.css: đây là khối của sidebar chi tiết hợp đồng,
+   không liên quan gì tới màn soạn hợp đồng. */
+
+.doc-cabinet {
+  /* .contract-detail-pane__content là GRID (không phải flex). Mặc định
+     align-items:stretch ép mọi ô cao bằng nhau, nên tủ hồ sơ bị nén còn 104px
+     dù nội dung cao 356px — nhìn như bị cắt cụt. align-self:start trả lại chiều
+     cao tự nhiên; phần tràn để chính panel cuộn, nó đã có overflow auto. */
+  align-self: start;
+  flex: none;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.35));
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-card, #fff);
+}
+
+.doc-cabinet__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--orange-400), var(--orange-600));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.doc-cabinet__head > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.doc-cabinet__chevron {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.doc-cabinet__chevron svg { transition: transform .16s ease; }
+.doc-cabinet__chevron svg.is-open { transform: rotate(180deg); }
+.doc-cabinet__body { display: grid; gap: 9px; padding: 9px; }
+
+/* ── Bộ chọn Hạng mục ──
+   Tủ gắn theo đúng cặp Gói + Hạng mục, nên khi hợp đồng có nhiều hạng mục thì
+   phải nói rõ đang mở tủ của hạng mục nào. Một hạng mục thì hiện nhãn tĩnh —
+   bày ô chọn một lựa chọn là bắt người ta bấm vào chỗ không đổi được gì. */
+.doc-cabinet__scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  background: color-mix(in srgb, var(--orange-500) 5%, var(--bg-card));
+  font-size: 11.5px;
+}
+.doc-cabinet__scope > span {
+  flex: none;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.doc-cabinet__scope select {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.4));
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text-primary);
+}
+.doc-cabinet__scope strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+/* Bốn ngăn chia đều. Badge tràn lên mép trên nên hàng tab cần padding-top. */
+.doc-cabinet__tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0;
+  padding-top: 9px;
+  background: color-mix(in srgb, var(--orange-500) 5%, var(--bg-card));
+}
+.doc-cabinet__tab {
+  position: relative;
+  padding: 8px 4px;
+  border: 0;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--orange-500) 9%, #fff);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.doc-cabinet__tab + .doc-cabinet__tab {
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--orange-500) 15%, #fff);
+}
+.doc-cabinet__tab:hover:not(.is-active) {
+  background: color-mix(in srgb, var(--orange-500) 15%, #fff);
+  color: var(--orange-600, #c23816);
+}
+.doc-cabinet__tab.is-active {
+  background: linear-gradient(135deg, var(--orange-400), var(--orange-600));
+  color: #fff;
+  box-shadow: none;
+}
+/* Tab đang mở phủ luôn nét ngăn của tab kế bên, nếu không cạnh trái nó lòi ra
+   một sợi trắng cắt ngang khối cam. */
+.doc-cabinet__tab.is-active + .doc-cabinet__tab { box-shadow: none; }
+.doc-cabinet__badge {
+  position: absolute;
+  top: -7px;
+  right: 6px;
+  min-width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger-500, #ef4444);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  border: 2px solid var(--bg-card, #fff);
+}
+
+.doc-cabinet__tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--orange-500) 12%, var(--border-color, rgba(148, 163, 184, 0.3)));
+}
+.doc-cabinet__search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.doc-cabinet__search-icon { color: var(--text-tertiary, #94a3b8); flex: none; }
+.doc-cabinet__search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.doc-cabinet__search-clear {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  flex: none;
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-secondary);
+}
+
+/* Nút thêm giấy nguyên bản chỉ có nghĩa ở ngăn Nguyên bản — ba ngăn kia là LOẠI
+   GIẤY hồ sơ cần, không phải chỗ đổ tệp thô vào. */
+.doc-cabinet__add {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid var(--orange-500);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--orange-500) 10%, transparent);
+  color: var(--orange-600, #c23816);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.doc-cabinet__add:hover:not(:disabled) { background: color-mix(in srgb, var(--orange-500) 20%, transparent); }
+.doc-cabinet__add:disabled { opacity: 0.6; cursor: default; }
+.doc-cabinet__file-input { display: none; }
+
+/* Chặn cứng chiều cao: nút "Quy trình" ở đáy sidebar không được bị đẩy khỏi
+   khung nhìn khi hồ sơ có ba chục loại giấy. */
+.doc-cabinet__list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-cabinet__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.22));
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.doc-cabinet__row:last-child { border-bottom: 0; }
+
+.doc-cabinet__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.doc-cabinet__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-cabinet__name-btn {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-cabinet__name-btn:hover { color: var(--orange-600, #c23816); text-decoration: underline; }
+
+/* Hàng thông tin phụ: bước · bản chính/sao · số lượng. Gộp vào một dòng nhỏ để
+   tên giấy vẫn là thứ mắt bắt trước. */
+.doc-cabinet__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+/* Nguồn giấy tụt xuống thành nhãn phụ: nó là thông tin tra cứu, không phải trục
+   để xếp tủ — trục đó là BƯỚC. */
+.doc-cabinet__src {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--orange-500) 12%, transparent);
+  color: var(--orange-600, #c23816);
+  font-weight: 800;
+}
+
+.doc-cabinet__status {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-secondary);
+}
+.doc-cabinet__status.is-done {
+  background: color-mix(in srgb, var(--success-500, #22c55e) 15%, transparent);
+  color: var(--success-600, #059669);
+}
+
+.doc-cabinet__tick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success-600, #059669);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.doc-cabinet__link-btn,
+.doc-cabinet__unlink-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.4));
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.doc-cabinet__link-btn:hover { border-color: var(--orange-500); color: var(--orange-600, #c23816); }
+.doc-cabinet__unlink-btn { color: var(--danger-600, #dc2626); padding: 4px 6px; }
+.doc-cabinet__unlink-btn:hover { border-color: var(--danger-600, #dc2626); }
+
+/* Chọn ô giấy để gán: hiện ngay dưới dòng tệp thô, không mở modal — thao tác
+   này lặp lại nhiều lần liên tiếp khi K01 phân loại cả xấp giấy. */
+.doc-cabinet__picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-color, rgba(148, 163, 184, 0.22));
+  background: color-mix(in srgb, var(--orange-500) 6%, transparent);
+}
+.doc-cabinet__picker select {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.4));
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  font: inherit;
+  font-size: 11.5px;
+}
+.doc-cabinet__picker button {
+  flex: none;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--orange-500);
+  color: #fff;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.doc-cabinet__picker button:disabled { opacity: 0.5; cursor: default; }
+
+.doc-cabinet__empty,
+.doc-cabinet__error {
+  margin: 0;
+  padding: 16px 12px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+.doc-cabinet__error { color: var(--danger-600, #dc2626); }
+
+/* ── Hai nút thao tác trên file hợp đồng đã ký ──
+   Màu cam lấy ĐÚNG gradient của .btn-primary (nút "Quy trình") để cả sidebar chỉ
+   có một tông cam. */
+.contract-file-actions {
+  align-self: start;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.35));
+  border-radius: 10px;
+  background: var(--bg-card, #fff);
+}
+.contract-file-actions__view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.contract-file-actions__view:disabled { cursor: default; opacity: 0.55; text-decoration: none; }
+.contract-file-actions__view span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.contract-file-actions__upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--orange-500) 40%, transparent);
+  background: color-mix(in srgb, var(--orange-500) 8%, transparent);
+  color: var(--orange-600, #c23816);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.contract-file-actions__upload:hover:not(:disabled) { background: color-mix(in srgb, var(--orange-500) 16%, transparent); }
+.contract-file-actions__upload:disabled { opacity: 0.6; cursor: default; }
+.contract-file-actions__input { display: none; }
+.contract-file-actions__spin { animation: contract-file-spin 1s linear infinite; }
+@keyframes contract-file-spin { to { transform: rotate(360deg); } }
+
+/* Card Gói + Hạng mục: tên gói là badge nhỏ đứng trước tên hạng mục, để đọc ra
+   ngay "hạng mục này thuộc gói nào" mà không phải suy từ tên. */
+.contract-scope-value { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.contract-scope-value__package {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--orange-500) 14%, transparent);
+  color: var(--orange-600, #c23816);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+
+/* ── Tủ hồ sơ xếp theo BƯỚC ──
+   Cấu trúc lấy từ master data (Gói → Hạng mục → Node → Loại giấy), trạng thái
+   lấy từ ô giấy. Đóng lại thì sáu hàng tiêu đề trả lời gọn câu "hạng mục này cần
+   tờ gì, ở bước nào" — thứ mà một danh sách phẳng 58 dòng không nói được. */
+.doc-cabinet__nodes {
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px 0 2px;
+}
+
+.doc-cabinet__sum {
+  margin: 0;
+  padding: 6px 12px 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.doc-cabinet__group + .doc-cabinet__group {
+  border-top: 1px solid var(--border-color, rgba(148, 163, 184, 0.22));
+}
+
+.doc-cabinet__group-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+.doc-cabinet__group-head:hover {
+  background: color-mix(in srgb, var(--orange-500) 6%, transparent);
+}
+
+.doc-cabinet__group-code {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--orange-500) 15%, transparent);
+  color: var(--orange-600, #c23816);
+  font-size: 11px;
+  font-weight: 800;
+}
+/* Chưa gán bước là trạng thái cần thấy, không phải mặc định vô hại: giấy không
+   bước nào nhận thì không hiện ở màn nhân viên nào. */
+.doc-cabinet__group.is-none .doc-cabinet__group-code {
+  background: color-mix(in srgb, var(--danger-500, #ef4444) 10%, transparent);
+  color: var(--danger-600, #dc2626);
+}
+
+.doc-cabinet__group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.doc-cabinet__group-count {
+  flex: none;
+  font-size: 11.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.doc-cabinet__group-chev {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary, #94a3b8);
+}
+
+/* Cả tủ cuộn một lần ở .doc-cabinet__nodes; danh sách trong từng bước cuộn thêm
+   một tầng nữa là hai thanh cuộn lồng nhau, kéo cái nào cũng sai. */
+.doc-cabinet__group .doc-cabinet__list {
+  max-height: none;
+  overflow: visible;
+  padding-bottom: 4px;
+}
+.doc-cabinet__group .doc-cabinet__row {
+  padding-left: 18px;
+}

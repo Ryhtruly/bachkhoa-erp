@@ -1,5 +1,6 @@
 import React from 'react';
 import { COMPANY_IDENTITY } from '../../lib/companyIdentity';
+import { formatPrintTimestamp } from '../../components/finance/print/printDocument';
 
 const contractStatusLabels = { Probation: 'Thử việc', Official: 'Chính thức', Terminated: 'Đã nghỉ' };
 const genderLabels = { male: 'Nam', female: 'Nữ', other: 'Khác' };
@@ -34,7 +35,7 @@ export default function EmployeePrintProfile({ employee, documentRef }) {
           <span>{COMPANY_IDENTITY.address}</span>
           <span>Mã số thuế: {COMPANY_IDENTITY.taxCode} · Điện thoại: {COMPANY_IDENTITY.phone}</span>
         </div>
-        <div>Ngày in: <span data-print-timestamp>—</span></div>
+        <div>Ngày in: <span data-print-timestamp>{formatPrintTimestamp()}</span></div>
       </header>
 
       <section className="employee-print-profile__title">

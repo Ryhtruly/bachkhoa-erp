@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -59,28 +59,61 @@ export default function DatePicker({
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
   const [actualPlacement, setActualPlacement] = useState(placement === 'top' ? 'top' : 'bottom');
+  const [horizontalPlacement, setHorizontalPlacement] = useState('left');
+  const [horizontalOffset, setHorizontalOffset] = useState(0);
   const rootRef = useRef(null);
+  const popoverRef = useRef(null);
 
-  useEffect(() => {
-    if (!open) return;
-    if (placement === 'top') {
-      setActualPlacement('top');
-      return;
-    }
-    if (placement === 'bottom') {
-      setActualPlacement('bottom');
-      return;
-    }
-    if (rootRef.current) {
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+
+    const updatePlacement = () => {
+      if (!rootRef.current || !popoverRef.current) return;
       const rect = rootRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      if (spaceBelow < 330 && rect.top > 300) {
+      const popoverRect = popoverRef.current.getBoundingClientRect();
+      const measuredHeight = popoverRect.height || (isMonthMode ? 210 : 290);
+      const measuredWidth = popoverRect.width || Math.min(320, window.innerWidth - 32);
+
+      if (placement === 'top') {
         setActualPlacement('top');
-      } else {
+      } else if (placement === 'bottom') {
         setActualPlacement('bottom');
+      } else {
+        const gap = 8;
+        const spaceBelow = window.innerHeight - rect.bottom - gap;
+        const spaceAbove = rect.top - gap;
+        const fitsBelow = spaceBelow >= measuredHeight;
+        const fitsAbove = spaceAbove >= measuredHeight;
+
+        // Ưu tiên mở xuống dưới (bottom) trừ khi không gian bên dưới quá hẹp (< 200px) và bên trên đủ chỗ
+        if (!fitsBelow && fitsAbove && spaceBelow < 200) {
+          setActualPlacement('top');
+        } else if (!fitsBelow && !fitsAbove) {
+          setActualPlacement(spaceBelow >= spaceAbove ? 'bottom' : 'top');
+        } else {
+          setActualPlacement('bottom');
+        }
       }
-    }
-  }, [open, placement]);
+
+      const popoverWidth = measuredWidth;
+      const viewportGutter = 16;
+      const shouldAlignRight = rect.left + popoverWidth > window.innerWidth - viewportGutter;
+      setHorizontalPlacement(shouldAlignRight ? 'right' : 'left');
+      setHorizontalOffset(
+        shouldAlignRight
+          ? Math.max(0, rect.right - (window.innerWidth - viewportGutter))
+          : 0
+      );
+    };
+
+    updatePlacement();
+    window.addEventListener('resize', updatePlacement);
+    window.addEventListener('scroll', updatePlacement, true);
+    return () => {
+      window.removeEventListener('resize', updatePlacement);
+      window.removeEventListener('scroll', updatePlacement, true);
+    };
+  }, [isMonthMode, open, placement]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -170,7 +203,11 @@ export default function DatePicker({
 
       {open && (
         <div
-          className={`date-picker__popover${actualPlacement === 'top' ? ' date-picker__popover--top' : ''}`}
+          ref={popoverRef}
+          className={`date-picker__popover${actualPlacement === 'top' ? ' date-picker__popover--top' : ''}${horizontalPlacement === 'right' ? ' date-picker__popover--right' : ''}`}
+          style={horizontalPlacement === 'right'
+            ? { '--date-picker-popover-right-offset': `${horizontalOffset}px` }
+            : undefined}
           role="dialog"
           aria-label={dialogLabel || (isMonthMode ? 'Chọn tháng' : placeholder)}
         >

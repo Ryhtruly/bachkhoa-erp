@@ -7,13 +7,14 @@ from typing import Optional, List, Dict, Any
 from decimal import Decimal
 
 from src.db.database import get_db
-from src.core.auth import require_permission, User
-from src.db.models import Employee, Department
-from src.core.redis_utils import get_cached_json, set_cached_json
+from src.core.auth import require_permission, get_current_user, assert_payroll_employee_access, is_payroll_all_user, User
+from src.db.models import Employee, Department, PayrollPeriod
+from src.finance.repository import FinanceRepository
+from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
 
 router = APIRouter(prefix="/api/payroll", tags=["06. Payroll Ledger"])
 
-# (Đã xoá DEFAULT_NODE_RATES — bảng giá ghi cứng theo mã node K01–K09. Đó là
+# (Đã xoá DEFAULT_NODE_RATES — bảng giá ghi cứng theo mã node K01–K07. Đó là
 #  nguồn tiền thứ ba song song với work_item_rates, tự đẻ tiền cho node không có
 #  khoán checklist, và sai hoàn toàn với quy trình tự do không dùng mã K0x.
 #  Tiền khoán nay chỉ có một nguồn: checklist × work_item_rates.)
@@ -23,6 +24,8 @@ def get_payroll_options(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("payroll", "read"))
 ):
+    if not is_payroll_all_user(db, user):
+        raise HTTPException(status_code=403, detail="Chỉ Kế toán hoặc Giám đốc được xem danh sách lương.")
     cache_key = "bachkhoa:payroll:options"
     cached = get_cached_json(cache_key)
     if cached is not None:
@@ -100,13 +103,29 @@ def get_employee_ledger(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("payroll", "read"))
+    user: User = Depends(get_current_user)
 ):
     curr_year = datetime.now().year
     curr_month = datetime.now().month
     year_val = year if isinstance(year, int) else curr_year
     month_val = month if isinstance(month, int) else curr_month
     emp_id_val = employee_id if (employee_id and isinstance(employee_id, str)) else None
+
+    # Không cho phép dùng employee_id để đọc lương người khác.  Với nhân viên
+    # thường, bỏ employee_id cũng phải tự rơi về hồ sơ của chính họ, không được
+    # chọn nhân viên đầu tiên trong bảng như logic legacy trước đây.
+    actor_employee = db.query(Employee).filter(
+        Employee.user_id == user.id, Employee.is_active == True
+    ).first()
+    if not is_payroll_all_user(db, user):
+        if not actor_employee:
+            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân sự.")
+        if emp_id_val and emp_id_val != actor_employee.id:
+            raise HTTPException(status_code=403, detail="Bạn chỉ được xem bảng lương của chính mình.")
+        emp_id_val = actor_employee.id
+
+    if emp_id_val:
+        assert_payroll_employee_access(db, user, emp_id_val)
 
     if emp_id_val:
         ledger_cache_key = f"bachkhoa:payroll:ledger:{emp_id_val}:{year_val}:{month_val}"
@@ -179,51 +198,69 @@ def get_employee_ledger(
             wpe.amount as entitlement_amount,
             wpe.status as entitlement_status,
             wpe.earned_at
-        from public.task_node_assignments a
-        join public.task_nodes n on n.id = a.task_node_id
-        join public.workflow_instances wi on wi.id = n.workflow_instance_id
-        left join public.service_lines sl on sl.id = wi.service_line_id
-        left join public.contracts c on c.id = sl.contract_id
-        left join public.customers cust on cust.id = c.customer_id
-        left join public.workflow_nodes wn on wn.code = n.node_code
-        left join public.work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
+        from task_node_assignments a
+        join task_nodes n on n.id = a.task_node_id
+        join workflow_instances wi on wi.id = n.workflow_instance_id
+        left join service_lines sl on sl.id = wi.service_line_id
+        left join contracts c on c.id = sl.contract_id
+        left join customers cust on cust.id = c.customer_id
+        left join workflow_nodes wn on wn.code = n.node_code
+        left join active_work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
         where a.employee_id = :emp_id
         order by coalesce(n.completed_at, n.started_at, n.created_at) desc
     """)
     rows = db.execute(query, {"emp_id": emp_id_val}).mappings().all()
 
+    period_info = FinanceRepository.get_payroll_date_range(db, year_val, month_val)
+    start_date = period_info["start_date"]
+    end_date = period_info["end_date"]
+
     # Query adjustments
     adj_query = text("""
         select id, adjustment_type as type, amount, reason, source_reference as task_id, status, effective_date
-        from public.employee_pay_adjustments
+        from employee_pay_adjustments
         where employee_id = :emp_id
+          and status in ('approved', 'locked')
         order by effective_date desc
     """)
     adj_rows = db.execute(adj_query, {"emp_id": emp_id_val}).mappings().all()
-    adjustments = [
-        {
+    adjustments = []
+    for r in adj_rows:
+        eff_date = r["effective_date"]
+        if eff_date:
+            if isinstance(eff_date, str):
+                try:
+                    dt = datetime.fromisoformat(eff_date).date()
+                except Exception:
+                    dt = datetime.now().date()
+            elif isinstance(eff_date, datetime):
+                dt = eff_date.date()
+            else:
+                dt = eff_date
+            if dt < start_date or dt > end_date:
+                continue
+        adjustments.append({
             "id": r["id"],
             "type": r["type"],
             "amount": float(r["amount"] or 0),
             "reason": r["reason"] or "Điều chỉnh lương",
             "task_id": r["task_id"] or "",
-            "status": r["status"]
-        } for r in adj_rows
-    ]
+            "status": r["status"],
+            "event_date": r["effective_date"].isoformat() if hasattr(r["effective_date"], "isoformat") else str(r["effective_date"]),
+            "effective_date": r["effective_date"].isoformat() if hasattr(r["effective_date"], "isoformat") else str(r["effective_date"]),
+        })
 
     details = []
     main_task_count = 0
     support_task_count = 0
     piece_rate_main = 0.0
     piece_rate_support = 0.0
-    # Loại khoản dùng ĐÚNG giá trị ràng buộc DB (viết hoa): BONUS / ALLOWANCE /
-    # DEDUCTION / REIMBURSEMENT. Trước đây khớp chữ thường ('bonus'/'penalty') nên
-    # mọi khoản điều chỉnh hiện ra danh sách mà KHÔNG cộng vào lương.
-    def _loai(a):
-        return str(a.get("type") or "").upper()
-    total_bonus = sum(a["amount"] for a in adjustments if _loai(a) == "BONUS")
-    total_allowance = sum(a["amount"] for a in adjustments if _loai(a) in ("ALLOWANCE", "REIMBURSEMENT"))
-    total_penalty = sum(a["amount"] for a in adjustments if _loai(a) == "DEDUCTION")
+
+    def _get_adjustment_type(adj):
+        return str(adj.get("type") or "").upper()
+    total_bonus = sum(a["amount"] for a in adjustments if _get_adjustment_type(a) == "BONUS")
+    total_allowance = sum(a["amount"] for a in adjustments if _get_adjustment_type(a) in ("ALLOWANCE", "REIMBURSEMENT"))
+    total_penalty = sum(a["amount"] for a in adjustments if _get_adjustment_type(a) == "DEDUCTION")
     
     pending_record_count = 0
     pending_record_total = 0.0
@@ -233,9 +270,35 @@ def get_employee_ledger(
     paid_total = 0.0
 
     for r in rows:
+        event_date_val = r["completed_at"] or r["earned_at"] or r["started_at"] or r["assigned_at"] or r["node_created_at"]
+        if event_date_val:
+            if isinstance(event_date_val, str):
+                try:
+                    dt_obj = datetime.fromisoformat(event_date_val).date()
+                except Exception:
+                    dt_obj = datetime.now().date()
+            elif isinstance(event_date_val, datetime):
+                dt_obj = event_date_val.date()
+            else:
+                dt_obj = event_date_val
+        else:
+            dt_obj = start_date
+
+        is_completed = (r["node_status"] in ("accepted", "completed"))
+        is_paid = (r["entitlement_status"] == "paid")
+        is_locked = (r["entitlement_status"] == "locked")
+        is_approved = (r["entitlement_status"] in ("approved", "locked"))
+
+        # Filter strictly by the configured date range [start_date, end_date]:
+        if is_completed or is_paid or is_approved:
+            if dt_obj < start_date or dt_obj > end_date:
+                continue  # Skip tasks completed outside this payroll period
+        else:
+            # In-progress / provisional task: only show if created on or before end_date of this period
+            if dt_obj > end_date:
+                continue
+
         role = "main" if (r["role_code"] or "").lower() == "main" or r["is_primary"] else "support"
-        # Sổ lương hiện đúng số khoán đã sinh từ checklist. Node chưa có khoán thì
-        # là 0 — không chiếu một con số ghi cứng lên rồi trả nhầm khi chốt.
         base_rate = float(r["entitlement_amount"]) if r["entitlement_amount"] is not None else 0.0
 
         stake_allowance = 0.0
@@ -245,28 +308,28 @@ def get_employee_ledger(
         
         net_amount = max(0.0, base_rate + stake_allowance + cancellation_allowance + priority_bonus - penalty)
         
-        is_completed = (r["node_status"] in ("accepted", "completed"))
-        is_paid = (r["entitlement_status"] == "paid")
-        is_approved = (r["entitlement_status"] == "approved")
-        
         if is_paid:
+            status_code = "paid"
             payment_status = "Đã thanh toán"
             is_recorded = True
             is_closable = False
             paid_total += net_amount
             recorded_total += net_amount
         elif is_approved:
-            payment_status = "Đã ghi nhận"
+            status_code = "locked" if is_locked else "approved"
+            payment_status = "Đã chốt" if is_locked else "Đã ghi nhận"
             is_recorded = True
             is_closable = False
             recorded_total += net_amount
         elif is_completed:
+            status_code = "pending_record"
             payment_status = "Chờ ghi nhận"
             is_recorded = False
             is_closable = True
             pending_record_count += 1
             pending_record_total += net_amount
         else:
+            status_code = "provisional"
             payment_status = "Tạm tính"
             is_recorded = False
             is_closable = False
@@ -282,8 +345,7 @@ def get_employee_ledger(
 
         total_allowance += (stake_allowance + cancellation_allowance)
 
-        event_date_val = r["completed_at"] or r["started_at"] or r["assigned_at"] or r["node_created_at"]
-        event_date_str = event_date_val.strftime("%Y-%m-%d") if event_date_val else date.today().isoformat()
+        event_date_str = event_date_val.strftime("%Y-%m-%d") if hasattr(event_date_val, "strftime") else (str(event_date_val)[:10] if event_date_val else date.today().isoformat())
 
         details.append({
             "id": r["assignment_id"] or f"task_{r['task_node_id']}",
@@ -299,6 +361,7 @@ def get_employee_ledger(
             "priority_bonus": priority_bonus,
             "penalty": penalty,
             "net_amount": net_amount,
+            "status": status_code,
             "payment_status": payment_status,
             "is_recorded": is_recorded,
             "is_closable": is_closable,
@@ -311,7 +374,6 @@ def get_employee_ledger(
 
     approved_salary = recorded_total
     approved_count = len([d for d in details if d.get("is_recorded")])
-    # Net salary includes all earned income in period (approved + pending completed tasks + allowances + bonuses - penalties)
     net_salary = approved_salary + pending_record_total + total_allowance + total_bonus - total_penalty
 
     summary = {
@@ -337,6 +399,11 @@ def get_employee_ledger(
         "provisional_total": provisional_total,
     }
 
+    # Fetch period status from PayrollPeriod model for this specific month
+    period_month_start = date(year_val, month_val, 1)
+    period_row = db.query(PayrollPeriod).filter(PayrollPeriod.period_month == period_month_start).first()
+    period_status = period_row.status if period_row and period_row.status else "Open"
+
     result = {
         "status": "success",
         "data": {
@@ -346,7 +413,15 @@ def get_employee_ledger(
                 "job_title": emp.job_title or "Nhân viên nghiệp vụ",
                 "department": emp.department or "Phòng Đo đạc - Nghiệp vụ"
             },
-            "period_status": "Open",
+            "period_status": period_status,
+            "period_range": {
+                "start_date": period_info["start_date_str"],
+                "end_date": period_info["end_date_str"],
+                "label": period_info["label"],
+                "cycle_type": period_info["cycle_type"],
+                "cutoff_day": period_info["cutoff_day"],
+                "payment_day": period_info["payment_day"]
+            },
             "summary": summary,
             "details": details,
             "adjustments": adjustments,
@@ -369,32 +444,61 @@ def close_employee_period(
     user: User = Depends(require_permission("payroll", "approve"))
 ):
     try:
+        period_info = FinanceRepository.get_payroll_date_range(db, payload.year, payload.month)
+        start_date = period_info["start_date"]
+        end_date = period_info["end_date"]
+        locked_period = db.query(PayrollPeriod).filter(
+            PayrollPeriod.period_month == start_date.replace(day=1)
+        ).first()
+        if locked_period and (locked_period.status or "").lower() in {"locked", "paid"}:
+            raise HTTPException(status_code=409, detail="Kỳ lương đã khóa; không thể ghi sửa trực tiếp. Hãy tạo điều chỉnh kỳ sau hoặc mở lại có kiểm toán.")
+
         completed_nodes = db.execute(text("""
-            select n.id as task_node_id, a.role_code, n.node_code, wi.id as workflow_id
-            from public.task_node_assignments a
-            join public.task_nodes n on n.id = a.task_node_id
-            join public.workflow_instances wi on wi.id = n.workflow_instance_id
+            select n.id as task_node_id, a.role_code, n.node_code, wi.id as workflow_id,
+                   n.completed_at, wpe.earned_at, n.started_at, a.created_at as assigned_at, n.created_at as node_created_at
+            from task_node_assignments a
+            join task_nodes n on n.id = a.task_node_id
+            join workflow_instances wi on wi.id = n.workflow_instance_id
+            left join active_work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
             where a.employee_id = :emp_id and n.status in ('accepted', 'completed')
         """), {"emp_id": payload.employee_id}).mappings().all()
 
-        # Chốt lương chỉ DUYỆT các khoán đã sinh từ checklist khi nghiệm thu.
+# Chốt lương chỉ DUYỆT các khoán đã sinh từ checklist khi nghiệm thu.
         # KHÔNG tự đẻ tiền: node đã nghiệm thu nhưng không gắn công việc khoán nào
         # thì không có khoán — đúng quy tắc "không checklist thì không sinh tiền".
         # (Trước đây chỗ này tạo entitlement bằng bảng giá ghi cứng DEFAULT_NODE_RATES
-        #  theo mã K01–K09; quy trình tự do không có mã đó nên luôn trả mặc định sai.)
+        #  theo mã K01–K07; quy trình tự do không có mã đó nên luôn trả mặc định sai.)
         approved_count = 0
         skipped_count = 0
         for node in completed_nodes:
+            comp_dt = node.get("completed_at") or node.get("earned_at") or node.get("started_at") or node.get("assigned_at") or node.get("node_created_at")
+            if comp_dt:
+                if isinstance(comp_dt, str):
+                    try:
+                        comp_dt = datetime.fromisoformat(comp_dt).date()
+                    except Exception:
+                        pass
+                elif isinstance(comp_dt, datetime):
+                    comp_dt = comp_dt.date()
+
+                if isinstance(comp_dt, date):
+                    if comp_dt < start_date or comp_dt > end_date:
+                        continue  # Do not close tasks from other periods!
+
             exists = db.execute(text("""
-                select id from public.work_pay_entitlements
+                select id from active_work_pay_entitlements
                 where task_node_id = :node_id and employee_id = :emp_id
             """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id}).scalar()
 
             if exists:
                 db.execute(text("""
-                    update public.work_pay_entitlements
+                    update work_pay_entitlements
                     set status = 'approved', approved_by = :actor_id, approved_at = now()
                     where task_node_id = :node_id and employee_id = :emp_id and status != 'approved'
+                      -- Suất đã chuyển sang người khác thì không duyệt nữa. Câu
+                      -- này ghi nên phải trỏ vào BẢNG, không trỏ view được — lọc
+                      -- ở đây là chỗ duy nhất chặn được.
+                      and not is_replaced
                 """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id, "actor_id": user.id})
                 approved_count += 1
             else:
@@ -402,9 +506,10 @@ def close_employee_period(
                 skipped_count += 1
 
         db.commit()
+        invalidate_cache("bachkhoa:payroll:*")
         return {
             "status": "success",
-            "message": f"Đã chốt sổ lương tháng {payload.month}/{payload.year}",
+            "message": f"Đã chốt sổ lương tháng {payload.month}/{payload.year} ({period_info['label']})",
             "data": {"approved_count": approved_count, "skipped_no_piece_rate": skipped_count}
         }
     except HTTPException:

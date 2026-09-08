@@ -5,6 +5,7 @@ from src.db.database import get_db
 from src.db.models import Contract, Receivable, Customer, CashflowTransaction
 from src.core.auth import require_authenticated_user, User
 from src.core.redis_utils import get_cached_json, set_cached_json
+from src.finance.enums import TransactionType
 
 router = APIRouter(prefix="/api", tags=["02. Dashboard & Analytics"])
 
@@ -34,8 +35,11 @@ def get_dashboard(
               and status not in ('accepted', 'skipped', 'cancelled')
         """)).scalar_one()
         
-        total_val = db.query(func.sum(Contract.total_value)).scalar() or 0.0
-        total_collected = db.query(func.sum(Receivable.paid_amount)).scalar() or 0.0
+        # PostgreSQL Numeric values arrive as Decimal while the empty SUM
+        # fallback used to be a float. Normalize both aggregates before doing
+        # arithmetic so an empty receivables table cannot break the dashboard.
+        total_val = float(db.query(func.sum(Contract.total_value)).scalar() or 0)
+        total_collected = float(db.query(func.sum(Receivable.paid_amount)).scalar() or 0)
         debt = total_val - total_collected
 
         recent_tasks = [dict(row) for row in db.execute(text("""
@@ -142,7 +146,9 @@ def get_dashboard_charts(
             for row in status_rows
         ]
         
-        cashflow = db.query(CashflowTransaction.category_code, CashflowTransaction.amount).filter(CashflowTransaction.transaction_type == "Chi").all()
+        cashflow = db.query(CashflowTransaction.category_code, CashflowTransaction.amount).filter(
+            CashflowTransaction.transaction_type.in_([TransactionType.EXPENSE.value, "Chi", "EXPENSE", TransactionType.ADVANCE.value, "Tạm ứng"])
+        ).all()
         expense_cats = {}
         for tc in cashflow:
             cat = tc.category_code or "Khác"

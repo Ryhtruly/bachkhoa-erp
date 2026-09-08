@@ -9,18 +9,14 @@ const normalizedAttachments = (attachments, legacyUrl) => {
 
 export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact = false }) {
   const [openingId, setOpeningId] = useState(null)
-  const [dangXem, setDangXem] = useState(null)
+  const [previewReceipt, setPreviewReceipt] = useState(null)
   const items = normalizedAttachments(attachments, legacyUrl)
 
-  // Thu hồi địa chỉ tạm khi đóng, nếu không mỗi lần mở một bill là giữ luôn ảnh
-  // đó trong bộ nhớ cho tới khi tải lại trang.
-  useEffect(() => () => { if (dangXem?.objectUrl) URL.revokeObjectURL(dangXem.objectUrl) }, [dangXem])
+  useEffect(() => () => { if (previewReceipt?.objectUrl) URL.revokeObjectURL(previewReceipt.objectUrl) }, [previewReceipt])
 
   const openProtected = async (item) => {
     setOpeningId(item.id)
     try {
-      // Ảnh bill nằm sau lớp xác thực. Thiếu header này thì máy chủ trả 401 và
-      // người dùng chỉ thấy "Không mở được bill" mà không hiểu vì sao.
       const token = getAccessToken()
       const response = await fetch(item.url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -34,12 +30,10 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
       }
       const blob = await response.blob()
       const objectUrl = URL.createObjectURL(blob)
-      // Mở ngay trong trang thay vì bật cửa sổ mới: Safari và Chrome trên macOS
-      // chặn cửa sổ mở sau một tác vụ mạng, nên cách cũ hay im lặng không hiện gì.
-      setDangXem({
+      setPreviewReceipt({
         objectUrl,
-        ten: item.filename || 'Bill / biên lai',
-        laPdf: blob.type === 'application/pdf' || item.content_type === 'application/pdf',
+        filename: item.filename || 'Bill / biên lai',
+        isPdf: blob.type === 'application/pdf' || item.content_type === 'application/pdf',
       })
     } catch (error) {
       addToast?.(error.message || 'Không mở được bill/biên lai', 'error')
@@ -48,9 +42,9 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
     }
   }
 
-  const dong = () => {
-    if (dangXem?.objectUrl) URL.revokeObjectURL(dangXem.objectUrl)
-    setDangXem(null)
+  const handleClosePreview = () => {
+    if (previewReceipt?.objectUrl) URL.revokeObjectURL(previewReceipt.objectUrl)
+    setPreviewReceipt(null)
   }
 
   if (items.length === 0) return null
@@ -72,18 +66,18 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
         })}
       </span>
 
-      {dangXem && (
-        <div className="bill-viewer" role="dialog" aria-modal="true" aria-label={dangXem.ten}
-          onClick={dong}>
+      {previewReceipt && (
+        <div className="bill-viewer" role="dialog" aria-modal="true" aria-label={previewReceipt.filename}
+          onClick={handleClosePreview}>
           <div className="bill-viewer__box" onClick={(event) => event.stopPropagation()}>
             <header>
-              <strong>{dangXem.ten}</strong>
-              <a href={dangXem.objectUrl} download={dangXem.ten}>Tải về</a>
-              <button type="button" onClick={dong} aria-label="Đóng"><X size={16} /></button>
+              <strong>{previewReceipt.filename}</strong>
+              <a href={previewReceipt.objectUrl} download={previewReceipt.filename}>Tải về</a>
+              <button type="button" onClick={handleClosePreview} aria-label="Đóng"><X size={16} /></button>
             </header>
-            {dangXem.laPdf
-              ? <iframe title={dangXem.ten} src={dangXem.objectUrl} />
-              : <img src={dangXem.objectUrl} alt={dangXem.ten} />}
+            {previewReceipt.isPdf
+              ? <iframe title={previewReceipt.filename} src={previewReceipt.objectUrl} />
+              : <img src={previewReceipt.objectUrl} alt={previewReceipt.filename} />}
           </div>
         </div>
       )}

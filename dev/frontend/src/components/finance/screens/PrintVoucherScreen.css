@@ -1,0 +1,377 @@
+/* Giao diện Màn hình In Chứng Từ & Soạn Thảo (Hỗ trợ toàn diện Light & Dark Mode) */
+
+.print-screen-container {
+  padding: 0 0 24px 0;
+}
+
+/* ── Topbar Điều Hướng ────────────────────────────────────────────── */
+.print-screen-topbar {
+  background: var(--bg-card, #ffffff);
+  border-radius: var(--radius-md, 14px);
+  padding: 14px 20px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  box-shadow: var(--shadow-card, 0 2px 8px -2px rgba(0,0,0,0.04));
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  backdrop-filter: var(--glass-blur, none);
+}
+
+.print-screen-mode-group {
+  display: inline-flex;
+  background: var(--bg-deep, #f1f5f9);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, transparent);
+}
+
+.print-screen-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #475569);
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.print-screen-mode-btn.is-active {
+  background: var(--blue-600, #2563eb);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+
+.print-screen-type-group {
+  display: inline-flex;
+  background: var(--bg-deep, #f8fafc);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  gap: 2px;
+}
+
+.print-screen-type-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #475569);
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* ── Nút Topbar Phụ ──────────────────────────────────────────────── */
+.print-screen-btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default, #cbd5e1);
+  background: var(--bg-card, #ffffff);
+  color: var(--text-secondary, #334155);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.print-screen-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-deep, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+.print-screen-btn-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--text-primary, #0f172a);
+  color: var(--bg-deep, #ffffff);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+  transition: all 0.15s ease;
+}
+
+[data-theme='dark'] .print-screen-btn-primary {
+  background: var(--blue-600, #2563eb);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+
+/* ── Layout 2 Cột ───────────────────────────────────────────────── */
+.print-screen-grid {
+  display: grid;
+  gap: 24px;
+}
+
+.print-screen-grid > * {
+  min-width: 0;
+}
+
+.print-screen-grid--with-sidebar {
+  grid-template-columns: 320px 1fr;
+}
+
+@media (max-width: 900px) {
+  .print-screen-grid--with-sidebar {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Sidebar Danh Sách Chứng Từ ────────────────────────────────── */
+.print-screen-sidebar {
+  background: var(--bg-card, #ffffff);
+  border-radius: var(--radius-md, 14px);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+  max-height: calc(100vh - 180px);
+  box-shadow: var(--shadow-card, 0 4px 12px -2px rgba(0,0,0,0.03));
+}
+
+.print-screen-sidebar-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  margin: 0;
+  color: var(--text-primary, #0f172a);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.print-screen-badge {
+  font-size: 0.78rem;
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--blue-500, #2563eb);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.print-screen-search-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-default, #cbd5e1);
+  font-size: 0.84rem;
+  margin-bottom: 12px;
+  outline: none;
+  background: var(--bg-deep, #f8fafc);
+  color: var(--text-primary, #0f172a);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.print-screen-search-input:focus {
+  border-color: var(--blue-500, #3b82f6);
+}
+
+.print-screen-list-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-subtle, #e2e8f0);
+  background: var(--bg-card, #ffffff);
+  cursor: pointer;
+  font-size: 0.82rem;
+  transition: all 0.15s ease;
+}
+
+.print-screen-list-item:hover {
+  border-color: var(--border-hover, #94a3b8);
+  background: var(--bg-deep, #f8fafc);
+}
+
+.print-screen-list-item.is-selected {
+  border-color: var(--blue-500, #3b82f6);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+/* ── Card Form Soạn Thảo ─────────────────────────────────────────── */
+.print-screen-form-card {
+  background: var(--bg-card, #ffffff);
+  border-radius: var(--radius-md, 16px);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  padding: 24px 28px;
+  box-shadow: var(--shadow-card, 0 4px 20px -2px rgba(0, 0, 0, 0.05));
+}
+
+.print-screen-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1.5px solid var(--border-subtle, #f1f5f9);
+}
+
+.print-screen-form-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-primary, #0f172a);
+}
+
+.print-screen-form-subtitle {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-tertiary, #64748b);
+  font-weight: 500;
+}
+
+.print-screen-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-secondary, #334155);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.print-screen-input,
+.print-screen-textarea {
+  width: 100%;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-default, #cbd5e1);
+  background: var(--bg-card, #ffffff);
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text-primary, #0f172a);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.print-screen-input {
+  height: 42px;
+}
+
+.print-screen-textarea {
+  padding: 10px 14px;
+  resize: vertical;
+}
+
+.print-screen-input:focus,
+.print-screen-textarea:focus {
+  border-color: var(--blue-500, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.print-screen-input-readonly {
+  background: var(--bg-deep, #f8fafc);
+  color: var(--text-primary, #1e293b);
+  border-color: var(--border-subtle, #e2e8f0);
+}
+
+/* ── Card Khung Bản Xem Trước In ────────────────────────────────── */
+.print-screen-preview-card {
+  background: var(--bg-card, #ffffff);
+  border-radius: var(--radius-md, 16px);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  padding: 28px 32px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-card, 0 4px 20px -2px rgba(0,0,0,0.05));
+}
+
+.print-screen-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle, #f1f5f9);
+}
+
+.print-screen-preview-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-tertiary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Gợi Ý Liên Kết Hợp Đồng & Hồ Sơ ────────────────────────────── */
+.print-screen-link-hint {
+  display: block;
+  font-size: 0.73rem;
+  font-weight: 500;
+  color: var(--text-tertiary, #64748b);
+  margin-top: 4px;
+}
+
+.print-screen-link-hint.is-linked {
+  color: var(--green-500, #10b981);
+  font-weight: 600;
+}
+
+/* ─── Responsive A4 preview ─────────────────────────────────────── */
+.print-screen-preview-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 12px;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: var(--border-hover, #94a3b8) transparent;
+}
+
+.print-screen-preview-scroll .voucher-print-document {
+  min-width: 760px;
+  margin-inline: auto;
+}
+
+.print-screen-preview-hint {
+  display: none;
+  margin: -4px 0 10px;
+  color: var(--text-tertiary, #64748b);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+@media screen and (max-width: 640px) {
+  .print-screen-preview-card {
+    min-width: 0;
+    padding: 16px 12px;
+  }
+
+  .print-screen-preview-head {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .print-screen-preview-head .print-screen-btn-secondary {
+    flex-shrink: 0;
+  }
+
+  .print-screen-preview-hint {
+    display: block;
+  }
+
+  .print-screen-preview-scroll {
+    margin-inline: -4px;
+    padding-inline: 4px 10px;
+  }
+}

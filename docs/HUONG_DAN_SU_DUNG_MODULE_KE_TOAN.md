@@ -2,7 +2,7 @@
 ### HỆ THỐNG QUẢN TRỊ DOANH NGHIỆP WIFIM ERP
 **Đơn vị áp dụng**: Công Ty TNHH Kiến Trúc Xây Dựng và Đo Đạc Bản Đồ Bách Khoa  
 **Cơ sở pháp lý**: Thông tư số 99/2025/TT-BTC của Bộ Tài Chính (áp dụng từ 01/01/2026)  
-**Phiên bản tài liệu**: 2.0 (Cập nhật Tháng 08/2026)
+**Phiên bản tài liệu**: 2.1 (Cập nhật Tháng 09/2026)
 
 ---
 
@@ -24,18 +24,18 @@ Module Kế toán của WIFIM ERP được xây dựng theo chuẩn mực kế t
 ```mermaid
 flowchart TD
     subgraph "1. KHỞI TẠO & ĐỀ XUẤT"
-        A[Nhân viên gửi đề xuất tạm ứng / Hóa đơn] --> B[Kế toán lập Phiếu Thu / Phiếu Chi / Hoàn Ứng]
-        B --> C[Phiếu ở trạng thái 'Chờ duyệt']
+        A[Nhân viên gửi yêu cầu tạm ứng] --> B[Giám đốc duyệt / từ chối yêu cầu]
+        B -- "Duyệt" --> C[Kế toán lập phiếu tạm ứng chính thức & chi tiền]
+        B -- "Từ chối" --> D[Ghi rõ lý do & trả yêu cầu]
     end
 
     subgraph "2. KIỂM SOÁT & PHÊ DUYỆT"
-        C --> D{Ban Giám Đốc duyệt Online}
-        D -- "Từ chối" --> E[Ghi rõ lý do & Trả hồ sơ]
-        D -- "Phê duyệt" --> F[Trừ quỹ & Cập nhật Công nợ realtime]
+        C --> E[Phiếu chính thức được ghi sổ]
+        E --> F[Theo dõi quyết toán hoàn ứng]
     end
 
     subgraph "3. THỰC THI & SỔ SÁCH"
-        F --> G[Thủ quỹ xuất/nhập tiền thực tế]
+        F --> G[Nhân viên nộp chứng từ và hoàn tiền thừa / nhận chi bù]
         F --> H[In chứng từ TT 99/2025 & Sổ sách kế toán]
     end
 ```
@@ -55,9 +55,10 @@ flowchart TD
   - **Tổng chi trong kỳ**: Toàn bộ dòng tiền đã duyệt chi trong tháng/kỳ báo cáo.
 
 ### 2.2. Phê Duyệt Chi Tiền & Tạm Ứng Trực Tuyến
-- Các khoản chi của Kế toán hoặc Đề xuất tạm ứng của Nhân viên sẽ xuất hiện với huy hiệu màu vàng cam **`Chờ duyệt`**.
+- Các khoản chi do Kế toán lập sẽ xuất hiện với huy hiệu màu vàng cam **`Chờ duyệt`**. Đề xuất tạm ứng của nhân viên là một **yêu cầu riêng**, chưa phải phiếu và chưa làm giảm số dư quỹ.
+- Nhân viên chỉ được gửi yêu cầu. Sau khi Giám đốc duyệt, Kế toán mới dùng yêu cầu đó để lập phiếu tạm ứng chính thức và thực hiện chi.
 - Nhấp vào mã phiếu để mở cửa sổ **Chi tiết chứng từ**:
-  - Bấm **`[✓ Duyệt Phiếu]`**: Hệ thống trừ tiền quỹ, cập nhật số dư và tự động đối trừ vào công nợ hợp đồng.
+  - Bấm **`[✓ Duyệt Phiếu]`**: Hệ thống trừ tiền quỹ, cập nhật số dư và tự động đối trừ vào công nợ hợp đồng nếu phiếu thuộc luồng công nợ.
   - Bấm **`[✕ Từ Chối]`**: Bắt buộc nhập lý do từ chối để Kế toán/Nhân viên bổ sung hồ sơ chứng từ.
 
 ### 2.3. Hủy Phiếu Chi/Thu Sai Sót (Bút Toán Đảo - Voiding)
@@ -69,7 +70,8 @@ flowchart TD
 - **Chuyển nợ sang HĐ mới (Carry Forward)**: Trường hợp khách hàng gộp nợ sang dự án mới, Giám đốc bấm **`[Chuyển nợ]`** $\rightarrow$ Chọn hợp đồng đích $\rightarrow$ Nợ cũ được kết chuyển sang HĐ mới.
 
 ### 2.5. Khóa & Chốt Sổ Bảng Lương Tháng
-- Tại tab **Lương VP & Hoa Hồng**, Giám đốc rà soát bảng lương toàn công ty và bấm **`[🔒 Khóa / Chốt Sổ Lương]`** để đóng kỳ tính lương, ngăn chặn chỉnh sửa trái phép.
+- Tại tab **Lương VP & Hoa Hồng**, Giám đốc rà soát bảng lương toàn công ty và bấm **`[🔒 Khóa / Chốt Sổ Lương]`**. Hệ thống lưu snapshot theo từng nhân viên và chuyển các entitlement sang `locked`; kỳ đã khóa không được sửa trực tiếp.
+- Nếu phát sinh sai sau khi khóa, lập điều chỉnh ở kỳ sau hoặc mở lại theo quy trình có kiểm toán.
 
 ---
 
@@ -97,14 +99,14 @@ flowchart TD
 2. Tại cột Xử lý, bấm nút **`[Hoàn tiền thừa]`**.
 3. Điền lý do hoàn trả $\rightarrow$ Hệ thống tự động tạo **Phiếu Chi hoàn tiền** ở trạng thái `Chờ duyệt` gửi Giám đốc phê duyệt xuất quỹ.
 
-### 3.4. Lập Phiếu Tạm Ứng Cho Nhân Viên Đi Hiện Trường
-1. Vào tab **Đề Xuất Tạm Ứng** $\rightarrow$ Bấm **`[+ Tạo Phiếu Tạm Ứng]`**.
-2. Nhập các thông tin theo đề xuất của nhân viên:
+### 3.4. Phát hành Phiếu Tạm Ứng Chính Thức
+1. Vào tab **Đề Xuất Tạm Ứng** và chọn yêu cầu có trạng thái **`DIRECTOR_APPROVED`**.
+2. Kiểm tra các thông tin nhân viên đã gửi:
    - **Nhân viên nhận tiền**: Chọn đúng tên kỹ sư/chuyên viên cần tạm ứng.
    - **Mã Hợp Đồng / Hồ Sơ thực hiện**: Gắn đúng mã công trình để đối soát và hạch toán chi phí dự án.
    - **Số tiền xin tạm ứng** & **Lý do chi tiết** (Xăng xe, cắm mốc ranh, trích lục bản đồ, công tác phí...).
    - **Hình thức**: `Tiền mặt` hoặc `Chuyển khoản`.
-3. Bấm **`[Lưu Đề Xuất]`** $\rightarrow$ Phiếu chuyển sang trạng thái `Chờ duyệt` để Ban Giám Đốc phê duyệt xuất quỹ.
+3. Bấm **`[Lập phiếu chính thức & Chi]`**. Hệ thống gắn phiếu với yêu cầu, ghi nhận người duyệt là Giám đốc và cập nhật sổ quỹ. Không được lập phiếu nếu không có yêu cầu đã được Giám đốc duyệt.
 
 ### 3.5. Quyết Toán Hoàn Ứng Cho Nhân Viên
 1. Vào tab **Quyết Toán Hoàn Ứng** $\rightarrow$ Chọn phiếu tạm ứng của nhân viên cần quyết toán.
@@ -128,11 +130,11 @@ flowchart TD
 > **Quyền hạn hệ thống**: Truy cập qua **Cổng Thông Tin Nhân Viên (Employee Portal)**.
 
 ### 4.1. Đề Xuất Tạm Ứng Chi Phí Hiện Trường
-1. Trước khi đi công tác/thực địa hoặc nộp lệ phí hành chính, nhân viên gửi thông tin đề xuất tạm ứng cho **Bộ phận Kế toán**:
+1. Trước khi đi công tác/thực địa hoặc nộp lệ phí hành chính, nhân viên tạo **Yêu cầu tạm ứng** trên Cổng Nhân Viên:
    - **Mã Hợp Đồng / Hồ Sơ thực hiện**: Mã dự án cần triển khai.
    - **Số tiền xin tạm ứng** & **Bảng kê chi tiết** (xăng xe, cắm mốc, trích lục, công chứng...).
    - **Hình thức nhận tiền**: Tiền mặt tại két hoặc chuyển khoản vào số tài khoản cá nhân.
-2. Kế toán viên lập phiếu trên hệ thống, Ban Giám Đốc phê duyệt trực tuyến và Thủ quỹ thực hiện giải ngân.
+2. Giám đốc duyệt hoặc từ chối yêu cầu. Nếu được duyệt, Kế toán lập phiếu tạm ứng chính thức và thực hiện giải ngân.
 
 ### 4.2. Bàn Giao Hóa Đơn & Quyết Toán Hoàn Ứng
 1. Sau khi hoàn thành nhiệm vụ, nhân viên tập hợp toàn bộ hóa đơn, biên nhận, phiếu thu lệ phí hợp lệ.
@@ -142,6 +144,8 @@ flowchart TD
 - Nhân viên vào mục **Lương Của Tôi** trên Cổng Nhân Viên để kiểm tra:
   - Lương cơ bản và danh mục Lương khoán 3P chi tiết theo từng hồ sơ mình đã thực hiện.
   - Phụ cấp, thưởng hiệu suất, phạt và tổng thu nhập NET thực nhận sau khi kỳ lương được Giám đốc chốt.
+- Nhân viên chỉ xem được lương của chính mình. Chỉ Kế toán và Giám đốc được xem bảng lương tổng hợp hoặc lương của nhân viên khác.
+- Lương khoán không được tạo bằng phiếu chi thủ công; hệ thống chỉ phát sinh từ checklist/workflow đã được nghiệm thu.
 
 ---
 
@@ -183,13 +187,19 @@ Hệ thống đã thiết lập sẵn 14 danh mục thu chi chuẩn trắc đị
 ## 7. NGUYÊN TẮC AN TOÀN DỮ LIỆU & GIẢI ĐÁP THẮC MẮC (FAQ)
 
 ### ❓ Câu hỏi 1: Vì sao tạo Phiếu Thu rồi mà Sổ Công Nợ chưa thấy trừ tiền?
-> **Giải đáp**: Để đảm bảo tính minh bạch và chống gian lận, **phiếu ở trạng thái `Chờ duyệt` tuyệt đối không được trừ nợ**. Chỉ khi **Ban Giám Đốc duyệt phiếu** hoặc Kế toán tạo phiếu có quyền tự duyệt thì công nợ mới chính thức được ghi nhận giảm.
+> **Giải đáp**: Để đảm bảo tính minh bạch và chống gian lận, **phiếu ở trạng thái `Chờ duyệt` tuyệt đối không được trừ nợ**. Chỉ khi **Ban Giám Đốc duyệt phiếu** thì công nợ mới chính thức được ghi nhận giảm; không có cơ chế Kế toán tự duyệt phiếu do mình lập.
 
 ### ❓ Câu hỏi 2: Có thể xóa vĩnh viễn một phiếu thu/chi bị sai khỏi CSDL không?
 > **Giải đáp**: **Không.** Hệ thống áp dụng chuẩn kiểm toán doanh nghiệp: Không xóa cứng (Hard Delete) giao dịch. Mọi sai sót phải được xử lý qua nút **`[Hủy phiếu]` (Bút toán đảo)** để lưu lại lịch sử người hủy, ngày giờ hủy và lý do hủy.
 
 ### ❓ Câu hỏi 3: Khi in sổ sách nhiều trang (3-5 trang) thì dòng Tổng Cộng xuất hiện ở đâu?
 > **Giải đáp**: Hệ thống đã cấu hình chuẩn in ấn: Tiêu đề bảng sẽ tự động lặp lại ở đầu mỗi trang để người đọc dễ đối chiếu, còn **dòng TỔNG CỘNG kế toán sẽ chỉ xuất hiện duy nhất 1 lần ở chân bảng trên trang in cuối cùng**.
+
+### ❓ Câu hỏi 4: Ai được xem lương?
+> **Giải đáp**: Sales, Survey và Legal chỉ xem được mục **Lương Của Tôi** của chính họ. Họ không thể truyền `employee_id` để xem người khác. Kế toán và Giám đốc được xem bảng lương tổng hợp và xuất báo cáo theo nhân viên/phòng ban.
+
+### ❓ Câu hỏi 5: Vì sao không thấy nút tạo lương khoán thủ công?
+> **Giải đáp**: Lương khoán thuộc Workflow. Khi checklist có tính khoán được nghiệm thu, hệ thống tự sinh `work_pay_entitlement`; endpoint tạo phiếu lương thủ công đã được gỡ để tránh ghi nhận trùng hoặc không có căn cứ công việc.
 
 ---
 **TÀI LIỆU LƯU HÀNH NỘI BỘ — CÔNG TY TNHH KIẾN TRÚC XÂY DỰNG VÀ ĐO ĐẠC BẢN ĐỒ BÁCH KHOA**

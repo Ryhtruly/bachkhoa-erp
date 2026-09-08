@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { dauVanTayGraph } from './workflowDirty';
+import { getGraphFingerprint } from './workflowDirty';
 
-// Sơ đồ mẫu tối giản, đúng hình dạng flowToGraph sinh ra: phần nghiệp vụ nằm ở
-// `nodes` / `start_node`, còn toạ độ nằm gọn trong `ui`.
-const soDoGoc = {
+const originalGraph = {
   start_node: 'k01',
   nodes: {
     k01: { name: 'Tiếp nhận', duration_days: 1, checklist: [], transitions: { COMPLETED: 'k02' } },
@@ -12,57 +10,55 @@ const soDoGoc = {
   ui: { k01: { x: 0, y: 0 }, k02: { x: 260, y: 0 }, edges: {} },
 };
 
-const sao = (goc) => JSON.parse(JSON.stringify(goc));
+const cloneGraph = (source) => JSON.parse(JSON.stringify(source));
 
-describe('dauVanTayGraph — nhận biết sơ đồ có thay đổi chưa lưu', () => {
-  it('kéo node đổi chỗ thì KHÔNG tính là thay đổi', () => {
-    const daKeo = sao(soDoGoc);
-    daKeo.ui.k02 = { x: 900, y: 420 };
-    daKeo.ui.edges = { 'k01:COMPLETED:k02': [{ x: 100, y: 50 }] };
+describe('getGraphFingerprint — detects unsaved workflow business changes', () => {
+  it('dragging nodes does NOT count as a business change', () => {
+    const draggedGraph = cloneGraph(originalGraph);
+    draggedGraph.ui.k02 = { x: 900, y: 420 };
+    draggedGraph.ui.edges = { 'k01:COMPLETED:k02': [{ x: 100, y: 50 }] };
 
-    expect(dauVanTayGraph(daKeo)).toBe(dauVanTayGraph(soDoGoc));
+    expect(getGraphFingerprint(draggedGraph)).toBe(getGraphFingerprint(originalGraph));
   });
 
-  it('tháo một đường nối thì TÍNH là thay đổi', () => {
-    const daThao = sao(soDoGoc);
-    daThao.nodes.k01.transitions = {};
+  it('detaching an edge DOES count as a change', () => {
+    const detachedEdgeGraph = cloneGraph(originalGraph);
+    detachedEdgeGraph.nodes.k01.transitions = {};
 
-    expect(dauVanTayGraph(daThao)).not.toBe(dauVanTayGraph(soDoGoc));
+    expect(getGraphFingerprint(detachedEdgeGraph)).not.toBe(getGraphFingerprint(originalGraph));
   });
 
-  it('thêm node thì TÍNH là thay đổi', () => {
-    const daThem = sao(soDoGoc);
-    daThem.nodes.k03 = { name: 'Bàn giao', duration_days: 1, checklist: [], transitions: {} };
+  it('adding a node DOES count as a change', () => {
+    const addedNodeGraph = cloneGraph(originalGraph);
+    addedNodeGraph.nodes.k03 = { name: 'Bàn giao', duration_days: 1, checklist: [], transitions: {} };
 
-    expect(dauVanTayGraph(daThem)).not.toBe(dauVanTayGraph(soDoGoc));
+    expect(getGraphFingerprint(addedNodeGraph)).not.toBe(getGraphFingerprint(originalGraph));
   });
 
-  it('sửa tên bước, thời lượng hay checklist đều TÍNH là thay đổi', () => {
-    const doiTen = sao(soDoGoc);
-    doiTen.nodes.k01.name = 'Tiếp nhận hồ sơ';
-    const doiHan = sao(soDoGoc);
-    doiHan.nodes.k02.duration_days = 5;
-    const doiChecklist = sao(soDoGoc);
-    doiChecklist.nodes.k02.checklist = [{ key: 'anh', label: 'Ảnh hiện trạng' }];
+  it('editing step name, duration or checklist DOES count as a change', () => {
+    const renamedGraph = cloneGraph(originalGraph);
+    renamedGraph.nodes.k01.name = 'Tiếp nhận hồ sơ';
+    const changedDurationGraph = cloneGraph(originalGraph);
+    changedDurationGraph.nodes.k02.duration_days = 5;
+    const changedChecklistGraph = cloneGraph(originalGraph);
+    changedChecklistGraph.nodes.k02.checklist = [{ key: 'anh', label: 'Ảnh hiện trạng' }];
 
-    const goc = dauVanTayGraph(soDoGoc);
-    expect(dauVanTayGraph(doiTen)).not.toBe(goc);
-    expect(dauVanTayGraph(doiHan)).not.toBe(goc);
-    expect(dauVanTayGraph(doiChecklist)).not.toBe(goc);
+    const baseline = getGraphFingerprint(originalGraph);
+    expect(getGraphFingerprint(renamedGraph)).not.toBe(baseline);
+    expect(getGraphFingerprint(changedDurationGraph)).not.toBe(baseline);
+    expect(getGraphFingerprint(changedChecklistGraph)).not.toBe(baseline);
   });
 
-  it('đổi node bắt đầu thì TÍNH là thay đổi', () => {
-    const doiDiemDau = sao(soDoGoc);
-    doiDiemDau.start_node = 'k02';
+  it('changing start node DOES count as a change', () => {
+    const changedStartNodeGraph = cloneGraph(originalGraph);
+    changedStartNodeGraph.start_node = 'k02';
 
-    expect(dauVanTayGraph(doiDiemDau)).not.toBe(dauVanTayGraph(soDoGoc));
+    expect(getGraphFingerprint(changedStartNodeGraph)).not.toBe(getGraphFingerprint(originalGraph));
   });
 
-  it('cùng nội dung nhưng khác thứ tự khoá vẫn là một', () => {
-    // Máy chủ trả về thứ tự khoá khác lúc gửi đi là chuyện thường. Không chuẩn
-    // hoá thì vừa nạp trang đã bị báo "có thay đổi chưa lưu".
-    const daoThuTu = {
-      ui: soDoGoc.ui,
+  it('same content with different key order yields identical fingerprint', () => {
+    const shuffledKeysGraph = {
+      ui: originalGraph.ui,
       nodes: {
         k02: { transitions: {}, checklist: [], duration_days: 3, name: 'Khảo sát' },
         k01: { transitions: { COMPLETED: 'k02' }, checklist: [], duration_days: 1, name: 'Tiếp nhận' },
@@ -70,6 +66,6 @@ describe('dauVanTayGraph — nhận biết sơ đồ có thay đổi chưa lưu'
       start_node: 'k01',
     };
 
-    expect(dauVanTayGraph(daoThuTu)).toBe(dauVanTayGraph(soDoGoc));
+    expect(getGraphFingerprint(shuffledKeysGraph)).toBe(getGraphFingerprint(originalGraph));
   });
 });

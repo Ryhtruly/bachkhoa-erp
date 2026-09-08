@@ -1,7 +1,61 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, Inbox, FileStack, Workflow, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { prefetchApi } from '../lib/api';
 
-export default function Sidebar({ activeTab, setActiveTab, mode = 'management', permissions = {}, isDirector = false }) {
+const TAB_PREFETCH_HANDLERS = {
+  contracts: () => {
+    import('../pages/Contracts').catch(() => {});
+    if (typeof prefetchApi === 'function') {
+      prefetchApi('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
+      prefetchApi('/api/config');
+      prefetchApi('/api/catalog/service-packages');
+    }
+  },
+  'doc-templates': () => {
+    import('../features/document-register/DocumentTemplateSettings').catch(() => {});
+    if (typeof prefetchApi === 'function') {
+      prefetchApi('/api/document-register/templates');
+      prefetchApi('/api/document-register/workflow-nodes');
+      prefetchApi('/api/document-register/package-tree');
+    }
+  },
+  crm: () => {
+    import('../pages/CRM').catch(() => {});
+  },
+  customers: () => {
+    import('../pages/CustomerDirectory').catch(() => {});
+  },
+  tasks: () => {
+    import('../pages/Tasks').catch(() => {});
+  },
+  legal: () => {
+    import('../pages/LegalSubmissions').catch(() => {});
+  },
+  approvals: () => {
+    import('../features/approvals/ApprovalQueue').catch(() => {});
+  },
+  cashflow: () => {
+    import('../pages/Cashflow').catch(() => {});
+  },
+  kpi: () => {
+    import('../pages/KPI').catch(() => {});
+  },
+  wiki: () => {
+    import('../pages/HumanResources').catch(() => {});
+  },
+};
+
+export default function Sidebar({
+  activeTab,
+  setActiveTab,
+  mode = 'management',
+  permissions = {},
+  isDirector = false,
+  collapsed = false,
+  overlayOpen = false,
+  onToggleCollapsed = () => {},
+  onRequestClose = () => {},
+}) {
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
   // Đây chỉ là dọn giao diện cho gọn; chặn thật nằm ở từng endpoint phía server.
   const menuItems = [
@@ -14,6 +68,10 @@ export default function Sidebar({ activeTab, setActiveTab, mode = 'management', 
     { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck, permission: 'legal_submission' },
     { id: 'contracts', label: 'Hợp Đồng', icon: FileText, permission: 'contract' },
     { id: 'timeline', label: 'Quản Lý Timeline', icon: ChartNoAxesGantt, directorOnly: true },
+    // Mọi phiếu cần chữ ký Giám đốc gom về một chỗ — tách ra nhiều màn thì
+    // phiếu nằm ở màn ít mở sẽ treo hàng tuần.
+    { id: 'approvals', label: 'Hàng Chờ Duyệt', icon: Inbox, directorOnly: true },
+    { id: 'doc-templates', label: 'Quy Trình & Mẫu Giấy', icon: Workflow, directorOnly: true },
     { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet, permission: 'finance' },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr', directorOnly: true },
     { id: 'wiki', label: 'Nhân Sự & Đào Tạo', icon: BookOpen, permission: 'hr' },
@@ -34,25 +92,86 @@ export default function Sidebar({ activeTab, setActiveTab, mode = 'management', 
       && (!item.directorOnly || isDirector)
     ));
 
+  const handleSelect = (tabId) => {
+    setActiveTab(tabId);
+    onRequestClose();
+  };
+
   return (
-    <aside className="sidebar">
-      <nav className="nav">
-        <div className="nav-label">Điều hướng</div>
-        {visibleMenuItems.map(item => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`nav-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-        {mode === 'management' && <><div className="nav-label" style={{ marginTop: '16px' }}>Hệ thống</div><button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}><Settings2 size={18} /><span>Cấu Hình</span></button></>}
-      </nav>
-    </aside>
+    <>
+      {overlayOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Đóng thanh điều hướng"
+          onClick={onRequestClose}
+        />
+      )}
+      <aside
+        id="primary-sidebar"
+        className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${overlayOpen ? ' sidebar--overlay-open' : ''}`}
+        aria-label="Điều hướng chính"
+      >
+        <div className="sidebar__header">
+          <span className="sidebar__header-label">Điều hướng</span>
+          <button
+            type="button"
+            className="sidebar__collapse-toggle"
+            aria-label={collapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+            aria-expanded={!collapsed}
+            aria-controls="primary-sidebar"
+            onClick={onToggleCollapsed}
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+        </div>
+        <nav className="nav" aria-label="Các phân hệ">
+          {visibleMenuItems.map(item => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
+            return (
+              <button
+                type="button"
+                key={item.id}
+                className={`nav-item ${active ? 'active' : ''}`}
+                aria-label={item.label}
+                aria-current={active ? 'page' : undefined}
+                title={item.label}
+                onClick={() => handleSelect(item.id)}
+                onMouseEnter={() => {
+                  const prefetch = TAB_PREFETCH_HANDLERS[item.id];
+                  if (prefetch) prefetch();
+                }}
+                onFocus={() => {
+                  const prefetch = TAB_PREFETCH_HANDLERS[item.id];
+                  if (prefetch) prefetch();
+                }}
+              >
+                <Icon size={18} />
+                <span className="nav-item__label">{item.label}</span>
+              </button>
+            );
+          })}
+          {mode === 'management' && (
+            <>
+              <div className="nav-label nav-label--system">Hệ thống</div>
+              <button
+                type="button"
+                className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+                aria-label="Cấu Hình"
+                aria-current={activeTab === 'settings' ? 'page' : undefined}
+                title="Cấu Hình"
+                onClick={() => handleSelect('settings')}
+                onMouseEnter={() => import('../pages/Settings').catch(() => {})}
+                onFocus={() => import('../pages/Settings').catch(() => {})}
+              >
+                <Settings2 size={18} />
+                <span className="nav-item__label">Cấu Hình</span>
+              </button>
+            </>
+          )}
+        </nav>
+      </aside>
+    </>
   );
 }

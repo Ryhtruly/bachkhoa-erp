@@ -7,10 +7,15 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func
 from src.db.database import get_db
-from src.db.models import User, Role, UserRole, RolePermission
+from src.db.models import User, Role, UserRole, RolePermission, Employee
 from src.core.permissions import evaluate_normalized_permission
 from src.config.settings import settings
+from src.core.roles import (
+    ACCOUNTANT_ROLE_NAMES as CANONICAL_ACCOUNTANT_ROLE_NAMES,
+    PAYROLL_ALL_ROLE_NAMES as CANONICAL_PAYROLL_ALL_ROLE_NAMES,
+)
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
@@ -99,7 +104,8 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
         .outerjoin(RolePermission, RolePermission.role_id == Role.id)
         .filter(
             UserRole.user_id == user.id,
-            (Role.role_name.ilike("admin")) | (
+            Role.is_active.is_(True),
+            (func.lower(Role.role_name) == "admin") | (
                 RolePermission.resource.in_(valid_resources) &
                 (getattr(RolePermission, permission_column) == True)
             )
@@ -135,6 +141,80 @@ def require_any_permission(*perms: tuple[str, str]):
             detail="Tài khoản không có quyền thực hiện thao tác này"
         )
     return dependency
+
+
+PAYROLL_ALL_ROLE_NAMES = CANONICAL_PAYROLL_ALL_ROLE_NAMES
+ACCOUNTANT_ROLE_NAMES = CANONICAL_ACCOUNTANT_ROLE_NAMES
+
+
+def is_payroll_all_user(db: Session, user: User) -> bool:
+    """Only accountant/director may use collection-wide payroll endpoints."""
+    if not user or not user.is_active:
+        return False
+    if (user.username or "").strip().lower() == "admin":
+        return True
+    return bool(
+        db.query(Role.id)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .filter(
+            UserRole.user_id == user.id,
+            Role.is_active.is_(True),
+            func.lower(Role.role_name).in_(PAYROLL_ALL_ROLE_NAMES),
+        )
+        .first()
+    )
+
+
+def is_accountant_user(db: Session, user: User) -> bool:
+    """Only the accounting role (or the technical admin) may issue vouchers."""
+    if not user or not user.is_active:
+        return False
+    if (user.username or "").strip().lower() == "admin":
+        return True
+    return bool(
+        db.query(Role.id)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .filter(
+            UserRole.user_id == user.id,
+            Role.is_active.is_(True),
+            func.lower(Role.role_name).in_(ACCOUNTANT_ROLE_NAMES),
+        )
+        .first()
+    )
+
+
+def require_accountant(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    if not is_accountant_user(db, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ Kế toán mới được lập phiếu tạm ứng chính thức.",
+        )
+    return user
+
+
+def assert_payroll_employee_access(db: Session, user: User, employee_id: str) -> Employee:
+    """Resolve a target employee and enforce own-or-accounting payroll scope."""
+    employee = db.query(Employee).filter(Employee.id == employee_id, Employee.is_active == True).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân sự.")
+    if not is_payroll_all_user(db, user) and employee.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Bạn chỉ được xem bảng lương của chính mình.")
+    return employee
+
+
+def require_payroll_all(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    if not is_payroll_all_user(db, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Chỉ Kế toán hoặc Giám đốc được xem bảng lương tổng hợp.",
+        )
+    return user
 
 from sqlalchemy import func
 

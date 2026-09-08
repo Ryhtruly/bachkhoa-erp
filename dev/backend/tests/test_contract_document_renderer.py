@@ -1,11 +1,14 @@
 import io
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from docx import Document
+from fastapi import HTTPException
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -15,7 +18,114 @@ from src.core import doc_generator
 from src.routes import routes_contracts
 
 
+def _current_document_db(contract_template_id, template_rows):
+    current_rows = {
+        "Contract": SimpleNamespace(
+            id="2004/BK-2026",
+            customer_id="customer-1",
+            lead_id=None,
+            contract_template_id=contract_template_id,
+            service_type="Đo hiện trạng",
+            total_value=18500000,
+            date_signed="2026-08-14",
+        ),
+        "Customer": None,
+        "ServiceLine": None,
+        "Receivable": None,
+        "LeadPipeline": None,
+        "ContractGeneratedDocument": None,
+        "ContractTemplate": template_rows,
+    }
+
+    class CurrentDataQuery:
+        def __init__(self, rows):
+            self.rows = rows if isinstance(rows, list) else [rows]
+
+        def filter(self, *criteria):
+            for criterion in criteria:
+                key = getattr(getattr(criterion, "left", None), "key", None)
+                value = getattr(getattr(criterion, "right", None), "value", None)
+                if key is not None:
+                    self.rows = [row for row in self.rows if getattr(row, key, None) == value]
+            return self
+
+        def order_by(self, *_ordering):
+            return self
+
+        def first(self):
+            return self.rows[0] if self.rows else None
+
+    return SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+
+
 class ContractDocumentRendererTests(unittest.TestCase):
+    def test_legacy_storage_key_falls_back_to_current_render(self):
+        document = SimpleNamespace(
+            output_file_name='HopDong_008_BK-2026.docx',
+            output_storage_key='contracts/generated/008_BK-2026/legacy.docx',
+        )
+        contract = SimpleNamespace(id='008/BK-2026', contract_template_id=None)
+        current_rows = {
+            'Contract': contract,
+            'ContractGeneratedDocument': document,
+            'ContractTemplate': None,
+        }
+
+        class CurrentDataQuery:
+            def __init__(self, row): self.row = row
+            def filter(self, *_criteria): return self
+            def order_by(self, *_ordering): return self
+            def first(self): return self.row
+
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        original_builder = routes_contracts.build_current_contract_document_data
+        original_renderer = routes_contracts.doc_generator.render_contract_document
+        original_fallback_allowed = routes_contracts.doc_generator.repository_template_fallback_allowed
+        routes_contracts.build_current_contract_document_data = lambda _db, _id: ({'contract_id': _id}, document.output_file_name)
+        routes_contracts.doc_generator.render_contract_document = lambda *_args, **_kwargs: b'PK-rebuilt'
+        routes_contracts.doc_generator.repository_template_fallback_allowed = lambda: True
+        try:
+            response = routes_contracts.render_current_contract_document(db, '008/BK-2026')
+        finally:
+            routes_contracts.build_current_contract_document_data = original_builder
+            routes_contracts.doc_generator.render_contract_document = original_renderer
+            routes_contracts.doc_generator.repository_template_fallback_allowed = original_fallback_allowed
+
+        self.assertEqual(response.body, b'PK-rebuilt')
+
+    def test_document_route_serves_the_persisted_generated_object(self):
+        document = SimpleNamespace(
+            output_file_name='HopDong_2004_BK-2026_Lê_quang_Trí.docx',
+            output_storage_key='contracts/2004_BK-2026/dossier-documents/document-1/document.docx',
+        )
+        current_rows = {
+            'Contract': SimpleNamespace(id='2004/BK-2026'),
+            'ContractGeneratedDocument': document,
+        }
+
+        class CurrentDataQuery:
+            def __init__(self, row): self.row = row
+            def filter(self, *_criteria): return self
+            def order_by(self, *_ordering): return self
+            def first(self): return self.row
+
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        original_reader = getattr(routes_contracts, 'get_contract_document_file', None)
+        routes_contracts.get_contract_document_file = lambda _key: {'Body': io.BytesIO(b'PK-stored')}
+        try:
+            response = routes_contracts.get_contract_document('2004/BK-2026', db, None)
+        finally:
+            if original_reader is None:
+                del routes_contracts.get_contract_document_file
+            else:
+                routes_contracts.get_contract_document_file = original_reader
+
+        self.assertEqual(response.body, b'PK-stored')
+        self.assertEqual(
+            response.headers['content-disposition'],
+            "inline; filename*=UTF-8''HopDong_2004_BK-2026_L%C3%AA_quang_Tr%C3%AD.docx",
+        )
+
     def test_document_route_renders_current_persisted_data_not_snapshot(self):
         document = SimpleNamespace(
             output_file_name="HopDong_2004_BK-2026.docx",
@@ -31,6 +141,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
                 id="2004/BK-2026",
                 customer_id="customer-1",
                 lead_id=None,
+                contract_template_id=None,
                 service_type="Đo hiện trạng",
                 total_value=18500000,
                 date_signed="2026-08-14",
@@ -67,9 +178,10 @@ class ContractDocumentRendererTests(unittest.TestCase):
         db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
         rendered = {}
         original_renderer = routes_contracts.doc_generator.render_contract_document
-        routes_contracts.doc_generator.render_contract_document = lambda data, version: rendered.update(data) or b"PK-docx"
+        routes_contracts.doc_generator.render_contract_document = lambda data, version, template_bytes=None: rendered.update(data) or b"PK-docx"
         try:
-            response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+            with patch.dict(os.environ, {"ENV": "development", "OBJECT_STORAGE_ENDPOINT": ""}):
+                response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
 
@@ -77,6 +189,200 @@ class ContractDocumentRendererTests(unittest.TestCase):
         self.assertEqual(rendered["customer_name"], "Tên hiện tại")
         self.assertEqual(rendered["customer_email"], "")
         self.assertEqual(rendered["due_date"], "")
+
+    def test_document_route_uses_the_contracts_selected_private_template(self):
+        current_rows = {
+            "Contract": SimpleNamespace(
+                id="2004/BK-2026", customer_id="customer-1", lead_id=None,
+                contract_template_id="do-dac-v1", service_type="Đo hiện trạng",
+                total_value=18500000, date_signed="2026-08-14",
+            ),
+            "Customer": SimpleNamespace(full_name="Tên hiện tại", phone="", address="", email=""),
+            "ServiceLine": None,
+            "Receivable": None,
+            "LeadPipeline": None,
+            "ContractGeneratedDocument": None,
+            "ContractTemplate": [
+                SimpleNamespace(
+                    id="other-v2",
+                    status="published",
+                    version=2,
+                    template_storage_key="contract-templates/other/v2.docx",
+                ),
+                SimpleNamespace(
+                    id="do-dac-v1",
+                    status="published",
+                    version=1,
+                    template_storage_key="contract-templates/MAU_HOP_DONG_DO_DAC_BACH_KHOA/v1.docx",
+                ),
+            ],
+        }
+
+        class CurrentDataQuery:
+            def __init__(self, rows):
+                self.rows = rows if isinstance(rows, list) else [rows]
+
+            def filter(self, *criteria):
+                for criterion in criteria:
+                    key = getattr(getattr(criterion, "left", None), "key", None)
+                    value = getattr(getattr(criterion, "right", None), "value", None)
+                    if key is not None:
+                        self.rows = [row for row in self.rows if getattr(row, key, None) == value]
+                return self
+
+            def order_by(self, *_ordering):
+                return self
+
+            def first(self):
+                return self.rows[0] if self.rows else None
+
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        rendered = {}
+        requested_template_keys = []
+        original_renderer = routes_contracts.doc_generator.render_contract_document
+        original_reader = getattr(routes_contracts, "get_contract_template", None)
+        routes_contracts.doc_generator.render_contract_document = lambda data, version, template_bytes=None: rendered.update(template_bytes=template_bytes) or b"PK-docx"
+        routes_contracts.get_contract_template = lambda key: requested_template_keys.append(key) or b"PK-private-template"
+        try:
+            response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+        finally:
+            routes_contracts.doc_generator.render_contract_document = original_renderer
+            if original_reader is None:
+                del routes_contracts.get_contract_template
+            else:
+                routes_contracts.get_contract_template = original_reader
+
+        self.assertEqual(response.body, b"PK-docx")
+        self.assertEqual(rendered["template_bytes"], b"PK-private-template")
+        self.assertEqual(
+            requested_template_keys,
+            ["contract-templates/MAU_HOP_DONG_DO_DAC_BACH_KHOA/v1.docx"],
+        )
+
+    def test_document_route_uses_selected_archived_template(self):
+        current_rows = {
+            "Contract": SimpleNamespace(
+                id="2004/BK-2026", customer_id="customer-1", lead_id=None,
+                contract_template_id="archived-v1", service_type="Đo hiện trạng",
+                total_value=18500000, date_signed="2026-08-14",
+            ),
+            "Customer": SimpleNamespace(full_name="Tên hiện tại", phone="", address="", email=""),
+            "ServiceLine": None,
+            "Receivable": None,
+            "LeadPipeline": None,
+            "ContractGeneratedDocument": None,
+            "ContractTemplate": [
+                SimpleNamespace(
+                    id="published-v2",
+                    status="published",
+                    version=2,
+                    template_storage_key="contract-templates/current/v2.docx",
+                ),
+                SimpleNamespace(
+                    id="archived-v1",
+                    status="archived",
+                    version=1,
+                    template_storage_key="contract-templates/archived/v1.docx",
+                ),
+            ],
+        }
+
+        class CurrentDataQuery:
+            def __init__(self, rows):
+                self.rows = rows if isinstance(rows, list) else [rows]
+
+            def filter(self, *criteria):
+                for criterion in criteria:
+                    key = getattr(getattr(criterion, "left", None), "key", None)
+                    value = getattr(getattr(criterion, "right", None), "value", None)
+                    if key is not None:
+                        self.rows = [row for row in self.rows if getattr(row, key, None) == value]
+                return self
+
+            def order_by(self, *_ordering):
+                return self
+
+            def first(self):
+                return self.rows[0] if self.rows else None
+
+        db = SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+        requested_template_keys = []
+        original_renderer = routes_contracts.doc_generator.render_contract_document
+        original_reader = routes_contracts.get_contract_template
+        routes_contracts.doc_generator.render_contract_document = lambda _data, _version, template_bytes=None: b"PK-docx"
+        routes_contracts.get_contract_template = lambda key: requested_template_keys.append(key) or b"PK-private-template"
+        try:
+            response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+        finally:
+            routes_contracts.doc_generator.render_contract_document = original_renderer
+            routes_contracts.get_contract_template = original_reader
+
+        self.assertEqual(response.body, b"PK-docx")
+        self.assertEqual(requested_template_keys, ["contract-templates/archived/v1.docx"])
+
+    def test_document_route_rejects_empty_string_selected_template_id(self):
+        """Catches an empty but non-null selection falling back to another published template."""
+        db = _current_document_db(
+            "",
+            [
+                SimpleNamespace(
+                    id="published-v2",
+                    status="published",
+                    version=2,
+                    template_storage_key="contract-templates/current/v2.docx",
+                )
+            ],
+        )
+        original_renderer = routes_contracts.doc_generator.render_contract_document
+        original_reader = routes_contracts.get_contract_template
+        routes_contracts.doc_generator.render_contract_document = lambda *_args, **_kwargs: b"PK-docx"
+        routes_contracts.get_contract_template = lambda _key: b"PK-private-template"
+        try:
+            with self.assertRaises(HTTPException) as raised:
+                routes_contracts.get_contract_document("2004/BK-2026", db, None)
+        finally:
+            routes_contracts.doc_generator.render_contract_document = original_renderer
+            routes_contracts.get_contract_template = original_reader
+
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_document_route_rejects_missing_selected_template(self):
+        """Catches a selected ID silently switching to a current published template."""
+        db = _current_document_db(
+            "deleted-template",
+            [
+                SimpleNamespace(
+                    id="published-v2",
+                    status="published",
+                    version=2,
+                    template_storage_key="contract-templates/current/v2.docx",
+                )
+            ],
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            routes_contracts.get_contract_document("2004/BK-2026", db, None)
+
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_document_route_rejects_selected_template_without_private_key(self):
+        """Catches a selected template without its private DOCX key being rendered by fallback."""
+        db = _current_document_db(
+            "selected-template",
+            [
+                SimpleNamespace(
+                    id="selected-template",
+                    status="archived",
+                    version=1,
+                    template_storage_key="",
+                )
+            ],
+        )
+
+        with self.assertRaises(HTTPException) as raised:
+            routes_contracts.get_contract_document("2004/BK-2026", db, None)
+
+        self.assertEqual(raised.exception.status_code, 409)
 
     def test_renders_docx_bytes_without_creating_generated_docs_directory(self):
         """A new contract document must remain in memory, not in static/generated_docs."""
@@ -91,16 +397,48 @@ class ContractDocumentRendererTests(unittest.TestCase):
             original_backend_dir = doc_generator.BACKEND_DIR
             doc_generator.BACKEND_DIR = str(backend_dir)
             try:
-                output = doc_generator.render_contract_document(
-                    {"contract_id": "2004/BK-2026"},
-                    "mau_hop_dong_v1",
-                )
+                with patch.dict(os.environ, {"ENV": "development", "OBJECT_STORAGE_ENDPOINT": ""}):
+                    output = doc_generator.render_contract_document(
+                        {"contract_id": "2004/BK-2026"},
+                        "mau_hop_dong_v1",
+                    )
             finally:
                 doc_generator.BACKEND_DIR = original_backend_dir
 
             self.assertTrue(output.startswith(b"PK"))
             self.assertIn("2004/BK-2026", "".join(p.text for p in Document(io.BytesIO(output)).paragraphs))
             self.assertFalse((backend_dir / "static" / "generated_docs").exists())
+
+    def test_renders_private_template_bytes_without_reading_repository_template(self):
+        template = Document()
+        template.add_paragraph("Khách hàng: {{customer_name}}")
+        template_bytes = io.BytesIO()
+        template.save(template_bytes)
+
+        output = doc_generator.render_contract_document(
+            {"customer_name": "Nguyễn Thị A"},
+            "mau_hop_dong_v1",
+            template_bytes=template_bytes.getvalue(),
+        )
+
+        self.assertIn("Nguyễn Thị A", "".join(p.text for p in Document(io.BytesIO(output)).paragraphs))
+
+    def test_repository_template_fallback_is_rejected_for_configured_production_storage(self):
+        with patch.dict(os.environ, {"ENV": "production", "OBJECT_STORAGE_ENDPOINT": "https://abc123.r2.cloudflarestorage.com"}):
+            with self.assertRaisesRegex(ValueError, "repository template fallback"):
+                doc_generator.render_contract_document(
+                    {"contract_id": "2004/BK-2026"},
+                    "mau_hop_dong_v1",
+                )
+
+    def test_document_route_rejects_missing_template_selection_in_managed_production(self):
+        db = _current_document_db(None, [])
+
+        with patch.dict(os.environ, {"ENV": "production", "OBJECT_STORAGE_ENDPOINT": "https://abc123.r2.cloudflarestorage.com"}):
+            with self.assertRaises(HTTPException) as raised:
+                routes_contracts.render_current_contract_document(db, "2004/BK-2026")
+
+        self.assertEqual(raised.exception.status_code, 409)
 
 
 if __name__ == "__main__":

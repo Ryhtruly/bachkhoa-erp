@@ -16,8 +16,9 @@ import {
   Badge,
 } from '../components/ui';
 import { useToast } from '../contexts/ToastContext';
-import { avatarColorFor, initialsOf } from '../lib/avatar';
+import AvatarImage from '../components/AvatarImage';
 import { isDossierLocked } from '../lib/dossierStatus';
+import DocumentCabinet from '../features/contracts/DocumentCabinet';
 import './surveyRecords.css';
 
 const API = '';
@@ -72,9 +73,13 @@ const formatDate = (value) => {
 
 function Avatar({ name, url }) {
   if (!name) return null;
-  return url
-    ? <img className="survey-avatar survey-avatar--img" src={url} alt={name} title={name} />
-    : <span className="survey-avatar" style={{ background: avatarColorFor(name) }} title={name}>{initialsOf(name)}</span>;
+  return <AvatarImage
+    className="survey-avatar survey-avatar--img"
+    fallbackClassName="survey-avatar"
+    src={url}
+    name={name}
+    title={name}
+  />;
 }
 
 function Field({ label, wide, editing, value, empty = 'Chưa có', children }) {
@@ -464,6 +469,17 @@ export default function Tasks() {
                 </Field>
               </div>
             </section>
+
+            {/* Tủ của đúng Hạng mục đo vẽ: Node → loại giấy → file đã duyệt. */}
+            <DocumentCabinet
+              contractId={detailData?.contract_id}
+              serviceLines={detailData?.service_line_id ? [{
+                id: detailData.service_line_id,
+                name: detailData.service_line_name || detailData.task_type || 'Hồ sơ đo vẽ',
+              }] : []}
+              addToast={addToast}
+              title="TỦ HỒ SƠ ĐO VẼ"
+            />
 
             <div className="survey-detail__footer">
               {isDossierLocked(detailData, editForm.status) ? (

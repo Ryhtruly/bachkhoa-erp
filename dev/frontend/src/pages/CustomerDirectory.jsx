@@ -5,9 +5,10 @@ import {
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../lib/api';
+import { DatePicker } from '../components/ui';
 import './customerDirectory.css';
 
-const tien = (n) => (Number(n) || 0).toLocaleString('vi-VN') + '₫';
+const formatCurrency = (n) => (Number(n) || 0).toLocaleString('vi-VN') + '₫';
 
 // Một field trong lưới chi tiết: icon trong ô bo tròn + nhãn nhỏ + giá trị.
 function Field({ icon: Ico, label, value, wide = false }) {
@@ -37,7 +38,7 @@ function ContractStatus({ ct }) {
     <div className="cust-stt">
       {settled
         ? <Chip tone="is-done">Đã thu đủ</Chip>
-        : <Chip tone="is-owe">{ct.paid > 0 ? `Còn nợ ${tien(ct.remaining)}` : 'Chưa thu tiền'}</Chip>}
+        : <Chip tone="is-owe">{ct.paid > 0 ? `Còn nợ ${formatCurrency(ct.remaining)}` : 'Chưa thu tiền'}</Chip>}
       {delivered
         ? <Chip tone="is-done">Đã bàn giao</Chip>
         : <Chip tone="is-idle">Chưa bàn giao</Chip>}
@@ -50,29 +51,29 @@ export default function CustomerDirectory({ isDirector = false }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [locLoai, setLocLoai] = useState('all');
+  const [filterType, setFilterType] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [traCuu, setTraCuu] = useState(false);
+  const [isLookingUpTax, setIsLookingUpTax] = useState(false);
 
-  const traCuuMST = async () => {
-    const ma = (form?.tax_id || '').replace(/\D/g, '');
-    if (ma.length < 10) return;
-    setTraCuu(true);
+  const handleLookupTax = async () => {
+    const code = (form?.tax_id || '').replace(/\D/g, '');
+    if (code.length < 10) return;
+    setIsLookingUpTax(true);
     try {
-      const res = await apiFetch(`/api/customers/lookup-tax/${ma}`);
-      const d = res?.data;
-      if (d?.found) {
-        setForm((cur) => ({ ...cur, full_name: d.name || cur.full_name, address: d.address || cur.address }));
-        addToast(`Đã lấy: ${d.name}`, 'success');
+      const res = await apiFetch(`/api/customers/lookup-tax/${code}`);
+      const data = res?.data;
+      if (data?.found) {
+        setForm((cur) => ({ ...cur, full_name: data.name || cur.full_name, address: data.address || cur.address }));
+        addToast(`Đã lấy: ${data.name}`, 'success');
       } else {
-        addToast(d?.reason || 'Không tìm thấy MST', 'error');
+        addToast(data?.reason || 'Không tìm thấy MST', 'error');
       }
-    } catch (e) { addToast('Không tra cứu được', 'error'); }
-    finally { setTraCuu(false); }
+    } catch { addToast('Không tra cứu được', 'error'); }
+    finally { setIsLookingUpTax(false); }
   };
 
   const loadList = useCallback(async () => {
@@ -80,7 +81,7 @@ export default function CustomerDirectory({ isDirector = false }) {
     try {
       const params = new URLSearchParams();
       if (search.trim()) params.set('q', search.trim());
-      if (locLoai !== 'all') params.set('customer_type', locLoai);
+      if (filterType !== 'all') params.set('customer_type', filterType);
       const res = await apiFetch(`/api/customers?${params}`);
       setList(res?.data || []);
     } catch (e) {
@@ -88,7 +89,7 @@ export default function CustomerDirectory({ isDirector = false }) {
     } finally {
       setLoading(false);
     }
-  }, [search, locLoai, addToast]);
+  }, [search, filterType, addToast]);
 
   useEffect(() => { const t = setTimeout(loadList, 250); return () => clearTimeout(t); }, [loadList]);
 
@@ -103,7 +104,7 @@ export default function CustomerDirectory({ isDirector = false }) {
     }
   }, [addToast]);
 
-  const batDauSua = () => {
+  const handleStartEdit = () => {
     setForm({
       customer_type: detail.customer_type || 'individual',
       full_name: detail.full_name || '', phone: detail.phone || '', address: detail.address || '',
@@ -115,7 +116,7 @@ export default function CustomerDirectory({ isDirector = false }) {
     setEditing(true);
   };
 
-  const luu = async () => {
+  const handleSave = async () => {
     setSaving(true);
     try {
       await apiFetch(`/api/customers/${selectedId}`, {
@@ -132,12 +133,12 @@ export default function CustomerDirectory({ isDirector = false }) {
     }
   };
 
-  const laDN = detail?.customer_type === 'business';
-  const tongGiaTri = (detail?.contracts || []).reduce((sum, c) => sum + (Number(c.total_value) || 0), 0);
-  const tongConNo = (detail?.contracts || []).reduce((sum, c) => sum + (Number(c.remaining) || 0), 0);
+  const isBusinessCustomer = detail?.customer_type === 'business';
+  const totalContractValue = (detail?.contracts || []).reduce((sum, c) => sum + (Number(c.total_value) || 0), 0);
+  const totalRemainingDebt = (detail?.contracts || []).reduce((sum, c) => sum + (Number(c.remaining) || 0), 0);
 
   // Lưới field theo loại khách — icon nói rõ từng dòng là gì.
-  const fields = detail ? (laDN ? [
+  const fields = detail ? (isBusinessCustomer ? [
     { icon: Landmark, label: 'Mã số thuế', value: detail.tax_id },
     { icon: User, label: 'Người đại diện', value: detail.representative_name },
     { icon: Briefcase, label: 'Chức vụ', value: detail.representative_role },
@@ -170,7 +171,7 @@ export default function CustomerDirectory({ isDirector = false }) {
           </div>
           <div className="cust-filter">
             {[['all', 'Tất cả'], ['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, l]) => (
-              <button key={v} type="button" className={locLoai === v ? 'is-on' : ''} onClick={() => setLocLoai(v)}>{l}</button>
+              <button key={v} type="button" className={filterType === v ? 'is-on' : ''} onClick={() => setFilterType(v)}>{l}</button>
             ))}
           </div>
         </div>
@@ -208,10 +209,10 @@ export default function CustomerDirectory({ isDirector = false }) {
                 <div className="cust-hero-id__top">
                   <h2>{detail.full_name}</h2>
                   <span className="cust-hero-chip">
-                    {laDN ? <><Building2 size={12} /> Doanh nghiệp</> : <><User size={12} /> Cá nhân</>}
+                    {isBusinessCustomer ? <><Building2 size={12} /> Doanh nghiệp</> : <><User size={12} /> Cá nhân</>}
                   </span>
                 </div>
-                <p>{laDN ? `MST ${detail.tax_id || '—'}` : `CCCD ${detail.id_card_number || '—'}`}</p>
+                <p>{isBusinessCustomer ? `MST ${detail.tax_id || '—'}` : `CCCD ${detail.id_card_number || '—'}`}</p>
               </div>
 
               {/* Tóm tắt chỉ số nhanh */}
@@ -222,18 +223,18 @@ export default function CustomerDirectory({ isDirector = false }) {
                 </div>
                 <div className="cust-hero-stat">
                   <small>Doanh số</small>
-                  <strong>{tien(tongGiaTri)}</strong>
+                  <strong>{formatCurrency(totalContractValue)}</strong>
                 </div>
-                {tongConNo > 0 && (
+                {totalRemainingDebt > 0 && (
                   <div className="cust-hero-stat is-owe">
                     <small>Còn nợ</small>
-                    <strong>{tien(tongConNo)}</strong>
+                    <strong>{formatCurrency(totalRemainingDebt)}</strong>
                   </div>
                 )}
               </div>
 
               {isDirector && !editing && (
-                <button type="button" className="cust-hero-edit" onClick={batDauSua}><Pencil size={13} /> Sửa</button>
+                <button type="button" className="cust-hero-edit" onClick={handleStartEdit}><Pencil size={13} /> Sửa</button>
               )}
             </header>
 
@@ -255,8 +256,8 @@ export default function CustomerDirectory({ isDirector = false }) {
                       <label>Mã số thuế
                         <div className="cust-mst-row">
                           <input value={form.tax_id} onChange={(e) => setForm({ ...form, tax_id: e.target.value })} />
-                          <button type="button" className="cust-tracuu" disabled={traCuu || (form.tax_id || '').replace(/\D/g, '').length < 10} onClick={traCuuMST}>
-                            {traCuu ? '...' : 'Tra cứu'}
+                          <button type="button" className="cust-tracuu" disabled={isLookingUpTax || (form.tax_id || '').replace(/\D/g, '').length < 10} onClick={handleLookupTax}>
+                            {isLookingUpTax ? '...' : 'Tra cứu'}
                           </button>
                         </div>
                       </label>
@@ -266,7 +267,15 @@ export default function CustomerDirectory({ isDirector = false }) {
                   ) : (
                     <>
                       <label>Số CCCD<input value={form.id_card_number} onChange={(e) => setForm({ ...form, id_card_number: e.target.value })} /></label>
-                      <label>Ngày cấp<input type="date" value={form.id_card_date || ''} onChange={(e) => setForm({ ...form, id_card_date: e.target.value })} /></label>
+                      <label>
+                        Ngày cấp
+                        <DatePicker
+                          className="date-picker--fill"
+                          value={form.id_card_date || ''}
+                          onChange={(val) => setForm({ ...form, id_card_date: val })}
+                          placeholder="Chọn ngày cấp"
+                        />
+                      </label>
                       <label>Nơi cấp<input value={form.id_card_place} onChange={(e) => setForm({ ...form, id_card_place: e.target.value })} /></label>
                     </>
                   )}
@@ -276,7 +285,7 @@ export default function CustomerDirectory({ isDirector = false }) {
                 </div>
                 <div className="cust-form__actions">
                   <button type="button" className="btn btn-secondary" disabled={saving} onClick={() => setEditing(false)}><X size={15} /> Huỷ</button>
-                  <button type="button" className="btn btn-primary" disabled={saving} onClick={luu}><Save size={15} /> {saving ? 'Đang lưu…' : 'Lưu thay đổi'}</button>
+                  <button type="button" className="btn btn-primary" disabled={saving} onClick={handleSave}><Save size={15} /> {saving ? 'Đang lưu…' : 'Lưu thay đổi'}</button>
                 </div>
               </div>
             ) : (
@@ -292,7 +301,7 @@ export default function CustomerDirectory({ isDirector = false }) {
                     <h3 className="cust-card__hd"><FileText size={16} /> Hợp đồng liên quan ({detail.contracts.length})</h3>
                     {detail.contracts.length > 0 && (
                       <span className="cust-card__hd-sub">
-                        Tổng giá trị: <strong>{tien(tongGiaTri)}</strong>
+                        Tổng giá trị: <strong>{formatCurrency(totalContractValue)}</strong>
                       </span>
                     )}
                   </div>
@@ -308,7 +317,7 @@ export default function CustomerDirectory({ isDirector = false }) {
                           {detail.contracts.map((ct) => (
                             <tr key={ct.id}>
                               <td><strong className="cust-hd-id">{ct.id}</strong></td><td>{ct.service_type || '—'}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{tien(ct.total_value)}</td><td>{ct.date_signed || '—'}</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(ct.total_value)}</td><td>{ct.date_signed || '—'}</td>
                               <td className="cust-hd-table__stt"><ContractStatus ct={ct} /></td>
                             </tr>
                           ))}

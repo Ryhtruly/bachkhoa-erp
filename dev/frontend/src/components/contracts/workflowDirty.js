@@ -6,27 +6,26 @@
  * bài mà không một lời cảnh báo. Ở riêng thì kiểm bằng test được.
  */
 
-/** Sắp xếp khoá để hai graph giống nhau luôn cho ra cùng một chuỗi. */
-export function sapXepKhoa(giaTri) {
-  if (Array.isArray(giaTri)) return giaTri.map(sapXepKhoa);
-  if (giaTri && typeof giaTri === 'object') {
-    return Object.keys(giaTri).sort().reduce((gom, khoa) => {
-      gom[khoa] = sapXepKhoa(giaTri[khoa]);
-      return gom;
+/** Sorts object keys recursively so identical graphs produce the exact same serialized string. */
+export function sortObjectKeys(value) {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (value && typeof value === 'object') {
+    return Object.keys(value).sort().reduce((acc, key) => {
+      acc[key] = sortObjectKeys(value[key]);
+      return acc;
     }, {});
   }
-  return giaTri;
+  return value;
 }
 
 /**
- * Dấu vân tay phần NGHIỆP VỤ của sơ đồ — bỏ hẳn `ui` ra ngoài.
- *
- * `ui` là nơi flowToGraph cất toạ độ node và điểm bẻ của đường nối. Kéo node cho
- * dễ nhìn chỉ đổi toạ độ, không đổi quy trình, và đã có nút "Lưu bố cục" riêng lo
- * việc đó. Tính cả toạ độ vào thì nắn sơ đồ cho gọn mắt xong thoát ra cũng bị hộp
- * thoại chặn đường — phiền mà chẳng cứu được gì.
+ * Returns a stable fingerprint of business graph data (excluding UI coordinates).
  */
-export function dauVanTayGraph(graph) {
-  const { ui: _boCuc, ...phanNghiepVu } = graph || {};
-  return JSON.stringify(sapXepKhoa(phanNghiepVu));
+export function getGraphFingerprint(graph) {
+  const { ui: _uiLayout, ...businessData } = graph || {};
+  return JSON.stringify(sortObjectKeys(businessData));
 }
+
+// Backwards compatibility aliases
+export const sapXepKhoa = sortObjectKeys;
+export const dauVanTayGraph = getGraphFingerprint;

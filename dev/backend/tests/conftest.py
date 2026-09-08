@@ -42,9 +42,15 @@ def test_target_is_disposable(database_url):
     if driver == "sqlite":
         return not host
 
+    # "pg-test" là TÊN SERVICE của Postgres kiểm thử trong docker-compose.dev.yml,
+    # không phải tên miền công khai — container backend gọi nó qua mạng nội bộ của
+    # compose. Bản trước chỉ cho localhost, nên khi tách DB test thành service
+    # riêng (để nó không chết theo mỗi lần recreate backend) thì cả bộ test bị
+    # chặn. Vẫn fail-closed: danh sách host là allowlist tường minh, và tên
+    # database bắt buộc kết thúc bằng _test.
     return (
         driver == "postgresql"
-        and host in {"localhost", "127.0.0.1", "::1"}
+        and host in {"localhost", "127.0.0.1", "::1", "pg-test"}
         and database.endswith("_test")
     )
 
@@ -78,18 +84,150 @@ if not test_target_is_disposable(TEST_DATABASE_URL):
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+from sqlalchemy.dialects.sqlite.base import SQLiteDDLCompiler
+
+_orig_get_col_default = SQLiteDDLCompiler.get_column_default_string
+def _sqlite_get_column_default_string(self, column):
+    if column.server_default and hasattr(getattr(column.server_default, "arg", None), "sequence"):
+        return None
+    return _orig_get_col_default(self, column)
+
+SQLiteDDLCompiler.get_column_default_string = _sqlite_get_column_default_string
+
 from src.index import app
 from src.db.database import engine, Base, get_db
 from src.db.models import User, Role, UserRole, RolePermission, AuditLog
 from src.core.auth import hash_password, create_access_token
 
 
+def _ensure_audit_log_sequence(connection):
+    """Keep model DDL usable when pg-test was restored before the audit migration.
+
+    ``AuditLog`` declares this sequence in ``Base.metadata``. A restored dump can
+    contain the table/default but not the sequence, which makes both ``create_all``
+    and its teardown fail. The operation is restricted to PostgreSQL and is
+    idempotent; production databases are never selected by this conftest.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    connection.execute(text("create sequence if not exists public.audit_log_id_seq as bigint"))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_test_db():
     import src.db.models
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        if engine.dialect.name == "sqlite":
+            schema_preexisted = False
+        else:
+            schema_preexisted = bool(conn.execute(text(
+                """select exists (
+                    select 1 from information_schema.tables
+                    where table_schema = 'public'
+                )"""
+            )).scalar())
+    with engine.begin() as conn:
+        _ensure_audit_log_sequence(conn)
     Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "sqlite":
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS document_template_applicabilities (
+                    id VARCHAR PRIMARY KEY,
+                    template_id VARCHAR,
+                    applicability_type VARCHAR,
+                    service_package_id VARCHAR,
+                    task_type_id VARCHAR,
+                    node_code VARCHAR,
+                    is_default BOOLEAN DEFAULT 1
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS document_checklist_templates (
+                    id VARCHAR PRIMARY KEY,
+                    name VARCHAR,
+                    source VARCHAR,
+                    is_required BOOLEAN DEFAULT 0,
+                    needs_original BOOLEAN DEFAULT 0,
+                    default_quantity INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    note TEXT,
+                    is_active BOOLEAN DEFAULT 1
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dossier_document_slots (
+                    id VARCHAR PRIMARY KEY,
+                    contract_id VARCHAR,
+                    service_line_id VARCHAR,
+                    template_id VARCHAR,
+                    name VARCHAR,
+                    source VARCHAR,
+                    is_required BOOLEAN DEFAULT 0,
+                    needs_original BOOLEAN DEFAULT 0,
+                    min_count INTEGER DEFAULT 1,
+                    sort_order INTEGER DEFAULT 0,
+                    note TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dossier_documents (
+                    id VARCHAR PRIMARY KEY,
+                    contract_id VARCHAR,
+                    file_name VARCHAR,
+                    file_path VARCHAR,
+                    doc_status VARCHAR DEFAULT 'DANG_DUNG',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS dossier_document_links (
+                    id VARCHAR PRIMARY KEY,
+                    slot_id VARCHAR,
+                    document_id VARCHAR,
+                    link_status VARCHAR DEFAULT 'DANG_DUNG',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """))
+            try:
+                conn.execute(text("ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'"))
+            except Exception:
+                pass
     yield
-    Base.metadata.drop_all(bind=engine)
+
+    # Chỉ dọn khi conftest dựng một database trống. A pg-test dump is a
+    # pre-existing, possibly partial schema; dropping all ORM metadata there
+    # is unsafe because migrations may own objects absent from Base.metadata.
+    if engine.dialect.name == "sqlite" or schema_preexisted:
+        return
+    # PostgreSQL tự xoá sequence có ``OWNED BY audit_log.id`` khi drop bảng.
+    # Nếu để SQLAlchemy drop sequence lần nữa sau đó, teardown sẽ fail với
+    # UndefinedTable. Tạm tách các sequence khỏi visitor; metadata được khôi
+    # phục ngay cả khi việc dọn schema gặp lỗi.
+    metadata_sequences = dict(Base.metadata._sequences)
+    Base.metadata._sequences.clear()
+    try:
+        Base.metadata.drop_all(bind=engine, checkfirst=True)
+    finally:
+        Base.metadata._sequences.update(metadata_sequences)
 
 
 @pytest.fixture(scope="session")
@@ -101,8 +239,28 @@ def client():
 @pytest.fixture(scope="function", autouse=True)
 def db():
     import src.db.models
+    from sqlalchemy import text
     connection = engine.connect()
     Base.metadata.create_all(bind=connection)
+    if connection.dialect.name == "sqlite":
+        try:
+            with connection.begin():
+                try:
+                    connection.execute(text("ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR"))
+                except Exception:
+                    pass
+                try:
+                    connection.execute(text("ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'"))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    if connection.in_transaction():
+        connection.commit()
     transaction = connection.begin()
     session = Session(bind=connection)
     app.dependency_overrides[get_db] = lambda: session

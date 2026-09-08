@@ -11,16 +11,34 @@ PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = os.getenv("PG_PORT", "5432")
 PG_DATABASE = os.getenv("PG_DATABASE", "bachkhoa_erp")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+if os.getenv("TESTING") or os.getenv("PYTEST_CURRENT_TEST"):
+    DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL")
+
 if not DATABASE_URL:
     DATABASE_URL = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
 
 if "supabase" in DATABASE_URL and "sslmode" not in DATABASE_URL:
-    DATABASE_URL += "?sslmode=require"
+    DATABASE_URL += "&sslmode=require" if "?" in DATABASE_URL else "?sslmode=require"
 
 SQLALCHEMY_DATABASE_URL = DATABASE_URL
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        execution_options={"schema_translate_map": {"public": None}},
+    )
+else:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_size=20,
+        max_overflow=20,
+        pool_recycle=300,
+        pool_timeout=10,
+        pool_pre_ping=True,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

@@ -5,6 +5,20 @@ from typing import Optional
 
 from src.db.models import Contract, ServiceLine, Department, User, FundOpeningBalance
 from src.finance.repository import FinanceRepository
+from src.finance.enums import (
+    normalize_payment_method, normalize_transaction_type, normalize_status,
+    PaymentMethod, TransactionType, TransactionStatus
+)
+
+
+def is_posted_transaction_status(status: str | None) -> bool:
+    """Only an explicit completed/approved status affects accounting totals."""
+    return normalize_status(status) == TransactionStatus.COMPLETED.value if status else False
+
+def counts_toward_receivable(status: str, transaction_type: str) -> bool:
+    norm_status = normalize_status(status)
+    norm_type = normalize_transaction_type(transaction_type)
+    return norm_status == TransactionStatus.COMPLETED.value and norm_type == TransactionType.INCOME.value
 
 def check_closed_period(db: Session, target_date: date):
     latest_snap = db.query(FundOpeningBalance).order_by(FundOpeningBalance.effective_date.desc()).first()
@@ -20,14 +34,18 @@ def check_closed_period(db: Session, target_date: date):
             raise HTTPException(status_code=400, detail="Dữ liệu thuộc kỳ kế toán đã chốt, không thể thêm/sửa/hủy.")
 
 def check_cash_balance(db: Session, amount: float, exclude_transaction_id: Optional[str] = None):
-    balance = FinanceRepository.get_running_balance(db, "Tiền mặt")
+    balance = FinanceRepository.get_running_balance(db, PaymentMethod.CASH.value)
     if exclude_transaction_id:
         from src.db.models import CashflowTransaction
         t = db.query(CashflowTransaction).filter(CashflowTransaction.id == exclude_transaction_id).first()
-        if t and t.transaction_type == "Chi" and t.payment_method == "Tiền mặt":
-            balance += float(t.amount or 0)
-        elif t and t.transaction_type == "Thu" and t.payment_method == "Tiền mặt":
-            balance -= float(t.amount or 0)
+        if t:
+            t_pm = normalize_payment_method(t.payment_method)
+            t_type = normalize_transaction_type(t.transaction_type)
+            if t_pm == PaymentMethod.CASH.value:
+                if t_type == TransactionType.EXPENSE.value:
+                    balance += float(t.amount or 0)
+                elif t_type == TransactionType.INCOME.value:
+                    balance -= float(t.amount or 0)
 
     if balance < amount:
         raise HTTPException(
@@ -91,16 +109,19 @@ def parse_category(cat_val: str):
     return "Khác", cat_val
 
 def calculate_balances(db: Session, type_val: str, amount: float, method: str):
-    bal_tm = FinanceRepository.get_running_balance(db, "Tiền mặt")
-    bal_ck = FinanceRepository.get_running_balance(db, "Chuyển khoản")
+    bal_tm = FinanceRepository.get_running_balance(db, PaymentMethod.CASH.value)
+    bal_ck = FinanceRepository.get_running_balance(db, PaymentMethod.BANK_TRANSFER.value)
     
-    if method == "Tiền mặt":
-        if type_val == "Thu":
+    canon_pm = normalize_payment_method(method)
+    canon_type = normalize_transaction_type(type_val)
+
+    if canon_pm == PaymentMethod.CASH.value:
+        if canon_type == TransactionType.INCOME.value:
             bal_tm += amount
         else:
             bal_tm -= amount
-    elif method == "Chuyển khoản":
-        if type_val == "Thu":
+    elif canon_pm == PaymentMethod.BANK_TRANSFER.value:
+        if canon_type == TransactionType.INCOME.value:
             bal_ck += amount
         else:
             bal_ck -= amount

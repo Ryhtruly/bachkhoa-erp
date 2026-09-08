@@ -68,6 +68,11 @@ class Contract(Base):
     id = Column(String, primary_key=True) # e.g. 128/BK-2026
     customer_id = Column(String, ForeignKey("customers.id"))
     lead_id = Column(String, ForeignKey("leads_pipeline.id"), nullable=True)
+    contract_template_id = Column(
+        String,
+        ForeignKey("contract_templates.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     service_type = Column(String, nullable=True)
     total_value = Column(Numeric, nullable=True)
     date_signed = Column(Date, nullable=True)
@@ -130,6 +135,12 @@ class ServiceLine(Base):
     priority_reason = Column(Text, nullable=True)
     priority_set_by = Column(String, nullable=True)
     priority_set_at = Column(DateTime(timezone=True), nullable=True)
+    # document_register_version CỐ Ý KHÔNG map ở đây trong suốt cửa sổ EXPAND.
+    #
+    # Map vào model là mọi truy vấn ORM trên ServiceLine đều SELECT cột đó — kể
+    # cả danh sách hợp đồng, cache, báo cáo — nên chỉ cần CSDL chưa có cột là
+    # toàn bộ gãy 500. Ghi/đọc cột này đi bằng SQL thuần, sau cổng
+    # require_v2_schema(). Map vào model ở đợt CONTRACT, khi cột đã chắc chắn có.
 
 
 class ContractTemplate(Base):
@@ -141,6 +152,8 @@ class ContractTemplate(Base):
     description = Column(Text, nullable=True)
     template_file_name = Column(Text, nullable=True)
     template_file_link = Column(Text, nullable=True)
+    template_storage_key = Column(Text, nullable=True)
+    storage_provider = Column(Text, nullable=False, default="s3-compatible")
     placeholder_schema = Column(JSONB, nullable=False, default=list)
     render_rules = Column(JSONB, nullable=False, default=dict)
     status = Column(String, nullable=False, default="draft")
@@ -170,6 +183,7 @@ class ContractGeneratedDocument(Base):
     status = Column(String, nullable=False, default="draft")
     output_file_link = Column(Text, nullable=True)
     output_file_name = Column(Text, nullable=True)
+    output_storage_key = Column(Text, nullable=True)
     render_data_snapshot = Column(JSONB, nullable=False, default=dict)
     generated_by = Column(String, ForeignKey("users.id"), nullable=True)
     generated_at = Column(DateTime(timezone=True), nullable=True)

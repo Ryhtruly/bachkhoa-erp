@@ -1,4 +1,4 @@
-"""Node bàn giao (K08) — cổng công nợ, 2 làn Pháp lý / Kế toán."""
+"""Node bàn giao (K06) — cổng công nợ, 2 làn Pháp lý / Kế toán."""
 
 import io
 import json
@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 from urllib.parse import quote, unquote
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -19,7 +20,7 @@ from src.core.auth import check_user_permission, get_current_user, require_permi
 from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import handover as HO
-from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note
+from src.dossiers.actor_guard import assert_can_act_on_node, assert_can_view_node, format_on_behalf_note
 from src.files.payment_receipts import (
     MAX_RECEIPT_BYTES,
     MAX_RECEIPT_FILES,
@@ -54,6 +55,15 @@ class DeliverSchema(BaseModel):
     on_behalf_reason: Optional[str] = None
 
 
+class DebtRequestReviewSchema(BaseModel):
+    decision: str
+    review_note: Optional[str] = None
+
+
+class HandoverAcceptanceSchema(BaseModel):
+    note: Optional[str] = None
+
+
 @router.get("/outstanding")
 def list_outstanding(
     db: Session = Depends(get_db),
@@ -66,10 +76,18 @@ def list_outstanding(
         return cached
 
     rows = HO.outstanding_handovers(db)
+    outstanding_rows = [r for r in rows if not r.get("is_financially_settled")]
     result = {
         "status": "success",
         "data": rows,
-        "meta": {"total": len(rows), "total_remaining": sum(r["remaining"] for r in rows)},
+        "meta": {
+            "total": len(outstanding_rows),
+            "total_remaining": sum(r["remaining"] for r in outstanding_rows),
+            "settled_after_override": sum(
+                1 for r in rows
+                if r.get("financial_status") == "settled_after_handover_override"
+            ),
+        },
     }
     set_cached_json(cache_key, result, ttl_seconds=60)
     return result
@@ -82,6 +100,170 @@ def get_handover_state(
     user: User = Depends(require_permission("task_node", "read")),
 ):
     return {"status": "success", "data": HO.get_state(db, task_node_id, user_id=user.id)}
+
+
+@router.post("/{task_node_id}/debt-requests")
+async def request_debt_override(
+    task_node_id: str,
+    reason: str = Form(...),
+    promised_payment_date: date = Form(...),
+    commitment_file: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("checklist", "update")),
+):
+    """Nhân viên xin Giám đốc mở khóa riêng Node K06 khi còn công nợ."""
+    metadata = None
+    uploaded_key = None
+    try:
+        if commitment_file and commitment_file.filename:
+            raw = await commitment_file.read(MAX_RECEIPT_BYTES + 1)
+            try:
+                validated = validate_receipt(
+                    commitment_file.filename, commitment_file.content_type, raw
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            metadata = build_receipt_metadata(
+                task_node_id, f"debt-request-{uuid.uuid4().hex}", validated
+            )
+            metadata["kind"] = "handover_debt_commitment"
+            ensure_finance_bucket()
+            upload_finance_file(
+                io.BytesIO(validated.data),
+                metadata["object_key"],
+                content_type=validated.content_type,
+                metadata={"sha256": validated.sha256, "kind": metadata["kind"]},
+            )
+            uploaded_key = metadata["object_key"]
+
+        result = HO.create_debt_request(
+            db,
+            task_node_id,
+            actor_id=user.id,
+            reason=reason,
+            promised_payment_date=promised_payment_date,
+            commitment_file=metadata,
+        )
+        db.commit()
+        invalidate_cache("bachkhoa:handover:*")
+        invalidate_cache("bachkhoa:contract_workspace:*")
+        invalidate_cache("bachkhoa:notifications:summary:*")
+        publish_timeline_change("handover_debt_requested", entity_id=task_node_id)
+        return {"status": "success", "data": result}
+    except Exception:
+        db.rollback()
+        if uploaded_key:
+            try:
+                delete_finance_file(uploaded_key)
+            except Exception:
+                logger.exception("Không thể hoàn tác file cam kết %s", uploaded_key)
+        raise
+
+
+@router.post("/debt-requests/{request_id}/review")
+def review_debt_override(
+    request_id: str,
+    payload: DebtRequestReviewSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("task_node", "approve")),
+):
+    result = HO.review_debt_request(
+        db,
+        request_id,
+        decision=payload.decision,
+        review_note=payload.review_note,
+        actor_id=user.id,
+    )
+    db.commit()
+    invalidate_cache("bachkhoa:handover:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    invalidate_cache("bachkhoa:notifications:summary:*")
+    publish_timeline_change("handover_debt_reviewed", entity_id=result["task_node_id"])
+    return {"status": "success", "data": result}
+
+
+@router.get("/debt-requests/{request_id}/commitment")
+def view_debt_commitment(
+    request_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Mở file cam kết riêng cho người gửi hoặc Giám đốc có quyền duyệt Node."""
+    row = db.execute(
+        text("""
+            select requester_user_id, commitment_file
+            from public.handover_debt_requests
+            where id = :request_id
+        """),
+        {"request_id": request_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu xin duyệt nợ")
+
+    is_requester = str(row["requester_user_id"] or "") == str(user.id)
+    can_review = check_user_permission(db, user, "task_node", "approve")
+    if not is_requester and not can_review:
+        raise HTTPException(status_code=403, detail="Không có quyền xem file cam kết này")
+
+    attachment = row["commitment_file"] or {}
+    if isinstance(attachment, str):
+        try:
+            attachment = json.loads(attachment)
+        except (TypeError, ValueError):
+            attachment = {}
+    if not isinstance(attachment, dict) or not attachment.get("object_key"):
+        raise HTTPException(status_code=404, detail="Yêu cầu này không có file cam kết")
+
+    try:
+        stored = get_finance_file(attachment["object_key"])
+    except Exception as exc:
+        logger.warning("Unable to read handover debt commitment %s: %s", request_id, exc)
+        raise HTTPException(
+            status_code=404,
+            detail="File cam kết không tồn tại trên kho lưu trữ",
+        ) from exc
+
+    body = stored["Body"]
+
+    def iter_body():
+        try:
+            yield from body.iter_chunks(chunk_size=64 * 1024)
+        finally:
+            body.close()
+
+    filename = str(attachment.get("filename") or "cam-ket")
+    content_type = str(
+        attachment.get("content_type")
+        or stored.get("ContentType")
+        or "application/octet-stream"
+    )
+    disposition = "attachment" if content_type == "application/pdf" else "inline"
+    return StreamingResponse(
+        iter_body(),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/{task_node_id}/submit-acceptance")
+def submit_handover_acceptance(
+    task_node_id: str,
+    payload: HandoverAcceptanceSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("checklist", "update")),
+):
+    result = HO.submit_handover_for_acceptance(
+        db, task_node_id, actor_id=user.id, note=payload.note
+    )
+    db.commit()
+    invalidate_cache("bachkhoa:handover:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    publish_timeline_change("node_submitted", entity_id=task_node_id)
+    return {"status": "success", "data": result}
 
 
 @router.get("/payment-receipts/{receipt_id}")
@@ -143,49 +325,43 @@ def view_payment_receipt(
 
 
 @router.get("/{task_node_id}/deliverables")
-def liet_ke_tai_lieu(
+def list_handover_deliverables(
     task_node_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Danh sách tài liệu sẽ giao cho khách, kèm điều kiện mở khoá."""
-    return {"data": HO.tai_lieu_ban_giao(db, task_node_id)}
+    assert_can_view_node(db, task_node_id=task_node_id, user=user)
+    return {"data": HO.get_handover_deliverables(db, task_node_id)}
 
 
 @router.get("/{task_node_id}/deliverables.zip")
-def tai_tron_bo(
+def download_handover_package(
     task_node_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Đóng gói toàn bộ tài liệu bàn giao thành một file zip.
-
-    File nào nằm trong kho của hệ thống thì gom vào zip. File chỉ có đường dẫn
-    ngoài (thư mục Drive, link dán tay) không tải hộ được — ghi vào DANH_MUC.txt
-    kèm đường dẫn, để người giao biết còn phải lấy tay những gì. Im lặng bỏ qua
-    thì khách nhận thiếu mà không ai biết.
-    """
-    goi = HO.tai_lieu_ban_giao(db, task_node_id)
-    if not goi["can_download"]:
-        raise HTTPException(status_code=409, detail=goi["blocked_reason"])
-    if not goi["items"]:
+    """Đóng gói toàn bộ tài liệu bàn giao thành một file zip."""
+    assert_can_view_node(db, task_node_id=task_node_id, user=user)
+    deliverables_package = HO.get_handover_deliverables(db, task_node_id)
+    if not deliverables_package["can_download"]:
+        raise HTTPException(status_code=409, detail=deliverables_package["blocked_reason"])
+    if not deliverables_package["items"]:
         raise HTTPException(status_code=404, detail="Hạng mục này chưa có tài liệu nào để bàn giao")
 
-    dem = io.BytesIO()
-    ngoai: list[str] = []
-    thu_muc_static = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "static"))
+    buffer = io.BytesIO()
+    external_links: list[str] = []
+    static_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "static"))
 
-    def _lay_noi_dung(url: str):
-        # Chỉ đọc tệp nằm trong phạm vi hệ thống tự quản.
+    def _fetch_file_content(url: str):
         if "/payment-receipts/" in url:
             return get_finance_file(url.split("/api/handover/payment-receipts/")[-1])["Body"].read()
 
         if url.startswith("/static/"):
-            # Chặn ../ trỏ ra ngoài thư mục static.
-            duong = os.path.normpath(os.path.join(thu_muc_static, url[len("/static/"):]))
-            if not duong.startswith(thu_muc_static + os.sep) or not os.path.isfile(duong):
+            safe_path = os.path.normpath(os.path.join(static_dir, url[len("/static/"):]))
+            if not safe_path.startswith(static_dir + os.sep) or not os.path.isfile(safe_path):
                 return None
-            with open(duong, "rb") as f:
+            with open(safe_path, "rb") as f:
                 return f.read()
 
         # Tệp trong kho tài liệu của chính hệ thống. Chỉ nhận đúng địa chỉ kho đã
@@ -193,38 +369,42 @@ def tai_tron_bo(
         # chủ đi gọi tới nơi không nên gọi. Lấy bằng khoá đối tượng chứ không qua
         # HTTP: địa chỉ lưu trong CSDL là địa chỉ cho trình duyệt (localhost:9000),
         # máy chủ chạy trong container gọi vào đó không tới được.
-        for goc in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
-            tien_to = f"{goc.rstrip(chr(47))}/{MINIO_BUCKET}/" if goc else None
-            if tien_to and url.startswith(tien_to):
-                return get_file(unquote(url[len(tien_to):].split("?")[0]))
+        for storage_base_url in {MINIO_ENDPOINT, MINIO_PUBLIC_URL}:
+            storage_prefix = (
+                f"{storage_base_url.rstrip(chr(47))}/{MINIO_BUCKET}/"
+                if storage_base_url else None
+            )
+            if storage_prefix and url.startswith(storage_prefix):
+                # get_file trả response S3 (dict); zipfile cần bytes.
+                return get_file(unquote(url[len(storage_prefix):].split("?")[0]))["Body"].read()
         return None
 
-    with zipfile.ZipFile(dem, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, muc in enumerate(goi["items"], start=1):
-            url = muc["url"]
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, item in enumerate(deliverables_package["items"], start=1):
+            url = item["url"]
             try:
-                noi_dung = _lay_noi_dung(url)
+                content = _fetch_file_content(url)
             except Exception:
                 logger.warning("Không lấy được tệp cho gói bàn giao: %s", url)
-                noi_dung = None
-            if noi_dung:
-                ten_tep = os.path.basename(muc["ten"]) or f"tai_lieu_{i}"
-                zf.writestr(f"{muc['nhom']}/{i:02d}_{ten_tep}", noi_dung)
+                content = None
+            if content:
+                filename = os.path.basename(item["ten"]) or f"tai_lieu_{i}"
+                zf.writestr(f"{item['nhom']}/{i:02d}_{filename}", content)
             else:
-                ngoai.append(f"[{muc['nhom']}] {muc['ten']}\n    {url}")
+                external_links.append(f"[{item['nhom']}] {item['ten']}\n    {url}")
 
-        if ngoai:
+        if external_links:
             zf.writestr(
                 "DANH_MUC.txt",
-                "TAI LIEU CHI CO DUONG DAN — PHAI LAY TAY:\n\n" + "\n\n".join(ngoai) + "\n",
+                "TAI LIEU CHI CO DUONG DAN — PHAI LAY TAY:\n\n" + "\n\n".join(external_links) + "\n",
             )
 
-    dem.seek(0)
-    ten = f"HoSoBanGiao_{goi['contract_id'].replace('/', '-')}.zip"
+    buffer.seek(0)
+    zip_filename = f"HoSoBanGiao_{deliverables_package['contract_id'].replace('/', '-')}.zip"
     return StreamingResponse(
-        dem,
+        buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(ten)}"},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_filename)}"},
     )
 
 
@@ -258,8 +438,8 @@ def deliver(
     return {"status": "success", "data": {**result, "on_behalf": actor["on_behalf"]}}
 
 
-def _nhan_bill_roi_ghi(db, user, receipt_files, khoa_luu_tru: str, ghi_nhan):
-    """Nhận bill, đẩy lên kho, rồi gọi `ghi_nhan(attachments)` để tạo phiếu thu.
+def _store_payment_receipts(db, user, receipt_files, storage_key: str, record_payment):
+    """Nhận bill, đẩy lên kho, rồi gọi `record_payment(attachments)` để tạo phiếu thu.
 
     Tách ra vì có hai đường vào cùng làm việc này: thu tại bước bàn giao và thu
     thẳng theo hợp đồng. Cả hai đều phải có bill, và nếu ghi nhận hỏng thì file
@@ -284,7 +464,7 @@ def _nhan_bill_roi_ghi(db, user, receipt_files, khoa_luu_tru: str, ghi_nhan):
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-            metadata = build_receipt_metadata(khoa_luu_tru, batch_id, receipt)
+            metadata = build_receipt_metadata(storage_key, batch_id, receipt)
             upload_finance_file(
                 io.BytesIO(receipt.data),
                 metadata["object_key"],
@@ -297,7 +477,7 @@ def _nhan_bill_roi_ghi(db, user, receipt_files, khoa_luu_tru: str, ghi_nhan):
             uploaded_keys.append(metadata["object_key"])
             attachments.append(metadata)
 
-        result = ghi_nhan(attachments)
+        result = record_payment(attachments)
         db.commit()
         # Đánh thức chuông của giám đốc ngay. Không có tín hiệu này thì phiếu chờ
         # duyệt chỉ hiện sau khi người ta tình cờ tải lại trang.
@@ -342,7 +522,7 @@ def record_contract_payment(
         timeout_seconds=5,
         custom_error_msg="Đang xử lý một đợt thanh toán cho hợp đồng này, vui lòng đợi trong giây lát.",
     ):
-        return _nhan_bill_roi_ghi(
+        return _store_payment_receipts(
             db, user, receipt_files, contract_id,
             lambda attachments: HO.record_contract_payment(
                 db,
@@ -374,7 +554,7 @@ def record_payment(
         timeout_seconds=5,
         custom_error_msg="Đang xử lý một đợt thanh toán cho bước này, vui lòng đợi trong giây lát.",
     ):
-        return _nhan_bill_roi_ghi(
+        return _store_payment_receipts(
             db, user, receipt_files, task_node_id,
             lambda attachments: HO.record_payment(
                 db,

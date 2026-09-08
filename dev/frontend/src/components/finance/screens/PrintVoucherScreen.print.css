@@ -3,6 +3,16 @@
   margin: 10mm 12mm;
 }
 
+@page voucher-a4 {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+@page voucher-a5 {
+  size: A5 portrait;
+  margin: 8mm 9mm;
+}
+
 :root {
   color-scheme: light;
 }
@@ -31,6 +41,7 @@ body {
 }
 
 .voucher-print-document {
+  page: voucher-a4;
   display: block !important;
   width: 100% !important;
   max-width: none !important;
@@ -42,6 +53,10 @@ body {
   color: #000 !important;
   font-family: "Times New Roman", Times, serif !important;
   line-height: 1.35 !important;
+}
+
+.voucher-print-document[data-paper-size="a5"] {
+  page: voucher-a5;
 }
 
 .voucher-print-header {
@@ -107,19 +122,23 @@ body {
   break-inside: avoid-page;
 }
 
+.voucher-print-document[data-signature-count="4"] .voucher-print-signatures {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
 .voucher-print-signature {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
 .voucher-print-signature-title {
-  min-height: 8mm;
+  min-height: 5mm;
   font-size: 8.5pt !important;
   line-height: 1.15;
 }
 
 .voucher-print-signature-note {
-  min-height: 7mm;
+  min-height: 5mm;
   font-size: 7.5pt !important;
   line-height: 1.15;
 }
@@ -136,4 +155,22 @@ body {
 .voucher-print-confirmation {
   break-inside: avoid;
   overflow-wrap: anywhere;
+}
+
+.voucher-print-document[data-paper-size="a5"] .voucher-print-row {
+  grid-template-columns: 42mm minmax(0, 1fr) !important;
+}
+
+.voucher-print-document[data-paper-size="a5"] .voucher-print-details {
+  font-size: 9.5pt !important;
+  line-height: 1.45 !important;
+}
+
+.voucher-print-document[data-paper-size="a5"] .voucher-print-signatures {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  row-gap: 5mm !important;
+}
+
+.voucher-print-document[data-paper-size="a5"][data-signature-count="4"] .voucher-print-signatures {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
 }

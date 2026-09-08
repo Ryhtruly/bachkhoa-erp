@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Book, UploadCloud, Link as LinkIcon, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow } from '../components/ui';
+import { getAccessToken } from '../lib/api';
+import { fetchProtectedDocumentBlob } from '../lib/fileSave';
 
 export default function Wiki() {
   const [documents, setDocuments] = useState([]);
@@ -25,7 +27,7 @@ export default function Wiki() {
 
   const categories = ['Tất cả', 'Quy trình ISO', 'Sổ tay nhân sự', 'Tài liệu đào tạo', 'Quy định khác'];
 
-  const fetchWiki = async () => {
+  const fetchWiki = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -43,20 +45,24 @@ export default function Wiki() {
           setTotalPages(data.meta.total_pages);
         }
       }
-    } catch (err) {
+    } catch {
       showMessage('Lỗi tải danh sách tài liệu', 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchQuery, categoryFilter, showMessage]);
 
-  // Fetch when page, category, or search (debounced) changes
+  // Fetch immediately on mount / filter change, debounce text search
   useEffect(() => {
+    if (!searchQuery) {
+      fetchWiki();
+      return undefined;
+    }
     const timer = setTimeout(() => {
       fetchWiki();
     }, 300);
     return () => clearTimeout(timer);
-  }, [page, categoryFilter, searchQuery]);
+  }, [fetchWiki, searchQuery]);
 
   const handleUploadWiki = async (e) => {
     e.preventDefault();
@@ -91,6 +97,23 @@ export default function Wiki() {
       showMessage('Lỗi kết nối máy chủ', 'error');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOpenDocument = async (docId) => {
+    const viewer = window.open('', '_blank', 'noopener,noreferrer');
+    try {
+      const blob = await fetchProtectedDocumentBlob(
+        `/api/wiki/download/${encodeURIComponent(docId)}`,
+        getAccessToken(),
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      if (viewer) viewer.location.href = objectUrl;
+      else window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      viewer?.close();
+      showMessage('Không thể mở tài liệu Wiki', 'error');
     }
   };
 
@@ -166,9 +189,9 @@ export default function Wiki() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <a href={`/api/wiki/download/${doc.id}`} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <button type="button" onClick={() => handleOpenDocument(doc.id)} className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <FileText size={14} /> Mở file
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))
@@ -291,7 +314,7 @@ export default function Wiki() {
                       Nhấp vào đây hoặc kéo thả file để tải lên
                     </span>
                     <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-                      Hỗ trợ PDF, DOCX, XLSX, PNG, JPG...
+                      Hỗ trợ PDF, DOCX, XLSX, PNG, JPG... tối đa 25MB
                     </span>
                   </>
                 )}

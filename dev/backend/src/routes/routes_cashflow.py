@@ -4,7 +4,12 @@ from src.schemas.models import CashflowTransactionCreateSchema
 from src.db.database import get_db
 from src.db.models import CashflowTransaction
 from src.core.auth import require_permission, User
-from datetime import datetime
+from src.finance.enums import (
+    normalize_transaction_type, normalize_payment_method,
+    get_transaction_type_label, get_payment_method_label,
+    TransactionType
+)
+from datetime import datetime, timezone
 import uuid
 
 router = APIRouter(prefix="/api/cashflow", tags=["06. Finance & Cashflow"])
@@ -18,22 +23,26 @@ def list_transactions(
         transactions = db.query(CashflowTransaction).order_by(CashflowTransaction.created_at.desc()).all()
         result = []
         for t in transactions:
-            raw_type = t.transaction_type or ""
+            canon_type = normalize_transaction_type(t.transaction_type)
+            canon_pm = normalize_payment_method(t.payment_method)
             raw_amount = float(t.amount or 0)
             
             result.append({
                 "id": t.id,
-                "transaction_type": raw_type,
+                "transaction_type": canon_type,
+                "transaction_type_label": get_transaction_type_label(canon_type),
+                "type": canon_type,
                 "created_at": t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else "",
                 "task_id": t.project_id or "",
                 "contract_id": t.contract_id or "",
                 "description": t.description or "",
                 "department": t.department_code or "",
                 "payer_payee": t.payer_payee_name or "",
-                "payment_method": t.payment_method or "",
+                "payment_method": canon_pm,
+                "payment_method_label": get_payment_method_label(canon_pm),
                 "category": t.category_code or "",
-                "income_amount": raw_amount if raw_type in ["Thu", "INCOME"] else 0,
-                "expense_amount": raw_amount if raw_type in ["Chi", "EXPENSE"] else 0,
+                "income_amount": raw_amount if canon_type == TransactionType.INCOME.value else 0,
+                "expense_amount": raw_amount if canon_type in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value) else 0,
                 "amount": raw_amount
             })
         return result
@@ -47,19 +56,28 @@ def create_transaction(
     user: User = Depends(require_permission("finance", "create"))
 ):
     try:
+        canon_type = normalize_transaction_type(payload.transaction_type)
+        canon_pm = normalize_payment_method(payload.payment_method)
+        if canon_type in (TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value):
+            raise HTTPException(
+                status_code=400,
+                detail="Tạm ứng và quyết toán phải đi qua quy trình phiếu chuyên biệt.",
+            )
         new_item = CashflowTransaction(
             id=f"PTC-{uuid.uuid4().hex[:8].upper()}",
-            transaction_type=payload.transaction_type,
+            transaction_type=canon_type,
             amount=payload.amount,
             description=payload.description,
             payer_payee_name=payload.payer_payee_name,
-            payment_method=payload.payment_method,
-            created_at=datetime.utcnow()
+            payment_method=canon_pm,
+            created_at=datetime.now(timezone.utc)
         )
         db.add(new_item)
         db.commit()
         db.refresh(new_item)
         return {"message": "Transaction created successfully", "data": {"id": new_item.id}}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

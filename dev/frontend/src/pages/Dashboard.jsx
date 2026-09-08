@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Files, Loader, AlertTriangle, DollarSign, Clock } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { StatsGrid, StatCard } from '../components/ui';
+import { StatsGrid, StatCard, StatusBadge } from '../components/ui';
 import PendingApprovals from '../features/approvals/PendingApprovals';
+import { apiFetch } from '../lib/api';
 
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
@@ -35,17 +36,15 @@ export default function Dashboard({ user }) {
     const fetchDashboard = async () => {
       try {
         const [resSummary, resCharts] = await Promise.all([
-          fetch('/api/dashboard/summary'),
-          fetch('/api/dashboard/charts')
+          apiFetch('/api/dashboard/summary'),
+          apiFetch('/api/dashboard/charts')
         ]);
-        if (resSummary.ok) {
-          const data = await resSummary.json();
-          setStats(data.stats);
-          setRecentTasks(data.recent_tasks || data.recent_hoso || []);
+        if (resSummary) {
+          setStats(resSummary.stats || {});
+          setRecentTasks(resSummary.recent_tasks || resSummary.recent_hoso || []);
         }
-        if (resCharts.ok) {
-          const data = await resCharts.json();
-          setChartData(data);
+        if (resCharts) {
+          setChartData(resCharts);
         }
       } catch (err) {
         console.error('Error fetching dashboard:', err);
@@ -333,7 +332,7 @@ export default function Dashboard({ user }) {
                     <td>{hs.area}</td>
                     <td>{hs.pic_main}</td>
                     <td>{hs.deadline}</td>
-                    <td><span className="badge badge-primary">{hs.status}</span></td>
+                    <td><StatusBadge status={hs.status} domain="tasks" /></td>
                   </tr>
                 ))
               )}

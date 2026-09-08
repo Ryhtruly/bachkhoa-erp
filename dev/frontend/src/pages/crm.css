@@ -1,0 +1,361 @@
+/* ==========================================================================
+   CRM Kanban & Pipeline Modern Styles — Bách Khoa ERP Design System
+   Sử dụng hoàn toàn biến màu & tokens chuẩn từ index.css:
+   var(--bg-card), var(--border-default), var(--orange-500), var(--orange-glow)...
+   ========================================================================== */
+
+.crm-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Kanban Board Grid */
+.crm-kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .crm-kanban-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .crm-kanban-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Kanban Column */
+.crm-kanban-col {
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  transition: border-color var(--duration), background var(--duration), box-shadow var(--duration);
+}
+
+.crm-kanban-col.drag-over {
+  border-color: var(--orange-500);
+  background: rgba(235, 74, 35, 0.04);
+  box-shadow: 0 0 0 2px var(--orange-glow);
+}
+
+.crm-col-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 2px solid transparent;
+}
+
+.crm-col-top--tiep-can { border-bottom-color: var(--blue-500); }
+.crm-col-top--bao-gia { border-bottom-color: var(--amber-500); }
+.crm-col-top--dam-phan { border-bottom-color: #8b5cf6; }
+.crm-col-top--chot { border-bottom-color: var(--green-500); }
+
+.crm-col-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crm-col-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.crm-col-dot--tiep-can { background: var(--blue-500); box-shadow: 0 0 8px rgba(59, 130, 246, 0.5); }
+.crm-col-dot--bao-gia { background: var(--amber-500); box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+.crm-col-dot--dam-phan { background: #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.5); }
+.crm-col-dot--chot { background: var(--green-500); box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+
+.crm-col-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: 0.03em;
+}
+
+.crm-col-count {
+  background: var(--bg-deep);
+  color: var(--text-secondary);
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+/* Kanban Column Body */
+.crm-col-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.crm-empty-placeholder {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  background: var(--bg-deep);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-hover);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Lead Card (Card inside column) */
+.lead-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
+  transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), border-color 0.18s;
+  cursor: grab;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lead-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(235, 74, 35, 0.08);
+  border-color: var(--orange-500);
+}
+
+.lead-card.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
+  cursor: grabbing;
+}
+
+/* Top: Nguồn + Ngày */
+.lead-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.lead-source-badge {
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(235, 74, 35, 0.12);
+  color: var(--orange-600);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lead-source-badge--zalo {
+  background: rgba(0, 104, 255, 0.12);
+  color: #0068ff;
+}
+
+.lead-source-badge--google {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+}
+
+.lead-date {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Customer Name */
+.lead-customer-name {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* Service Pill */
+.lead-service-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.lead-service-pill--survey {
+  background: rgba(235, 74, 35, 0.12);
+  color: var(--orange-600);
+}
+
+.lead-service-pill--legal {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--blue-500);
+}
+
+.lead-service-pill--construction {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green-500);
+}
+
+.lead-service-pill--general {
+  background: var(--bg-deep);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+/* Meta Data List */
+.lead-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.lead-meta-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.lead-meta-icon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.lead-meta-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.lead-meta-value strong {
+  color: var(--text-primary);
+}
+
+/* Notes Quote */
+.lead-notes-quote {
+  font-size: 0.76rem;
+  color: var(--text-tertiary);
+  background: var(--bg-deep);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--orange-500);
+  font-style: italic;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Quick Actions Bar */
+.lead-actions-bar {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.lead-action-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--border-default);
+  background: #ffffff;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+[data-theme='dark'] .lead-action-btn {
+  background: var(--bg-surface);
+}
+
+.lead-action-btn:hover {
+  background: var(--bg-deep);
+  border-color: var(--border-hover);
+}
+
+.lead-action-btn--zalo {
+  background: rgba(0, 104, 255, 0.08);
+  color: #0068ff;
+  border-color: rgba(0, 104, 255, 0.2);
+}
+
+.lead-action-btn--zalo:hover {
+  background: #0068ff;
+  color: #ffffff;
+  border-color: #0068ff;
+}
+
+/* Move Column Selector */
+.lead-move-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lead-move-select {
+  width: 100%;
+  height: 30px;
+  font-size: 0.78rem;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-deep);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.lead-move-select:focus {
+  outline: none;
+  border-color: var(--orange-500);
+}
+
+/* Live Currency Preview */
+.currency-live-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  font-size: 0.82rem;
+  color: #059669;
+  font-weight: 700;
+}

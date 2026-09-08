@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/piece-rates", tags=["06. Piece Rates"])
 CACHE_KEY = "bachkhoa:catalog:piece_rates"
 
 
-def _xoa_cache():
+def _clear_rates_cache():
     invalidate_cache(CACHE_KEY)
 
 
@@ -150,7 +150,7 @@ def propose_piece_rate(
         "ef": payload.effective_from or None, "u": user.id,
     }).mappings().first()
     db.commit()
-    _xoa_cache()
+    _clear_rates_cache()
     return {"status": "success", "data": {"rate_id": row["id"], "status": "draft"}}
 
 
@@ -170,30 +170,26 @@ def publish_piece_rate(
     if draft["status"] != "draft":
         raise HTTPException(status_code=409, detail="Chỉ duyệt được bản nháp")
 
-    hieu_luc = draft["effective_from"] or date.today()
-    if isinstance(hieu_luc, str):
-        hieu_luc = date.fromisoformat(hieu_luc)
+    effective_from = draft["effective_from"] or date.today()
+    if isinstance(effective_from, str):
+        effective_from = date.fromisoformat(effective_from)
 
-    # Đóng kỳ bản đang chạy: effective_to = ngày mới - 1, để không chồng kỳ với
-    # bản mới (ràng buộc EXCLUDE cấm hai bản published chồng nhau). Bản cũ vẫn ở
-    # trạng thái published — nó là giá đúng cho hồ sơ ký trong kỳ của nó.
     db.execute(text("""
         update public.work_item_rates
-        set effective_to = :truoc
+        set effective_to = :previous_day
         where work_item_id = :w and role_code = :r and status = 'published'
-          and (effective_to is null or effective_to >= :moi)
-    """), {"truoc": hieu_luc - timedelta(days=1), "moi": hieu_luc,
+          and (effective_to is null or effective_to >= :current_effective)
+    """), {"previous_day": effective_from - timedelta(days=1), "current_effective": effective_from,
            "w": draft["work_item_id"], "r": draft["role_code"]})
 
-    # Bản nháp thành hiệu lực, có người duyệt (ràng buộc bắt published phải có duyệt).
     db.execute(text("""
         update public.work_item_rates
         set status = 'published', effective_from = :ef,
             approved_by = :u, approved_at = now()
         where id = :i
-    """), {"ef": hieu_luc, "u": user.id, "i": rate_id})
+    """), {"ef": effective_from, "u": user.id, "i": rate_id})
     db.commit()
-    _xoa_cache()
+    _clear_rates_cache()
     return {"status": "success", "message": "Đã duyệt và áp dụng đơn giá mới"}
 
 
@@ -214,5 +210,5 @@ def discard_draft_rate(
         raise HTTPException(status_code=409, detail="Chỉ bỏ được bản nháp; bản đã áp dụng là lịch sử tiền")
     db.execute(text("delete from public.work_item_rates where id = :i"), {"i": rate_id})
     db.commit()
-    _xoa_cache()
+    _clear_rates_cache()
     return {"status": "success", "message": "Đã bỏ bản nháp"}

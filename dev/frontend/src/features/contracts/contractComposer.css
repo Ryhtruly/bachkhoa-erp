@@ -176,6 +176,184 @@
 .ctr-form select:disabled { background: #FAFBFC; color: var(--ink-4); cursor: not-allowed; border-style: dashed; }
 .ctr-form .in.bad,
 .ctr-form select.bad { border-color: #E5484D; box-shadow: 0 0 0 3px #FEECEC; }
+/* ── DatePicker isolation in ContractComposer ────────────────── */
+.ctr-form .date-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+}
+.ctr-form .date-picker__trigger {
+  width: 100%;
+  height: 40px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 36px 0 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.ctr-form .date-picker__trigger:hover:not(:disabled) {
+  background: var(--field-hv);
+  border-color: var(--line-2);
+}
+.ctr-form .date-picker__trigger:focus,
+.ctr-form .date-picker__trigger--open {
+  background: #fff;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+.ctr-form .date-picker.bad .date-picker__trigger {
+  border-color: #E5484D;
+  box-shadow: 0 0 0 3px #FEECEC;
+}
+.ctr-form .date-picker__clear {
+  position: absolute;
+  right: 7px;
+  z-index: 2;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.ctr-form .date-picker__popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1300;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+  opacity: 1;
+}
+.ctr-form .date-picker__popover--top,
+.ctr-form .date-picker--top .date-picker__popover {
+  top: auto;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 -18px 45px rgba(15, 23, 42, 0.16);
+}
+.ctr-form .date-picker__header {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.ctr-form .date-picker__header > button,
+.ctr-form .date-picker__title button {
+  display: inline-flex;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 8px;
+}
+.ctr-form .date-picker__header > button:hover,
+.ctr-form .date-picker__title button:hover {
+  background: #f1f5f9;
+  color: var(--acc);
+}
+.ctr-form .date-picker__title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 15px;
+}
+.ctr-form .date-picker__weekdays,
+.ctr-form .date-picker__days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.ctr-form .date-picker__weekdays {
+  margin-bottom: 6px;
+}
+.ctr-form .date-picker__weekdays span {
+  padding: 5px 0;
+  color: var(--ink-3);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+.ctr-form .date-picker__days button,
+.ctr-form .date-picker__months button,
+.ctr-form .date-picker__years button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  width: 100%;
+}
+.ctr-form .date-picker__days button:hover,
+.ctr-form .date-picker__months button:hover,
+.ctr-form .date-picker__years button:hover {
+  background: #f1f5f9;
+  color: var(--acc);
+}
+.ctr-form .date-picker__days button.is-today {
+  box-shadow: inset 0 0 0 1px var(--acc);
+  color: var(--acc-deep);
+  font-weight: 700;
+}
+.ctr-form .date-picker__days button.is-selected,
+.ctr-form .date-picker__months button.is-selected,
+.ctr-form .date-picker__years button.is-selected {
+  background: var(--acc);
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(232, 112, 58, 0.25);
+  font-weight: 700;
+}
+.ctr-form .date-picker__today {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--acc);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: .15s;
+}
+.ctr-form .date-picker__today:hover {
+  background: var(--acc-soft);
+  color: var(--acc-deep);
+}
 
 .ctr-form .wrap { position: relative; }
 .ctr-form .suf {
@@ -336,3 +514,302 @@
   border-radius: 8px; font-weight: 600; font-size: 0.82rem; cursor: pointer;
 }
 .kh-tracuu:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Custom Select — Khớp cố định sát trực tiếp dưới ô nhập ──── */
+.ctr-form .custom-select-container {
+  position: relative;
+  width: 100%;
+}
+
+.ctr-form .custom-select-trigger {
+  width: 100%;
+  height: 40px;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 0 12px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+
+.ctr-form .custom-select-trigger:hover:not(:disabled) {
+  background: var(--field-hv);
+  border-color: var(--line-2);
+}
+
+.ctr-form .custom-select-trigger.is-open,
+.ctr-form .custom-select-trigger:focus {
+  background: #fff;
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-soft);
+}
+
+.ctr-form .custom-select-trigger .chevron-icon {
+  color: var(--ink-3);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.ctr-form .custom-select-trigger .chevron-icon.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.ctr-form .custom-select-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(20, 23, 31, 0.12);
+  z-index: 1000;
+  padding: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.ctr-form .custom-select-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ctr-form .custom-select-option:hover {
+  background: var(--field-hv);
+  color: var(--acc-deep);
+}
+
+.ctr-form .custom-select-option.is-selected {
+  background: var(--acc-soft);
+  color: var(--acc-deep);
+  font-weight: 600;
+}
+
+.ctr-form .custom-select-option .check-icon {
+  color: var(--acc);
+  flex-shrink: 0;
+}
+
+.ctr-form .custom-select-option .check-placeholder {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.ctr-form .ctr-source-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1.5px dashed var(--line-2, #cbd5e1);
+  border-radius: 10px;
+  background: var(--field, #f8fafc);
+  color: var(--ink-2, #334155);
+  cursor: pointer;
+}
+.ctr-form .ctr-source-upload:hover { border-color: var(--acc); background: var(--acc-soft); }
+.ctr-form .ctr-source-upload > svg { color: var(--acc); flex: none; }
+.ctr-form .ctr-source-upload span { display: grid; gap: 2px; }
+.ctr-form .ctr-source-upload strong { font-size: 13.5px; }
+.ctr-form .ctr-source-upload small { color: var(--ink-3); font-size: 11.5px; font-weight: 500; }
+.ctr-form .ctr-source-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ctr-form .ctr-source-files { display: grid; gap: 6px; min-width: 0; margin-top: 9px; }
+.ctr-form .ctr-source-files__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2, #cbd5e1);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink-2, #334155);
+  text-align: left;
+  cursor: pointer;
+}
+.ctr-form .ctr-source-files__toggle:hover { border-color: var(--acc); background: var(--acc-soft); }
+.ctr-form .ctr-source-files__toggle:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ctr-form .ctr-source-files__toggle > span { display: grid; min-width: 0; gap: 2px; }
+.ctr-form .ctr-source-files__toggle strong { font-size: 12.5px; font-weight: 700; }
+.ctr-form .ctr-source-files__toggle small { color: var(--ink-3); font-size: 11.5px; font-weight: 500; }
+.ctr-form .ctr-source-files__toggle > svg { flex: none; transition: transform .16s ease; }
+.ctr-form .ctr-source-files__toggle > svg.is-open { transform: rotate(180deg); }
+.ctr-form .ctr-source-files__list {
+  display: grid;
+  max-height: 240px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  border: 1px solid var(--line-2, #cbd5e1);
+  border-radius: 10px;
+  background: var(--field, #f8fafc);
+}
+.ctr-form .ctr-source-files__list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 8px 9px;
+  border-bottom: 1px solid var(--line, #e2e8f0);
+  color: var(--ink-2, #334155);
+}
+.ctr-form .ctr-source-files__list li:last-child { border-bottom: 0; }
+.ctr-form .ctr-source-files__list li > svg { color: var(--acc); }
+.ctr-form .ctr-source-files__meta { display: grid; min-width: 0; gap: 2px; }
+.ctr-form .ctr-source-files__preview {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  color: var(--ink, #0f172a);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ctr-form .ctr-source-files__preview:hover { color: var(--acc); text-decoration: underline; }
+.ctr-form .ctr-source-files__preview:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ctr-form .ctr-source-files__meta small { color: var(--ink-3); font-size: 10.5px; }
+.ctr-form .ctr-source-files__remove {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.ctr-form .ctr-source-files__remove:hover { background: #fee2e2; color: #dc2626; }
+.ctr-form .ctr-source-files__remove:focus-visible { outline: 2px solid #dc2626; outline-offset: 1px; }
+
+@media (max-width: 720px) {
+  .ctr-form .ctr-source-files__toggle { align-items: flex-start; }
+  .ctr-form .ctr-source-files__list { max-height: 210px; }
+}
+
+/* Nhãn "bắt buộc" trong menu chọn giấy: Giám đốc cần thấy mình đang bỏ tick thứ
+   gì. Bỏ một loại bắt buộc là quyết định có hệ quả — nó thôi chặn K01. */
+.ctr-checklist__req {
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #c23816;
+}
+
+.ctr-checklist__hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-4, #94a3b8);
+}
+
+/* Menu chọn NHIỀU: mặc định tick hết nên tô nền mọi dòng đã chọn sẽ khiến cả
+   menu thành một mảng cam đặc, không còn phân biệt được gì. Ở đây dấu tích đã
+   nói đủ trạng thái, nên nền để dành cho hover — đúng vai trò của nó là chỉ ra
+   con trỏ đang ở đâu. Chữ đậm giữ lại để dòng đã chọn vẫn nhỉnh hơn dòng không. */
+.ctr-form .custom-select-menu.is-multi .custom-select-option.is-selected {
+  background: transparent;
+  color: var(--ink);
+}
+.ctr-form .custom-select-menu.is-multi .custom-select-option.is-selected:hover {
+  background: var(--field-hv);
+  color: var(--acc-deep);
+}
+.ctr-form .custom-select-menu.is-multi .check-icon { color: var(--acc-deep); }
+
+/* ── Ba chế độ chọn giấy tờ cho Hạng mục ──
+   Không ô nào được tick sẵn: "quên chọn" phải là trạng thái nhìn thấy được, chứ
+   không âm thầm biến thành "dùng bộ mặc định". */
+.ctr-che-do {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ctr-che-do__o {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ctr-che-do__o:hover { border-color: var(--acc); }
+.ctr-che-do__o:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.ctr-che-do__o strong { font-size: 13px; font-weight: 700; color: var(--ink); }
+.ctr-che-do__o span { font-size: 11.5px; line-height: 1.4; color: var(--ink-4); }
+.ctr-che-do__o.is-active {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+.ctr-che-do__o.is-active strong { color: var(--acc-deep); }
+
+/* Nhãn mô hình sổ. Hạng mục cũ chỉ được ĐỌC nhãn "Mô hình cũ" — không có đường
+   nào trên giao diện chuyển nó sang V2, vì chuyển là đổi cách đọc cả bộ sổ. */
+.ctr-badge-v2 {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--acc);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--acc-deep);
+  background: var(--acc-soft);
+}
+
+.ctr-v2-locked {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  background: var(--surface-2, #f8fafc);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ==========================================================================
+   Sidebar hợp đồng — hàng "hợp đồng mẫu" và Tủ hồ sơ
+   Màu cam lấy ĐÚNG gradient của .btn-primary (nút "Quy trình") để cả sidebar
+   chỉ có một tông cam, không phải cam vàng riêng của bản vẽ.
+   ========================================================================== */

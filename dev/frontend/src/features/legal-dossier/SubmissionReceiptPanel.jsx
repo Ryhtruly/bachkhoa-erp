@@ -18,6 +18,15 @@ import './legalDossier.css'
 
 // Khớp GOV_STATUSES trong routes_legal_submissions.py
 const GOV_STATUSES = ['Đang chi nhánh', 'Hoàn thành', 'Rút hồ sơ', 'Trả công văn']
+
+const AGENCY_SUGGESTIONS = [
+  'Chi nhánh VP ĐKĐĐ',
+  'Một cửa UBND Quận/Huyện',
+  'UBND Xã/Phường',
+  'Sở Xây Dựng',
+  'Phòng QLĐT Quận/Huyện',
+  'Sở Tài nguyên & Môi trường',
+]
 const STATUS_TONE = {
   'Đang chi nhánh': 'info',
   'Hoàn thành': 'success',
@@ -40,7 +49,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ receipt_code: '', gov_status: 'Đang chi nhánh', expected_return_date: '' })
+  const [form, setForm] = useState({ receipt_code: '', gov_status: 'Đang chi nhánh', expected_return_date: '', received_date: '', submitted_agency: '' })
 
   const load = useCallback(async () => {
     if (!taskNodeId) { setSubmission(null); setLoading(false); return }
@@ -54,6 +63,8 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
         receipt_code: data?.receipt_code || '',
         gov_status: data?.gov_status || 'Đang chi nhánh',
         expected_return_date: (data?.expected_return_date || '').slice(0, 10),
+        received_date: (data?.received_date || '').slice(0, 10),
+        submitted_agency: data?.submitted_agency || '',
       })
       // Chưa có biên nhận và hồ sơ chưa khoá → mở sẵn ô nhập cho đỡ phải bấm.
       setEditing(Boolean(data) && !data.receipt_code && !data.is_locked)
@@ -77,6 +88,8 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
           receipt_code: form.receipt_code.trim() || null,
           gov_status: form.gov_status,
           expected_return_date: form.expected_return_date || null,
+          received_date: form.received_date || null,
+          submitted_agency: form.submitted_agency.trim() || null,
         }),
       })
       addToast?.('Đã lưu & đồng bộ sang tab Pháp Lý', 'success')
@@ -128,6 +141,20 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
               onChange={(e) => setForm((f) => ({ ...f, receipt_code: e.target.value }))}
             />
           </label>
+          <label className="legal-receipt-panel__field">
+            Cơ quan tiếp nhận
+            <input
+              className="form-control"
+              list="agency-suggestions"
+              placeholder="Chọn hoặc nhập cơ quan nộp…"
+              value={form.submitted_agency}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, submitted_agency: e.target.value }))}
+            />
+            <datalist id="agency-suggestions">
+              {AGENCY_SUGGESTIONS.map((a) => <option key={a} value={a} />)}
+            </datalist>
+          </label>
           <div className="legal-receipt-panel__row">
             <label className="legal-receipt-panel__field">
               Tình trạng tại cơ quan
@@ -141,7 +168,17 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
               </select>
             </label>
             <label className="legal-receipt-panel__field">
-              Ngày hẹn trả
+              Ngày nhận biên nhận
+              <input
+                type="date"
+                className="form-control"
+                value={form.received_date}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, received_date: e.target.value }))}
+              />
+            </label>
+            <label className="legal-receipt-panel__field">
+              Ngày hẹn trả kết quả
               <input
                 type="date"
                 className="form-control"
@@ -178,9 +215,15 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
             </span>
           </div>
           <div className="legal-receipt-panel__view-meta">
+            {submission.submitted_agency && (
+              <span>Nơi nộp: <strong>{submission.submitted_agency}</strong></span>
+            )}
+            {submission.received_date && (
+              <span>Nhận biên nhận: {dmy(submission.received_date)}</span>
+            )}
             {submission.expected_return_date ? (
               <span className={overdue ? 'is-overdue' : ''}>
-                {overdue && <AlertTriangle size={13} />} Hẹn trả {dmy(submission.expected_return_date)}
+                {overdue && <AlertTriangle size={13} />} Hẹn trả kết quả {dmy(submission.expected_return_date)}
                 {overdue && ' · Quá hạn'}
               </span>
             ) : (

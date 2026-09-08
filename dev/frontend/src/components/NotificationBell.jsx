@@ -10,7 +10,28 @@ const TYPE_ICON = {
   node_start: <RotateCcw size={14} />,
   checklist_resubmit: <XCircle size={14} />,
   cashflow_approval: <Wallet size={14} />,
+  node_event: <Bell size={14} />,
 };
+
+// Tin về SỰ KIỆN ĐÃ XẢY RA chọn icon theo kết quả, không dùng chung một cái.
+// Bị trả bài và được duyệt đạt là hai tin hoàn toàn khác nhau — cùng một icon
+// thì người ta phải đọc hết chữ mới biết nên lo hay nên mừng.
+const EVENT_ICON = {
+  NODE_REVIEW_COMPLETED: <CheckCircle2 size={14} />,
+  HELP_CLAIMED: <CheckCircle2 size={14} />,
+  HELP_EXPIRED: <RotateCcw size={14} />,
+  NODE_PAUSED: <Clock3 size={14} />,
+  NODE_RESUMED: <RotateCcw size={14} />,
+};
+
+function iconFor(item) {
+  if (item.type === 'node_event') {
+    // Đợt duyệt có tờ bị trả thì phải là dấu hiệu CẦN SỬA, không phải dấu tích.
+    if (/cần sửa/i.test(item.label || '')) return <XCircle size={14} />;
+    return EVENT_ICON[item.event_type] || TYPE_ICON.node_event;
+  }
+  return TYPE_ICON[item.type];
+}
 
 export default function NotificationBell({ open, onOpenChange, onNavigate }) {
   const [items, setItems] = useState([]);
@@ -139,10 +160,10 @@ export default function NotificationBell({ open, onOpenChange, onNavigate }) {
           ) : (
             <ul className="notification-bell__list">
               {items.map((item, index) => (
-                <li key={`${item.type}-${item.voucher_id || item.contract_id}-${item.node_key}-${index}`}>
+                <li key={item.event_id || `${item.type}-${item.voucher_id || item.contract_id}-${item.node_key}-${index}`}>
                   <button type="button" onClick={() => handleItemClick(item)}>
                     <span className={`notification-bell__type notification-bell__type--${item.type}`}>
-                      {TYPE_ICON[item.type]}
+                      {iconFor(item)}
                     </span>
                     <span className="notification-bell__label">{item.label}</span>
                     <span className="notification-bell__contract">{item.contract_id}</span>

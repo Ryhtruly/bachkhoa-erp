@@ -33,10 +33,42 @@ class CashflowTransaction(Base):
     created_by_user_id = Column(String, nullable=True)
     approved_by_user_id = Column(String, nullable=True)
     status = Column(String, nullable=True)
-    scope = Column(String, default="Công ty")
+    scope = Column(String, default="COMPANY")
     cancellation_reason = Column(String, nullable=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
+    # Snapshot of the configured signers captured when the document is completed.
+    # Nullable for legacy transactions created before signer snapshots existed.
+    signer_snapshot = Column(JSONB, nullable=True)
+    __table_args__ = (
+        Index("idx_cashflow_composite_balance", "payment_method", "transaction_type", "scope", "status"),
+        Index("idx_cashflow_composite_monthly", "scope", "transaction_date", "transaction_type"),
+    )
+
+
+class AdvanceRequest(Base):
+    """Employee request that precedes an official advance voucher."""
+
+    __tablename__ = "advance_requests"
+    id = Column(String, primary_key=True, default=lambda: f"ar_{uuid.uuid4().hex[:12]}")
+    employee_id = Column(String, ForeignKey("employees.id", ondelete="restrict"), nullable=False)
+    requested_by_user_id = Column(String, ForeignKey("users.id", ondelete="restrict"), nullable=False)
+    project_id = Column(String, ForeignKey("service_lines.id", ondelete="set null"), nullable=True)
+    contract_id = Column(String, ForeignKey("contracts.id", ondelete="set null"), nullable=True)
+    amount = Column(Numeric(15, 2), nullable=False)
+    payment_method = Column(String, nullable=False, default="CASH")
+    note = Column(Text, nullable=False)
+    status = Column(String(30), nullable=False, default="PENDING")
+    reviewed_by_user_id = Column(String, ForeignKey("users.id", ondelete="set null"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    official_transaction_id = Column(String, ForeignKey("cashflow_transactions.id", ondelete="set null"), nullable=True, unique=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
+    __table_args__ = (
+        Index("idx_advance_requests_employee_status", "employee_id", "status"),
+        Index("idx_advance_requests_status", "status"),
+    )
 
 
 class Receivable(Base):
@@ -62,7 +94,7 @@ class Receivable(Base):
 
 class FundOpeningBalance(Base):
     __tablename__ = "fund_opening_balances"
-    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(Integer, primary_key=True, autoincrement=True)
     payment_method = Column(String(50), nullable=True)
     opening_balance = Column(Numeric, default=0)
     effective_date = Column(Date, nullable=True)

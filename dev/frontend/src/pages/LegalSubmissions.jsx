@@ -19,11 +19,22 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import { isDossierLocked } from '../lib/dossierStatus';
 import LegalDossierActions from '../features/legal-dossier/LegalDossierActions';
+import DossierDocuments from '../features/legal-dossier/DossierDocuments';
+import DocumentCabinet from '../features/contracts/DocumentCabinet';
 import './legalSubmissions.css';
 
 const API = '';
 
 const GOV_STATUS_OPTIONS = ['Đang chi nhánh', 'Hoàn thành', 'Rút hồ sơ', 'Trả công văn'];
+
+const AGENCY_SUGGESTIONS = [
+  'Chi nhánh VP ĐKĐĐ',
+  'Một cửa UBND Quận/Huyện',
+  'UBND Xã/Phường',
+  'Sở Xây Dựng',
+  'Phòng QLĐT Quận/Huyện',
+  'Sở Tài nguyên & Môi trường',
+];
 
 const GOV_STATUS_VARIANTS = {
   'Đang chi nhánh': 'info',
@@ -43,6 +54,7 @@ const toEditForm = (data) => ({
   gov_status: data.gov_status || 'Đang chi nhánh',
   received_date: data.received_date || '',
   expected_return_date: data.expected_return_date || '',
+  submitted_agency: data.submitted_agency || '',
   note: data.note || '',
 });
 
@@ -139,7 +151,7 @@ export default function LegalSubmissions() {
       } else if (showLoading) {
         addToast('Lỗi khi tải danh sách hồ sơ pháp lý', 'error');
       }
-    } catch (err) {
+    } catch {
       if (showLoading) addToast('Không thể kết nối đến máy chủ', 'error');
     } finally {
       if (showLoading) setLoading(false);
@@ -268,15 +280,23 @@ export default function LegalSubmissions() {
       ),
     },
     {
+      key: 'submitted_agency',
+      label: 'NƠI NỘP / CƠ QUAN',
+      width: 180,
+      render: (val) => val
+        ? <span style={{ fontSize: '0.85rem' }}>{val}</span>
+        : <span style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Chưa có</span>,
+    },
+    {
       key: 'received_date',
-      label: 'NGÀY NHẬN',
-      width: 110,
+      label: 'NGÀY NHẬN BIÊN NHẬN',
+      width: 140,
       render: (val) => formatDate(val),
     },
     {
       key: 'expected_return_date',
-      label: 'NGÀY HẸN TRẢ',
-      width: 110,
+      label: 'NGÀY HẸN TRẢ KẾT QUẢ',
+      width: 140,
       render: (val) => formatDate(val),
     },
     {
@@ -435,17 +455,26 @@ export default function LegalSubmissions() {
                       value={editForm.receipt_code}
                       onChange={(e) => setEditForm({ ...editForm, receipt_code: e.target.value })} />
                   </Field>
+                  <Field label="Cơ quan tiếp nhận" editing value={editForm.submitted_agency}>
+                    <input className="form-control" list="agency-suggestions-detail"
+                      placeholder="Chọn hoặc nhập cơ quan nộp…"
+                      value={editForm.submitted_agency}
+                      onChange={(e) => setEditForm({ ...editForm, submitted_agency: e.target.value })} />
+                    <datalist id="agency-suggestions-detail">
+                      {AGENCY_SUGGESTIONS.map(a => <option key={a} value={a} />)}
+                    </datalist>
+                  </Field>
                   <Field label="Tình trạng" editing value={editForm.gov_status}>
                     <select className="form-control" value={editForm.gov_status}
                       onChange={(e) => setEditForm({ ...editForm, gov_status: e.target.value })}>
                       {GOV_STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </Field>
-                  <Field label="Ngày nhận" editing value={editForm.received_date}>
+                  <Field label="Ngày nhận biên nhận" editing value={editForm.received_date}>
                     <input type="date" className="form-control" value={editForm.received_date || ''}
                       onChange={(e) => setEditForm({ ...editForm, received_date: e.target.value })} />
                   </Field>
-                  <Field label="Ngày hẹn trả" editing value={editForm.expected_return_date}>
+                  <Field label="Ngày hẹn trả kết quả" editing value={editForm.expected_return_date}>
                     <input type="date" className="form-control" value={editForm.expected_return_date || ''}
                       onChange={(e) => setEditForm({ ...editForm, expected_return_date: e.target.value })} />
                   </Field>
@@ -461,8 +490,9 @@ export default function LegalSubmissions() {
                     <>
                       <span className="legal-receipt__code">{editForm.receipt_code}</span>
                       <div className="legal-receipt__dates">
-                        <Field label="Ngày nhận" value={formatDate(editForm.received_date)} />
-                        <Field label="Ngày hẹn trả" value={formatDate(editForm.expected_return_date)} />
+                        <Field label="Cơ quan tiếp nhận" value={editForm.submitted_agency} />
+                        <Field label="Ngày nhận biên nhận" value={formatDate(editForm.received_date)} />
+                        <Field label="Ngày hẹn trả kết quả" value={formatDate(editForm.expected_return_date)} />
                         <Field label="Ảnh chụp biên nhận" wide
                           value={driveLink(editForm.receipt_photo_url, 'Xem ảnh biên nhận')}
                           empty="Chưa đính kèm" />
@@ -503,6 +533,23 @@ export default function LegalSubmissions() {
                     onChange={(e) => setEditForm({ ...editForm, note: e.target.value })} />
                 </Field>
               </div>
+
+              {/* Tủ của đúng Hạng mục pháp lý, không dùng danh mục Mẫu giấy tờ. */}
+              <DocumentCabinet
+                contractId={detailData?.contract_id}
+                serviceLines={detailData?.service_line_id ? [{
+                  id: detailData.service_line_id,
+                  name: detailData.service_line_name || detailData.dossier_name || 'Hồ sơ pháp lý',
+                }] : []}
+                addToast={addToast}
+                title="TỦ HỒ SƠ PHÁP LÝ"
+              />
+
+              <DossierDocuments
+                dossierId={detailData?.dossier_id}
+                addToast={addToast}
+                onChanged={() => fetchSubmissions()}
+              />
             </section>
 
             <div className="legal-detail__footer">

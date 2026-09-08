@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowLeft,
-  FileText,
   UserRound,
   Phone,
   MapPin,
@@ -10,9 +9,11 @@ import {
   TriangleAlert,
   LoaderCircle,
   Workflow,
-  ShieldCheck,
-  DollarSign,
-  Ruler
+  Ruler,
+  Info,
+  ChevronDown,
+  X,
+  Sparkles,
 } from 'lucide-react';
 import ContractWorkflowDesigner from './ContractWorkflowDesigner';
 import {
@@ -20,10 +21,9 @@ import {
   WORKFLOW_REVISION_STATUS_LABELS,
   workflowLabel,
 } from './workflowLabels';
-import { apiFetch } from '../../lib/api';
-import { xinPhepRoiDi } from '../../lib/canhBaoChuaLuu';
+import { apiFetch, getAccessToken } from '../../lib/api';
+import { requestNavigationPermission } from '../../lib/unsavedChangesGuard';
 import PriorityBonusModal from './PriorityBonusModal';
-import { Sparkles } from 'lucide-react';
 
 const getContractId = contract => contract?.id || contract?.contract_id || '';
 
@@ -35,6 +35,94 @@ function WorkspaceEmpty({ icon: Icon = FolderOpen, title, description }) {
       <div><Icon size={28} /></div>
       <strong>{title}</strong>
       <p>{description}</p>
+    </div>
+  );
+}
+
+export function ContractHeaderDetails({ contract }) {
+  const [open, setOpen] = useState(false);
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event) => {
+      if (popoverRef.current && !popoverRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  if (!contract) return null;
+
+  return (
+    <div className="contract-header-summary" ref={popoverRef}>
+      <div className="contract-header-summary__bar">
+        <span className="contract-header-summary__client" title={contract.customer_name || 'Khách hàng'}>
+          <UserRound size={13} />
+          <strong>{contract.customer_name || 'Chưa có tên KH'}</strong>
+        </span>
+        {contract.customer_phone && (
+          <span className="contract-header-summary__phone">
+            <Phone size={12} /> {contract.customer_phone}
+          </span>
+        )}
+        <span className="contract-header-summary__divider" aria-hidden="true">•</span>
+        <span className="contract-header-summary__value">
+          {formatVND(contract.total_value)}
+        </span>
+        <button
+          type="button"
+          className={`contract-header-summary__btn${open ? ' is-active' : ''}`}
+          onClick={() => setOpen(v => !v)}
+          aria-expanded={open}
+          aria-label="Xem chi tiết thông tin khách hàng và hợp đồng"
+        >
+          <Info size={13} />
+          <span>Chi tiết</span>
+          <ChevronDown size={13} className={open ? 'is-open' : ''} />
+        </button>
+      </div>
+
+      {open && (
+        <div className="contract-header-summary__popover" role="dialog" aria-label="Chi tiết thông tin hợp đồng">
+          <div className="contract-header-summary__popover-head">
+            <strong>Thông tin hợp đồng</strong>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Đóng chi tiết">
+              <X size={14} />
+            </button>
+          </div>
+          <div className="contract-header-summary__popover-grid">
+            <div className="summary-field">
+              <span className="summary-field__label"><UserRound size={12} /> Khách hàng</span>
+              <strong className="summary-field__value">{contract.customer_name || 'Chưa có'}</strong>
+            </div>
+            <div className="summary-field">
+              <span className="summary-field__label"><Phone size={12} /> Điện thoại</span>
+              <strong className="summary-field__value">
+                {contract.customer_phone ? (
+                  <a href={`tel:${contract.customer_phone}`}>{contract.customer_phone}</a>
+                ) : 'Chưa có'}
+              </strong>
+            </div>
+            <div className="summary-field">
+              <span className="summary-field__label"><MapPin size={12} /> Địa điểm dịch vụ</span>
+              <strong className="summary-field__value">{contract.service_location || 'Chưa có'}</strong>
+            </div>
+            <div className="summary-field">
+              <span className="summary-field__label"><Ruler size={12} /> Diện tích</span>
+              <strong className="summary-field__value">
+                {contract.service_area ? `${new Intl.NumberFormat('vi-VN').format(Number(contract.service_area))} m²` : 'Chưa có'}
+              </strong>
+            </div>
+            <div className="summary-field summary-field--full">
+              <span className="summary-field__label">Giá trị hợp đồng</span>
+              <strong className="summary-field__value is-value">{formatVND(contract.total_value)}</strong>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -79,6 +167,11 @@ function ServiceLinesTab({ workspace, selectedId, onSelect }) {
           >
             <span>{index + 1}</span>
             <div>
+              {line.service_package && (
+                <span className={`service-line-pkg service-line-pkg--${line.service_package_id || 'other'}`}>
+                  {line.service_package}
+                </span>
+              )}
               <strong>{line.task_type || line.service_type}</strong>
               <small>{line.workflow ? workflowLabel(WORKFLOW_INSTANCE_STATUS_LABELS, line.workflow.status, 'Chưa thiết lập') : 'Chưa thiết lập'}</small>
             </div>
@@ -100,9 +193,14 @@ function DocumentsTab({ workspace }) {
   );
 }
 
-const workspaceMemoryCache = new Map();
+export const workspaceMemoryCache = new Map();
 
-export default function ContractWorkspace({ tab, contract, contracts, onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetType, targetNonce }) {
+export function clearWorkspaceMemoryCache(key) {
+  if (key) workspaceMemoryCache.delete(key);
+  else workspaceMemoryCache.clear();
+}
+
+export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetTaskNodeId, targetType, targetId, targetNonce, isDirector = false }) {
   const contractId = getContractId(contract);
   const contextKey = `${contractId}:${tab}`;
   const [workspace, setWorkspace] = useState(() => workspaceMemoryCache.get(contextKey) || null);
@@ -134,8 +232,8 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
     if (!contractId || tab === 'contracts') return undefined;
     let cancelled = false;
 
-    // Nếu đã có trong RAM cache, nạp ngay lập tức 0ms
-    if (workspaceMemoryCache.has(contextKey)) {
+    // Nếu đã có trong RAM cache và không phải lượt làm mới sau thao tác ghi, nạp ngay lập tức 0ms
+    if (workspaceMemoryCache.has(contextKey) && refreshKey === 0) {
       const cached = workspaceMemoryCache.get(contextKey);
       setWorkspace(cached);
       setSelectedServiceLineId(current => (
@@ -181,13 +279,62 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
     // các lần sau hoặc chuyển qua lại tab đều mở tức thì 0ms.
     const isFirstTime = !workspaceMemoryCache.has(contextKey);
     loadWorkspace(isFirstTime);
-    const pollId = setInterval(() => loadWorkspace(false), 5000);
+
+    let streamAbort = null;
+    let reconnectTimer = null;
+    let refreshTimer = null;
+    const refreshFromRealtime = () => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => loadWorkspace(false), 120);
+    };
+    const subscribe = async () => {
+      if (cancelled || !isDirector) return;
+      const token = getAccessToken();
+      if (!token) return;
+      streamAbort = new AbortController();
+      try {
+        const response = await fetch('/api/contracts/timeline/events', {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+          cache: 'no-store',
+          signal: streamAbort.signal,
+        });
+        if (response.status === 401 || response.status === 403 || !response.body) return;
+        if (!response.ok) throw new Error('Không kết nối được luồng cập nhật Hợp đồng');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() || '';
+          if (blocks.some(block => block.includes('event: timeline-change'))) {
+            refreshFromRealtime();
+          }
+        }
+      } catch (streamError) {
+        if (cancelled || streamError?.name === 'AbortError') return;
+      }
+      if (!cancelled) reconnectTimer = window.setTimeout(subscribe, 1500);
+    };
+    subscribe();
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') loadWorkspace(false);
+    };
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('focus', refreshWhenVisible);
 
     return () => {
       cancelled = true;
-      clearInterval(pollId);
+      streamAbort?.abort();
+      window.clearTimeout(reconnectTimer);
+      window.clearTimeout(refreshTimer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('focus', refreshWhenVisible);
     };
-  }, [contractId, contextKey, tab, refreshKey]);
+  }, [contractId, contextKey, tab, refreshKey, targetServiceLineId, isDirector]);
 
   const selectedServiceLine = useMemo(
     () => workspace?.service_lines.find(item => item.id === selectedServiceLineId) || workspace?.service_lines[0],
@@ -198,6 +345,44 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
     return <WorkspaceEmpty title="Chọn một hợp đồng" description="Chọn hợp đồng ở tab Danh sách để xem Hạng mục, tài liệu và thiết lập workflow." />;
   }
 
+  // Giám đốc duyệt/từ chối MỘT tờ giấy. Cố tình không tự làm mới cả workspace
+  // sau mỗi lần bấm: duyệt 10 tờ là 10 lần nạp lại toàn bộ hợp đồng, và mỗi lần
+  // nạp lại là thanh Chờ duyệt nhảy chỗ dưới tay người đang bấm.
+  const reviewDocument = async (checklistResultId, doc, decision, reason) => {
+    if (!checklistResultId || !doc?.document_id) {
+      addToast?.('Tờ giấy này chưa có tệp nào để duyệt', 'error');
+      return;
+    }
+    try {
+      await apiFetch(
+        `/api/contracts/workflow/checklist-results/${encodeURIComponent(checklistResultId)}/document-review`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ document_id: doc.document_id, decision, reason }),
+        },
+      );
+      setRefreshKey(current => current + 1);
+    } catch (error) {
+      addToast?.(error?.message || 'Không duyệt được tờ giấy này', 'error');
+    }
+  };
+
+  // Chốt đợt duyệt. Nuốt lỗi có chủ đích: đây chỉ là đường CỐ GẮNG chốt sớm,
+  // còn lưới an toàn thật là đường chốt lười phía máy chủ. Ném một toast đỏ lúc
+  // Giám đốc vừa đóng Drawer chỉ làm họ hoang mang về một việc đã có người lo.
+  const flushReviewBatch = async (taskNodeId) => {
+    if (!taskNodeId) return;
+    try {
+      await apiFetch(
+        `/api/contracts/workflow/nodes/${encodeURIComponent(taskNodeId)}/review-batch`,
+        { method: 'POST' },
+      );
+      setRefreshKey(current => current + 1);
+    } catch {
+      // Máy chủ sẽ tự chốt sau 15 phút.
+    }
+  };
+
   return (
     <div className={`contract-workspace contract-workspace--${tab}`}>
       <div className="contract-workspace__header">
@@ -207,7 +392,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
               <button
                 type="button"
                 className="contract-page-heading__back"
-                onClick={async () => { if (await xinPhepRoiDi()) onBack(); }}
+                onClick={async () => { if (await requestNavigationPermission()) onBack(); }}
                 title="Quay lại danh sách"
                 aria-label="Quay lại danh sách"
               >
@@ -218,6 +403,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
               <Workflow size={20} />
               {`Thiết lập quy trình · ${contractId}`}
             </h2>
+            <ContractHeaderDetails contract={workspace?.contract} />
             {/* Thưởng ưu tiên — chỉ hiện khi có hạng mục đặt ưu tiên và người dùng
                 quản được khoán (giám đốc). Bấm để phân bổ thưởng khi hoàn thành. */}
             {workspace?.service_lines?.some(sl => sl.priority && sl.priority !== 'NORMAL')
@@ -249,7 +435,7 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
         <WorkspaceEmpty icon={TriangleAlert} title="Không tải được dữ liệu" description={error} />
       ) : !workspace ? null : (
         <>
-          <ContractSummary contract={workspace.contract} />
+          {tab !== 'workflow' && <ContractSummary contract={workspace.contract} />}
           {tab === 'services' && (
             <ServiceLinesTab workspace={workspace} selectedId={selectedServiceLineId} onSelect={setSelectedServiceLineId} />
           )}
@@ -279,6 +465,11 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
                     >
                       <span>{index + 1}</span>
                       <div>
+                        {line.service_package && (
+                          <span className={`service-line-pkg service-line-pkg--${line.service_package_id || 'other'}`}>
+                            {line.service_package}
+                          </span>
+                        )}
                         <strong>{line.task_type || line.service_type}</strong>
                         <small>
                           {line.workflow?.status === 'cancelled'
@@ -291,16 +482,29 @@ export default function ContractWorkspace({ tab, contract, contracts, onContract
                 </aside>
                 <ContractWorkflowDesigner
                   serviceLine={selectedServiceLine}
+                  contractId={getContractId(workspace.contract)}
                   catalog={workspace.workflow_catalog}
                   templates={workspace.workflow_templates}
                   employees={workspace.assignment_options}
                   workItems={workspace.work_item_catalog}
+                  contractTotalValue={workspace.contract.total_value}
+                  contractPaidAmount={workspace.contract.paid_amount}
                   contractDateSigned={workspace.contract.date_signed}
               capabilities={workspace.capabilities}
                   addToast={addToast}
-                  onPersisted={() => setRefreshKey(current => current + 1)}
+                  onApproveDocument={(checklistResultId, doc) =>
+                    reviewDocument(checklistResultId, doc, 'approved')}
+                  onRejectDocument={(checklistResultId, doc, reason) =>
+                    reviewDocument(checklistResultId, doc, 'rejected', reason)}
+                  onFlushReviewBatch={flushReviewBatch}
+                  onPersisted={() => {
+                    workspaceMemoryCache.delete(contextKey);
+                    setRefreshKey(current => current + 1);
+                  }}
                   targetNodeKey={selectedServiceLine?.id === targetServiceLineId ? targetNodeKey : undefined}
+                  targetTaskNodeId={selectedServiceLine?.id === targetServiceLineId ? targetTaskNodeId : undefined}
                   targetType={selectedServiceLine?.id === targetServiceLineId ? targetType : undefined}
+                  targetId={selectedServiceLine?.id === targetServiceLineId ? targetId : undefined}
                   targetNonce={selectedServiceLine?.id === targetServiceLineId ? targetNonce : undefined}
                 />
               </div>

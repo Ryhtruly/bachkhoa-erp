@@ -1,7 +1,157 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Check, ChevronDown, FileUp, X } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
+import { laLoiChuaKichHoat, loiHienThi } from '../../lib/schemaV2'
+import DatePicker from '../../components/ui/DatePicker'
+import FilePreviewModal from '../../components/ui/FilePreviewModal'
 import './contractComposer.css'
+
+function CustomMultiSelect({ id, values = [], onToggle, options = [], placeholder, disabled }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const daChon = values.length
+  const nhan = daChon === 0
+    ? 'Không thu giấy nào từ khách'
+    : daChon === options.length
+      ? `Đủ bộ chuẩn · ${daChon} loại`
+      : `${daChon}/${options.length} loại giấy`
+
+  return (
+    <div className="custom-select-container" ref={ref}>
+      <button
+        id={id}
+        type="button"
+        className={`custom-select-trigger in ${open ? 'is-open' : ''}`}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span style={{ color: daChon ? 'var(--ink)' : 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {placeholder && !daChon ? placeholder : nhan}
+        </span>
+        <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="custom-select-menu is-multi" role="listbox" aria-multiselectable="true">
+          {options.map((opt) => {
+            const chon = values.includes(opt.id)
+            return (
+              <button
+                type="button"
+                key={opt.id}
+                role="option"
+                aria-selected={chon}
+                className={`custom-select-option ${chon ? 'is-selected' : ''}`}
+                onClick={() => onToggle(opt.id)}
+              >
+                {chon ? <Check size={14} className="check-icon" /> : <span className="check-placeholder" />}
+                <span>
+                  {opt.name}
+                  {opt.is_required && <em className="ctr-checklist__req"> · bắt buộc</em>}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function CustomSelect({ id, value, onChange, options = [], placeholder, disabled, className, 'aria-label': ariaLabel }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const normalizedOptions = useMemo(() => {
+    return (options || []).map(opt => {
+      if (typeof opt === 'object' && opt !== null) {
+        const val = opt.value !== undefined ? opt.value : (opt.id !== undefined ? opt.id : opt.code)
+        const lbl = opt.label !== undefined ? opt.label : (opt.name !== undefined ? opt.name : val)
+        return { value: String(val), label: String(lbl) }
+      }
+      return { value: String(opt), label: String(opt) }
+    })
+  }, [options])
+
+  const selectedOption = normalizedOptions.find(o => String(o.value) === String(value))
+
+  return (
+    <div className={`custom-select-container ${className || ''}`} ref={ref}>
+      <button
+        id={id}
+        type="button"
+        aria-label={ariaLabel}
+        className={`custom-select-trigger in ${className || ''} ${open ? 'is-open' : ''}`}
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span style={{ color: selectedOption ? 'var(--ink)' : 'var(--ink-4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selectedOption ? selectedOption.label : (placeholder || 'Chọn...')}
+        </span>
+        <ChevronDown size={15} className={`chevron-icon ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="custom-select-menu">
+          {placeholder && (
+            <button
+              type="button"
+              className={`custom-select-option ${!value ? 'is-selected' : ''}`}
+              onClick={() => {
+                onChange('')
+                setOpen(false)
+              }}
+            >
+              {!value ? <Check size={14} className="check-icon" /> : <span className="check-placeholder" />}
+              <span style={{ color: 'var(--ink-3)' }}>{placeholder}</span>
+            </button>
+          )}
+          {normalizedOptions.map((opt) => (
+            <button
+              type="button"
+              key={opt.value}
+              className={`custom-select-option ${String(opt.value) === String(value) ? 'is-selected' : ''}`}
+              onClick={() => {
+                onChange(opt.value)
+                setOpen(false)
+              }}
+            >
+              {String(opt.value) === String(value) ? (
+                <Check size={14} className="check-icon" />
+              ) : (
+                <span className="check-placeholder" />
+              )}
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 /**
  * Form soạn hợp đồng mới.
@@ -55,7 +205,7 @@ function readThreeDigits(n, isFull) {
   return s.trim()
 }
 
-export function spellCurrencyWords(n) {
+function spellCurrencyWords(n) {
   if (!n) return ''
   const unitNames = ['', 'nghìn', 'triệu', 'tỷ']
   const groups = []
@@ -72,6 +222,40 @@ export function spellCurrencyWords(n) {
 
 const parseNumericString = (v) => Number(String(v).replace(/\D/g, '')) || 0
 
+const normalizeAddressPart = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/gi, 'd')
+  .trim()
+  .toLowerCase()
+
+export function hydrateExistingCustomerAddress(customer, provinces = []) {
+  const provinceOptions = Array.isArray(provinces) ? provinces : []
+  const location = customer?.address_location
+    || customer?.addressLocation
+    || customer?.source_reference?.contract_address
+    || {}
+  const rawAddress = String(customer?.address || '').trim()
+  const parts = rawAddress.split(',').map(part => part.trim()).filter(Boolean)
+  const explicitProvinceName = location.province_name || customer?.province_name || ''
+  const explicitProvinceCode = location.province_code || customer?.province_code || ''
+  const province = provinceOptions.find(item => (
+    String(item.code) === String(explicitProvinceCode)
+    || normalizeAddressPart(item.name) === normalizeAddressPart(explicitProvinceName)
+    || normalizeAddressPart(item.name) === normalizeAddressPart(parts.at(-1))
+  ))
+  const provinceName = explicitProvinceName || province?.name || parts.at(-1) || ''
+  const provinceCode = String(explicitProvinceCode || province?.code || '')
+  const explicitWardName = location.ward_name || customer?.ward_name || ''
+  const wardName = explicitWardName || (parts.length > 2 ? parts.at(-2) : '')
+  const wardCode = String(location.ward_code || customer?.ward_code || '')
+  const detail = String(
+    location.detail || customer?.address_detail
+      || (parts.length > 2 ? parts.slice(0, -2).join(', ') : rawAddress),
+  ).trim()
+  return { detail, provinceCode, provinceName, wardCode, wardName }
+}
+
 // Gõ tắt theo cách người làm nghề vẫn nói: "5tr", "18.5tr", "500k", "1,2 tỷ".
 // Gõ đủ 18500000 vừa lâu vừa dễ thừa một số 0 mà mắt không bắt được.
 const UNIT_MULTIPLIERS = [
@@ -81,7 +265,7 @@ const UNIT_MULTIPLIERS = [
 ]
 
 /** Đọc chuỗi người dùng gõ thành số tiền. Trả null khi chưa gõ xong. */
-export function parseShorthandCurrency(input) {
+function parseShorthandCurrency(input) {
   const s = String(input).trim()
   if (!s) return 0
   for (const [pattern, multiplier] of UNIT_MULTIPLIERS) {
@@ -103,68 +287,150 @@ const QUICK_DENOMINATIONS = [
   { label: '+10 triệu', value: 1e7 },
 ]
 
-export default function ContractComposer({ open, code, services = [], isDirector = false, saving = false, onClose, onSubmit }) {
+export default function ContractComposer({
+  open,
+  code,
+  _services = [],
+  templates = [],
+  templatesLoading = false,
+  templatesError = '',
+  isDirector = false,
+  saving = false,
+  onClose,
+  onSubmit,
+}) {
   const [form, setForm] = useState(() => ({
     customer_name: '', phone: '', service_type: '', sales_source: '',
-    contract_value: '', detail: '',
+    contract_value: '', detail: '', contract_template_id: '',
     date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
   }))
-  // Ô chọn 2 tầng Gói → Hạng mục. Lưu task_type_id (khoá), không lưu tên —
-  // tên "Tách thửa" tồn tại ở cả gói Đo Vẽ lẫn Pháp Lý.
-  const [danhMuc, setDanhMuc] = useState([])
-  const [goiChon, setGoiChon] = useState('')
-  const [hangMucChon, setHangMucChon] = useState('')
-  // Ưu tiên hồ sơ (Q5) — chỉ giám đốc đặt, kèm lý do khi Cao/Gấp.
-  const [uuTien, setUuTien] = useState('NORMAL')
-  const [uuTienLyDo, setUuTienLyDo] = useState('')
-  // Khách hàng 2 loại: cá nhân (CCCD) / doanh nghiệp (MST + đại diện).
-  const [loaiKhach, setLoaiKhach] = useState('individual')
-  const [khachId, setKhachId] = useState('')  // id khách cũ đã chọn → ghép, không tạo trùng
-  const [dinhDanh, setDinhDanh] = useState({
+  // Two-tier selector: Service Package -> Task Type. Stores task_type_id.
+  const [serviceCatalog, setServiceCatalog] = useState([])
+  const [selectedPackageKey, setSelectedPackageKey] = useState('')
+  const [selectedTaskTypeId, setSelectedTaskTypeId] = useState('')
+  const [loaiGiay, setLoaiGiay] = useState([])
+  const [loaiGiayChon, setLoaiGiayChon] = useState([])
+  const [cheDoGiay, setCheDoGiay] = useState('')
+  const [khoaV2, setKhoaV2] = useState('')
+  // Priority (Director only)
+  const [priority, setPriority] = useState('NORMAL')
+  const [priorityReason, setPriorityReason] = useState('')
+  // Customer types: individual / business
+  const [customerType, setCustomerType] = useState('individual')
+  const [existingCustomerId, setExistingCustomerId] = useState('')
+  const [identityInfo, setIdentityInfo] = useState({
     tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
     email: '', zalo_phone: '', representative_name: '', representative_role: '',
   })
-  const [ketQuaTim, setKetQuaTim] = useState([])
-  const [dangTim, setDangTim] = useState(false)
-  const [dangTraCuu, setDangTraCuu] = useState(false)
+  const [nameSearchResults, setNameSearchResults] = useState([])
+  const [taxSearchResults, setTaxSearchResults] = useState([])
+  const [_isSearching, setIsSearching] = useState(false)
+  const [isLookingUpTax, setIsLookingUpTax] = useState(false)
   const [geoBoundary, setGeoBoundary] = useState({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
   const [provinces, setProvinces] = useState([])
   const [wards, setWards] = useState([])
   const [missingFields, setMissingFields] = useState([])
+  const [sourceFiles, setSourceFiles] = useState([])
+  const [sourceFilesOpen, setSourceFilesOpen] = useState(true)
+  const [sourcePreview, setSourcePreview] = useState(null)
+  const [createdContractId, setCreatedContractId] = useState('')
   const bodyRef = useRef(null)
+  const sourcePreviewUrlRef = useRef('')
 
-  // Mở lại form thì trả về trạng thái trắng — form giữ lại số liệu của hợp đồng
-  // vừa lưu là cách nhanh nhất để tạo nhầm một hợp đồng trùng.
+  const closeSourcePreview = useCallback(() => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+    sourcePreviewUrlRef.current = ''
+    setSourcePreview(null)
+  }, [])
+
+  const previewSourceFile = useCallback((file) => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    sourcePreviewUrlRef.current = url
+    setSourcePreview({ fileName: file.name, mimeType: file.type, url, blob: file })
+  }, [])
+
+  useEffect(() => () => {
+    if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
+  }, [])
+
+  // Reset form when reopened
+  useEffect(() => {
+    if (!open) return undefined
+    let bo = false
+    apiFetch('/api/document-register/checklist-options')
+      .then((res) => {
+        if (bo) return
+        const ds = res?.data || []
+        setLoaiGiay(ds)
+        setLoaiGiayChon(ds.map(x => x.id))
+      })
+      .catch((loi) => {
+        if (bo) return
+        setLoaiGiay([]); setLoaiGiayChon([])
+        // Schema V2 chưa apply: khoá phần chọn giấy và nói bằng tiếng Việt.
+        // Phần còn lại của form vẫn dùng bình thường.
+        setKhoaV2(laLoiChuaKichHoat(loi) ? loiHienThi(loi) : '')
+      })
+    return () => { bo = true }
+  }, [open])
+
   useEffect(() => {
     if (!open) return
     setForm({
       customer_name: '', phone: '', service_type: '', sales_source: '',
-      contract_value: '', detail: '',
+      contract_value: '', detail: '', contract_template_id: '',
       date_signed: getTodayDate(), due_date: addDays(getTodayDate(), 7),
     })
     setGeoBoundary({ provinceCode: '', provinceName: '', wardCode: '', wardName: '' })
     setWards([])
     setMissingFields([])
-    setGoiChon('')
-    setHangMucChon('')
-    setUuTien('NORMAL')
-    setUuTienLyDo('')
-    setLoaiKhach('individual')
-    setKhachId('')
-    setDinhDanh({ tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
+    setSelectedPackageKey('')
+    setSelectedTaskTypeId('')
+    setPriority('NORMAL')
+    setPriorityReason('')
+    setCustomerType('individual')
+    setExistingCustomerId('')
+    setIdentityInfo({ tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
       email: '', zalo_phone: '', representative_name: '', representative_role: '' })
-    setKetQuaTim([])
-  }, [open])
+    setNameSearchResults([])
+    setTaxSearchResults([])
+    setSourceFiles([])
+    setSourceFilesOpen(true)
+    closeSourcePreview()
+    setCreatedContractId('')
+  }, [open, closeSourcePreview])
 
-  // Tải cây danh mục Gói → Hạng mục một lần khi mở form.
+  // Load service package catalog
   useEffect(() => {
     if (!open) return
-    let huy = false
+    let isCancelled = false
     apiFetch('/api/catalog/service-packages')
-      .then(res => { if (!huy) setDanhMuc(res?.data || []) })
+      .then(res => { if (!isCancelled) setServiceCatalog(res?.data || []) })
       .catch(() => {})
-    return () => { huy = true }
+    return () => { isCancelled = true }
   }, [open])
+
+  // Auto-select first package and task type
+  useEffect(() => {
+    if (open && serviceCatalog.length > 0 && !selectedPackageKey) {
+      const firstPackage = serviceCatalog[0]
+      const packageKey = firstPackage.id || firstPackage.code
+      setSelectedPackageKey(packageKey)
+      if (firstPackage.task_types?.length > 0) {
+        const firstTask = firstPackage.task_types[0]
+        setSelectedTaskTypeId(firstTask.id)
+        setForm(f => ({ ...f, service_type: firstTask.name }))
+      }
+    }
+  }, [open, serviceCatalog, selectedPackageKey])
+
+  // Auto-select first template
+  useEffect(() => {
+    if (open && templates.length > 0 && !form.contract_template_id) {
+      setForm(f => ({ ...f, contract_template_id: templates[0].id }))
+    }
+  }, [open, templates, form.contract_template_id])
 
   useEffect(() => {
     if (!open) return undefined
@@ -187,6 +453,12 @@ export default function ContractComposer({ open, code, services = [], isDirector
   }, [geoBoundary.provinceCode])
 
   useEffect(() => {
+    if (!geoBoundary.provinceCode || geoBoundary.wardCode || !geoBoundary.wardName) return
+    const ward = wards.find(item => normalizeAddressPart(item.name) === normalizeAddressPart(geoBoundary.wardName))
+    if (ward) setGeoBoundary(current => ({ ...current, wardCode: String(ward.code), wardName: ward.name }))
+  }, [geoBoundary.provinceCode, geoBoundary.wardCode, geoBoundary.wardName, wards])
+
+  useEffect(() => {
     if (!open) return undefined
     const onKey = (e) => { if (e.key === 'Escape' && !saving) onClose?.() }
     window.addEventListener('keydown', onKey)
@@ -198,12 +470,14 @@ export default function ContractComposer({ open, code, services = [], isDirector
     ['phone', form.phone],
     ['provinceCode', geoBoundary.provinceCode],
     ['wardCode', geoBoundary.wardCode],
-    ['hangMucChon', hangMucChon],
+    ['selectedTaskTypeId', selectedTaskTypeId],
+    ['contract_template_id', form.contract_template_id],
     ['sales_source', form.sales_source],
     ['contract_value', form.contract_value],
     ['date_signed', form.date_signed],
     ['due_date', form.due_date],
-  ]), [form, geoBoundary, hangMucChon])
+    ...(loaiGiay.length && !khoaV2 ? [['cheDoGiay', cheDoGiay]] : []),
+  ]), [form, geoBoundary, selectedTaskTypeId, loaiGiay.length, khoaV2, cheDoGiay])
 
   const missingRequiredKeys = requiredFields.filter(([, v]) => !String(v || '').trim()).map(([k]) => k)
   const numericValue = parseNumericString(form.contract_value)
@@ -220,8 +494,6 @@ export default function ContractComposer({ open, code, services = [], isDirector
     setMissingFields(cur => cur.filter(x => x !== key))
   }
 
-  // Trong lúc gõ thì giữ nguyên chữ người dùng đang gõ ("18.5t" chưa đủ để biết
-  // là triệu hay tỷ). Chỉ chuẩn hoá khi đã đọc ra được số, hoặc khi rời ô.
   const handleCurrencyChange = (e) => {
     const raw = e.target.value.slice(0, 24)
     const num = parseShorthandCurrency(raw)
@@ -243,59 +515,110 @@ export default function ContractComposer({ open, code, services = [], isDirector
     setMissingFields(cur => cur.filter(x => x !== 'contract_value'))
   }
 
-  const doiDinhDanh = (k) => (e) => {
-    setKhachId('')
-    setDinhDanh(cur => ({ ...cur, [k]: e.target.value }))
-    setMissingFields(cur => cur.filter(x => x !== k))
+  const handleIdentityChange = (key) => (e) => {
+    setExistingCustomerId('')
+    setIdentityInfo(cur => ({ ...cur, [key]: e.target.value }))
+    setMissingFields(cur => cur.filter(x => x !== key))
   }
 
-  // Tìm khách cũ theo tên/SĐT/CCCD/MST khi gõ ≥ 2 ký tự.
-  useEffect(() => {
-    const q = (form.customer_name || form.phone || '').trim()
-    if (!open || q.length < 2 || khachId) { setKetQuaTim([]); return }
-    let huy = false
-    setDangTim(true)
-    const t = setTimeout(() => {
-      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}`)
-        .then(res => { if (!huy) setKetQuaTim(res?.data || []) })
-        .catch(() => {})
-        .finally(() => { if (!huy) setDangTim(false) })
-    }, 350)
-    return () => { huy = true; clearTimeout(t) }
-  }, [open, form.customer_name, form.phone, khachId])
-
-  const chonKhachCu = (kh) => {
-    setKhachId(kh.id)
-    setLoaiKhach(kh.customer_type || 'individual')
-    setForm(cur => ({ ...cur, customer_name: kh.full_name || '', phone: kh.phone || '' }))
-    setDinhDanh({
-      tax_id: kh.tax_id || '', id_card_number: kh.id_card_number || '',
-      id_card_date: kh.id_card_date || '', id_card_place: kh.id_card_place || '',
-      email: kh.email || '', zalo_phone: kh.zalo_phone || '',
-      representative_name: kh.representative_name || '', representative_role: kh.representative_role || '',
+  const handleSwitchCustomerType = (type) => {
+    if (type === customerType) return
+    setCustomerType(type)
+    setExistingCustomerId('')
+    setForm(cur => ({
+      ...cur,
+      customer_name: '',
+      phone: '',
+    }))
+    setIdentityInfo({
+      tax_id: '',
+      id_card_number: '',
+      id_card_date: '',
+      id_card_place: '',
+      email: '',
+      zalo_phone: '',
+      representative_name: '',
+      representative_role: '',
     })
-    setKetQuaTim([])
+    setNameSearchResults([])
+    setTaxSearchResults([])
+    setMissingFields(cur => cur.filter(x => !['customer_name', 'phone', 'tax_id', 'id_card_number', 'representative_name'].includes(x)))
   }
 
-  // Tra cứu doanh nghiệp theo MST — tự điền tên công ty + địa chỉ (tiện ích).
-  const traCuuMST = async () => {
-    const ma = (dinhDanh.tax_id || '').replace(/\D/g, '')
-    if (ma.length < 10) return
-    setDangTraCuu(true)
+  // Search existing customers by name
+  useEffect(() => {
+    const q = (form.customer_name || '').trim()
+    if (!open || q.length < 2 || existingCustomerId) { setNameSearchResults([]); return }
+    let isCancelled = false
+    setIsSearching(true)
+    const timer = setTimeout(() => {
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}&customer_type=${customerType}`)
+        .then(res => { if (!isCancelled) setNameSearchResults(res?.data || []) })
+        .catch(() => {})
+        .finally(() => { if (!isCancelled) setIsSearching(false) })
+    }, 350)
+    return () => { isCancelled = true; clearTimeout(timer) }
+  }, [open, form.customer_name, customerType, existingCustomerId])
+
+  // Search business by tax ID
+  useEffect(() => {
+    if (customerType !== 'business') { setTaxSearchResults([]); return }
+    const q = (identityInfo.tax_id || '').trim()
+    if (!open || q.length < 2 || existingCustomerId) { setTaxSearchResults([]); return }
+    let isCancelled = false
+    const timer = setTimeout(() => {
+      apiFetch(`/api/contracts/customers/search?q=${encodeURIComponent(q)}&customer_type=business`)
+        .then(res => { if (!isCancelled) setTaxSearchResults(res?.data || []) })
+        .catch(() => {})
+    }, 350)
+    return () => { isCancelled = true; clearTimeout(timer) }
+  }, [open, identityInfo.tax_id, customerType, existingCustomerId])
+
+  const handleSelectExistingCustomer = (customer) => {
+    const addressLocation = hydrateExistingCustomerAddress(customer, provinces) || {
+      detail: '', provinceCode: '', provinceName: '', wardCode: '', wardName: '',
+    }
+    setExistingCustomerId(customer.id)
+    setCustomerType(customer.customer_type || 'individual')
+    setForm(cur => ({
+      ...cur,
+      customer_name: customer.full_name || '',
+      phone: customer.phone || '',
+      detail: addressLocation.detail || cur.detail,
+    }))
+    setGeoBoundary(addressLocation)
+    setIdentityInfo({
+      tax_id: customer.tax_id || '', id_card_number: customer.id_card_number || '',
+      id_card_date: customer.id_card_date || '', id_card_place: customer.id_card_place || '',
+      email: customer.email || '', zalo_phone: customer.zalo_phone || '',
+      representative_name: customer.representative_name || '', representative_role: customer.representative_role || '',
+    })
+    setNameSearchResults([])
+    setTaxSearchResults([])
+  }
+
+  // Lookup tax ID
+  const handleLookupTax = async () => {
+    const taxCode = (identityInfo.tax_id || '').replace(/\D/g, '')
+    if (taxCode.length < 10) return
+    setIsLookingUpTax(true)
     try {
-      const res = await apiFetch(`/api/customers/lookup-tax/${ma}`)
+      const res = await apiFetch(`/api/customers/lookup-tax/${taxCode}`)
       const d = res?.data
       if (d?.found) {
         setForm(cur => ({ ...cur, customer_name: d.name || cur.customer_name, detail: d.address || cur.detail }))
         setMissingFields(cur => cur.filter(x => x !== 'customer_name'))
       }
-    } catch { /* im lặng — gõ tay được */ }
-    finally { setDangTraCuu(false) }
+    } catch {
+      // Ignore lookup failures gracefully
+    } finally {
+      setIsLookingUpTax(false)
+    }
   }
 
-  const handleSubmit = useCallback((e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault()
-    if (saving) return
+    if (saving || templatesLoading) return
     if (missingRequiredKeys.length) {
       setMissingFields(missingRequiredKeys)
       const badElement = bodyRef.current?.querySelector('.bad')
@@ -303,51 +626,65 @@ export default function ContractComposer({ open, code, services = [], isDirector
       badElement?.focus?.()
       return
     }
-    // Nâng ưu tiên phải ghi lý do — chặn ở đây thay vì để backend trả 422.
-    if (isDirector && uuTien !== 'NORMAL' && !uuTienLyDo.trim()) {
+    if (isDirector && priority !== 'NORMAL' && !priorityReason.trim()) {
       setMissingFields(['uutien-lydo'])
       bodyRef.current?.querySelector('#dv-uutien-lydo')?.focus?.()
       return
     }
-    // Định danh bắt buộc theo loại: doanh nghiệp cần MST + đại diện; cá nhân cần CCCD.
-    const thieuDinhDanh = []
-    if (loaiKhach === 'business') {
-      if (!dinhDanh.tax_id.trim()) thieuDinhDanh.push('tax_id')
-      if (!dinhDanh.representative_name.trim()) thieuDinhDanh.push('representative_name')
+    const missingIdentity = []
+    if (customerType === 'business') {
+      if (!identityInfo.tax_id.trim()) missingIdentity.push('tax_id')
+      if (!identityInfo.representative_name.trim()) missingIdentity.push('representative_name')
     } else {
-      if (!dinhDanh.id_card_number.trim()) thieuDinhDanh.push('id_card_number')
+      if (!identityInfo.id_card_number.trim()) missingIdentity.push('id_card_number')
     }
-    if (thieuDinhDanh.length) {
-      setMissingFields(thieuDinhDanh)
+    if (missingIdentity.length) {
+      setMissingFields(missingIdentity)
       bodyRef.current?.querySelector('.bad')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
       return
     }
     const fullAddress = [form.detail.trim(), geoBoundary.wardName, geoBoundary.provinceName].filter(Boolean).join(', ')
-    onSubmit?.({
+    const result = await onSubmit?.({
       contract_id: code,
       customer_name: form.customer_name.trim(),
       phone: form.phone.trim(),
       service_type: form.service_type,
-      task_type_id: hangMucChon,
-      priority: isDirector ? uuTien : 'NORMAL',
-      priority_reason: (isDirector && uuTien !== 'NORMAL') ? uuTienLyDo.trim() : null,
-      customer_type: loaiKhach,
-      customer_id: khachId || null,
-      tax_id: dinhDanh.tax_id.trim() || null,
-      id_card_number: dinhDanh.id_card_number.trim() || null,
-      id_card_date: dinhDanh.id_card_date || null,
-      id_card_place: dinhDanh.id_card_place.trim() || null,
-      email: dinhDanh.email.trim() || null,
-      zalo_phone: dinhDanh.zalo_phone.trim() || null,
-      representative_name: dinhDanh.representative_name.trim() || null,
-      representative_role: dinhDanh.representative_role.trim() || null,
+      contract_template_id: form.contract_template_id,
+      task_type_id: selectedTaskTypeId,
+      ...(cheDoGiay ? {
+        document_selection_mode:
+          cheDoGiay === 'MAC_DINH' ? 'DEFAULT'
+            : cheDoGiay === 'THU_CONG' ? 'CUSTOM' : 'NONE',
+        ...(cheDoGiay === 'THU_CONG' ? { document_template_ids: loaiGiayChon } : {}),
+      } : {}),
+      priority: isDirector ? priority : 'NORMAL',
+      priority_reason: (isDirector && priority !== 'NORMAL') ? priorityReason.trim() : null,
+      customer_type: customerType,
+      customer_id: existingCustomerId || null,
+      tax_id: identityInfo.tax_id.trim() || null,
+      id_card_number: identityInfo.id_card_number.trim() || null,
+      id_card_date: identityInfo.id_card_date || null,
+      id_card_place: identityInfo.id_card_place.trim() || null,
+      email: identityInfo.email.trim() || null,
+      zalo_phone: identityInfo.zalo_phone.trim() || null,
+      representative_name: identityInfo.representative_name.trim() || null,
+      representative_role: identityInfo.representative_role.trim() || null,
       sales_source: form.sales_source.trim(),
       contract_value: numericValue,
       address: fullAddress,
+      address_detail: form.detail.trim(),
+      province_code: geoBoundary.provinceCode || null,
+      province_name: geoBoundary.provinceName || null,
+      ward_code: geoBoundary.wardCode || null,
+      ward_name: geoBoundary.wardName || null,
       date_signed: form.date_signed,
       due_date: form.due_date,
+      source_documents: sourceFiles,
+      existing_contract_id: createdContractId || null,
     })
-  }, [saving, missingRequiredKeys, form, geoBoundary, code, numericValue, hangMucChon, uuTien, uuTienLyDo, isDirector, loaiKhach, khachId, dinhDanh, onSubmit])
+    if (result?.contract_id) setCreatedContractId(result.contract_id)
+    if (Array.isArray(result?.failed_files)) setSourceFiles(result.failed_files)
+  }, [saving, templatesLoading, missingRequiredKeys, form, geoBoundary, code, numericValue, selectedTaskTypeId, loaiGiay, loaiGiayChon, cheDoGiay, priority, priorityReason, isDirector, customerType, existingCustomerId, identityInfo, sourceFiles, createdContractId, onSubmit])
 
   if (!open) return null
 
@@ -381,26 +718,24 @@ export default function ContractComposer({ open, code, services = [], isDirector
 
           <section className="sec">
             <div className="sec-hd"><h2>Khách hàng</h2><i /></div>
-            {/* Nút gạt loại khách — quyết định bộ trường định danh hiện ra. */}
             <div className="kh-loai" role="tablist">
-              {[['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, nhan]) => (
-                <button key={v} type="button" role="tab" aria-selected={loaiKhach === v}
-                  className={`kh-loai__nut${loaiKhach === v ? ' is-on' : ''}`}
-                  onClick={() => { setLoaiKhach(v); setKhachId('') }}>{nhan}</button>
+              {[['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, label]) => (
+                <button key={v} type="button" role="tab" aria-selected={customerType === v}
+                  className={`kh-loai__nut${customerType === v ? ' is-on' : ''}`}
+                  onClick={() => handleSwitchCustomerType(v)}>{label}</button>
               ))}
-              {khachId && <span className="kh-loai__cu">✓ Khách cũ — đã tự điền</span>}
+              {existingCustomerId && <span className="kh-loai__cu">✓ Khách cũ — đã tự điền</span>}
             </div>
             <div className="row c2">
               <div style={{ position: 'relative' }}>
-                <label htmlFor="kh-ten">{loaiKhach === 'business' ? 'Tên công ty' : 'Tên khách hàng'}<u>*</u></label>
+                <label htmlFor="kh-ten">{customerType === 'business' ? 'Tên công ty' : 'Tên khách hàng'}<u>*</u></label>
                 <input className={`in${getValidationClass('customer_name')}`} id="kh-ten" autoComplete="off"
-                  placeholder={loaiKhach === 'business' ? 'Công ty TNHH ...' : 'Nguyễn Văn An'}
+                  placeholder={customerType === 'business' ? 'Công ty TNHH ...' : 'Nguyễn Văn An'}
                   value={form.customer_name} onChange={handleFieldChange('customer_name')} />
-                {/* Gợi ý khách cũ — chọn để tự điền, tránh nhập lại và tạo trùng. */}
-                {ketQuaTim.length > 0 && (
+                {nameSearchResults.length > 0 && (
                   <ul className="kh-goiy">
-                    {ketQuaTim.map(kh => (
-                      <li key={kh.id}><button type="button" onClick={() => chonKhachCu(kh)}>
+                    {nameSearchResults.map(kh => (
+                      <li key={kh.id}><button type="button" onClick={() => handleSelectExistingCustomer(kh)}>
                         <strong>{kh.full_name}</strong>
                         <small>{kh.customer_type === 'business' ? `MST ${kh.tax_id || '—'}` : `CCCD ${kh.id_card_number || '—'}`} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
                       </button></li>
@@ -414,34 +749,45 @@ export default function ContractComposer({ open, code, services = [], isDirector
                   placeholder="0901 234 567" value={form.phone} onChange={handleFieldChange('phone')} />
               </div>
             </div>
-            {loaiKhach === 'business' ? (
+            {customerType === 'business' ? (
               <>
                 <div className="row c2">
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label htmlFor="kh-mst">Mã số thuế<u>*</u></label>
                     <div className="kh-mst-row">
                       <input className={`in${getValidationClass('tax_id')}`} id="kh-mst" inputMode="numeric" placeholder="0312345678"
-                        value={dinhDanh.tax_id} onChange={doiDinhDanh('tax_id')} />
-                      <button type="button" className="kh-tracuu" disabled={dangTraCuu || (dinhDanh.tax_id || '').replace(/\D/g,'').length < 10}
-                        onClick={traCuuMST}>{dangTraCuu ? '...' : 'Tra cứu'}</button>
+                        value={identityInfo.tax_id} onChange={handleIdentityChange('tax_id')}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLookupTax(); } }} />
+                      <button type="button" className="kh-tracuu" disabled={isLookingUpTax || (identityInfo.tax_id || '').replace(/\D/g,'').length < 10}
+                        onClick={handleLookupTax}>{isLookingUpTax ? '...' : 'Tra cứu'}</button>
                     </div>
+                    {taxSearchResults.length > 0 && (
+                      <ul className="kh-goiy">
+                        {taxSearchResults.map(kh => (
+                          <li key={kh.id}><button type="button" onClick={() => handleSelectExistingCustomer(kh)}>
+                            <strong>{kh.full_name}</strong>
+                            <small>MST {kh.tax_id || '—'} · {kh.phone || '—'} · {kh.so_hop_dong} HĐ</small>
+                          </button></li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div>
                     <label htmlFor="kh-email">Email</label>
                     <input className="in" id="kh-email" type="email" placeholder="ketoan@congty.vn"
-                      value={dinhDanh.email} onChange={doiDinhDanh('email')} />
+                      value={identityInfo.email} onChange={handleIdentityChange('email')} />
                   </div>
                 </div>
                 <div className="row c2">
                   <div>
                     <label htmlFor="kh-dd">Người đại diện<u>*</u></label>
                     <input className={`in${getValidationClass('representative_name')}`} id="kh-dd" placeholder="Nguyễn Văn Giám"
-                      value={dinhDanh.representative_name} onChange={doiDinhDanh('representative_name')} />
+                      value={identityInfo.representative_name} onChange={handleIdentityChange('representative_name')} />
                   </div>
                   <div>
                     <label htmlFor="kh-cv">Chức vụ</label>
                     <input className="in" id="kh-cv" placeholder="Giám đốc"
-                      value={dinhDanh.representative_role} onChange={doiDinhDanh('representative_role')} />
+                      value={identityInfo.representative_role} onChange={handleIdentityChange('representative_role')} />
                   </div>
                 </div>
               </>
@@ -451,27 +797,108 @@ export default function ContractComposer({ open, code, services = [], isDirector
                   <div>
                     <label htmlFor="kh-cccd">Số CCCD<u>*</u></label>
                     <input className={`in${getValidationClass('id_card_number')}`} id="kh-cccd" inputMode="numeric" placeholder="079300012345"
-                      value={dinhDanh.id_card_number} onChange={doiDinhDanh('id_card_number')} />
+                      value={identityInfo.id_card_number} onChange={handleIdentityChange('id_card_number')} />
                   </div>
                   <div>
                     <label htmlFor="kh-email2">Email</label>
                     <input className="in" id="kh-email2" type="email" placeholder="tuỳ chọn"
-                      value={dinhDanh.email} onChange={doiDinhDanh('email')} />
+                      value={identityInfo.email} onChange={handleIdentityChange('email')} />
                   </div>
                 </div>
                 <div className="row c2">
                   <div>
-                    <label htmlFor="kh-ngaycap">Ngày cấp</label>
-                    <input className="in" id="kh-ngaycap" type="date"
-                      value={dinhDanh.id_card_date} onChange={doiDinhDanh('id_card_date')} />
+                    <label>Ngày cấp</label>
+                    <DatePicker
+                      value={identityInfo.id_card_date}
+                      onChange={(val) => setIdentityInfo(cur => ({ ...cur, id_card_date: val }))}
+                      placement="auto"
+                      placeholder="Chọn ngày cấp"
+                      className="date-picker--fill"
+                    />
                   </div>
                   <div>
                     <label htmlFor="kh-noicap">Nơi cấp</label>
                     <input className="in" id="kh-noicap" placeholder="Cục CS QLHC về TTXH"
-                      value={dinhDanh.id_card_place} onChange={doiDinhDanh('id_card_place')} />
+                      value={identityInfo.id_card_place} onChange={handleIdentityChange('id_card_place')} />
                   </div>
                 </div>
               </>
+            )}
+          </section>
+
+          <section className="sec">
+            <div className="sec-hd"><h2>Hồ sơ khách gửi</h2><i /></div>
+            <label className="ctr-source-upload" htmlFor="contract-source-documents">
+              <FileUp size={19} />
+              <span>
+                <strong>Tài liệu khách gửi</strong>
+                <small>Chọn ảnh, PDF hoặc tệp Office nhận từ Zalo; K01 sẽ phân loại sau.</small>
+              </span>
+              <input
+                id="contract-source-documents"
+                aria-label="Tài liệu khách gửi"
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx"
+                onChange={event => {
+                  const picked = Array.from(event.target.files || [])
+                  setSourceFiles(current => {
+                    const known = new Set(current.map(file => `${file.name}:${file.size}:${file.lastModified}`))
+                    return [...current, ...picked.filter(file => !known.has(`${file.name}:${file.size}:${file.lastModified}`))]
+                  })
+                  setSourceFilesOpen(true)
+                  event.target.value = ''
+                }}
+              />
+            </label>
+            {sourceFiles.length > 0 && (
+              <div className="ctr-source-files">
+                <button
+                  type="button"
+                  className="ctr-source-files__toggle"
+                  aria-label={`${sourceFiles.length} tài liệu đã chọn`}
+                  aria-expanded={sourceFilesOpen}
+                  aria-controls="contract-source-file-list"
+                  onClick={() => setSourceFilesOpen(current => !current)}
+                >
+                  <span>
+                    <strong>{sourceFiles.length} tài liệu đã chọn</strong>
+                    <small>{sourceFiles.length} tệp chờ tải lên sau khi lưu hợp đồng</small>
+                  </span>
+                  <ChevronDown className={sourceFilesOpen ? 'is-open' : ''} size={17} aria-hidden="true" />
+                </button>
+                {sourceFilesOpen && (
+                  <ul id="contract-source-file-list" className="ctr-source-files__list">
+                    {sourceFiles.map((file, index) => (
+                      <li key={`${file.name}-${file.size}-${file.lastModified}`}>
+                        <FileUp size={16} aria-hidden="true" />
+                        <span className="ctr-source-files__meta">
+                          <button
+                            type="button"
+                            className="ctr-source-files__preview"
+                            title={file.name}
+                            aria-label={`Xem ${file.name}`}
+                            onClick={() => previewSourceFile(file)}
+                          >{file.name}</button>
+                          <small>
+                            {file.size < 1024 * 1024
+                              ? `${Math.max(1, Math.ceil(file.size / 1024))} KB`
+                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`}
+                          </small>
+                        </span>
+                        <button
+                          type="button"
+                          className="ctr-source-files__remove"
+                          aria-label={`Bỏ ${file.name}`}
+                          onClick={() => setSourceFiles(current => current.filter((_, position) => position !== index))}
+                        >
+                          <X size={15} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </section>
 
@@ -480,28 +907,34 @@ export default function ContractComposer({ open, code, services = [], isDirector
             <div className="row c3">
               <div>
                 <label htmlFor="dc-tinh">Tỉnh / Thành phố<u>*</u></label>
-                <select className={getValidationClass('provinceCode').trim()} id="dc-tinh" value={geoBoundary.provinceCode}
-                  onChange={(e) => {
-                    const t = provinces.find(x => String(x.code) === e.target.value)
+                <CustomSelect
+                  id="dc-tinh"
+                  className={getValidationClass('provinceCode').trim()}
+                  placeholder="Chọn tỉnh/thành"
+                  value={geoBoundary.provinceCode}
+                  options={provinces.map(t => ({ value: t.code, label: t.name }))}
+                  onChange={(val) => {
+                    const t = provinces.find(x => String(x.code) === String(val))
                     setGeoBoundary({ provinceCode: t?.code || '', provinceName: t?.name || '', wardCode: '', wardName: '' })
                     setMissingFields(cur => cur.filter(x => x !== 'provinceCode'))
-                  }}>
-                  <option value="">Chọn tỉnh/thành</option>
-                  {provinces.map(t => <option key={t.code} value={t.code}>{t.name}</option>)}
-                </select>
+                  }}
+                />
               </div>
               <div>
                 <label htmlFor="dc-phuong">Phường / Xã<u>*</u></label>
-                <select className={getValidationClass('wardCode').trim()} id="dc-phuong" disabled={!geoBoundary.provinceCode}
+                <CustomSelect
+                  id="dc-phuong"
+                  className={getValidationClass('wardCode').trim()}
+                  disabled={!geoBoundary.provinceCode}
+                  placeholder={geoBoundary.provinceCode ? 'Chọn phường/xã' : 'Chọn tỉnh trước'}
                   value={geoBoundary.wardCode}
-                  onChange={(e) => {
-                    const p = wards.find(x => String(x.code) === e.target.value)
+                  options={wards.map(p => ({ value: p.code, label: p.name }))}
+                  onChange={(val) => {
+                    const p = wards.find(x => String(x.code) === String(val))
                     setGeoBoundary(cur => ({ ...cur, wardCode: p?.code || '', wardName: p?.name || '' }))
                     setMissingFields(cur => cur.filter(x => x !== 'wardCode'))
-                  }}>
-                  <option value="">{geoBoundary.provinceCode ? 'Chọn phường/xã' : 'Chọn tỉnh trước'}</option>
-                  {wards.map(p => <option key={p.code} value={p.code}>{p.name}</option>)}
-                </select>
+                  }}
+                />
               </div>
               <div>
                 <label htmlFor="dc-duong">Số nhà, đường<small>không bắt buộc</small></label>
@@ -516,36 +949,133 @@ export default function ContractComposer({ open, code, services = [], isDirector
             <div className="row c2">
               <div>
                 <label htmlFor="dv-goi">Gói dịch vụ<u>*</u></label>
-                <select className={getValidationClass('hangMucChon').trim()} id="dv-goi"
-                  value={goiChon}
-                  onChange={(e) => { setGoiChon(e.target.value); setHangMucChon(''); setForm(f => ({ ...f, service_type: '' })) }}>
-                  <option value="">Chọn gói</option>
-                  {danhMuc.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
+                <CustomSelect
+                  id="dv-goi"
+                  className={getValidationClass('selectedTaskTypeId').trim()}
+                  value={selectedPackageKey}
+                  options={serviceCatalog.map(g => ({ value: g.id || g.code, label: g.name }))}
+                  onChange={(selectedKey) => {
+                    setSelectedPackageKey(selectedKey)
+                    const pkg = serviceCatalog.find(g => (g.id || g.code) === selectedKey)
+                    if (pkg?.task_types?.length > 0) {
+                      const firstTask = pkg.task_types[0]
+                      setSelectedTaskTypeId(firstTask.id)
+                      setForm(f => ({ ...f, service_type: firstTask.name }))
+                    } else {
+                      setSelectedTaskTypeId('')
+                      setForm(f => ({ ...f, service_type: '' }))
+                    }
+                  }}
+                />
               </div>
               <div>
                 <label htmlFor="dv-loai">Hạng mục<u>*</u></label>
-                <select className={getValidationClass('hangMucChon').trim()} id="dv-loai"
-                  value={hangMucChon} disabled={!goiChon}
-                  onChange={(e) => {
-                    const id = e.target.value
-                    setHangMucChon(id)
-                    const goi = danhMuc.find(g => g.id === goiChon)
-                    const hm = goi?.task_types.find(t => t.id === id)
-                    setForm(f => ({ ...f, service_type: hm?.name || '' }))
-                  }}>
-                  <option value="">{goiChon ? 'Chọn hạng mục' : 'Chọn gói trước'}</option>
-                  {(danhMuc.find(g => g.id === goiChon)?.task_types || []).map(hm => (
-                    <option key={hm.id} value={hm.id}>{hm.name}</option>
-                  ))}
-                </select>
+                <CustomSelect
+                  id="dv-loai"
+                  className={getValidationClass('selectedTaskTypeId').trim()}
+                  disabled={!selectedPackageKey}
+                  value={selectedTaskTypeId}
+                  options={(serviceCatalog.find(g => (g.id || g.code) === selectedPackageKey)?.task_types || []).map(task => ({
+                    value: task.id,
+                    label: task.name,
+                  }))}
+                  onChange={(id) => {
+                    setSelectedTaskTypeId(id)
+                    const pkg = serviceCatalog.find(g => (g.id || g.code) === selectedPackageKey)
+                    const task = pkg?.task_types?.find(t => t.id === id)
+                    setForm(f => ({ ...f, service_type: task?.name || '' }))
+                  }}
+                />
               </div>
             </div>
+            {khoaV2 && (
+              <div className="row c1">
+                <p className="ctr-v2-locked" role="status">{khoaV2}</p>
+              </div>
+            )}
+            {!khoaV2 && loaiGiay.length > 0 && (
+              <div className="row c1">
+                <div>
+                  <label>
+                    Giấy tờ cần thu của khách<u>*</u>
+                    <span className="ctr-badge-v2" title="Sổ giấy tờ chốt riêng cho Hạng mục này">
+                      Sổ theo Hạng mục
+                    </span>
+                  </label>
+
+                  {/* Ba chế độ tách bạch. Không có lựa chọn nào được tick sẵn:
+                      người soạn phải nói rõ ý định, để "quên chọn" không bao giờ
+                      bị hiểu thành "dùng bộ mặc định". */}
+                  <div className="ctr-che-do" role="radiogroup" aria-label="Chế độ chọn giấy tờ">
+                    {[
+                      ['MAC_DINH', 'Dùng bộ mặc định', `${loaiGiay.filter(x => x.is_default !== false).length} loại theo gói và hạng mục`],
+                      ['THU_CONG', 'Chọn thủ công', 'Tự tick từng loại giấy'],
+                      ['KHONG_CAN', 'Không yêu cầu giấy tờ', 'Hạng mục này không thu giấy nào của khách'],
+                    ].map(([ma, nhan, mo_ta]) => (
+                      <button
+                        type="button"
+                        key={ma}
+                        role="radio"
+                        aria-checked={cheDoGiay === ma}
+                        className={`ctr-che-do__o${cheDoGiay === ma ? ' is-active' : ''}`}
+                        onClick={() => {
+                          setCheDoGiay(ma)
+                          if (ma === 'THU_CONG' && loaiGiayChon.length === 0) {
+                            setLoaiGiayChon(loaiGiay.filter(x => x.is_default !== false).map(x => x.id))
+                          }
+                        }}
+                      >
+                        <strong>{nhan}</strong>
+                        <span>{mo_ta}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {cheDoGiay === 'THU_CONG' && (
+                    <CustomMultiSelect
+                      id="dv-giay"
+                      options={loaiGiay}
+                      values={loaiGiayChon}
+                      onToggle={(id) => setLoaiGiayChon(cur => (
+                        cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
+                      ))}
+                    />
+                  )}
+
+                  <p className="ctr-checklist__hint">
+                    {cheDoGiay === 'KHONG_CAN'
+                      ? 'Hạng mục ra đời với sổ trống. Vẫn thêm được từng loại giấy sau.'
+                      : 'Bỏ loại giấy mà hạng mục này không cần — K01 sẽ không đòi nữa. Sau khi lập hợp đồng vẫn thêm/bỏ được.'}
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="row c2">
               <div>
                 <label htmlFor="dv-sale">Sale / nguồn<u>*</u></label>
                 <input className={`in${getValidationClass('sales_source')}`} id="dv-sale" placeholder="Trần Minh"
                   value={form.sales_source} onChange={handleFieldChange('sales_source')} />
+              </div>
+            </div>
+            {templatesError && <p className="hint" role="alert">{templatesError}</p>}
+            <div className="row">
+              <div>
+                <label htmlFor="hd-mau">Mẫu hợp đồng<u>*</u></label>
+                <CustomSelect
+                  id="hd-mau"
+                  className={getValidationClass('contract_template_id').trim()}
+                  disabled={templatesLoading}
+                  placeholder={templatesLoading ? 'Đang tải mẫu hợp đồng…' : 'Chọn mẫu hợp đồng'}
+                  value={form.contract_template_id}
+                  options={templates.map(template => ({
+                    value: template.id,
+                    label: `${template.name} — v${template.version}`,
+                  }))}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, contract_template_id: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'contract_template_id'))
+                  }}
+                />
               </div>
             </div>
             <div className="row">
@@ -558,7 +1088,6 @@ export default function ContractComposer({ open, code, services = [], isDirector
                   <span className="suf">₫</span>
                 </div>
                 <p className="hint">{numericValue > 0 && <b>{spellCurrencyWords(numericValue)}</b>}</p>
-                {/* Hợp đồng ở đây gần như luôn là số tròn triệu — bấm nhanh hơn gõ. */}
                 <div className="quick">
                   {QUICK_DENOMINATIONS.map(m => (
                     <button key={m.value} type="button" onClick={() => handleAddQuickAmount(m.value)}>{m.label}</button>
@@ -570,23 +1099,29 @@ export default function ContractComposer({ open, code, services = [], isDirector
                 </div>
               </div>
             </div>
-            {/* Ưu tiên hồ sơ — chỉ giám đốc thấy (Q5). Đặt từ đầu, khoá khi kích hoạt. */}
             {isDirector && (
               <div className="row c2">
                 <div>
                   <label htmlFor="dv-uutien">Độ ưu tiên hồ sơ</label>
-                  <select className="in" id="dv-uutien" value={uuTien}
-                    onChange={(e) => { setUuTien(e.target.value); if (e.target.value === 'NORMAL') setUuTienLyDo('') }}>
-                    <option value="NORMAL">Bình thường</option>
-                    <option value="HIGH">Ưu tiên cao (×1,2)</option>
-                    <option value="URGENT">Gấp (×1,5)</option>
-                  </select>
+                  <CustomSelect
+                    id="dv-uutien"
+                    value={priority}
+                    onChange={(val) => {
+                      setPriority(val)
+                      if (val === 'NORMAL') setPriorityReason('')
+                    }}
+                    options={[
+                      { value: 'NORMAL', label: 'Bình thường' },
+                      { value: 'HIGH', label: 'Ưu tiên cao (x1,2)' },
+                      { value: 'URGENT', label: 'Gấp (x1,5)' },
+                    ]}
+                  />
                 </div>
-                {uuTien !== 'NORMAL' && (
+                {priority !== 'NORMAL' && (
                   <div>
                     <label htmlFor="dv-uutien-lydo">Lý do ưu tiên<u>*</u></label>
                     <input className="in" id="dv-uutien-lydo" placeholder="VD: Khách cần gấp trước 25/8"
-                      value={uuTienLyDo} onChange={(e) => setUuTienLyDo(e.target.value)} />
+                      value={priorityReason} onChange={(e) => setPriorityReason(e.target.value)} />
                   </div>
                 )}
               </div>
@@ -597,14 +1132,30 @@ export default function ContractComposer({ open, code, services = [], isDirector
             <div className="sec-hd"><h2>Thời hạn</h2><i /></div>
             <div className="row c-date">
               <div>
-                <label htmlFor="th-ky">Ngày ký<u>*</u></label>
-                <input className={`in${getValidationClass('date_signed')}`} id="th-ky" type="date"
-                  value={form.date_signed} onChange={handleFieldChange('date_signed')} />
+                <label>Ngày ký<u>*</u></label>
+                <DatePicker
+                  value={form.date_signed}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, date_signed: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'date_signed'))
+                  }}
+                  placement="top"
+                  placeholder="Chọn ngày ký"
+                  className={`date-picker--fill${getValidationClass('date_signed')}`}
+                />
               </div>
               <div>
-                <label htmlFor="th-han">Hạn hoàn thành<u>*</u></label>
-                <input className={`in${getValidationClass('due_date')}`} id="th-han" type="date"
-                  value={form.due_date} onChange={handleFieldChange('due_date')} />
+                <label>Hạn hoàn thành<u>*</u></label>
+                <DatePicker
+                  value={form.due_date}
+                  onChange={(val) => {
+                    setForm(f => ({ ...f, due_date: val }))
+                    setMissingFields(cur => cur.filter(x => x !== 'due_date'))
+                  }}
+                  placement="top"
+                  placeholder="Chọn hạn hoàn thành"
+                  className={`date-picker--fill${getValidationClass('due_date')}`}
+                />
               </div>
               {daysSpan !== null && (
                 <div className={`span${daysSpan < 0 ? ' is-bad' : ''}`}>
@@ -628,12 +1179,20 @@ export default function ContractComposer({ open, code, services = [], isDirector
             </span>
           </div>
           <button className="btn" type="button" disabled={saving} onClick={() => onClose?.()}>Huỷ</button>
-          <button className="btn pri" type="submit" disabled={saving}>
-            {saving ? 'Đang lưu…' : 'Lưu hợp đồng'}
+          <button className="btn pri" type="submit" disabled={saving || templatesLoading}>
+            {saving ? 'Đang lưu…' : templatesLoading ? 'Đang tải mẫu…' : createdContractId ? 'Tải lại tệp lỗi' : 'Lưu hợp đồng'}
           </button>
         </footer>
 
       </form>
+      <FilePreviewModal
+        open={Boolean(sourcePreview)}
+        fileName={sourcePreview?.fileName}
+        mimeType={sourcePreview?.mimeType}
+        url={sourcePreview?.url}
+        blob={sourcePreview?.blob}
+        onClose={closeSourcePreview}
+      />
     </div>,
     document.body,
   )

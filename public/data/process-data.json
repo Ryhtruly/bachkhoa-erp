@@ -1,0 +1,270 @@
+{
+  "module": {
+    "id": "MOD-GEO-2026",
+    "title": "Chi tiết Tiến độ Node thực thi",
+    "category": "MODULE QUY TRÌNH",
+    "stage": "Khảo sát & Đo vẽ hiện trạng",
+    "activeNodeId": "K01",
+    "steps": [
+      {
+        "id": "K01",
+        "order": 1,
+        "code": "Node K01",
+        "status": "active",
+        "statusLabel": "ĐANG KÍCH HOẠT",
+        "badgeText": "Khảo sát đo",
+        "isCurrent": true
+      },
+      {
+        "id": "K04",
+        "order": 2,
+        "code": "Node K04",
+        "status": "next",
+        "statusLabel": "Tiếp theo",
+        "badgeText": "Thẩm định hồ sơ",
+        "isCurrent": false
+      },
+      {
+        "id": "K06",
+        "order": 3,
+        "code": "Node K06",
+        "status": "waiting_approval",
+        "statusLabel": "Chờ duyệt",
+        "badgeText": "Vẽ sơ đồ",
+        "isCurrent": false
+      },
+      {
+        "id": "K07",
+        "order": 4,
+        "code": "Node K07",
+        "status": "target",
+        "statusLabel": "Đích đến",
+        "badgeText": "Bàn giao",
+        "isCurrent": false
+      }
+    ],
+    "nodes": {
+      "K01": {
+        "id": "K01",
+        "code": "Node K01",
+        "codeTag": "Mã: K01->4+7",
+        "title": "K01 - Tiếp nhận & Đo đạc ranh thửa",
+        "remainingTime": "12 ngày 4 giờ",
+        "onTimeStatus": "Đúng hạn",
+        "description": "Khảo sát ranh giới hiện trạng thửa đất theo địa chỉ được giao. Kiểm tra tính pháp lý hồ sơ gốc từ khách hàng và đối chiếu mốc giới với hộ liền kề trước khi lập bản trích đo.",
+        "assignee": "Nguyễn Văn Thành",
+        "assigneeRole": "Kỹ sư đo",
+        "attachments": [
+          {
+            "id": "att-1",
+            "name": "HoSo_PhapLy_Goc_QD2026.pdf",
+            "size": "2.4 MB",
+            "type": "pdf",
+            "uploadDate": "17/05/2026"
+          },
+          {
+            "id": "att-2",
+            "name": "HinhAnh_MocGioi_HienTrang.zip",
+            "size": "14.8 MB",
+            "type": "zip",
+            "uploadDate": "18/05/2026"
+          }
+        ],
+        "taskCost": 500000,
+        "bonusRate": 50,
+        "bonusAmount": 500000,
+        "totalEstimatedCost": 1000000,
+        "currency": "VND",
+        "checklistHeader": "Kho giấy tờ từ khách gửi & Kết quả đầu ra",
+        "checklistLinkedCount": 3,
+        "submissionWarning": "Cần hoàn thiện 1 mục bị từ chối trước khi nộp nghiệm thu.",
+        "submitButtonText": "Nộp nghiệm thu K01",
+        "checklistItems": [
+          {
+            "id": "chk-1",
+            "title": "Sơ đồ hiện trạng vị trí",
+            "status": "valid",
+            "statusLabel": "Hợp lệ",
+            "statusVariant": "green",
+            "uploaderInfo": "Lê Quang Huy",
+            "updateDate": "09:30 18/05/2026",
+            "fileName": "SoDo_HT_v1.pdf",
+            "fileSize": "1.8 MB",
+            "fileType": "pdf"
+          },
+          {
+            "id": "chk-2",
+            "title": "Bản trích đo địa chính",
+            "status": "rejected",
+            "statusLabel": "Nguyên nhân từ chối",
+            "statusVariant": "red",
+            "hasWarningIcon": true,
+            "uploaderInfo": "Bản scan chưa có dấu xác nhận phòng TN&MT",
+            "updateDate": "10:15 18/05/2026",
+            "fileName": "TrichDo_DC_Draft.dwg",
+            "fileSize": "6.2 MB",
+            "fileType": "dwg",
+            "rejectionReason": "Sai số tọa độ đỉnh mốc thửa số 3 vượt quá 0.05m so với hệ VN-2000 gốc. Vui lòng tiến hành đo đối soát lại thực địa."
+          },
+          {
+            "id": "chk-3",
+            "title": "Biên bản xác định ranh giới",
+            "status": "pending_signature",
+            "statusLabel": "Chờ chữ ký giáp ranh",
+            "statusVariant": "blue",
+            "uploaderInfo": "Đã có chữ ký 2/3 hộ liền kề",
+            "note": "Cần bổ sung chữ ký hộ phía Tây",
+            "updateDate": "11:00 18/05/2026",
+            "fileName": "BienBan_RanhGioi_Signed.pdf",
+            "fileSize": "3.1 MB",
+            "fileType": "pdf"
+          }
+        ]
+      },
+      "K04": {
+        "id": "K04",
+        "code": "Node K04",
+        "codeTag": "Mã: K04->6",
+        "title": "K04 - Thẩm định hồ sơ kỹ thuật thửa đất",
+        "remainingTime": "7 ngày 8 giờ",
+        "onTimeStatus": "Đúng hạn",
+        "description": "Thẩm định độ chính xác kết quả đo đạc địa chính, kiểm tra đối chiếu quy hoạch phân khu và lập báo cáo thẩm định hồ sơ kỹ thuật gửi cơ quan quản lý đất đai.",
+        "assignee": "Trần Thị Minh Anh",
+        "assigneeRole": "Chuyên viên thẩm định",
+        "attachments": [
+          {
+            "id": "att-201",
+            "name": "ToTrinh_ThamDinh_ThuaDat.pdf",
+            "size": "1.6 MB",
+            "type": "pdf",
+            "uploadDate": "19/05/2026"
+          }
+        ],
+        "taskCost": 750000,
+        "bonusRate": 30,
+        "bonusAmount": 225000,
+        "totalEstimatedCost": 975000,
+        "currency": "VND",
+        "checklistHeader": "Hồ sơ thẩm tra & Pháp lý bổ sung",
+        "checklistLinkedCount": 2,
+        "submissionWarning": "Đang chờ hoàn thành bước K01 trước khi bắt đầu.",
+        "submitButtonText": "Chuyển bước thẩm định K04",
+        "checklistItems": [
+          {
+            "id": "chk-201",
+            "title": "Phiếu thẩm tra tọa độ VN-2000",
+            "status": "valid",
+            "statusLabel": "Đã duyệt",
+            "statusVariant": "green",
+            "uploaderInfo": "Phạm Quốc Tuấn",
+            "updateDate": "08:15 19/05/2026",
+            "fileName": "Phieu_KiemTra_VN2000.pdf",
+            "fileSize": "1.2 MB",
+            "fileType": "pdf"
+          },
+          {
+            "id": "chk-202",
+            "title": "Đối chiếu bản đồ quy hoạch 1/2000",
+            "status": "pending_signature",
+            "statusLabel": "Chờ xác nhận",
+            "statusVariant": "blue",
+            "uploaderInfo": "Đang đồng bộ từ cổng Dịch vụ công",
+            "note": "Kiểm tra chỉ giới đường đỏ mở rộng",
+            "updateDate": "09:00 19/05/2026",
+            "fileName": "ChiGioi_DuongDo_QH.pdf",
+            "fileSize": "4.5 MB",
+            "fileType": "pdf"
+          }
+        ]
+      },
+      "K06": {
+        "id": "K06",
+        "code": "Node K06",
+        "codeTag": "Mã: K06->7",
+        "title": "K06 - Vẽ sơ đồ & Hoàn thiện bản đồ chính quy",
+        "remainingTime": "5 ngày 0 giờ",
+        "onTimeStatus": "Đúng hạn",
+        "description": "Lập bản đồ địa chính chính thức trên nền phần mềm Famis/Microstation. Xuất tọa độ góc ranh và hoàn thiện hồ sơ địa chính phục vụ cấp giấy chứng nhận.",
+        "assignee": "Lê Quang Huy",
+        "assigneeRole": "Kỹ thuật viên CAD",
+        "attachments": [
+          {
+            "id": "att-301",
+            "name": "Template_BanDo_DiaChinh.dgn",
+            "size": "8.3 MB",
+            "type": "dgn",
+            "uploadDate": "20/05/2026"
+          }
+        ],
+        "taskCost": 600000,
+        "bonusRate": 40,
+        "bonusAmount": 240000,
+        "totalEstimatedCost": 840000,
+        "currency": "VND",
+        "checklistHeader": "Bản vẽ hoàn chỉnh & Tệp dữ liệu số",
+        "checklistLinkedCount": 2,
+        "submissionWarning": "Yêu cầu hoàn thành các bước thẩm định trước đó.",
+        "submitButtonText": "Gửi duyệt sơ đồ K06",
+        "checklistItems": [
+          {
+            "id": "chk-301",
+            "title": "Bản vẽ sơ đồ nhà đất tỷ lệ 1/500",
+            "status": "pending_signature",
+            "statusLabel": "Chờ rà soát",
+            "statusVariant": "blue",
+            "uploaderInfo": "Phòng Kỹ thuật Đồ bản",
+            "note": "Chờ chữ ký Trưởng phòng",
+            "updateDate": "14:20 20/05/2026",
+            "fileName": "SoDo_NhaDat_1_500.pdf",
+            "fileSize": "3.8 MB",
+            "fileType": "pdf"
+          }
+        ]
+      },
+      "K07": {
+        "id": "K07",
+        "code": "Node K07",
+        "codeTag": "Mã: K07-FINAL",
+        "title": "K07 - Nghiệm thu bàn giao kết quả",
+        "remainingTime": "3 ngày 12 giờ",
+        "onTimeStatus": "Đúng hạn",
+        "description": "In ấn hồ sơ đóng dấu giáp lai, bàn giao cho khách hàng và lưu trữ số hóa trên hệ thống quản lý đất đai địa phương.",
+        "assignee": "Hoàng Minh Tâm",
+        "assigneeRole": "Trưởng nhóm dự án",
+        "attachments": [
+          {
+            "id": "att-401",
+            "name": "BienBan_NghiemThu_Mau.docx",
+            "size": "520 KB",
+            "type": "docx",
+            "uploadDate": "21/05/2026"
+          }
+        ],
+        "taskCost": 400000,
+        "bonusRate": 50,
+        "bonusAmount": 200000,
+        "totalEstimatedCost": 600000,
+        "currency": "VND",
+        "checklistHeader": "Hồ sơ bàn giao khách hàng",
+        "checklistLinkedCount": 2,
+        "submissionWarning": "Hồ sơ sẽ được bàn giao sau khi hoàn tất thanh toán.",
+        "submitButtonText": "Hoàn tất bàn giao K07",
+        "checklistItems": [
+          {
+            "id": "chk-401",
+            "title": "Biên bản bàn giao hồ sơ đo đạc",
+            "status": "pending_signature",
+            "statusLabel": "Chờ chữ ký khách hàng",
+            "statusVariant": "blue",
+            "uploaderInfo": "Bộ phận Chăm sóc khách hàng",
+            "note": "Hẹn ký tại văn phòng",
+            "updateDate": "15:00 21/05/2026",
+            "fileName": "BienBan_BanGiao_Final.pdf",
+            "fileSize": "1.1 MB",
+            "fileType": "pdf"
+          }
+        ]
+      }
+    }
+  }
+}

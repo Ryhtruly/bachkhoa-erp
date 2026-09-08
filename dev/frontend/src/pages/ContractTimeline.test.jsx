@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { timelineMilestones } from './ContractTimeline'
+import { timelineMilestones } from './contractTimelineUtils'
 
 describe('timelineMilestones', () => {
   it('keeps every authoritative submission attempt in order', () => {

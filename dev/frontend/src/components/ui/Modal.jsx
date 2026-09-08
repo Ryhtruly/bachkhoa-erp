@@ -14,6 +14,7 @@ import { X } from 'lucide-react';
  *   hideClose?: boolean              — ẩn nút X
  *   closeOnOverlay?: boolean         — đóng khi click ngoài (mặc định true)
  *   overlayClassName?: string        — class bổ sung cho lớp nền
+ *   className?: string               — class bổ sung cho modal
  *   id?: string                      — để aria-labelledby
  *   children: ReactNode
  */
@@ -26,9 +27,15 @@ export default function Modal({
   hideClose = false,
   closeOnOverlay = true,
   overlayClassName = '',
-  id = 'modal',
+  className = '',
+  id,
   children,
 }) {
+  const generatedId = React.useId();
+  const modalId = id || generatedId;
+  const closeButtonRef = React.useRef(null);
+  const restoreFocusRef = React.useRef(null);
+
   // Đóng bằng Escape
   React.useEffect(() => {
     if (!open) return;
@@ -37,16 +44,27 @@ export default function Modal({
     return () => window.removeEventListener('keydown', handler);
   }, [open, onClose]);
 
-  // Khóa scroll body khi modal mở
+  // Khóa scroll body khi modal mở và trả lại focus
   React.useEffect(() => {
     if (!open) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      restoreFocusRef.current?.focus?.();
+      restoreFocusRef.current = null;
+    };
   }, [open]);
 
   if (!open) return null;
 
-  const sizeMap = { sm: 400, md: 560, lg: 720, xl: 900, full: '92vw' };
+  const sizeMap = { sm: 400, md: 560, lg: 720, xl: 1140, '2xl': 1240, full: '94vw' };
 
   const content = (
     <div
@@ -54,28 +72,29 @@ export default function Modal({
       onClick={closeOnOverlay ? (e) => e.target === e.currentTarget && onClose?.() : undefined}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={`${id}-title`}
+      aria-labelledby={`${modalId}-title`}
       tabIndex={-1}
     >
       <div
-        className="modal"
+        className={`modal${className ? ` ${className}` : ''}`}
         style={{ width: sizeMap[size] ?? sizeMap.md }}
-        id={id}
+        id={modalId}
       >
         {/* Header */}
         {(title || !hideClose) && (
           <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
             {title && (
-              <h2 id={`${id}-title`} style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
+              <h2 id={`${modalId}-title`} style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
                 {title}
               </h2>
             )}
             {!hideClose && (
               <button
+                ref={closeButtonRef}
                 className="btn btn-icon btn-ghost btn-sm"
                 onClick={onClose}
                 aria-label="Đóng"
-                id={`${id}-close-btn`}
+                id={`${modalId}-close-btn`}
                 style={{ marginLeft: 'auto' }}
               >
                 <X size={18} />
@@ -98,18 +117,8 @@ export default function Modal({
   return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }
 
-
 /**
  * FormRow — Hàng form tiêu chuẩn (label + input)
- *
- * Props:
- *   label: string
- *   required?: boolean
- *   hint?: string
- *   error?: string
- *   cols?: 1 | 2         — chiếm 1 hay 2 cột (mặc định 1)
- *   align?: 'center' | 'left'  — canh label + input cùng lúc (mặc định 'center')
- *   children: ReactNode
  */
 export function FormRow({ label, required, hint, error, cols = 1, align = 'center', children }) {
   return (
@@ -124,7 +133,6 @@ export function FormRow({ label, required, hint, error, cols = 1, align = 'cente
     </div>
   );
 }
-
 
 /**
  * FormGrid — Grid 2 cột cho form

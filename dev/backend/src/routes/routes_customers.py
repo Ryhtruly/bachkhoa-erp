@@ -20,8 +20,13 @@ from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
 
 router = APIRouter(prefix="/api/customers", tags=["01b. Customers"])
 
+def _format_date(v):
+    if not v:
+        return None
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
 # Cùng nguồn chân lý với màn Thu Công Nợ: công nợ tính từ phiếu thu ĐÃ DUYỆT,
-# bàn giao đọc từ cờ is_handover của node (không hardcode mã K08).
+# bàn giao đọc từ cờ is_handover của node (không hardcode mã K06).
 _APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
 _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
 
@@ -34,16 +39,17 @@ def search_customers(
 ):
     """Tìm khách cũ để tự điền — theo tên, SĐT, CCCD, mã số thuế."""
     kw = f"%{q.strip()}%"
+    like_op = "like" if (db.bind and db.bind.dialect.name == "sqlite") else "ilike"
     rows = db.execute(
-        text("""
+        text(f"""
             select c.id, c.customer_type, c.full_name, c.phone, c.address,
                    c.tax_id, c.id_card_number, c.id_card_date, c.id_card_place,
                    c.email, c.zalo_phone, c.representative_name, c.representative_role,
                    count(ct.id) as so_hop_dong
-            from public.customers c
-            left join public.contracts ct on ct.customer_id = c.id
-            where c.full_name ilike :kw or c.phone ilike :kw
-               or c.tax_id ilike :kw or c.id_card_number ilike :kw
+            from customers c
+            left join contracts ct on ct.customer_id = c.id
+            where c.full_name {like_op} :kw or c.phone {like_op} :kw
+               or c.tax_id {like_op} :kw or c.id_card_number {like_op} :kw
             group by c.id
             order by so_hop_dong desc, c.full_name
             limit 10
@@ -51,7 +57,7 @@ def search_customers(
         {"kw": kw},
     ).mappings().all()
     return {"status": "success", "data": [
-        {**dict(r), "id_card_date": r["id_card_date"].isoformat() if r["id_card_date"] else None,
+        {**dict(r), "id_card_date": _format_date(r["id_card_date"]),
          "so_hop_dong": int(r["so_hop_dong"] or 0)}
         for r in rows
     ]}
@@ -100,8 +106,9 @@ def list_customers(
     """Danh sách khách cho tab quản lý — kèm số hợp đồng, lọc theo loại/từ khoá."""
     where = ["1=1"]
     params: dict = {}
+    like_op = "like" if (db.bind and db.bind.dialect.name == "sqlite") else "ilike"
     if q and q.strip():
-        where.append("(c.full_name ilike :kw or c.phone ilike :kw or c.tax_id ilike :kw or c.id_card_number ilike :kw)")
+        where.append(f"(c.full_name {like_op} :kw or c.phone {like_op} :kw or c.tax_id {like_op} :kw or c.id_card_number {like_op} :kw)")
         params["kw"] = f"%{q.strip()}%"
     if customer_type in ("individual", "business"):
         where.append("c.customer_type = :ct")
@@ -111,8 +118,8 @@ def list_customers(
             select c.id, c.customer_type, c.full_name, c.phone,
                    c.tax_id, c.id_card_number,
                    count(ct.id) as so_hop_dong
-            from public.customers c
-            left join public.contracts ct on ct.customer_id = c.id
+            from customers c
+            left join contracts ct on ct.customer_id = c.id
             where {" and ".join(where)}
             group by c.id
             order by c.full_name
@@ -138,7 +145,7 @@ def get_customer(
                    id_card_number, id_card_date, id_card_place, email, zalo_phone,
                    representative_name, representative_role, data_quality_status,
                    source_channel, created_at
-            from public.customers where id = :id
+            from customers where id = :id
         """),
         {"id": customer_id},
     ).mappings().first()
@@ -147,58 +154,88 @@ def get_customer(
 
     # Mỗi hợp đồng kèm HAI trạng thái độc lập cho UI:
     #   · thu tiền  — đã thu đủ / còn nợ (tính sống từ phiếu thu đã duyệt)
-    #   · bàn giao  — đã giao hồ sơ cho khách chưa (đọc delivered_at ở node bàn giao)
-    contracts = db.execute(
-        text(f"""
-            select c.id, c.service_type, c.total_value, c.date_signed, c.status,
-                   c.completion_override,
-                   coalesce(paid_tx.paid_amount, 0)    as paid,
-                   coalesce(pending_tx.pending_amount, 0) as pending,
-                   coalesce(bg.da_ban_giao, false)      as da_ban_giao,
-                   coalesce(bg.n_handover, 0) > 0        as has_handover_node
-            from public.contracts c
-            left join (
-                select t.contract_id, sum(t.amount) as paid_amount
-                from public.cashflow_transactions t
-                where t.transaction_type in ({_INCOME_SQL})
-                  and t.status in ({_APPROVED_SQL})
-                group by t.contract_id
-            ) paid_tx on paid_tx.contract_id = c.id
-            left join (
-                select t.contract_id, sum(t.amount) as pending_amount
-                from public.cashflow_transactions t
-                where t.transaction_type in ({_INCOME_SQL})
-                  and t.status in ('Chờ duyệt', 'PENDING', 'pending')
-                group by t.contract_id
-            ) pending_tx on pending_tx.contract_id = c.id
-            left join lateral (
-                -- "Đã bàn giao" = đã giao hiện vật (delivered_at) HOẶC bước bàn giao
-                -- đã nghiệm thu xong (status accepted). Gộp mọi node bàn giao của HĐ.
-                select bool_or(
-                         n.execution_data->'handover'->>'delivered_at' is not null
-                         or n.status = 'accepted'
-                       ) as da_ban_giao,
-                       count(*) as n_handover
-                from public.task_nodes n
-                join public.workflow_instances wi on wi.id = n.workflow_instance_id
-                join public.service_lines sl on sl.id = wi.service_line_id
-                left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
-                left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
-                where sl.contract_id = c.id
-                  and n.status <> 'cancelled'
-                  and coalesce((
-                        coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover'
-                      )::boolean, false)
-            ) bg on true
-            where c.customer_id = :id
-            order by c.date_signed desc nulls last, c.id
-        """),
-        {"id": customer_id},
-    ).mappings().all()
+    is_sqlite = db.bind and db.bind.dialect.name == "sqlite"
+    if is_sqlite:
+        contracts = db.execute(
+            text(f"""
+                select c.id, c.service_type, c.total_value, c.date_signed, c.status,
+                       c.completion_override,
+                       coalesce(paid_tx.paid_amount, 0)    as paid,
+                       coalesce(pending_tx.pending_amount, 0) as pending,
+                       0 as da_ban_giao,
+                       0 as has_handover_node
+                from contracts c
+                left join (
+                    select t.contract_id, sum(t.amount) as paid_amount
+                    from cashflow_transactions t
+                    where t.transaction_type in ({_INCOME_SQL})
+                      and t.status in ({_APPROVED_SQL})
+                    group by t.contract_id
+                ) paid_tx on paid_tx.contract_id = c.id
+                left join (
+                    select t.contract_id, sum(t.amount) as pending_amount
+                    from cashflow_transactions t
+                    where t.transaction_type in ({_INCOME_SQL})
+                      and t.status in ('Chờ duyệt', 'PENDING', 'pending')
+                    group by t.contract_id
+                ) pending_tx on pending_tx.contract_id = c.id
+                where c.customer_id = :id
+                order by c.date_signed desc, c.id
+            """),
+            {"id": customer_id},
+        ).mappings().all()
+    else:
+        contracts = db.execute(
+            text(f"""
+                select c.id, c.service_type, c.total_value, c.date_signed, c.status,
+                       c.completion_override,
+                       coalesce(paid_tx.paid_amount, 0)    as paid,
+                       coalesce(pending_tx.pending_amount, 0) as pending,
+                       coalesce(bg.da_ban_giao, false)      as da_ban_giao,
+                       coalesce(bg.n_handover, 0) > 0        as has_handover_node
+                from contracts c
+                left join (
+                    select t.contract_id, sum(t.amount) as paid_amount
+                    from cashflow_transactions t
+                    where t.transaction_type in ({_INCOME_SQL})
+                      and t.status in ({_APPROVED_SQL})
+                    group by t.contract_id
+                ) paid_tx on paid_tx.contract_id = c.id
+                left join (
+                    select t.contract_id, sum(t.amount) as pending_amount
+                    from cashflow_transactions t
+                    where t.transaction_type in ({_INCOME_SQL})
+                      and t.status in ('Chờ duyệt', 'PENDING', 'pending')
+                    group by t.contract_id
+                ) pending_tx on pending_tx.contract_id = c.id
+                left join lateral (
+                    -- "Đã bàn giao" = đã giao hiện vật (delivered_at) HOẶC bước bàn giao
+                    -- đã nghiệm thu xong (status accepted). Gộp mọi node bàn giao của HĐ.
+                    select bool_or(
+                             n.execution_data->'handover'->>'delivered_at' is not null
+                             or n.status = 'accepted'
+                           ) as da_ban_giao,
+                           count(*) as n_handover
+                    from task_nodes n
+                    join workflow_instances wi on wi.id = n.workflow_instance_id
+                    join service_lines sl on sl.id = wi.service_line_id
+                    left join workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
+                    left join workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+                    where sl.contract_id = c.id
+                      and n.status <> 'cancelled'
+                      and coalesce((
+                            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover'
+                          )::boolean, false)
+                ) bg on true
+                where c.customer_id = :id
+                order by c.date_signed desc nulls last, c.id
+            """),
+            {"id": customer_id},
+        ).mappings().all()
 
     data = dict(c)
-    data["id_card_date"] = c["id_card_date"].isoformat() if c["id_card_date"] else None
-    data["created_at"] = c["created_at"].isoformat() if c["created_at"] else None
+    data["id_card_date"] = _format_date(c["id_card_date"])
+    data["created_at"] = _format_date(c["created_at"])
 
     contract_list = []
     for ct in contracts:
@@ -210,7 +247,7 @@ def get_customer(
             "service_type": ct["service_type"],
             "status": ct["status"],
             "total_value": total,
-            "date_signed": ct["date_signed"].isoformat() if ct["date_signed"] else None,
+            "date_signed": _format_date(ct["date_signed"]),
             "paid": paid,
             "pending": float(ct["pending"] or 0),
             "remaining": remaining,
@@ -246,7 +283,7 @@ def update_customer(
     _: User = Depends(require_permission("customer", "update")),
 ):
     """Sửa hồ sơ khách. Định danh bắt buộc theo loại (MST / CCCD)."""
-    exists = db.execute(text("select 1 from public.customers where id = :id"), {"id": customer_id}).scalar()
+    exists = db.execute(text("select 1 from customers where id = :id"), {"id": customer_id}).scalar()
     if not exists:
         raise HTTPException(status_code=404, detail="Không tìm thấy khách hàng")
 
@@ -259,17 +296,17 @@ def update_customer(
 
     # Không cho trùng khoá định danh với khách KHÁC.
     if tax_id:
-        dup = db.execute(text("select id from public.customers where tax_id = :t and id <> :id"),
+        dup = db.execute(text("select id from customers where tax_id = :t and id <> :id"),
                          {"t": tax_id, "id": customer_id}).scalar()
         if dup:
             raise HTTPException(status_code=409, detail="Mã số thuế đã thuộc về khách khác")
     if cccd:
-        dup = db.execute(text("select id from public.customers where id_card_number = :c and id <> :id"),
+        dup = db.execute(text("select id from customers where id_card_number = :c and id <> :id"),
                          {"c": cccd, "id": customer_id}).scalar()
         if dup:
             raise HTTPException(status_code=409, detail="Số CCCD đã thuộc về khách khác")
 
-    def _ngay(v):
+    def _parse_date(v):
         try:
             return date.fromisoformat(v) if v else None
         except Exception:
@@ -277,16 +314,16 @@ def update_customer(
 
     db.execute(
         text("""
-            update public.customers set
+            update customers set
               customer_type = :ct, full_name = :fn, phone = :ph, address = :addr,
               tax_id = :tax, id_card_number = :cccd, id_card_date = :icd, id_card_place = :icp,
               email = :em, zalo_phone = :zl,
-              representative_name = :rn, representative_role = :rr, updated_at = now()
+              representative_name = :rn, representative_role = :rr, updated_at = CURRENT_TIMESTAMP
             where id = :id
         """),
         {"ct": payload.customer_type, "fn": payload.full_name.strip(),
          "ph": (payload.phone or "").strip() or None, "addr": (payload.address or "").strip() or None,
-         "tax": tax_id, "cccd": cccd, "icd": _ngay(payload.id_card_date),
+         "tax": tax_id, "cccd": cccd, "icd": _parse_date(payload.id_card_date),
          "icp": (payload.id_card_place or "").strip() or None,
          "em": (payload.email or "").strip() or None, "zl": (payload.zalo_phone or "").strip() or None,
          "rn": (payload.representative_name or "").strip() or None,

@@ -55,12 +55,12 @@ class FakeDb:
     def execute(self, statement, params=None):
         query = str(statement)
         self.statements.append(query)
-        doc_trang_thai = (
+        is_status_query = (
             "select legacy_gov_status" in query
             or "select manual_status" in query
             or "effective_status as status" in query
         )
-        if doc_trang_thai:
+        if is_status_query:
             return FakeResult(
                 (self.current_status,),
                 mapping={"status": self.current_status, "gov_status": self.current_status},

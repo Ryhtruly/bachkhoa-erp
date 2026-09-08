@@ -3,8 +3,8 @@ import { Sparkles, LoaderCircle } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { apiFetch } from '../../lib/api';
 
-const tien = (n) => (Number(n) || 0).toLocaleString('vi-VN') + '₫';
-const NHAN_UT = { HIGH: 'Ưu tiên cao', URGENT: 'Gấp' };
+const formatVnd = (n) => (Number(n) || 0).toLocaleString('vi-VN') + '₫';
+const PRIORITY_LABELS = { HIGH: 'Ưu tiên cao', URGENT: 'Gấp' };
 
 /**
  * Phân bổ thưởng ưu tiên khi hoàn thành hợp đồng (GĐ3, Q6/Q7).
@@ -31,7 +31,7 @@ export default function PriorityBonusModal({ open, contractId, onClose, onDone, 
       .finally(() => setLoading(false));
   }, [open, contractId, addToast]);
 
-  const chot = async () => {
+  const handleConfirmBonus = async () => {
     const allocations = (data?.participants || [])
       .filter((p) => !p.already_paid && Number(amounts[p.employee_id]) > 0)
       .map((p) => ({ employee_id: p.employee_id, amount: Number(amounts[p.employee_id]) }));
@@ -58,7 +58,7 @@ export default function PriorityBonusModal({ open, contractId, onClose, onDone, 
       footer={(
         <>
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={onClose}>Đóng</button>
-          <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={chot}>
+          <button type="button" className="btn btn-primary" disabled={saving || loading} onClick={handleConfirmBonus}>
             {saving ? <LoaderCircle size={16} className="spin" /> : <Sparkles size={16} />} Chốt & ghi vào lương
           </button>
         </>
@@ -70,7 +70,7 @@ export default function PriorityBonusModal({ open, contractId, onClose, onDone, 
       ) : (
         <>
           <p style={{ margin: '0 0 12px', fontSize: '0.9rem' }}>
-            Mức <strong>{NHAN_UT[data.priority] || data.priority}</strong> · hệ số gợi ý <strong>×{data.multiplier}</strong>.
+            Mức <strong>{PRIORITY_LABELS[data.priority] || data.priority}</strong> · hệ số gợi ý <strong>×{data.multiplier}</strong>.
             Thưởng gợi ý = khoán × (hệ số − 1); giám đốc sửa số cuối.
           </p>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
@@ -85,7 +85,7 @@ export default function PriorityBonusModal({ open, contractId, onClose, onDone, 
               {data.participants.map((p) => (
                 <tr key={p.employee_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '8px 4px' }}>{p.full_name}</td>
-                  <td style={{ padding: '8px 4px', textAlign: 'right', color: '#475569' }}>{tien(p.khoan)}</td>
+                  <td style={{ padding: '8px 4px', textAlign: 'right', color: '#475569' }}>{formatVnd(p.khoan)}</td>
                   <td style={{ padding: '8px 4px', textAlign: 'right' }}>
                     {p.already_paid ? (
                       <span style={{ color: '#16a34a', fontWeight: 600 }}>Đã thưởng</span>

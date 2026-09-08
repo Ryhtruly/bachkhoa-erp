@@ -1,10 +1,9 @@
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from src.core.auth import require_permission
+from src.core.roles import validate_assignable_role_name
 from src.db.database import get_db
 from src.db.models import User
 from src.user_admin.service import create_employee_account, resend_invite, set_user_active_status
@@ -15,7 +14,7 @@ router = APIRouter(prefix="/api/user-admin", tags=["01. Authentication & Securit
 class CreateAccountIn(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     email: str = Field(min_length=3, max_length=255)
-    role_name: Optional[str] = "employee"
+    role_name: str = Field(min_length=1, max_length=40)
 
     @field_validator("username")
     @classmethod
@@ -30,6 +29,14 @@ class CreateAccountIn(BaseModel):
             raise ValueError("Email không hợp lệ")
         return v
 
+    @field_validator("role_name")
+    @classmethod
+    def validate_role_name(cls, v: str) -> str:
+        try:
+            return validate_assignable_role_name(v)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
 
 @router.post("/employees/{employee_id}/account", status_code=201)
 def create_account_for_employee(
@@ -43,7 +50,7 @@ def create_account_for_employee(
         employee_id,
         payload.username,
         payload.email,
-        role_name=payload.role_name or "employee",
+        role_name=payload.role_name,
     )
 
 

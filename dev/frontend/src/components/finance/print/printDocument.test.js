@@ -1,5 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { printElement } from './printDocument';
+import { DEFAULT_PRINT_STYLES, printElement } from './printDocument';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const printVoucherSource = readFileSync(
+  resolve(process.cwd(), 'src/components/finance/screens/PrintVoucherScreen.jsx'),
+  'utf8'
+);
+const printVoucherStyles = readFileSync(
+  resolve(process.cwd(), 'src/components/finance/screens/PrintVoucherScreen.print.css'),
+  'utf8'
+);
+const financeReportStyles = readFileSync(
+  resolve(process.cwd(), 'src/components/finance/print/financeReport.print.css'),
+  'utf8'
+);
 
 describe('printElement', () => {
   afterEach(() => {
@@ -51,6 +66,8 @@ describe('printElement', () => {
       styles: '.target-report { color: #000; }',
     })).toBe(true);
 
+    expect(createdFrame.style.width).toBe('100vw');
+    expect(createdFrame.style.height).toBe('100vh');
     expect(createdFrame.srcdoc).toContain('<section class="target-report">Nội dung sổ quỹ</section>');
     expect(createdFrame.srcdoc).toContain('Sổ quỹ &lt;tháng 8&gt;');
 
@@ -60,5 +77,29 @@ describe('printElement', () => {
 
     afterPrint();
     expect(document.body.contains(createdFrame)).toBe(false);
+  });
+
+  it('keeps the voucher screen on the shared print pipeline', () => {
+    expect(printVoucherSource).toContain("import { printElement } from '../print/printDocument';");
+    expect(printVoucherSource).not.toContain('printWindow.print()');
+    expect(printVoucherSource).toContain("styles: voucherPrintStyles");
+  });
+
+  it('defines stable A4 and A5 page rules for voucher output', () => {
+    expect(printVoucherStyles).toContain('@page voucher-a4');
+    expect(printVoucherStyles).toContain('@page voucher-a5');
+    expect(printVoucherStyles).toContain('page: voucher-a4');
+    expect(printVoucherStyles).toContain('[data-paper-size="a5"]');
+    expect(printVoucherStyles).toContain('grid-template-columns: repeat(5, minmax(0, 1fr))');
+  });
+
+  it('keeps grand total footer at the end instead of repeating it on every printed page', () => {
+    expect(financeReportStyles).toMatch(/\.finance-print-table\s+tfoot\s*\{\s*display:\s*table-row-group;/);
+    expect(DEFAULT_PRINT_STYLES).toMatch(/\.finance-print-table tfoot\s*\{\s*display:\s*table-row-group !important;/);
+  });
+
+  it('keeps report tables inside the printable width', () => {
+    expect(financeReportStyles).toMatch(/\.finance-print-table\s*\{[^}]*table-layout:\s*fixed;/s);
+    expect(DEFAULT_PRINT_STYLES).toMatch(/\.finance-print-table\s*\{[^}]*table-layout:\s*fixed !important;/s);
   });
 });

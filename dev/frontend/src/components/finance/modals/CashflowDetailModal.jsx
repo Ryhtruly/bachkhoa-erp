@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ConfirmationModal, DatePicker, Modal, FormRow, FormGrid, Dropdown, SensitiveActionModal, Badge } from '../../ui';
+import { ConfirmationModal, DatePicker, Modal, Select, SensitiveActionModal } from '../../ui';
 import { useToast } from '../../../contexts/ToastContext';
-import { AlertCircle, Link, Check, X, ShieldAlert, Trash2, Printer } from 'lucide-react';
+import { AlertCircle, Check, X, Trash2, Printer } from 'lucide-react';
 import { parseAmt, spellVietnameseCurrency } from '../utils';
 import { apiFetch } from '../../../lib/api';
 import { API } from '../financeConstants';
@@ -15,7 +15,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
   const [form, setForm] = useState({
     category: '',
     payer_payee: '',
-    payment_method: 'Tiền mặt',
+    payment_method: 'CASH',
     amount: '',
     transaction_date: '',
     description: '',
@@ -46,8 +46,8 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
         currentUser?.permissions?.some(p => (p.resource === 'finance' || p.resource === '*') && (p.action === 'delete' || p.action === 'approve' || p.action === '*'))
       );
 
-  const isPending = detail?.status === 'Chờ duyệt';
-  const isReadOnly = detail?.status === 'Hoàn thành' || detail?.status === 'Đã duyệt' || detail?.status === 'Đã quyết toán' || detail?.status === 'Đã hủy' || detail?.status === 'Từ chối';
+  const isPending = detail?.status === 'PENDING' || detail?.status === 'Chờ duyệt' || detail?.status === 'pending';
+  const isReadOnly = detail?.status === 'COMPLETED' || detail?.status === 'Hoàn thành' || detail?.status === 'Đã duyệt' || detail?.status === 'Đã quyết toán' || detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy' || detail?.status === 'REJECTED' || detail?.status === 'Từ chối';
 
   useEffect(() => {
     if (open && transactionId) {
@@ -65,10 +65,13 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
             const [dd, mm, yy] = parsedDate.split('/');
             parsedDate = `20${yy}-${mm}-${dd}`;
           }
+          let pm = d.payment_method || 'CASH';
+          if (pm === 'Tiền mặt') pm = 'CASH';
+          if (pm === 'Chuyển khoản') pm = 'BANK_TRANSFER';
           setForm({
             category: d.category || '',
             payer_payee: d.partner || d.payer_payee || d.payer_payee_name || '',
-            payment_method: d.payment_method || 'Tiền mặt',
+            payment_method: pm,
             amount: String(d.amount || ''),
             transaction_date: parsedDate || '',
             description: d.description || '',
@@ -226,15 +229,22 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
 
   if (!open) return null;
 
-  const isIncomeTransaction = detail?.type === 'Thu' || detail?.transaction_type === 'Thu';
+  const isIncomeTransaction = detail?.type === 'INCOME' || detail?.type === 'Thu' || detail?.transaction_type === 'INCOME' || detail?.transaction_type === 'Thu';
+  const isReversal = Boolean(
+    (detail?.category || '').toLowerCase().includes('hoàn tác') ||
+    (detail?.category || '').toLowerCase().includes('hủy phiếu') ||
+    (detail?.description || '').toLowerCase().includes('hủy tự động cho phiếu gốc')
+  );
   const accent = isIncomeTransaction ? '#10b981' : '#ef4444';
   const brandAccent = '#eb4a23';
   const transactionType = detail?.type || detail?.transaction_type;
+  const isAdvance = transactionType === 'ADVANCE' || transactionType === 'Tạm ứng';
+  const isReimbursement = transactionType === 'REIMBURSEMENT' || transactionType === 'Hoàn ứng';
   const voucherTitle = isIncomeTransaction
     ? 'PHIẾU THU'
-    : transactionType === 'Tạm ứng'
+    : isAdvance
       ? 'PHIẾU CHI TẠM ỨNG'
-      : transactionType === 'Hoàn ứng'
+      : isReimbursement
         ? 'PHIẾU QUYẾT TOÁN HOÀN ỨNG'
         : 'PHIẾU CHI';
 
@@ -320,14 +330,17 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                   </td>
                   <td style={{ fontWeight: 'bold' }}>Hình thức</td>
                   <td>
-                    <select
+                    <Select
                       disabled={isReadOnly}
                       value={form.payment_method}
-                      onChange={e => handleChange('payment_method', e.target.value)}
-                    >
-                      <option value="Chuyển khoản">Chuyển khoản</option>
-                      <option value="Tiền mặt">Tiền mặt</option>
-                    </select>
+                      options={[
+                        { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+                        { value: 'CASH', label: 'Tiền mặt' },
+                      ]}
+                      onChange={value => handleChange('payment_method', value)}
+                      placeholder="— Chọn hình thức —"
+                      className="ui-select--field"
+                    />
                   </td>
                 </tr>
 
@@ -353,12 +366,31 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                 <tr>
                   <td style={{ fontWeight: 'bold' }}>Trạng thái</td>
                   <td>
-                    <input type="text" disabled value={detail?.status || 'Hoàn thành'} />
+                    <input type="text" disabled value={detail?.status_label || detail?.status || 'Hoàn thành'} />
                   </td>
                   <td style={{ fontWeight: 'bold' }}>Liên kết</td>
                   <td style={{ padding: '6px 10px' }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input type="text" placeholder="Nhập ID hợp đồng..." value={form.contract_id || ''} onChange={(e) => handleContractChange(e.target.value)} style={{ fontSize: '0.75rem', width: '100%', padding: '4px' }} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <input
+                        type="text"
+                        list="detail-contract-datalist"
+                        placeholder="Gõ hoặc chọn Mã HĐ..."
+                        value={form.contract_id || ''}
+                        onChange={(e) => handleContractChange(e.target.value)}
+                        style={{ fontSize: '0.8rem', width: '100%', padding: '5px 8px', borderRadius: 4, border: '1px solid var(--border-default)', background: 'var(--bg-card)', color: 'var(--text-primary)' }}
+                      />
+                      <datalist id="detail-contract-datalist">
+                        {contracts.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.id} — {c.customer_name} ({c.service_type || 'HĐ'})
+                          </option>
+                        ))}
+                      </datalist>
+                      {form.contract_id && contracts.length > 0 && !contracts.some(c => c.id === form.contract_id) && (
+                        <div style={{ fontSize: '0.7rem', color: '#ef4444', marginTop: 2 }}>
+                          ⚠️ Mã HĐ chưa có trong danh mục
+                        </div>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -375,8 +407,22 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
             </table>
 
             {isReadOnly && !isPending && (
-              <div style={{ marginTop: 16, padding: '10px 14px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, fontSize: '0.82rem', color: '#f59e0b' }}>
-                Phiếu đã duyệt/hoàn thành ({detail?.status}). Chỉ cho phép chỉnh sửa liên kết hồ sơ.
+              <div style={{
+                marginTop: 16,
+                padding: '10px 14px',
+                background: isReversal ? 'rgba(100,116,139,0.12)' : (detail?.status === 'REJECTED' || detail?.status === 'Từ chối') ? 'rgba(239,68,68,0.12)' : (detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy') ? 'rgba(100,116,139,0.12)' : 'rgba(245,158,11,0.12)',
+                border: `1px solid ${isReversal ? 'rgba(100,116,139,0.3)' : (detail?.status === 'REJECTED' || detail?.status === 'Từ chối') ? 'rgba(239,68,68,0.3)' : (detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy') ? 'rgba(100,116,139,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                borderRadius: 8,
+                fontSize: '0.82rem',
+                color: isReversal ? 'var(--text-secondary)' : (detail?.status === 'REJECTED' || detail?.status === 'Từ chối') ? '#f87171' : (detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy') ? 'var(--text-secondary)' : '#fbbf24'
+              }}>
+                {isReversal
+                  ? 'Chứng từ hoàn tác (Bút toán đảo đối ứng). Chứng từ này được khóa cố định để đảm bảo tính toàn vẹn sổ quỹ và đối soát kiểm toán.'
+                  : (detail?.status === 'REJECTED' || detail?.status === 'Từ chối')
+                    ? `Phiếu đã bị Giám đốc từ chối${detail?.cancellation_reason ? `: "${detail.cancellation_reason}"` : ''}. Không phát sinh thu chi trên sổ quỹ.`
+                    : (detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy')
+                      ? `Phiếu đã bị hủy bỏ${detail?.cancellation_reason ? `: "${detail.cancellation_reason}"` : ''}. Số tiền không tính vào sổ quỹ.`
+                      : `Phiếu đã hoàn thành (${detail?.status_label || detail?.status}). Chỉ cho phép chỉnh sửa liên kết hợp đồng.`}
               </div>
             )}
 
@@ -386,22 +432,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 24, paddingTop: 20 }}>
-              <div>
-                {detail?.status === 'Hoàn thành' && isDirector && (
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={() => setSensitiveModal('void')}
-                    disabled={submitting}
-                    style={{ fontSize: '0.82rem' }}
-                    title="Chỉ Giám đốc/Admin có quyền hủy bỏ chứng từ đã hoàn thành"
-                  >
-                    <Trash2 size={14} /> Hủy phiếu này
-                  </button>
-                )}
-              </div>
-
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border-default)' }}>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button
                   type="button"
@@ -411,8 +442,36 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                 >
                   <Printer size={15} /> In phiếu
                 </button>
+                {(detail?.status === 'COMPLETED' || detail?.status === 'Hoàn thành') && !isReversal && isDirector && (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => setSensitiveModal('void')}
+                    disabled={submitting}
+                    style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 4 }}
+                    title="Chỉ Giám đốc/Admin có quyền hủy bỏ chứng từ đã hoàn thành"
+                  >
+                    <Trash2 size={14} /> Hủy phiếu
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <button type="button" className="btn btn-secondary" onClick={handleClose}>Đóng</button>
 
+                {/* Nút lưu thay đổi: CHỈ hiển thị khi người dùng thực sự có chỉnh sửa (dirty) */}
+                {dirty && (
+                  <button
+                    type="submit"
+                    className="btn"
+                    disabled={submitting}
+                    style={{ background: brandAccent, color: '#fff', padding: '0 20px', fontWeight: 600 }}
+                  >
+                    {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  </button>
+                )}
+
+                {/* Nút Duyệt / Từ chối cho Giám đốc khi phiếu đang chờ duyệt */}
                 {isPending && isDirector && (
                   <>
                     <button
@@ -420,7 +479,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                       className="btn btn-danger"
                       onClick={() => setSensitiveModal('reject')}
                       disabled={submitting}
-                      style={{ padding: '0 18px' }}
+                      style={{ padding: '0 18px', display: 'flex', alignItems: 'center', gap: 4 }}
                     >
                       <X size={15} /> Từ chối
                     </button>
@@ -429,18 +488,11 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                       className="btn btn-primary"
                       onClick={handleApprove}
                       disabled={submitting}
-                      style={{ background: '#10b981', borderColor: '#10b981', padding: '0 20px' }}
+                      style={{ background: '#10b981', borderColor: '#10b981', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}
                     >
-                      <Check size={15} /> Duyệt phiếu (Giám đốc)
+                      <Check size={16} /> Duyệt phiếu
                     </button>
                   </>
-                )}
-
-                {!isPending && !isReadOnly && (
-                  <button type="submit" className="btn" disabled={submitting || !dirty}
-                    style={{ background: brandAccent, color: '#fff', padding: '0 24px', opacity: submitting ? 0.6 : 1 }}>
-                    {submitting ? 'Đang lưu...' : 'Lưu thay đổi'}
-                  </button>
                 )}
               </div>
             </div>
@@ -449,7 +501,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
       </Modal>
 
       {detail && (
-        <div aria-hidden="true" style={{ position: 'fixed', left: '-100000px', top: 0, width: '186mm', pointerEvents: 'none' }}>
+        <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
           <VoucherTemplate
             title={voucherTitle}
             voucherId={transactionId || detail.id}
