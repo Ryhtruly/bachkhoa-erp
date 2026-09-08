@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Check, ChevronRight } from 'lucide-react'
 
 /**
@@ -16,6 +17,13 @@ const RUNNING = new Set(['in_progress', 'ready', 'rework_required', 'submitted']
 
 export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSelect }) {
   const openable = openableIds instanceof Set ? openableIds : new Set(openableIds || [])
+  const activeRef = useRef(null)
+
+  useEffect(() => {
+    if (activeRef.current && typeof activeRef.current.scrollIntoView === 'function') {
+      activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    }
+  }, [activeNodeId])
 
   return (
     <div className="eiw-chain" role="list" aria-label="Các bước của hạng mục">
@@ -31,7 +39,12 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
         else if (RUNNING.has(node.status)) statusLabel = 'ĐANG MỞ'
 
         return (
-          <div className="eiw-chain__cell" role="listitem" key={node.id}>
+          <div
+            className="eiw-chain__cell"
+            role="listitem"
+            key={node.id}
+            ref={current ? activeRef : undefined}
+          >
             <button
               type="button"
               className={`eiw-step is-${tone}`}
@@ -48,10 +61,8 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
                 <div className="eiw-step__code-wrap">
                   <span className="eiw-step__code">{node.node_code}</span>
                   {current && !done && <span className="eiw-step__pulse" title="Đang trong tiến trình" />}
+                  <span className="eiw-step__name" title={node.name}>{node.name}</span>
                 </div>
-              </div>
-              <div className="eiw-step__name">
-                {node.name}
               </div>
             </button>
             {index < nodes.length - 1 && (

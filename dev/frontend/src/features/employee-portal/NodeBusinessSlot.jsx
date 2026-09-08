@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { ChevronDown, Pause, Play } from 'lucide-react'
 
 import CustomerSourceDocuments from './CustomerSourceDocuments'
-import HandoverPanel from '../handover/HandoverPanel'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import { formatMoney } from './nodeWorkFormat'
 
@@ -109,14 +108,10 @@ export default function NodeBusinessSlot({
         </div>
       )}
 
-      {/* ── K06: tiền đã thu trên tổng, rồi mới tới đường xin nợ ── */}
+      {/* K06 chỉ cần thanh công nợ trong vùng nội dung. Xin duyệt nợ và Nộp
+          nghiệm thu nằm ở footer để không tạo thêm một panel checklist trùng. */}
       {isHandover && (
-        <>
-          <DebtBand item={item} />
-          <div className="eiw-slotbody">
-            <HandoverPanel taskNodeId={task.id} hideIfNotHandover onChanged={onRefresh} />
-          </div>
-        </>
+        <DebtBand item={item} />
       )}
 
     </>

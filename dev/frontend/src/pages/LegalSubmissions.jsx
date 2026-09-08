@@ -20,7 +20,7 @@ import { useToast } from '../contexts/ToastContext';
 import { isDossierLocked } from '../lib/dossierStatus';
 import LegalDossierActions from '../features/legal-dossier/LegalDossierActions';
 import DossierDocuments from '../features/legal-dossier/DossierDocuments';
-import DocumentRegister from '../features/document-register/DocumentRegister';
+import DocumentCabinet from '../features/contracts/DocumentCabinet';
 import './legalSubmissions.css';
 
 const API = '';
@@ -534,12 +534,15 @@ export default function LegalSubmissions() {
                 </Field>
               </div>
 
-              {/* Giấy tờ scan lưu thẳng vào kho của hạng mục, chia ngăn theo bước.
-                  Khác ô "Tệp hồ sơ" phía trên: ô đó chỉ là link Drive gõ tay. */}
-              <DocumentRegister
+              {/* Tủ của đúng Hạng mục pháp lý, không dùng danh mục Mẫu giấy tờ. */}
+              <DocumentCabinet
                 contractId={detailData?.contract_id}
-                serviceLineId={detailData?.service_line_id}
+                serviceLines={detailData?.service_line_id ? [{
+                  id: detailData.service_line_id,
+                  name: detailData.service_line_name || detailData.dossier_name || 'Hồ sơ pháp lý',
+                }] : []}
                 addToast={addToast}
+                title="TỦ HỒ SƠ PHÁP LÝ"
               />
 
               <DossierDocuments

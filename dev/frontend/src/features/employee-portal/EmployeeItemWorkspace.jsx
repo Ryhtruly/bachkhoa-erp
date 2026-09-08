@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FolderOpen, Lock, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
-import { apiFetch, getAccessToken } from '../../lib/api'
+import { apiFetch, getAccessToken, prefetchApi } from '../../lib/api'
 import DocumentPreviewModal from './DocumentPreviewModal'
 import { ChecklistEvidenceItem, NodeActionBar } from './EmployeeWorkspaceCalendar'
 
@@ -13,6 +13,7 @@ import PauseReasonModal from './PauseReasonModal'
 import PriorDocumentsDrawer from './PriorDocumentsDrawer'
 import RollbackPickerModal from './RollbackPickerModal'
 import { countdown, effectiveDeadline, formatMoney } from './nodeWorkFormat'
+import DebtRequestAction from '../handover/DebtRequestAction'
 
 
 /**
@@ -83,11 +84,14 @@ export default function EmployeeItemWorkspace({
   const [pickedNodeId, setPickedNodeId] = useState(null)
   const [cabinetOpen, setCabinetOpen] = useState(false)
   const [gate, setGate] = useState(null)
+  const [handoverState, setHandoverState] = useState(null)
   const [pauseOpen, setPauseOpen] = useState(false)
   const [rollbackOpen, setRollbackOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [preview, setPreview] = useState(null)
   const [openError, setOpenError] = useState(null)
+  const [locallyFilledTypeIds, setLocallyFilledTypeIds] = useState(() => new Set())
+  const [optimisticStatus, setOptimisticStatus] = useState(null)
   const objectUrlRef = useRef(null)
   // Số thứ tự lượt đọc /shortage: chỉ lượt MỚI NHẤT được ghi vào state, nên lượt
   // cũ về muộn (hay về sau khi component đã rời) không đạp lên kết quả mới.
@@ -99,19 +103,51 @@ export default function EmployeeItemWorkspace({
     [nodes, activeNodeId],
   )
   // Chi tiết đầy đủ (checklist, mô tả, hạn) chỉ có ở các bước NHÂN VIÊN được giao.
-  const task = useMemo(
+  const baseTask = useMemo(
     () => tasks.find(row => row.id === activeNodeId) || null,
     [tasks, activeNodeId],
   )
+  const task = useMemo(() => {
+    if (!baseTask) return null
+    if (optimisticStatus) return { ...baseTask, status: optimisticStatus }
+    return baseTask
+  }, [baseTask, optimisticStatus])
+
   const openableIds = useMemo(
     () => new Set(nodes.filter(node => node.mine && tasks.some(row => row.id === node.id))
       .map(node => node.id)),
     [nodes, tasks],
   )
 
-  const checklist = task?.checklist || []
+  const checklist = useMemo(() => task?.checklist || [], [task?.checklist])
+  const runtimeDocumentTypes = useMemo(
+    () => checklist.flatMap(checklistItem => (
+      Array.isArray(checklistItem?.document_types)
+        ? checklistItem.document_types.filter(type => type?.is_active !== false)
+        : []
+    )),
+    [checklist],
+  )
+  const runtimeMissingTypeCount = useMemo(
+    () => runtimeDocumentTypes.filter(type => (
+      Math.max(Number(type?.file_count || 0), (type?.files || []).length) === 0
+      && !locallyFilledTypeIds.has(type?.id)
+    )).length,
+    [locallyFilledTypeIds, runtimeDocumentTypes],
+  )
+  const runtimeRejectedTypeCount = useMemo(
+    () => runtimeDocumentTypes.filter(type => type?.status === 'rejected').length,
+    [runtimeDocumentTypes],
+  )
   const paused = Boolean(task?.pause_reason_type)
+  const isHandover = Boolean(task?.is_handover || task?.node_code === 'K06')
   const clock = countdown(effectiveDeadline(task), { pausedAt: task?.paused_at })
+
+  useEffect(() => {
+    setHandoverState(null)
+    setLocallyFilledTypeIds(new Set())
+    setOptimisticStatus(null)
+  }, [task?.id])
 
   // Vì sao chưa nộp được — máy chủ trả đủ ba lý do trong một lượt hỏi. Bày ra
   // thay vì để nút xám câm: nút không nói lý do là bắt nhân viên đoán rồi gọi
@@ -193,19 +229,22 @@ export default function EmployeeItemWorkspace({
   // Nộp/thay tệp cho ĐÚNG một tờ đầu ra, dùng API multipart có sẵn. Danh tính
   // đi theo checklistResultId + templateId do NodeOutputList gửi lên — không
   // đoán theo chỉ số hàng, tờ đầu, hay tên tệp. Chỉ báo thành công SAU khi máy
-  // chủ trả về, rồi để onRefresh nạp lại trạng thái thật thay cho state cục bộ.
+  // chủ trả về. Luồng loại giấy runtime dùng chính payload đã commit để cập nhật
+  // hàng tại chỗ và chỉ đọc lại cổng nộp; không tải lại toàn workspace.
   const handleUploadDocument = useCallback(async ({
     checklistResultId,
     templateId,
     file,
     typeId,
     files,
+    changeReason,
   }) => {
     if (!task?.id) return
     const body = new FormData()
     let endpoint = ''
     if (typeId && files?.length) {
       files.forEach(selectedFile => body.append('files', selectedFile))
+      if (changeReason) body.append('change_reason', changeReason)
       endpoint = `/api/employee-portal/tasks/${encodeURIComponent(task.id)}`
         + `/checklist/${encodeURIComponent(checklistResultId)}`
         + `/document-types/${encodeURIComponent(typeId)}/files`
@@ -218,7 +257,7 @@ export default function EmployeeItemWorkspace({
       return
     }
     try {
-      await apiFetch(endpoint, { method: 'POST', body })
+      const response = await apiFetch(endpoint, { method: 'POST', body })
       // NỘP XONG THÌ ĐỌC LẠI CỔNG: tờ vừa thay có thể vừa gỡ đúng blocker
       // 'rejected_documents' đang treo cạnh nút. Effect /shortage chỉ chạy lại
       // khi task.id/status/pause đổi — nộp tệp không đổi mấy thứ đó — nên phải
@@ -227,13 +266,60 @@ export default function EmployeeItemWorkspace({
       // refreshGate KHÔNG được await và tự nuốt lỗi bên trong: POST đã THÀNH
       // CÔNG rồi, nên một lượt đọc cổng hỏng cũng không được biến thành "nộp
       // lỗi". Giữ nguyên báo thành công và để onRefresh của cha nạp lại thật.
+      if (typeId) {
+        const results = Array.isArray(response?.data) ? response.data : []
+        const uploaded = results.filter(result => result?.status === 'success')
+        const failed = results.filter(result => result?.status === 'failed')
+        if (uploaded.length === 0) {
+          throw new Error(failed[0]?.error || 'Không có file nào được lưu thành công')
+        }
+        setLocallyFilledTypeIds(current => new Set([...current, typeId]))
+        if (failed.length > 0) {
+          addToast?.(
+            `Đã nộp ${uploaded.length} file; ${failed.length} file lỗi: ${failed[0]?.error || 'không lưu được'}`,
+            'warning',
+          )
+        } else {
+          addToast?.(`Đã nộp ${uploaded.length} file vào hồ sơ`, 'success')
+        }
+        refreshGate()
+        return uploaded
+      }
+
       addToast?.('Đã nộp tài liệu vào hồ sơ', 'success')
       refreshGate()
       onRefresh?.()
+      return response?.data
     } catch (error) {
       // Nộp hỏng thì KHÔNG đọc lại cổng, KHÔNG gọi onRefresh, KHÔNG báo thành
       // công — chỉ nêu đúng lỗi của máy chủ.
       addToast?.(error?.message || 'Không nộp được tài liệu', 'error')
+    }
+  }, [task?.id, addToast, onRefresh, refreshGate])
+
+  const handleDeleteDocument = useCallback(async ({
+    checklistResultId,
+    typeId,
+    documentId,
+    changeReason,
+  }) => {
+    if (!task?.id || !checklistResultId || !typeId || !documentId) return
+    try {
+      await apiFetch(
+        `/api/employee-portal/tasks/${encodeURIComponent(task.id)}`
+          + `/checklist/${encodeURIComponent(checklistResultId)}`
+          + `/document-types/${encodeURIComponent(typeId)}`
+          + `/files/${encodeURIComponent(documentId)}`,
+        {
+          method: 'DELETE',
+          body: JSON.stringify({ change_reason: changeReason || null }),
+        },
+      )
+      addToast?.('Đã gỡ file. Hãy tải file thay thế rồi nộp nghiệm thu lại.', 'success')
+      refreshGate()
+      onRefresh?.()
+    } catch (error) {
+      addToast?.(error?.message || 'Không gỡ được file', 'error')
     }
   }, [task?.id, addToast, onRefresh, refreshGate])
 
@@ -297,8 +383,44 @@ export default function EmployeeItemWorkspace({
     bonus: Number(activeNode?.bonus_amount || 0),
     settled: Boolean(activeNode?.amount_is_settled),
   }
-  const visibleBlockers = (gate?.blockers || []).filter(blocker => (
+  // Payload /shortage có thể về trước lượt refresh danh sách checklist sau khi
+  // upload. Số đang nhìn thấy trong checklist mới là snapshot mới nhất của màn;
+  // thay riêng blocker thiếu file bằng số này để nút và badge không đứng số cũ.
+  const effectiveGate = useMemo(() => {
+    if (!gate || runtimeDocumentTypes.length === 0) return gate
+    const hasRuntimeReviewBreakdown = Object.prototype.hasOwnProperty.call(
+      gate.review_summary || {},
+      'runtime_type_rejected_count',
+    )
+    const blockers = (gate.blockers || []).filter(blocker => (
+      blocker.kind !== 'missing_document_type_files'
+      && !(hasRuntimeReviewBreakdown && blocker.kind === 'rejected_documents')
+    ))
+    if (hasRuntimeReviewBreakdown) {
+      const rejectedCount = Number(gate.review_summary?.rejected_count || 0)
+        + runtimeRejectedTypeCount
+      if (rejectedCount > 0) {
+        blockers.push({
+          kind: 'rejected_documents',
+          message: (
+            `Còn ${rejectedCount} loại giấy bị Giám đốc trả lại chưa sửa. `
+            + 'Gỡ hoặc tải lại file trong đúng loại giấy đó rồi nộp nghiệm thu lại.'
+          ),
+        })
+      }
+    }
+    if (runtimeMissingTypeCount > 0) {
+      blockers.push({
+        kind: 'missing_document_type_files',
+        message: `Còn ${runtimeMissingTypeCount} loại giấy chưa được gán file.`,
+      })
+    }
+    return { ...gate, blockers, can_submit: blockers.length === 0 }
+  }, [gate, runtimeDocumentTypes.length, runtimeMissingTypeCount, runtimeRejectedTypeCount])
+
+  const visibleBlockers = (effectiveGate?.blockers || []).filter(blocker => (
     blocker.kind !== 'missing_documents'
+    && blocker.kind !== 'missing_document_type_files'
     && (blocker.kind !== 'paused' || !paused)
   ))
 
@@ -373,6 +495,16 @@ export default function EmployeeItemWorkspace({
                 className="eiw-band eiw-band--cabinet"
                 aria-label="Mở tủ hồ sơ theo bước"
                 onClick={() => setCabinetOpen(true)}
+                onMouseEnter={() => {
+                  if (item?.contract_id && item?.service_line_id && typeof prefetchApi === 'function') {
+                    prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(item.contract_id)}&service_line_id=${encodeURIComponent(item.service_line_id)}`)
+                  }
+                }}
+                onFocus={() => {
+                  if (item?.contract_id && item?.service_line_id && typeof prefetchApi === 'function') {
+                    prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(item.contract_id)}&service_line_id=${encodeURIComponent(item.service_line_id)}`)
+                  }
+                }}
               >
                 <FolderOpen size={16} /> Mở tủ hồ sơ theo bước
               </button>
@@ -444,6 +576,10 @@ export default function EmployeeItemWorkspace({
                         checklistResultId: muc.id,
                         ...payload,
                       })}
+                      onDeleteDocument={(payload) => handleDeleteDocument({
+                        checklistResultId: muc.id,
+                        ...payload,
+                      })}
                       onChanged={onRefresh}
                       addToast={addToast}
                     />
@@ -492,27 +628,45 @@ export default function EmployeeItemWorkspace({
 
             {/* Hành động thuộc riêng cột nhiệm vụ. Nộp nghiệm thu đứng trước
                 nhờ hỗ trợ đúng theo thứ tự nghiệp vụ người dùng đã chốt. */}
-            <footer className="eiw-foot">
-              <NodeActionBar task={task} onChanged={onRefresh} gate={gate} />
-              {!isDirector && !DONE_STATUSES.has(task.status) && (
-                activeNode?.my_help_request_id ? (
-                  <button
-                    type="button"
-                    className="eiw-btn eiw-btn--ghost"
-                    onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
-                  >
-                    Rút lời nhờ
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="eiw-btn eiw-btn--ghost"
-                    onClick={() => onRequestHelp?.(task)}
-                  >
-                    Nhờ hỗ trợ
-                  </button>
-                )
-              )}
+            <footer className="eiw-foot" data-testid="node-action-footer">
+              <div className="eiw-foot__support" data-testid="node-support-actions">
+                {!isDirector && !DONE_STATUSES.has(task.status) && (
+                  activeNode?.my_help_request_id ? (
+                    <button
+                      type="button"
+                      className="eiw-btn eiw-btn--help"
+                      onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
+                    >
+                      Rút lời nhờ
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="eiw-btn eiw-btn--help"
+                      onClick={() => onRequestHelp?.(task)}
+                    >
+                      Nhờ hỗ trợ
+                    </button>
+                  )
+                )}
+                {!isDirector && isHandover && !DONE_STATUSES.has(task.status) && (
+                  <DebtRequestAction
+                    taskNodeId={task.id}
+                    addToast={addToast}
+                    onChanged={onRefresh}
+                    onStateChange={setHandoverState}
+                  />
+                )}
+              </div>
+              <div className="eiw-foot__primary" data-testid="node-primary-action">
+                <NodeActionBar
+                  task={task}
+                  onChanged={onRefresh}
+                  gate={effectiveGate}
+                  handoverState={handoverState}
+                  onOptimisticStatusChange={setOptimisticStatus}
+                />
+              </div>
             </footer>
           </div>
         </div>

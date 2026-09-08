@@ -7,7 +7,7 @@ import { AlertTriangle, BriefcaseBusiness, CalendarDays, ChevronLeft, ChevronRig
 import { useToast } from '../../contexts/ToastContext'
 import ChecklistOutputDocuments from './ChecklistOutputDocuments'
 import ModalThieuTaiLieu from './ModalThieuTaiLieu'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, prefetchApi } from '../../lib/api'
 import AvatarImage from '../../components/AvatarImage'
 import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage'
 import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './employeePortalMappers'
@@ -197,10 +197,17 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
   const [lateReason, setLateReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  const [optimisticStatus, setOptimisticStatus] = useState(null)
+
+  useEffect(() => {
+    setOptimisticStatus(null)
+  }, [item.id, item.status])
+
   // Chỉ nộp được khi bước đang chạy. Nộp minh chứng cho bước chưa bấm Bắt đầu
   // thì không có mốc khởi động, thời hạn tính từ đâu cũng không biết.
+  const currentStatus = optimisticStatus || item.status
   const buocDangChay = nodeStatus === 'in_progress'
-  const canSubmit = (item.status === 'pending' || item.status === 'failed') && buocDangChay && !disabledReason
+  const canSubmit = (currentStatus === 'pending' || currentStatus === 'failed') && buocDangChay && !disabledReason
   const files = item.evidence_files || []
   const isPastDeadline = Boolean(deadlineAt && Date.now() > new Date(deadlineAt).getTime())
 
@@ -224,25 +231,34 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
       return
     }
     setSubmitting(true)
+    const prevFile = file
+    const prevNote = note
+    const prevLateReason = lateReason
+    setOptimisticStatus('pending_approval')
+    setFile(null)
+    setNote('')
+    setLateReason('')
+    addToast('Đã nộp minh chứng, chờ duyệt', 'success')
+
     // Checklist không đòi minh chứng thì không có gì để đính kèm. FormData rỗng
     // vẫn gửi header multipart nhưng không có phần nào, và máy chủ đọc đó là body
     // hỏng — nút bấm không ăn. Không có gì gửi thì gửi không body.
     const body = new FormData()
-    if (file) body.append('file', file)
-    if (note) body.append('note', note)
-    if (lateReason.trim()) body.append('late_reason', lateReason.trim())
-    const hasAttachment = Boolean(file || note || lateReason.trim())
+    if (prevFile) body.append('file', prevFile)
+    if (prevNote) body.append('note', prevNote)
+    if (prevLateReason.trim()) body.append('late_reason', prevLateReason.trim())
+    const hasAttachment = Boolean(prevFile || prevNote || prevLateReason.trim())
     try {
       await apiFetch(`/api/employee-portal/tasks/${taskNodeId}/checklist/${item.id}/submit`, {
         method: 'POST',
         ...(hasAttachment ? { body } : {}),
       })
-      addToast('Đã nộp minh chứng, chờ duyệt', 'success')
-      setFile(null)
-      setNote('')
-      setLateReason('')
-      await onSubmitted()
+      onSubmitted?.()
     } catch (error) {
+      setOptimisticStatus(null)
+      setFile(prevFile)
+      setNote(prevNote)
+      setLateReason(prevLateReason)
       addToast(error.message || 'Không thể nộp minh chứng', 'error')
     } finally {
       setSubmitting(false)
@@ -251,11 +267,11 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
 
   return <li className="employee-workspace-checklist__item">
     <div className="employee-workspace-checklist__row">
-      <ChecklistStatusIcon status={item.status} />
+      <ChecklistStatusIcon status={currentStatus} />
       <span>{item.name}</span>
       {item.is_required && <em>Bắt buộc</em>}
     </div>
-    <small className="employee-workspace-checklist__status-label">{CHECKLIST_STATUS_LABEL[item.status] || item.status}</small>
+    <small className="employee-workspace-checklist__status-label">{CHECKLIST_STATUS_LABEL[currentStatus] || currentStatus}</small>
     {item.submitted_at && (
       <small className="employee-workspace-checklist__status-label">
         <Clock size={11} /> Nộp lúc {new Date(item.submitted_at).toLocaleString('vi-VN')}
@@ -369,22 +385,41 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
 // sửa — hai thứ này khoá nút nộp. `missing_documents` KHÔNG nằm đây: giấy khách
 // không có thật thì khoá là treo bước vĩnh viễn, nên nó là cảnh báo mềm (Modal
 // xác nhận). Xem node_shortage() trong routes_employee_portal.py.
-const HARD_BLOCKER_KINDS = new Set(['paused', 'rejected_documents'])
+const HARD_BLOCKER_KINDS = new Set([
+  'paused',
+  'rejected_documents',
+])
 
 // Rút blocker cứng đầu tiên từ payload /shortage (đã xếp sẵn theo thứ tự máy chủ
 // muốn nhân viên xử: tạm dừng trước, rồi tờ bị trả). Trả null nếu không có.
-const hardBlockerFrom = (gate) =>
-  (gate?.blockers || []).find(blocker => HARD_BLOCKER_KINDS.has(blocker?.kind)) || null
+const hardBlockerFrom = (gate, taskStatus = null) =>
+  (gate?.blockers || []).find(blocker => {
+    if (blocker?.kind === 'missing_document_type_files') {
+      return taskStatus === 'rework_required'
+    }
+    return HARD_BLOCKER_KINDS.has(blocker?.kind)
+  }) || null
 
 // gate là payload /shortage đã nạp sẵn (do EmployeeItemWorkspace truyền vào).
 // Người gọi không truyền gate (lịch/modal) thì vẫn dựa vào lượt hỏi /shortage
 // lúc bấm — cổng cứng vẫn được kiểm ngay trước khi gọi /submit.
-export function NodeActionBar({ task, onChanged, gate = null }) {
+export function NodeActionBar({
+  task,
+  onChanged,
+  gate = null,
+  handoverState = null,
+  onOptimisticStatusChange = null,
+}) {
   // Bối cảnh Toast có thể vắng mặt (component dựng đơn lẻ trong test) — thiếu
   // hàm báo lỗi không được phép làm sập cả màn làm việc.
   const { addToast = () => {} } = useToast() || {}
   const [busy, setBusy] = useState(false)
   const [thieu, setThieu] = useState(null)
+  const [optimisticSubmitted, setOptimisticSubmitted] = useState(false)
+
+  useEffect(() => {
+    setOptimisticSubmitted(false)
+  }, [task?.id, task?.status])
 
   const start = async () => {
     setBusy(true)
@@ -399,19 +434,22 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
     }
   }
 
-  if (task.status === 'ready' || task.status === 'rework_required') {
+  if (task.status === 'submitted' || optimisticSubmitted) {
+    return <span className="employee-workspace-checklist__status-label"><Clock size={13} /> Đang chờ quản lý duyệt</span>
+  }
+
+  if (task.status === 'ready') {
     return <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={start}>
-      <Play size={14} /> {task.status === 'rework_required' ? 'Làm lại' : 'Bắt đầu làm'}
+      <Play size={14} /> Bắt đầu làm
     </button>
   }
-  if (task.status === 'in_progress') {
-    // K06 có cổng công nợ và hành động bàn giao chuyên biệt ở cuối panel.
-    // Không render nút submit chung để tránh hai đường hoàn thành cạnh tranh nhau.
-    if (task.is_handover || task.node_code === 'K06') return null
+  if (task.status === 'in_progress' || task.status === 'rework_required') {
+    const isResubmission = task.status === 'rework_required'
+    const isHandover = task.is_handover || task.node_code === 'K06'
 
     // Thợ chính tới hiện trường bấm mốc này. Từ đây suất thợ phụ 100.000đ đóng
     // lại nếu chưa ai nhận — người tới sau không còn hỗ trợ được gì cho ca đo.
-    if (task.node_code === 'K02' && !task.field_started_at) {
+    if (!isResubmission && task.node_code === 'K02' && !task.field_started_at) {
       const startFieldWork = async () => {
         setBusy(true)
         try {
@@ -440,12 +478,17 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
     // duyệt một lần.
     //
     // Chỉ chặn những NHIỆM VỤ chưa điền — đó là phần việc của chính nhân viên.
-    // THIẾU TÀI LIỆU thì KHÔNG chặn: giấy khách không có thật thì khoá nút là
-    // treo bước vĩnh viễn. Thay vào đó bấm nộp sẽ mở Modal liệt kê thiếu gì,
-    // xác nhận rồi vẫn gửi, và danh sách đó được lưu cho Giám đốc đọc.
-    const chuaDien = checklistItems.filter(
-      item => item.status === 'pending' || item.status === 'failed' || item.status === 'in_progress',
-    )
+    // THIẾU TÀI LIỆU hoặc SẾP CHƯA PHÂN LOẠI GIẤY thì KHÔNG chặn: thay vào đó
+    // bấm nộp sẽ mở Modal liệt kê và yêu cầu đính kèm lý do giải trình.
+    const chuaDien = checklistItems.filter(item => {
+      // Nếu checklist có dùng loại giấy runtime:
+      // Không chặn nút vì thiếu file hay vì sếp chưa tạo loại giấy — cả 2 trường hợp này
+      // đều được giải trình qua lý do ở Modal nghiệm thu.
+      if (Array.isArray(item?.document_types)) {
+        return false
+      }
+      return item.status === 'pending' || item.status === 'failed' || item.status === 'in_progress'
+    })
     const lyDoChan = chuaDien.length
       ? `Còn ${chuaDien.length} nhiệm vụ chưa điền xong: ${chuaDien.map(i => i.checklist_name || i.name).filter(Boolean).join(' · ')}`
       : ''
@@ -453,24 +496,79 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
     // Cổng cứng từ máy chủ (gate đã nạp) hoặc cờ tạm dừng của bước → khoá nút và
     // nêu ĐÚNG câu máy chủ trả về. `pending_approval` là "đã làm xong chờ Giám
     // đốc", KHÔNG phải chưa điền — nên không rơi vào chuaDien ở trên.
-    const chanCung = hardBlockerFrom(gate)
-    const lyDoCung = chanCung?.message
+    const chanCung = hardBlockerFrom(gate, task.status)
+    const lyDoNo = isHandover
+      ? (!handoverState
+          ? 'Đang kiểm tra công nợ…'
+          : (!handoverState.debt?.gate_open
+              ? 'Hợp đồng còn công nợ — cần thu đủ tiền hoặc được Giám đốc duyệt nợ.'
+              : ''))
+      : ''
+    const lyDoCung = lyDoNo || chanCung?.message
       || (task.pause_reason_type ? 'Bước đang tạm dừng — bấm “Chạy tiếp” rồi mới nộp được.' : '')
     // Ưu tiên bày cổng cứng trước (tạm dừng/tờ bị trả), rồi tới nhiệm vụ chưa điền.
     const lyDoKhoa = lyDoCung || lyDoChan
 
-    const guiThat = async () => {
+    const extractShortageList = (shortagePayload) => {
+      const danhSach = Array.isArray(shortagePayload?.data) ? [...shortagePayload.data] : []
+      checklistItems.forEach(item => {
+        const types = Array.isArray(item.document_types)
+          ? item.document_types.filter(t => t?.is_active !== false)
+          : []
+        const isPaperless = Array.isArray(item.document_types) && types.length === 0
+        const isPending = item.status === 'pending' || item.status === 'failed' || item.status === 'in_progress'
+        if (isPaperless && isPending) {
+          const daCoTrongDanhSach = danhSach.some(d => d.checklist_result_id === item.id)
+          if (!daCoTrongDanhSach) {
+            danhSach.push({
+              checklist_result_id: item.id,
+              checklist_name: item.checklist_name || item.name,
+              is_paperless: true,
+              thieu: [{
+                name: 'Chưa có loại giấy tờ (cần lý do hoàn thành)',
+                can: 0,
+                da_co: 0,
+                con_thieu: 0,
+              }],
+            })
+          }
+        }
+      })
+      return danhSach
+    }
+
+    const prefetchShortage = () => {
+      if (task?.id && typeof prefetchApi === 'function') {
+        prefetchApi(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
+      }
+    }
+
+    const guiThat = async (lyDo = null) => {
+      const prevThieu = thieu
+      setThieu(null)
+      setOptimisticSubmitted(true)
+      onOptimisticStatusChange?.('submitted')
+      addToast(
+        isResubmission
+          ? 'Đã nộp nghiệm thu lại — chờ Giám đốc duyệt'
+          : 'Đã nộp nghiệm thu — chờ Giám đốc duyệt',
+        'success',
+      )
       setBusy(true)
       try {
-        await apiFetch(`/api/employee-portal/tasks/${task.id}/submit`, {
+        const payload = { note: lyDo ? String(lyDo).trim() : null }
+        await apiFetch(isHandover
+          ? `/api/handover/${task.id}/submit-acceptance`
+          : `/api/employee-portal/tasks/${task.id}/submit`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: null }),
+          body: JSON.stringify(payload),
         })
-        addToast('Đã nộp nghiệm thu — chờ Giám đốc duyệt', 'success')
-        setThieu(null)
-        await onChanged()
+        onChanged?.()
       } catch (error) {
+        setOptimisticSubmitted(false)
+        onOptimisticStatusChange?.(null)
+        if (prevThieu) setThieu(prevThieu)
         addToast(error.message || 'Không thể nộp nghiệm thu', 'error')
       } finally {
         setBusy(false)
@@ -478,20 +576,34 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
     }
 
     const bamNop = async () => {
+      // 0ms Fast Path: Nếu gate truyền vào từ EmployeeItemWorkspace đã có sẵn data mảng:
+      if (gate && Array.isArray(gate.data)) {
+        const chanCung = hardBlockerFrom(gate, task.status)
+        if (chanCung) {
+          addToast(chanCung.message, 'error')
+          return
+        }
+        const danhSach = extractShortageList(gate)
+        if (danhSach.length) {
+          setThieu(danhSach)
+          return
+        }
+        await guiThat(null)
+        return
+      }
+
+      // Đọc shortage (nếu đã prefetch qua hover thì apiFetch trả cache ngay tức khắc)
       setBusy(true)
       try {
         const ket = await apiFetch(`/api/employee-portal/tasks/${task.id}/shortage`)
-        // Cổng cứng MỚI (tờ vừa bị trả, bước vừa bị dừng) phải chặn tại đây, kể
-        // cả khi gate ban đầu còn sạch/null — không được để lọt xuống /submit.
-        const chanCungMoi = hardBlockerFrom(ket)
+        const chanCungMoi = hardBlockerFrom(ket, task.status)
         if (chanCungMoi) {
           addToast(chanCungMoi.message, 'error')
           setBusy(false)
           return
         }
-        const danhSach = ket?.data || []
+        const danhSach = extractShortageList(ket)
         if (danhSach.length) {
-          // Còn thiếu (mềm) → hỏi trước, không gửi ngay.
           setThieu(danhSach)
           setBusy(false)
           return
@@ -500,7 +612,7 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
         // Không đọc được danh sách thiếu thì vẫn cho nộp — máy chủ mới là cổng
         // thật, và chặn ở đây chỉ vì một lệnh phụ hỏng là chặn nhầm.
       }
-      await guiThat()
+      await guiThat(null)
     }
 
     return <div className="employee-workspace-task-modal__gate">
@@ -510,8 +622,10 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
         disabled={busy || Boolean(lyDoKhoa)}
         title={lyDoKhoa || undefined}
         onClick={bamNop}
+        onMouseEnter={prefetchShortage}
+        onFocus={prefetchShortage}
       >
-        <CheckCircle2 size={14} /> Nộp nghiệm thu
+        <CheckCircle2 size={14} /> {isResubmission ? 'Nộp nghiệm thu lại' : 'Nộp nghiệm thu'}
       </button>
       <small style={{ marginTop: 6, display: 'block', opacity: 0.7 }}>
         {lyDoKhoa || 'Nộp một lần cả nhiệm vụ, minh chứng và sổ giấy tờ — Giám đốc duyệt một lần.'}
@@ -525,9 +639,6 @@ export function NodeActionBar({ task, onChanged, gate = null }) {
         onXacNhan={guiThat}
       />
     </div>
-  }
-  if (task.status === 'submitted') {
-    return <span className="employee-workspace-checklist__status-label"><Clock size={13} /> Đang chờ quản lý duyệt</span>
   }
   return null
 }

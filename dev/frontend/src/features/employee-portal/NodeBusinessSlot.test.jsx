@@ -11,9 +11,6 @@ vi.mock('./CustomerSourceDocuments', () => ({
     </div>
   ),
 }))
-vi.mock('../handover/HandoverPanel', () => ({
-  default: () => <div data-testid="ban-giao" />,
-}))
 vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({
   default: () => <div data-testid="theo-doi-co-quan" />,
 }))
@@ -69,10 +66,10 @@ describe('Chọn khối theo CỜ CẤU HÌNH, không theo mã bước', () => {
     expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
   })
 
-  it('K06 có thanh công nợ và khối bàn giao', () => {
+  it('K06 chỉ có thanh công nợ, không chèn lại khối bàn giao cũ', () => {
     mount({ node_code: 'K06', is_handover: true })
 
-    expect(screen.getByTestId('ban-giao')).toBeInTheDocument()
+    expect(screen.queryByTestId('ban-giao')).not.toBeInTheDocument()
     expect(screen.getByText(/1\.230\.000đ \/ 12\.300\.000đ/)).toBeInTheDocument()
   })
 

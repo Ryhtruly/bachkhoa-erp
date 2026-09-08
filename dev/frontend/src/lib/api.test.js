@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch, clearApiCache, downloadFile, peekApiCache } from './api';
+import { apiFetch, clearApiCache, downloadFile, getCacheTTL, peekApiCache, prefetchApi } from './api';
 
 describe('apiFetch', () => {
   beforeEach(() => {
@@ -16,9 +16,9 @@ describe('apiFetch', () => {
   });
 
   const stubJson = (body) => {
-    const fetchMock = vi.fn().mockResolvedValue(
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(
       new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } }),
-    );
+    ));
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   };
@@ -86,6 +86,35 @@ describe('apiFetch', () => {
     expect(peekApiCache('/api/p')).toEqual({ ok: 1 });
   });
 
+  it('getCacheTTL phân loại TTL cho catalog và data endpoints', () => {
+    expect(getCacheTTL('/api/catalog/service-packages')).toBe(300000);
+    expect(getCacheTTL('/api/contracts/workspace?id=123')).toBe(60000);
+    expect(getCacheTTL('/api/other')).toBe(10000);
+  });
+
+  it('clearApiCache hỗ trợ xóa theo scope tiền tố', async () => {
+    stubJson({ ok: 1 });
+    await apiFetch('/api/contracts/list');
+    await apiFetch('/api/catalog/services');
+
+    expect(peekApiCache('/api/contracts/list')).toEqual({ ok: 1 });
+    expect(peekApiCache('/api/catalog/services')).toEqual({ ok: 1 });
+
+    clearApiCache('/api/contracts/');
+    expect(peekApiCache('/api/contracts/list')).toBeUndefined();
+    expect(peekApiCache('/api/catalog/services')).toEqual({ ok: 1 });
+  });
+
+  it('prefetchApi nạp trước dữ liệu vào RAM cache', async () => {
+    const fetchMock = stubJson({ preloaded: true });
+    prefetchApi('/api/prefetch-test');
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+      expect(peekApiCache('/api/prefetch-test')).toEqual({ preloaded: true });
+    });
+  });
+
   it('adds the saved bearer token to protected requests', async () => {
     localStorage.setItem('bachkhoa_access_token', 'jwt-token');
     const fetchMock = vi.fn().mockResolvedValue(
@@ -119,6 +148,35 @@ describe('apiFetch', () => {
     expect(localStorage.getItem('bachkhoa_access_token')).toBeNull();
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
+
+  it('lưu snapshot L2 vào localStorage cho các endpoint catalog và phục hồi ở peekApiCache khi RAM rỗng', async () => {
+    stubJson({ data: [{ id: 'p1', name: 'Gói Đo Đạc' }] });
+
+    await apiFetch('/api/catalog/service-packages');
+
+    // Kiểm tra L2 localStorage đã lưu
+    const l2Key = 'bk_l2_cache:/api/catalog/service-packages';
+    expect(localStorage.getItem(l2Key)).toContain('Gói Đo Đạc');
+
+    // Giả lập F5 / mở tab mới: xoá RAM cache nhưng giữ localStorage
+    clearApiCache(); // clearApiCache không tham số xoá cả L2, hãy test xoá RAM bằng cách tạo kịch bản mới
+    localStorage.setItem(l2Key, JSON.stringify({ data: [{ id: 'p1', name: 'Gói Đo Đạc' }] }));
+    localStorage.setItem('bk_l2_exp:/api/catalog/service-packages', String(Date.now() + 60000));
+
+    // peekApiCache phục hồi từ L2
+    const restored = peekApiCache('/api/catalog/service-packages');
+    expect(restored).toEqual({ data: [{ id: 'p1', name: 'Gói Đo Đạc' }] });
+  });
+
+  it('clearApiCache xoá sạch cả khoá L2 trong localStorage', async () => {
+    localStorage.setItem('bk_l2_cache:/api/catalog/test', '{"ok":1}');
+    localStorage.setItem('bk_l2_exp:/api/catalog/test', String(Date.now() + 60000));
+
+    clearApiCache();
+
+    expect(localStorage.getItem('bk_l2_cache:/api/catalog/test')).toBeNull();
+    expect(localStorage.getItem('bk_l2_exp:/api/catalog/test')).toBeNull();
+  });
 });
 
 describe('downloadFile with File System Access API & fallback', () => {
@@ -142,11 +200,13 @@ describe('downloadFile with File System Access API & fallback', () => {
     };
     window.showSaveFilePicker = vi.fn().mockResolvedValue(mockHandle);
 
-    const testBlob = new Blob(['excel data'], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response(testBlob, {
+      new Response('excel data', {
         status: 200,
-        headers: { 'Content-Disposition': 'attachment; filename="Bao_Cao_Thu_Chi.xlsx"' }
+        headers: {
+          'Content-Disposition': 'attachment; filename="Bao_Cao_Thu_Chi.xlsx"',
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }
       })
     ));
 
@@ -165,9 +225,8 @@ describe('downloadFile with File System Access API & fallback', () => {
     abortError.name = 'AbortError';
     window.showSaveFilePicker = vi.fn().mockRejectedValue(abortError);
 
-    const testBlob = new Blob(['excel data']);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response(testBlob, { status: 200 })
+      new Response('excel data', { status: 200 })
     ));
 
     const result = await downloadFile('/api/finance/export/monthly-dashboard-excel', 'default.xlsx');
@@ -176,9 +235,8 @@ describe('downloadFile with File System Access API & fallback', () => {
 
   it('falls back to <a> click when showSaveFilePicker is not supported', async () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-    const testBlob = new Blob(['excel data']);
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
-      new Response(testBlob, { status: 200 })
+      new Response('excel data', { status: 200 })
     ));
 
     const mockCreateObjectURL = vi.fn().mockReturnValue('blob:http://localhost/123');

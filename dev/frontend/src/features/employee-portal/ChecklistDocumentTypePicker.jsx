@@ -14,6 +14,8 @@ const endpointRoot = (taskNodeId, checklistResultId) => (
   + `/checklist/${encodeURIComponent(checklistResultId)}`
 )
 
+const suggestionsCache = new Map()
+
 export default function ChecklistDocumentTypePicker({
   taskNodeId,
   checklistResultId,
@@ -21,36 +23,49 @@ export default function ChecklistDocumentTypePicker({
   onClose,
   addToast,
 }) {
-  const [suggestions, setSuggestions] = useState([])
-  const [context, setContext] = useState(null)
+  const cacheKey = `${taskNodeId}:${checklistResultId}`
+  const cachedInitial = suggestionsCache.get(cacheKey)
+
+  const [suggestions, setSuggestions] = useState(() => cachedInitial?.suggestions || [])
+  const [context, setContext] = useState(() => cachedInitial?.context || null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
   const [source, setSource] = useState('KHACH_HANG')
   const [files, setFiles] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(() => !cachedInitial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
+    const cached = suggestionsCache.get(cacheKey)
+    if (cached) {
+      setSuggestions(cached.suggestions)
+      setContext(cached.context)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     setError('')
     apiFetch(`${endpointRoot(taskNodeId, checklistResultId)}/document-type-suggestions`)
       .then(payload => {
         if (cancelled) return
-        setSuggestions(payload?.data || [])
-        setContext(payload?.context || null)
+        const data = payload?.data || []
+        const ctx = payload?.context || null
+        suggestionsCache.set(cacheKey, { suggestions: data, context: ctx, at: Date.now() })
+        setSuggestions(data)
+        setContext(ctx)
       })
       .catch(requestError => {
-        if (!cancelled) setError(requestError?.message || 'Không tải được loại giấy gợi ý.')
+        if (!cancelled && !cached) setError(requestError?.message || 'Không tải được loại giấy gợi ý.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [taskNodeId, checklistResultId])
+  }, [cacheKey, taskNodeId, checklistResultId])
 
   const filteredSuggestions = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase('vi')

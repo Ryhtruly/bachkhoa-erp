@@ -18,7 +18,7 @@ import {
 import { useToast } from '../contexts/ToastContext';
 import AvatarImage from '../components/AvatarImage';
 import { isDossierLocked } from '../lib/dossierStatus';
-import DocumentRegister from '../features/document-register/DocumentRegister';
+import DocumentCabinet from '../features/contracts/DocumentCabinet';
 import './surveyRecords.css';
 
 const API = '';
@@ -470,12 +470,15 @@ export default function Tasks() {
               </div>
             </section>
 
-            {/* Sổ giấy tờ dùng chung với bên Pháp lý — hạng mục có cả hai khối
-                thì mỗi bên đều thấy giấy của bên kia (tài liệu chuyển giao). */}
-            <DocumentRegister
+            {/* Tủ của đúng Hạng mục đo vẽ: Node → loại giấy → file đã duyệt. */}
+            <DocumentCabinet
               contractId={detailData?.contract_id}
-              serviceLineId={detailData?.service_line_id}
+              serviceLines={detailData?.service_line_id ? [{
+                id: detailData.service_line_id,
+                name: detailData.service_line_name || detailData.task_type || 'Hồ sơ đo vẽ',
+              }] : []}
               addToast={addToast}
+              title="TỦ HỒ SƠ ĐO VẼ"
             />
 
             <div className="survey-detail__footer">
