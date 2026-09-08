@@ -1506,7 +1506,11 @@ class EmployeePortalService:
             adj_amount = float(a_data["adjustment_amount"]) if a_data else 0.0
 
             pp_info = period_status_map.get(p_date)
-            period_status = "Open" if p_date == current_period_start else (pp_info["status"] if pp_info else "Closed")
+            period_status = (
+                pp_info["status"]
+                if pp_info
+                else ("Open" if p_date == current_period_start else "NoPeriod")
+            )
 
             locked_snapshot = (pp_info or {}).get("snapshot") or {}
             employee_snapshot = locked_snapshot.get(str(employee.id)) if isinstance(locked_snapshot, dict) else None

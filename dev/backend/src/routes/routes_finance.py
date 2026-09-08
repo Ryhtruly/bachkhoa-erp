@@ -554,6 +554,7 @@ def lock_payroll_period(
     result = FinanceService.lock_payroll_period(db, period_id, actor_id=user.id)
     invalidate_cache("bachkhoa:finance:*")
     invalidate_cache("bachkhoa:payroll:*")
+    invalidate_cache("bachkhoa:portal:payroll:*")
     return result
 
 
@@ -567,6 +568,7 @@ def mark_paid_payroll_period(
     result = FinanceService.mark_paid_payroll_period(db, period_id, actor_id=user.id)
     invalidate_cache("bachkhoa:finance:*")
     invalidate_cache("bachkhoa:payroll:*")
+    invalidate_cache("bachkhoa:portal:payroll:*")
     return result
 
 

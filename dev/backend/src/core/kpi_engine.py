@@ -63,7 +63,7 @@ def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
         total = int(row["total_completed"] or 0)
         on_time_count = int(row["on_time_count"] or 0)
         rejections = int(row["rejections"] or 0)
-        on_time_rate = (on_time_count / total * 100) if total else 100
+        on_time_rate = (on_time_count / total * 100) if total else None
         if not total:
             score = 0
             performance = "Chưa đánh giá"
@@ -71,7 +71,7 @@ def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
             score = 100 + (total - 10) * 2
             if on_time_rate < 90:
                 score -= (90 - on_time_rate) * 0.5
-            score = min(max(round(score - rejections * 5, 1), 0), 150)
+            score = min(max(round(score - rejections * 5, 1), 0), 100)
             if score >= 95:
                 performance = "Xuất sắc"
             elif score >= 80:
@@ -84,7 +84,7 @@ def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
         results.append({
             "employee": row["full_name"] or row["id"],
             "total_completed": total,
-            "on_time_rate": round(on_time_rate, 1),
+            "on_time_rate": round(on_time_rate, 1) if on_time_rate is not None else None,
             "rejections": rejections,
             "avg_time": round(float(row["avg_time"] or 0), 1),
             "final_score": score,
