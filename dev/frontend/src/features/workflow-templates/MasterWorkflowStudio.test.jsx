@@ -248,13 +248,19 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     fireEvent.change(newInput, { target: { value: 'Lập biên bản thỏa thuận ranh' } })
     expect(screen.getByDisplayValue('Lập biên bản thỏa thuận ranh')).toBeInTheDocument()
 
-    // Gán tài liệu đầu ra từ dropdown của mục mới thêm
-    const docSelects = screen.getAllByRole('combobox').filter((el) =>
-      el.textContent.includes('Gắn giấy tờ đầu ra') || el.textContent.includes('Gắn loại giấy tờ đầu ra')
-    )
-    const targetDocSelect = docSelects[docSelects.length - 1]
-    expect(targetDocSelect).toBeInTheDocument()
-    fireEvent.change(targetDocSelect, { target: { value: 'dt_01' } })
+    // Gán tài liệu đầu ra: bấm nút + tròn xanh của mục mới thêm
+    const addDocButtons = screen.getAllByTitle('Thêm giấy tờ đầu ra cho mục này')
+    const targetAddDocBtn = addDocButtons[addDocButtons.length - 1]
+    expect(targetAddDocBtn).toBeInTheDocument()
+    fireEvent.click(targetAddDocBtn)
+
+    // Modal chọn tài liệu đầu ra mở ra
+    const docOption = await screen.findByRole('option', { name: /Bản vẽ trích đo địa chính/i })
+    fireEvent.click(docOption)
+
+    // Bấm nút Xong đóng modal
+    const doneBtn = screen.getByRole('button', { name: /xong/i })
+    fireEvent.click(doneBtn)
 
     // Nhãn giấy tờ hiển thị trong thẻ chip
     await waitFor(() => {
@@ -376,8 +382,12 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(deptOptions).toContain('Phòng Kế toán')
     expect(deptOptions).toContain('Ban Giám đốc')
 
-    // Kiểm tra dropdown tài liệu đầu ra CHỈ chứa tài liệu thuộc combo này (dt_combo_1)
-    expect(screen.getByText(/Biên bản cắm mốc ranh giới/)).toBeInTheDocument()
+    // Bấm nút + tròn xanh của checklist để mở modal tài liệu đầu ra
+    const addDocBtn = screen.getByTitle('Thêm giấy tờ đầu ra cho mục này')
+    fireEvent.click(addDocBtn)
+
+    // Kiểm tra modal tài liệu đầu ra CHỈ chứa tài liệu thuộc combo này (dt_combo_1)
+    expect(await screen.findByText(/Biên bản cắm mốc ranh giới/)).toBeInTheDocument()
 
     // KHÔNG chứa tài liệu thuộc combo khác
     expect(screen.queryByText(/Hồ sơ cấp đổi sổ đỏ/)).not.toBeInTheDocument()
@@ -396,5 +406,46 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     const legalCodes = legalFlow.nodes.map((n) => n.data.code)
     expect(legalCodes).not.toContain('K05')
     expect(legalCodes).toContain('K05b')
+  })
+
+  it('thẻ checklist hiển thị đúng 4 hàng theo chuẩn format: badge đếm giấy, Chưa gán giấy tờ đầu ra, Công việc khoán, và CustomSelect người duyệt', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    const nodeK01 = screen.getByTestId('flow-node-k01')
+    fireEvent.click(nodeK01)
+
+    // Kiểm tra card checklist
+    const checklistCard = await screen.findByDisplayValue('Kiểm tra giấy tờ pháp lý ban đầu')
+    expect(checklistCard).toBeInTheDocument()
+
+    // Hàng 1: Badge tròn cam đếm số lượng tài liệu đầu ra = 0
+    const countBadge = document.querySelector('.workflow-checklist-card .wcl-count')
+    expect(countBadge).toHaveTextContent('0')
+
+    // Hàng 1: Nút + tròn xanh thêm tài liệu đầu ra
+    expect(screen.getByTitle('Thêm giấy tờ đầu ra cho mục này')).toBeInTheDocument()
+
+    // Hàng 2: Chưa gán giấy tờ đầu ra
+    expect(screen.getByText('Chưa gán giấy tờ đầu ra')).toBeInTheDocument()
+
+    // Hàng 3: Công việc & Gắn gói khoán
+    expect(screen.getByText('Công việc')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Gắn gói khoán/i })).toBeInTheDocument()
+
+    // Hàng 4: Duyệt & CustomSelect người duyệt
+    expect(screen.getByText('Duyệt')).toBeInTheDocument()
+    const approverSelect = screen.getByRole('combobox', { name: /người duyệt/i })
+    expect(approverSelect).toBeInTheDocument()
+    expect(approverSelect).toHaveValue('admin')
+
+    // Thử đổi người duyệt sang Kế toán bằng CustomSelect
+    fireEvent.change(approverSelect, { target: { value: 'accountant' } })
+    expect(approverSelect).toHaveValue('accountant')
   })
 })

@@ -16,6 +16,7 @@ import {
   AlignHorizontalSpaceAround,
   ArrowDown,
   ArrowUp,
+  Banknote,
   Check,
   CheckCircle2,
   CircleDashed,
@@ -562,6 +563,8 @@ export default function MasterWorkflowStudio() {
   // Inspector States
   const [inspectorTab, setInspectorTab] = useState('node') // 'node' | 'assignment' | 'transition'
   const [isEditingDesc, setIsEditingDesc] = useState(false)
+  const [outputDocModalItemKey, setOutputDocModalItemKey] = useState(null)
+  const [dragChecklistIndex, setDragChecklistIndex] = useState(null)
 
   // UI States
   const [loading, setLoading] = useState(false)
@@ -983,6 +986,20 @@ export default function MasterWorkflowStudio() {
         if (targetIdx < 0 || targetIdx >= current.length) return n
         const [moved] = current.splice(idx, 1)
         current.splice(targetIdx, 0, moved)
+        return { ...n, data: { ...n.data, checklist: current } }
+      })
+    )
+  }
+
+  const reorderChecklistItems = (fromIndex, toIndex) => {
+    if (!selectedNodeId || fromIndex === toIndex) return
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id !== selectedNodeId) return n
+        const current = [...(n.data?.checklist || [])]
+        if (fromIndex < 0 || fromIndex >= current.length || toIndex < 0 || toIndex >= current.length) return n
+        const [moved] = current.splice(fromIndex, 1)
+        current.splice(toIndex, 0, moved)
         return { ...n, data: { ...n.data, checklist: current } }
       })
     )
@@ -1436,10 +1453,31 @@ export default function MasterWorkflowStudio() {
                   </div>
                 ) : (
                   (selectedNode.data.checklist || []).map((item, index) => (
-                    <div className="workflow-checklist-card" key={item.key || index}>
-                      {/* Top: Số thứ tự cam tròn, tên việc inline, nút xoá */}
+                    <div
+                      className={`workflow-checklist-card${dragChecklistIndex === index ? ' is-dragging' : ''}`}
+                      key={item.key || index}
+                      onDragOver={(e) => {
+                        if (dragChecklistIndex !== null) e.preventDefault()
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        if (dragChecklistIndex !== null && dragChecklistIndex !== index) {
+                          reorderChecklistItems(dragChecklistIndex, index)
+                        }
+                        setDragChecklistIndex(null)
+                      }}
+                    >
+                      {/* Hàng 1: Badge cam số lượng giấy đầu ra, input sửa tên nhiệm vụ, nút X, nút + tròn xanh */}
                       <div className="wcl-top">
-                        <span className="wcl-count" title="Thứ tự">{index + 1}</span>
+                        <span
+                          className="wcl-count"
+                          draggable
+                          onDragStart={() => setDragChecklistIndex(index)}
+                          onDragEnd={() => setDragChecklistIndex(null)}
+                          title={`${(item.output_documents || []).length} giấy tờ đầu ra — kéo để sắp xếp thứ tự`}
+                        >
+                          {(item.output_documents || []).length}
+                        </span>
                         <input
                           className="wcl-name-inline"
                           value={item.name || ''}
@@ -1447,28 +1485,6 @@ export default function MasterWorkflowStudio() {
                           placeholder="Nhập tên nhiệm vụ tự do..."
                           onChange={(e) => updateChecklistItem(item.key, { name: e.target.value })}
                         />
-                        <div style={{ display: 'flex', gap: 2 }}>
-                          <button
-                            type="button"
-                            className="btn btn-icon btn-ghost btn-sm"
-                            disabled={index === 0}
-                            onClick={() => moveChecklistItem(item.key, 'up')}
-                            title="Lên trên"
-                            style={{ padding: 2, height: 22, width: 22 }}
-                          >
-                            <ArrowUp size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-icon btn-ghost btn-sm"
-                            disabled={index === (selectedNode.data.checklist?.length || 0) - 1}
-                            onClick={() => moveChecklistItem(item.key, 'down')}
-                            title="Xuống dưới"
-                            style={{ padding: 2, height: 22, width: 22 }}
-                          >
-                            <ArrowDown size={12} />
-                          </button>
-                        </div>
                         <button
                           type="button"
                           className="wcl-x"
@@ -1478,55 +1494,28 @@ export default function MasterWorkflowStudio() {
                         >
                           <X size={15} />
                         </button>
+                        <button
+                          type="button"
+                          className="wcl-add-doc"
+                          onClick={() => setOutputDocModalItemKey(item.key)}
+                          title="Thêm giấy tờ đầu ra cho mục này"
+                          aria-label="Thêm giấy tờ đầu ra cho mục này"
+                        >
+                          <Plus size={13} />
+                        </button>
                       </div>
 
-                      {/* Toggles: Bắt buộc & Minh chứng */}
-                      <div className="wcl-prop" style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '4px 10px' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={item.required !== false}
-                            onChange={(e) => updateChecklistItem(item.key, { required: e.target.checked })}
-                          />
-                          <span>Bắt buộc</span>
-                        </label>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(item.require_evidence)}
-                            onChange={(e) => updateChecklistItem(item.key, { require_evidence: e.target.checked })}
-                          />
-                          <span>Minh chứng</span>
-                        </label>
-                      </div>
-
-                      {/* Người duyệt */}
-                      <div className="wcl-prop">
-                        <span className="wcl-prop__label"><UserRound size={13} /> Duyệt</span>
-                        <div className="wcl-prop__field">
-                          <select
-                            className="form-control form-control-sm"
-                            value={item.approver_role || 'admin'}
-                            onChange={(e) => updateChecklistItem(item.key, { approver_role: e.target.value })}
-                          >
-                            {APPROVER_ROLES.map(([code, label]) => (
-                              <option key={code} value={code}>{label}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Tài liệu đầu ra đính kèm theo Combo */}
+                      {/* Hàng 2: Tài liệu đầu ra */}
                       <div className="wcl-prop wcl-prop--output">
                         <span className="wcl-prop__label"><FileCheck2 size={13} /> Tài liệu đầu ra</span>
                         {(item.output_documents || []).length > 0 ? (
                           <div className="wcl-output-panel">
                             <div className="wcl-output-panel__scroll">
-                              {item.output_documents.map((doc) => {
+                              {item.output_documents.map((doc, docIdx) => {
                                 const tpl = docTemplates.find((d) => d.id === doc.template_id)
                                 const tenTaiLieu = doc.template_name || tpl?.name || doc.template_id
                                 return (
-                                  <div className="wcl-output-row" key={doc.template_id}>
+                                  <div className="wcl-output-row" key={`${doc.template_id}-${docIdx}`}>
                                     <div className="wcl-output-row__top" title={tenTaiLieu}>
                                       <span className="wcl-chip wcl-chip--doc">
                                         <FileCheck2 size={12} />
@@ -1552,6 +1541,7 @@ export default function MasterWorkflowStudio() {
                                         className="wcl-chip__x"
                                         onClick={() => removeOutputDoc(item.key, doc.template_id)}
                                         title={`Bỏ ${tenTaiLieu}`}
+                                        aria-label={`Bỏ ${tenTaiLieu}`}
                                       >
                                         <X size={12} />
                                       </button>
@@ -1564,49 +1554,55 @@ export default function MasterWorkflowStudio() {
                         ) : (
                           <span className="wcl-prop__none">Chưa gán giấy tờ đầu ra</span>
                         )}
+                      </div>
 
-                        {/* Select gắn giấy tờ đầu ra từ Combo */}
-                        <div style={{ marginTop: 6 }}>
-                          <select
-                            className="form-control form-control-sm mws-doc-select"
-                            value=""
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                addOutputDoc(item.key, e.target.value)
+                      {/* Hàng 3: Công việc (Gắn gói khoán) */}
+                      <div className="wcl-prop wcl-prop--pay">
+                        <span className="wcl-prop__label"><Banknote size={13} /> Công việc</span>
+                        <div className="wcl-prop__field">
+                          {item.compensation?.is_payable ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span className="wcl-chip" style={{ fontSize: 13, fontWeight: 600 }}>
+                                <Banknote size={13} />
+                                {item.compensation?.work_item_name || 'Gói khoán theo hạng mục'}
+                              </span>
+                              <button
+                                type="button"
+                                className="wcl-prop__clear"
+                                onClick={() => updateChecklistItem(item.key, { compensation: { is_payable: false } })}
+                                title="Bỏ gói khoán"
+                                aria-label="Bỏ gói khoán"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="wcl-add-inline"
+                              onClick={() =>
+                                updateChecklistItem(item.key, {
+                                  compensation: { is_payable: true, work_item_name: 'Gói khoán theo hạng mục' },
+                                })
                               }
-                            }}
-                          >
-                            <option value="">
-                              {nodeSpecificDocs.length > 0
-                                ? `+ Gắn giấy tờ đầu ra bước ${currentNodeCode}… (${nodeSpecificDocs.length} mẫu chuẩn)`
-                                : `+ Gắn loại giấy tờ đầu ra… (${applicableComboOutputDocs.length} mẫu trong combo)`}
-                            </option>
-                            {nodeSpecificDocs.length > 0 && (
-                              <optgroup label={`★ Khuyến nghị cho bước [${currentNodeCode}] (${nodeSpecificDocs.length} mẫu)`}>
-                                {nodeSpecificDocs.map((dt) => {
-                                  const isAttached = (item.output_documents || []).some((d) => d.template_id === dt.id)
-                                  return (
-                                    <option key={dt.id} value={dt.id} disabled={isAttached}>
-                                      {isAttached ? '✓ ' : ''}[{DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}] {dt.name}
-                                    </option>
-                                  )
-                                })}
-                              </optgroup>
-                            )}
-                            {otherComboDocs.length > 0 && (
-                              <optgroup label="Các mẫu đầu ra khác trong Combo">
-                                {otherComboDocs.map((dt) => {
-                                  const isAttached = (item.output_documents || []).some((d) => d.template_id === dt.id)
-                                  const nodeHint = dt.assigned_node_code ? ` (Bước ${dt.assigned_node_code})` : ''
-                                  return (
-                                    <option key={dt.id} value={dt.id} disabled={isAttached}>
-                                      {isAttached ? '✓ ' : ''}[{DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}] {dt.name}{nodeHint}
-                                    </option>
-                                  )
-                                })}
-                              </optgroup>
-                            )}
-                          </select>
+                            >
+                              <Plus size={13} /> Gắn gói khoán
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Hàng 4: Người duyệt (CustomSelect chuẩn project) */}
+                      <div className="wcl-prop">
+                        <span className="wcl-prop__label"><UserRound size={13} /> Duyệt</span>
+                        <div className="wcl-prop__field">
+                          <CustomSelect
+                            aria-label="Người duyệt"
+                            className="wcl-approver-select"
+                            value={item.approver_role || 'admin'}
+                            options={APPROVER_ROLES}
+                            onChange={(val) => updateChecklistItem(item.key, { approver_role: val })}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1825,6 +1821,160 @@ export default function MasterWorkflowStudio() {
         confirmLabel="Xác nhận xóa"
         variant="danger"
       />
+
+      {/* Modal Chọn Tài Liệu Đầu Ra */}
+      <Modal
+        open={Boolean(outputDocModalItemKey)}
+        onClose={() => setOutputDocModalItemKey(null)}
+        title="Chọn tài liệu đầu ra"
+        id="mws-output-documents-modal"
+        size="lg"
+        className="workflow-output-documents-modal"
+        footer={
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setOutputDocModalItemKey(null)}
+          >
+            Xong
+          </button>
+        }
+      >
+        <div className="wcl-output-modal">
+          <p className="wcl-output-modal__hint">
+            Chọn các loại giấy tờ đầu ra mà checklist này cần tạo ra. Có thể chọn nhiều loại, hệ thống sẽ tự đưa vào cấu trúc hồ sơ sau khi duyệt.
+          </p>
+          {applicableComboOutputDocs.length === 0 ? (
+            <div className="wcl-output-modal__empty">
+              Chưa có tài liệu đầu ra nào phù hợp với Combo này.
+            </div>
+          ) : (
+            <div className="wcl-output-modal__groups">
+              {nodeSpecificDocs.length > 0 && (
+                <section className="wcl-output-modal__group wcl-output-modal__group--cong-ty">
+                  <div className="wcl-output-modal__group-head">
+                    <div>
+                      <h3 className="wcl-output-modal__group-title">
+                        ★ Khuyến nghị cho bước [{currentNodeCode}]
+                      </h3>
+                      <p className="wcl-output-modal__group-hint">
+                        Các tài liệu đầu ra chuẩn được gắn với mã bước này
+                      </p>
+                    </div>
+                    <span className="wcl-output-modal__group-count">
+                      {nodeSpecificDocs.length} loại
+                    </span>
+                  </div>
+                  <div
+                    className="wcl-output-modal__grid"
+                    role="listbox"
+                    aria-label="Khuyến nghị cho bước"
+                    aria-multiselectable="true"
+                  >
+                    {nodeSpecificDocs.map((dt) => {
+                      const currentItem = (selectedNode?.data?.checklist || []).find(
+                        (it) => it.key === outputDocModalItemKey
+                      )
+                      const isSelected = (currentItem?.output_documents || []).some(
+                        (d) => d.template_id === dt.id
+                      )
+                      return (
+                        <button
+                          type="button"
+                          key={dt.id}
+                          role="option"
+                          aria-selected={isSelected}
+                          className={`wcl-output-modal__option${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => {
+                            if (isSelected) {
+                              removeOutputDoc(outputDocModalItemKey, dt.id)
+                            } else {
+                              addOutputDoc(outputDocModalItemKey, dt.id)
+                            }
+                          }}
+                        >
+                          <span className="wcl-output-modal__check" aria-hidden="true">
+                            {isSelected ? <Check size={14} /> : null}
+                          </span>
+                          <span className="wcl-output-modal__name">{dt.name}</span>
+                          <span className="wcl-output-modal__source">
+                            {DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}
+                          </span>
+                          <span className="wcl-output-modal__meta">
+                            Bước [{dt.assigned_node_code}] · Mẫu chuẩn
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {otherComboDocs.length > 0 && (
+                <section className="wcl-output-modal__group wcl-output-modal__group--co-quan">
+                  <div className="wcl-output-modal__group-head">
+                    <div>
+                      <h3 className="wcl-output-modal__group-title">
+                        Các mẫu đầu ra khác trong Combo
+                      </h3>
+                      <p className="wcl-output-modal__group-hint">
+                        Các tài liệu đầu ra dùng chung cho gói dịch vụ & hạng mục này
+                      </p>
+                    </div>
+                    <span className="wcl-output-modal__group-count">
+                      {otherComboDocs.length} loại
+                    </span>
+                  </div>
+                  <div
+                    className="wcl-output-modal__grid"
+                    role="listbox"
+                    aria-label="Các mẫu đầu ra khác trong combo"
+                    aria-multiselectable="true"
+                  >
+                    {otherComboDocs.map((dt) => {
+                      const currentItem = (selectedNode?.data?.checklist || []).find(
+                        (it) => it.key === outputDocModalItemKey
+                      )
+                      const isSelected = (currentItem?.output_documents || []).some(
+                        (d) => d.template_id === dt.id
+                      )
+                      return (
+                        <button
+                          type="button"
+                          key={dt.id}
+                          role="option"
+                          aria-selected={isSelected}
+                          className={`wcl-output-modal__option${isSelected ? ' is-selected' : ''}`}
+                          onClick={() => {
+                            if (isSelected) {
+                              removeOutputDoc(outputDocModalItemKey, dt.id)
+                            } else {
+                              addOutputDoc(outputDocModalItemKey, dt.id)
+                            }
+                          }}
+                        >
+                          <span className="wcl-output-modal__check" aria-hidden="true">
+                            {isSelected ? <Check size={14} /> : null}
+                          </span>
+                          <span className="wcl-output-modal__name">{dt.name}</span>
+                          <span className="wcl-output-modal__source">
+                            {DOC_SOURCE_LABELS[dt.source] || 'Đầu ra'}
+                          </span>
+                          <span className="wcl-output-modal__meta">
+                            {dt.assigned_node_code
+                              ? `Bước [${dt.assigned_node_code}]`
+                              : 'Dùng chung cho combo'}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

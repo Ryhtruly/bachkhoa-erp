@@ -265,3 +265,113 @@
   outline: none;
   box-shadow: none;
 }
+
+/* ── Checklist Card Đồng Bộ Theo Format Chuẩn (contracts.css & media_1788840138080.png) ── */
+.mws-inspector .workflow-checklist-card {
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--np-card-line, #cbd5e1);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--bg-card, #ffffff);
+}
+
+.mws-inspector .wcl-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--np-card-head, #eef4fa);
+}
+
+.mws-inspector .wcl-name-inline {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 8px;
+  background: var(--bg-card, #ffffff);
+  color: #1e3a5f;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.mws-inspector .wcl-name-inline:focus {
+  outline: none;
+  border-color: var(--orange-500, #ea580c);
+  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.12);
+}
+
+.mws-inspector .wcl-add-doc {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: var(--np-add-bg, #dcf3e3);
+  color: var(--np-add-ink, #1f7a42);
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.mws-inspector .wcl-add-doc:hover {
+  background: #cbf0d5;
+  transform: scale(1.05);
+}
+
+.mws-inspector .wcl-x {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary, #64748b);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.mws-inspector .wcl-x:hover {
+  color: var(--red-500, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* CustomSelect cho hàng Duyệt trong checklist */
+.mws-inspector .wcl-approver-select {
+  width: 100%;
+}
+
+.mws-inspector .wcl-approver-select .custom-select-trigger {
+  min-height: 34px;
+  height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #ffffff);
+}
+
+.mws-inspector .wcl-approver-select .custom-select-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong, #94a3b8);
+  background: var(--bg-surface, #f8fafc);
+}
+
+.mws-inspector .wcl-approver-select .custom-select-menu {
+  z-index: 1100;
+  min-width: 180px;
+}
+
+.mws-inspector .wf-node-panel__scroll:has(.custom-select-container.is-open),
+.mws-inspector .workflow-checklist-card:has(.custom-select-container.is-open) {
+  overflow: visible;
+}
