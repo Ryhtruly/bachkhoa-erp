@@ -178,6 +178,10 @@ class SourceDocumentLinkSchema(BaseModel):
     document_id: str
 
 
+class ChecklistSourceDocumentSchema(BaseModel):
+    template_id: str
+
+
 @router.post("/slots/{slot_id}/change-requests")
 def request_slot_change(
     slot_id: str,
@@ -585,6 +589,38 @@ def link_source_document(
     )
     db.commit()
     publish_timeline_change("source_document_linked", entity_id=slot_id)
+    return {"status": "success", "data": result}
+
+
+@router.post("/checklists/{checklist_result_id}/source-documents/{document_id}")
+def classify_source_document_for_contract_workspace(
+    checklist_result_id: str,
+    document_id: str,
+    payload: ChecklistSourceDocumentSchema,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("contract", "read")),
+):
+    """Phân loại từ sidebar hợp đồng bằng cùng nghiệp vụ với màn nhân viên."""
+    from src.dossiers.documents import classify_source_document_for_checklist
+
+    contract_id = db.execute(
+        text("select contract_id from public.dossier_documents where id = :id"),
+        {"id": document_id},
+    ).scalar()
+    _require_can_work(db, user, contract_id)
+    try:
+        result = classify_source_document_for_checklist(
+            db,
+            checklist_result_id=checklist_result_id,
+            document_id=document_id,
+            template_id=payload.template_id,
+            actor_id=user.id,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    publish_timeline_change("source_document_classified", entity_id=checklist_result_id)
     return {"status": "success", "data": result}
 
 

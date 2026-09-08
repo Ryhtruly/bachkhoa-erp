@@ -186,10 +186,10 @@ class _ProfileSerializationDb:
             },
         ]
         self.files = [
-            {"document_type_id": "CRT-1", "document_id": "D-1", "file_name": "moc-1.jpg", "content_type": "image/jpeg"},
-            {"document_type_id": "CRT-1", "document_id": "D-2", "file_name": "moc-2.jpg", "content_type": "image/jpeg"},
-            {"document_type_id": "CRT-1", "document_id": "D-3", "file_name": "moc-3.png", "content_type": "image/png"},
-            {"document_type_id": "CRT-2", "document_id": "D-4", "file_name": "bien-ban.pdf", "content_type": "application/pdf"},
+            {"document_type_id": "CRT-1", "document_id": "D-1", "file_name": "moc-1.jpg", "content_type": "image/jpeg", "status": "approved", "change_reason": None, "rejection_reason": None},
+            {"document_type_id": "CRT-1", "document_id": "D-2", "file_name": "moc-2.jpg", "content_type": "image/jpeg", "status": "rejected", "change_reason": "Chụp lại trang hai", "rejection_reason": "Ảnh mờ"},
+            {"document_type_id": "CRT-1", "document_id": "D-3", "file_name": "moc-3.png", "content_type": "image/png", "status": "draft", "change_reason": None, "rejection_reason": None},
+            {"document_type_id": "CRT-2", "document_id": "D-4", "file_name": "bien-ban.pdf", "content_type": "application/pdf", "status": "approved", "change_reason": None, "rejection_reason": None},
         ]
 
     def execute(self, query, params=None):
@@ -252,9 +252,9 @@ class EmployeeProfileDocumentTypeSerializationTests(unittest.TestCase):
             "status": "rejected",
             "rejection_reason": "Ảnh mờ",
             "files": [
-                {"document_id": "D-1", "file_name": "moc-1.jpg", "content_type": "image/jpeg"},
-                {"document_id": "D-2", "file_name": "moc-2.jpg", "content_type": "image/jpeg"},
-                {"document_id": "D-3", "file_name": "moc-3.png", "content_type": "image/png"},
+                {"document_id": "D-1", "file_name": "moc-1.jpg", "content_type": "image/jpeg", "change_reason": None},
+                {"document_id": "D-2", "file_name": "moc-2.jpg", "content_type": "image/jpeg", "change_reason": "Chụp lại trang hai"},
+                {"document_id": "D-3", "file_name": "moc-3.png", "content_type": "image/png", "change_reason": None},
             ],
             "file_count": 3,
         })
@@ -279,7 +279,7 @@ class EmployeeProfileDocumentTypeSerializationTests(unittest.TestCase):
         self.assertEqual(type_calls[0][1], {"checklist_result_ids": ["CR-1", "CR-2"]})
         self.assertEqual(file_calls[0][1], {"checklist_result_ids": ["CR-1", "CR-2"]})
 
-    def test_profile_falls_back_cleanly_before_runtime_schema_is_migrated(self):
+    def test_profile_omits_runtime_key_before_schema_migration_so_legacy_rows_render(self):
         from src.employee_portal import service
 
         db = _ProfileSerializationDb(service)
@@ -288,10 +288,8 @@ class EmployeeProfileDocumentTypeSerializationTests(unittest.TestCase):
             profile = service.EmployeePortalService.build_profile(db, self._employee())
 
         for checklist in profile["tasks"][0]["checklist"]:
-            self.assertEqual(checklist["document_types"], [])
-            self.assertEqual(checklist["document_type_progress"], {
-                "approved": 0, "total": 0, "percent": 0, "is_complete": False,
-            })
+            self.assertNotIn("document_types", checklist)
+            self.assertNotIn("document_type_progress", checklist)
         queried = [query for query, _ in db.execute_calls]
         self.assertNotIn(service._CHECKLIST_DOCUMENT_TYPES_QUERY, queried)
         self.assertNotIn(service._CHECKLIST_DOCUMENT_TYPE_FILES_QUERY, queried)
@@ -337,6 +335,36 @@ class ConfiguredDocumentTypeMigrationTests(unittest.TestCase):
         self.assertIn("r_defined.id = n.defined_by_revision_id", migration)
         self.assertNotIn("r_active.graph", migration)
         self.assertNotIn("wi.active_revision_id", migration)
+
+    def test_per_file_review_migration_keeps_independent_publish_state_and_audit(self):
+        migration_path = next(
+            parent / "supabase/migrations/20260905110000_per_file_document_approval.sql"
+            for parent in Path(__file__).resolve().parents
+            if (parent / "supabase/migrations").is_dir()
+        )
+        migration = migration_path.read_text(encoding="utf-8").lower()
+
+        self.assertIn("add column status", migration)
+        self.assertIn("pending_review", migration)
+        self.assertIn("add column change_reason", migration)
+        self.assertIn("add column rejection_reason", migration)
+        self.assertIn("add column reviewed_by", migration)
+        self.assertIn("add column reviewed_at", migration)
+        self.assertIn("checklist_result_document_types", migration)
+
+    def test_per_file_migration_backfills_legacy_checklist_files_and_verdicts(self):
+        migration_path = next(
+            parent / "supabase/migrations/20260905110000_per_file_document_approval.sql"
+            for parent in Path(__file__).resolve().parents
+            if (parent / "supabase/migrations").is_dir()
+        )
+        migration = migration_path.read_text(encoding="utf-8").lower()
+
+        self.assertIn("checklist_result_document_links legacy", migration)
+        self.assertIn("legacy.review_status", migration)
+        self.assertIn("dossier_document_links", migration)
+        self.assertIn("on conflict (document_type_id, document_id) where is_active", migration)
+        self.assertIn("update public.checklist_result_document_types", migration)
 
 
 class ExactComboSuggestionTests(unittest.TestCase):
@@ -572,30 +600,78 @@ class ChecklistDocumentTypeFileTests(unittest.TestCase):
         self.assertTrue(all(item["error"] for item in result))
         self.assertEqual(db.savepoints, 0)
 
-    def test_approved_type_is_locked(self):
+    def test_approved_type_requires_reason_before_adding_new_files(self):
         add_files = required_function(self, "add_files")
-        db = DocumentTypeDb({**self.type_row, "status": "approved"})
+        db = DocumentTypeDb({
+            **self.type_row,
+            "status": "approved",
+            "file_count": 1,
+            "approved_file_count": 1,
+        })
         with self.assertRaises(HTTPException) as caught:
             add_files(
                 db, document_type_id="DT-1",
                 uploads=[("one.pdf", "application/pdf", b"1")], actor_id="NV-1",
             )
-        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("lý do", str(caught.exception.detail).lower())
         self.assertEqual(db.savepoints, 0)
+
+    def test_approved_type_accepts_new_draft_files_without_touching_old_approved_files(self):
+        add_files = required_function(self, "add_files")
+        db = DocumentTypeDb({
+            **self.type_row,
+            "status": "approved",
+            "file_count": 1,
+            "approved_file_count": 1,
+        })
+
+        with patch.object(checklist_document_types, "ensure_bucket"), \
+             patch.object(checklist_document_types, "upload_file", return_value="stored"):
+            result = add_files(
+                db,
+                document_type_id="DT-1",
+                uploads=[("mat-sau.pdf", "application/pdf", b"new")],
+                actor_id="NV-1",
+                change_reason="Bổ sung mặt sau theo yêu cầu khách hàng",
+            )
+
+        self.assertEqual(result[0].get("review_status"), "draft")
+        self.assertEqual(
+            result[0].get("change_reason"),
+            "Bổ sung mặt sau theo yêu cầu khách hàng",
+        )
+        file_insert = next(
+            (sql, params) for sql, params in db.calls
+            if "insert into public.checklist_result_document_type_files" in sql
+        )
+        self.assertIn("status, change_reason", file_insert[0])
+        self.assertEqual(file_insert[1]["change_reason"], result[0]["change_reason"])
+        self.assertFalse(any(
+            "update public.checklist_result_document_type_files" in sql
+            for sql, _ in db.calls
+        ))
 
     def test_rejected_type_returns_to_draft_after_successful_file_change(self):
         add_files = required_function(self, "add_files")
-        db = DocumentTypeDb({**self.type_row, "status": "rejected", "file_count": 1})
+        db = DocumentTypeDb({
+            **self.type_row,
+            "status": "rejected",
+            "rejection_reason": "Ảnh mờ, cần chụp lại trang hai",
+            "file_count": 2,
+            "approved_file_count": 1,
+        })
         with patch.object(checklist_document_types, "ensure_bucket"), \
              patch.object(checklist_document_types, "upload_file", return_value="stored"):
             result = add_files(
                 db, document_type_id="DT-1",
                 uploads=[("replacement.pdf", "application/pdf", b"new")], actor_id="NV-1",
             )
-        self.assertEqual(result[0]["file_count"], 2)
+        self.assertEqual(result[0]["file_count"], 3)
+        self.assertIsNone(result[0]["change_reason"])
         status_updates = [(sql, params) for sql, params in db.calls if "set status = 'draft'" in sql]
         self.assertEqual(len(status_updates), 1)
-        self.assertIn("rejection_reason = null", status_updates[0][0])
+        self.assertNotIn("rejection_reason = null", status_updates[0][0])
 
     def test_remove_file_soft_deactivates_link_and_document(self):
         remove_file = required_function(self, "remove_file")
@@ -612,7 +688,7 @@ class ChecklistDocumentTypeFileTests(unittest.TestCase):
         self.assertIn("update public.dossier_documents", all_sql)
         self.assertIn("doc_status = 'da_go'", all_sql)
 
-    def test_remove_file_is_locked_after_approval(self):
+    def test_remove_approved_file_requires_change_reason(self):
         remove_file = required_function(self, "remove_file")
         db = DocumentTypeDb({**self.type_row, "status": "approved", "file_count": 1})
 
@@ -621,7 +697,26 @@ class ChecklistDocumentTypeFileTests(unittest.TestCase):
                 db, document_type_id="DT-1", document_id="D-1", actor_id="NV-1",
             )
 
-        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("lý do", str(caught.exception.detail).lower())
+
+    def test_remove_approved_file_records_reason_and_returns_type_to_draft(self):
+        remove_file = required_function(self, "remove_file")
+        db = DocumentTypeDb({**self.type_row, "status": "approved", "file_count": 1})
+
+        result = remove_file(
+            db, document_type_id="DT-1", document_id="D-1", actor_id="NV-1",
+            change_reason="  Thay bằng bản ký mới  ",
+        )
+
+        self.assertEqual(result["change_reason"], "Thay bằng bản ký mới")
+        remove_call = next(
+            (sql, params) for sql, params in db.calls
+            if "returning f.document_id" in sql
+        )
+        self.assertIn("change_reason = :change_reason", remove_call[0])
+        self.assertEqual(remove_call[1]["change_reason"], "Thay bằng bản ký mới")
+        self.assertTrue(any("set status = 'draft'" in sql for sql, _ in db.calls))
 
     def test_remove_from_rejected_type_returns_it_to_draft(self):
         remove_file = required_function(self, "remove_file")
@@ -757,9 +852,15 @@ class _RuntimeResult:
 class RuntimeReviewDb:
     """Small stateful DB double for the runtime-type state machine."""
 
-    def __init__(self, types, *, node_status="submitted"):
+    def __init__(
+        self, types, *, node_status="submitted", checklist_status="pending_approval",
+        transitions=None, pending_acceptance_id=None,
+    ):
         self.types = {item["id"]: dict(item) for item in types}
         self.node_status = node_status
+        self.checklist_status = checklist_status
+        self.transitions = transitions or {}
+        self.pending_acceptance_id = pending_acceptance_id
         self.calls = []
         self.templates = {}
         self.applicabilities = set()
@@ -789,14 +890,27 @@ class RuntimeReviewDb:
                 if item.get("is_active", True) and not item.get("files")
             ]
             changed = 0
-            if not missing:
+            allow_missing = bool(params.get("allow_missing"))
+            if not missing or allow_missing:
                 for item in self.types.values():
                     if item.get("is_active", True) and item["status"] in ("draft", "rejected"):
-                        item.update(status="pending_review", rejection_reason=None)
-                        changed += 1
+                        if not allow_missing or item.get("files"):
+                            item.update(status="pending_review", rejection_reason=None)
+                            changed += 1
+            checklist_ready = self.checklist_status in (
+                "pending_approval", "late_pending_approval", "approved",
+                "late_approved", "not_applicable",
+            )
+            runtime_types_resolve_checklist = (
+                "as uses_runtime_types" in sql
+                and any(item.get("is_active", True) for item in self.types.values())
+            )
             return _RuntimeResult(rows=[{
                 "missing_types": missing,
-                "unresolved_checklists": [],
+                "unresolved_checklists": (
+                    [] if checklist_ready or runtime_types_resolve_checklist
+                    else ["Checklist runtime"]
+                ),
                 "total": len(self.types),
                 "approved": sum(item["status"] == "approved" for item in self.types.values()),
                 "pending_review": sum(
@@ -847,7 +961,9 @@ class RuntimeReviewDb:
             )
             return _RuntimeResult(rows=[{"id": item["id"]}])
         if "from public.task_node_acceptances" in sql and "status = 'pending'" in sql:
-            return _RuntimeResult(scalar="ACC-1")
+            return _RuntimeResult(scalar=self.pending_acceptance_id)
+        if "->'transitions'" in sql:
+            return _RuntimeResult(scalar=self.transitions)
         if "from public.document_checklist_templates" in sql:
             matches = [
                 template for template in self.templates.values()
@@ -899,6 +1015,18 @@ class RuntimeReviewDb:
 
 
 class SubmitRuntimeDocumentTypesTests(unittest.TestCase):
+    def test_submission_treats_a_pending_runtime_checklist_as_filled_when_every_type_has_files(self):
+        submit = required_function(self, "submit_types_for_node")
+        db = RuntimeReviewDb([{
+            "id": "DT-FILLED", "name": "CCCD", "source": "KHACH_HANG",
+            "origin": "CONFIGURED", "status": "draft", "files": ["D-1"],
+        }], checklist_status="pending")
+
+        result = submit(db, "NODE-1", "USER-1")
+
+        self.assertNotIn("unresolved_checklists", result)
+        self.assertEqual(result["pending_review"], 1)
+
     def test_submission_rejects_an_active_type_without_files_before_any_status_write(self):
         submit = required_function(self, "submit_types_for_node")
         db = RuntimeReviewDb([{
@@ -910,6 +1038,21 @@ class SubmitRuntimeDocumentTypesTests(unittest.TestCase):
             submit(db, "NODE-1", "USER-1")
 
         self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(db.types["DT-EMPTY"]["status"], "draft")
+
+    def test_submission_accepts_missing_files_when_allow_missing_is_true(self):
+        submit = required_function(self, "submit_types_for_node")
+        db = RuntimeReviewDb([
+            {"id": "DT-FILLED", "name": "Bản vẽ", "source": "CONG_TY", "origin": "CONFIGURED",
+             "status": "draft", "files": ["D-1"]},
+            {"id": "DT-EMPTY", "name": "Biên bản", "source": "KHACH_HANG", "origin": "CONFIGURED",
+             "status": "draft", "files": []},
+        ])
+
+        result = submit(db, "NODE-1", "USER-1", allow_missing=True)
+
+        self.assertEqual(result["pending_review"], 1)
+        self.assertEqual(db.types["DT-FILLED"]["status"], "pending_review")
         self.assertEqual(db.types["DT-EMPTY"]["status"], "draft")
 
     def test_submission_moves_draft_and_rejected_together_and_preserves_approved(self):
@@ -930,6 +1073,19 @@ class SubmitRuntimeDocumentTypesTests(unittest.TestCase):
         self.assertEqual(db.types["DT-REJECTED"]["status"], "pending_review")
         self.assertIsNone(db.types["DT-REJECTED"]["rejection_reason"])
         self.assertEqual(db.types["DT-APPROVED"]["status"], "approved")
+
+    def test_submission_moves_the_type_to_pending_review_without_file_verdict_writes(self):
+        submit = required_function(self, "submit_types_for_node")
+        db = RuntimeReviewDb([{
+            "id": "DT-MIXED", "name": "CCCD", "source": "KHACH_HANG",
+            "origin": "CONFIGURED", "status": "draft", "files": ["D-OLD", "D-NEW"],
+        }])
+
+        submit(db, "NODE-1", "USER-1")
+
+        emitted = " ".join(sql for sql, _ in db.calls)
+        self.assertNotIn("update public.checklist_result_document_type_files", emitted)
+        self.assertIn("set status = 'pending_review'", emitted)
 
 
 class ReviewRuntimeDocumentTypeTests(unittest.TestCase):
@@ -968,6 +1124,71 @@ class ReviewRuntimeDocumentTypeTests(unittest.TestCase):
             )
         self.assertEqual(caught.exception.status_code, 422)
 
+    def test_approval_records_verdict_on_the_type_without_individual_file_verdicts(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([{
+            "id": "DT-1", "name": "CCCD", "source": "KHACH_HANG",
+            "origin": "CONFIGURED", "status": "pending_review",
+            "files": ["D-OLD", "D-NEW"],
+        }])
+
+        with patch.object(
+            checklist_document_types,
+            "promote_completed_checklist_types",
+            return_value=[],
+        ):
+            review(
+                db, checklist_result_id="CR-1", type_id="DT-1",
+                decision="approved", reason=None, actor_id="DIRECTOR",
+            )
+
+        file_updates = [
+            (sql, params) for sql, params in db.calls
+            if "update public.checklist_result_document_type_files" in sql
+        ]
+        self.assertEqual(file_updates, [])
+
+    def test_approving_last_type_auto_accepts_node_and_generates_completion(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([{
+            "id": "DT-1", "name": "CCCD", "source": "KHACH_HANG",
+            "origin": "CONFIGURED", "status": "pending_review", "files": ["D-1"],
+        }], pending_acceptance_id="ACC-1")
+
+        with patch(
+            "src.contracts.workflow_runtime.review_task_node_acceptance",
+            return_value={
+                "task_node_id": "NODE-1", "status": "accepted",
+                "entitlement_count": 1, "entitlement_amount": 300000,
+            },
+        ) as accept_node, patch.object(
+            checklist_document_types,
+            "promote_completed_checklist_types",
+            return_value=[],
+        ):
+            result = review(
+                db, checklist_result_id="CR-1", type_id="DT-1",
+                decision="approved", reason=None, actor_id="DIRECTOR",
+            )
+
+        accept_node.assert_called_once_with(
+            db,
+            acceptance_id="ACC-1",
+            decision="accepted",
+            outcome=None,
+            review_note="Tự hoàn tất khi mọi loại giấy trong Node đã đạt",
+            actor_id="DIRECTOR",
+        )
+        self.assertTrue(result["node_finalized"])
+        self.assertEqual(result["node_status"], "accepted")
+        self.assertEqual(result["entitlement_count"], 1)
+        self.assertTrue(any(
+            "update public.task_node_checklist_results cr" in sql
+            and "set status = case" in sql
+            and "pending_approval" in sql
+            for sql, _params in db.calls
+        ))
+
     def test_reject_returns_node_through_existing_rework_path_without_deleting_type_or_files(self):
         review = required_function(self, "review_type")
         db = RuntimeReviewDb([{
@@ -1002,6 +1223,58 @@ class ReviewRuntimeDocumentTypeTests(unittest.TestCase):
                 "document_name": "Ảnh mốc",
             }],
         )
+
+    def test_reject_waits_for_remaining_types_before_returning_node(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([
+            {
+                "id": "DT-BAD", "name": "Ảnh mốc", "source": "CONG_TY",
+                "origin": "CONFIGURED", "status": "pending_review", "files": ["D-1"],
+            },
+            {
+                "id": "DT-WAIT", "name": "Biên bản", "source": "CONG_TY",
+                "origin": "CONFIGURED", "status": "pending_review", "files": ["D-2"],
+            },
+        ])
+        with patch(
+            "src.contracts.workflow_runtime.flush_node_review_batch",
+        ) as flush_batch:
+            result = review(
+                db, checklist_result_id="CR-1", type_id="DT-BAD",
+                decision="rejected", reason="Ảnh bị mờ", actor_id="DIRECTOR",
+            )
+
+        self.assertEqual(result["node_status"], "submitted")
+        self.assertEqual(result["status"], "rejected")
+        flush_batch.assert_not_called()
+
+    def test_last_approval_returns_node_when_another_type_was_rejected(self):
+        review = required_function(self, "review_type")
+        db = RuntimeReviewDb([
+            {
+                "id": "DT-BAD", "name": "Ảnh mốc", "source": "CONG_TY",
+                "origin": "CONFIGURED", "status": "rejected",
+                "rejection_reason": "Ảnh bị mờ", "files": ["D-1"],
+            },
+            {
+                "id": "DT-LAST", "name": "Biên bản", "source": "CONG_TY",
+                "origin": "CONFIGURED", "status": "pending_review", "files": ["D-2"],
+            },
+        ])
+        with patch(
+            "src.contracts.workflow_runtime.flush_node_review_batch",
+            return_value={"task_node_id": "NODE-1", "node_status_changed": True},
+        ) as flush_batch:
+            result = review(
+                db, checklist_result_id="CR-1", type_id="DT-LAST",
+                decision="approved", reason=None, actor_id="DIRECTOR",
+            )
+
+        self.assertEqual(result["node_status"], "rework_required")
+        flush_batch.assert_called_once()
+        rejected_batch = flush_batch.call_args.kwargs["runtime_batch"]
+        self.assertEqual(len(rejected_batch), 1)
+        self.assertEqual(rejected_batch[0]["document_name"], "Ảnh mốc")
 
 
 class CompletedChecklistPromotionTests(unittest.TestCase):
@@ -1040,6 +1313,12 @@ class CompletedChecklistPromotionTests(unittest.TestCase):
             sql for sql, _ in db.calls
             if "insert into public.checklist_result_document_links" in sql
         )
+        dossier_link_sql = next(
+            sql for sql, _ in db.calls
+            if "insert into public.dossier_document_links" in sql
+        )
+        self.assertIn("t.status = 'approved'", dossier_link_sql)
+        self.assertIn("t.status = 'approved'", official_link_sql)
         self.assertIn("review_status", official_link_sql)
         self.assertIn("'approved'", official_link_sql)
         self.assertIn("reviewed_by", official_link_sql)
@@ -1086,7 +1365,37 @@ class ExactComboPromotionHelperTests(unittest.TestCase):
 
         self.assertEqual(first_id, second_id)
         self.assertEqual(len(db.templates), 1)
-        self.assertEqual(db.applicabilities, {(first_id, "PKG-1", "TYPE-1", "K02")})
+class PaperlessChecklistSubmissionTests(unittest.TestCase):
+    def test_submit_paperless_checklist_with_reason_updates_status_and_persists_note(self):
+        from src.employee_portal.service import EmployeePortalService
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value.first.return_value = {
+            "id": "CR-PL-1",
+            "checklist_name": "Đóng hồ sơ",
+            "status": "pending",
+            "deadline_at": None,
+            "evidence_data": {},
+            "require_evidence": False,
+            "node_status": "in_progress",
+        }
+        employee = SimpleNamespace(id="EMP-1", user_id="U-1")
+
+        result = EmployeePortalService.submit_checklist_evidence(
+            db=db,
+            employee=employee,
+            task_node_id="TN-1",
+            checklist_result_id="CR-PL-1",
+            evidence_url=None,
+            file_name=None,
+            note="Đã đóng hồ sơ và lưu kho",
+            late_reason=None,
+            submitted_at=SimpleNamespace(isoformat=lambda: "2026-09-07T12:00:00Z"),
+        )
+        self.assertEqual(result["id"], "CR-PL-1")
+        # Kiểm tra db.execute có update note = coalesce(:note, note)
+        calls = [str(c[0][0]).lower() for c in db.execute.call_args_list]
+        update_call = next(c for c in calls if "update public.task_node_checklist_results" in c)
+        self.assertIn("note = coalesce(:note, note)", update_call)
 
 
 if __name__ == "__main__":

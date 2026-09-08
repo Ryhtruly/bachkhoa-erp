@@ -190,7 +190,9 @@ _CHECKLIST_CABINET_QUERY = text("""
         on wi_scope.id = n_scope.workflow_instance_id
        and wi_scope.service_line_id = :service_line_id
       left join public.checklist_result_document_type_files f
-        on f.document_type_id = t.id and f.is_active
+        on f.document_type_id = t.id
+       and f.is_active
+       and t.status = 'approved'
       left join public.dossier_documents d
         on d.id = f.document_id and d.doc_status = 'DANG_DUNG'
       left join public.document_checklist_templates template
@@ -199,13 +201,6 @@ _CHECKLIST_CABINET_QUERY = text("""
       group by t.id, t.checklist_result_id, t.template_id, t.promoted_template_id,
                t.name, t.source, t.origin, t.status, t.rejection_reason,
                t.slot_id, template.needs_original
-    ), checklist_completion as (
-      select checklist_result_id,
-             count(*) > 0
-             and bool_and(review_status = 'approved' and file_count > 0)
-               as checklist_complete
-      from type_state
-      group by checklist_result_id
     )
     select n.node_code,
            coalesce(nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
@@ -213,7 +208,6 @@ _CHECKLIST_CABINET_QUERY = text("""
            n.id as task_node_id,
            cr.id as checklist_result_id,
            cr.checklist_name,
-           completion.checklist_complete,
            type_state.document_type_id,
            type_state.template_id,
            type_state.promoted_template_id,
@@ -230,9 +224,6 @@ _CHECKLIST_CABINET_QUERY = text("""
     join public.task_nodes n on n.workflow_instance_id = wi.id
     join public.workflow_nodes wn on wn.code = n.node_code
     join public.task_node_checklist_results cr on cr.task_node_id = n.id
-    join checklist_completion completion
-      on completion.checklist_result_id = cr.id
-     and completion.checklist_complete
     join type_state on type_state.checklist_result_id = cr.id
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
@@ -244,7 +235,7 @@ _CHECKLIST_CABINET_QUERY = text("""
 
 
 def checklist_cabinet_by_node(db: Session, service_line_id: str) -> list[dict[str, Any]]:
-    """Tủ hồ sơ thật: chỉ gồm loại giấy Giám đốc đã gắn vào checklist runtime.
+    """Tủ riêng của Hạng mục: cấu trúc từ checklist, nội dung từ file đã đạt.
 
     Tab Mẫu giấy tờ là danh mục gợi ý cấu hình, không phải danh sách bắt buộc của
     hồ sơ. Vì vậy hàm này đọc graph/checklist đang chạy và trạng thái duyệt của
@@ -262,8 +253,6 @@ def checklist_cabinet_by_node(db: Session, service_line_id: str) -> list[dict[st
     for row in db.execute(
         _CHECKLIST_CABINET_QUERY, {"service_line_id": service_line_id}
     ).mappings().all():
-        if not row.get("checklist_complete"):
-            continue
         key = (row["node_code"], row["task_node_id"])
         group = groups.setdefault(key, {
             "node_code": row["node_code"],
@@ -275,11 +264,15 @@ def checklist_cabinet_by_node(db: Session, service_line_id: str) -> list[dict[st
         })
         files = list(row["files"] or [])
         file_count = int(row["file_count"] or 0)
-        # The completion CTE admits only approved types with active files.
-        # Keep the cabinet projection aligned with that invariant instead of
-        # retaining unreachable partial/rejected branches from the old query.
-        status, status_label = "DA_DUYET", "Đã duyệt"
-        group["done"] += 1
+        if file_count > 0:
+            status, status_label = "DA_DUYET", "Đã duyệt"
+            group["done"] += 1
+        elif row["review_status"] == "rejected":
+            status, status_label = "KHONG_DAT", "Không đạt"
+        elif row["review_status"] == "pending_review":
+            status, status_label = "CHO_DUYET", "Chờ duyệt"
+        else:
+            status, status_label = "CHUA_NOP", "Chưa có tệp đạt"
         group["documents"].append({
             "id": row["document_type_id"],
             "document_type_id": row["document_type_id"],
@@ -2525,7 +2518,7 @@ def upsert_template(
                 set source = excluded.source, is_required = excluded.is_required,
                     needs_original = excluded.needs_original,
                     default_quantity = excluded.default_quantity,
-                    note = excluded.note, is_active = true, updated_at = now()
+                    note = excluded.note, is_active = excluded.is_active, updated_at = now()
             returning id
         """),
         params,

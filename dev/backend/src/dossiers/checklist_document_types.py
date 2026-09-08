@@ -255,15 +255,30 @@ def _assert_file_set_mutable(document_type: dict[str, Any]) -> None:
         )
 
 
-def _reset_rejected_type(db: Session, document_type: dict[str, Any]) -> None:
-    if document_type["status"] != DocumentTypeStatus.REJECTED.value:
+def _change_reason_for_new_files(
+    document_type: dict[str, Any], change_reason: str | None
+) -> str | None:
+    normalized = " ".join(str(change_reason or "").split()) or None
+    if document_type.get("status") == DocumentTypeStatus.APPROVED.value and not normalized:
+        raise HTTPException(
+            status_code=422,
+            detail="Loại giấy đã đạt; phải nhập lý do khi thay đổi tệp.",
+        )
+    return normalized
+
+
+def _reset_type_for_new_review(db: Session, document_type: dict[str, Any]) -> None:
+    if document_type["status"] not in (
+        DocumentTypeStatus.APPROVED.value,
+        DocumentTypeStatus.REJECTED.value,
+    ):
         return
     db.execute(
         text("""
             update public.checklist_result_document_types
-            set status = 'draft', rejection_reason = null, reviewed_by = null,
-                reviewed_at = null, updated_at = now()
-            where id = :id and status = 'rejected'
+            set status = 'draft', reviewed_by = null, reviewed_at = null,
+                updated_at = now()
+            where id = :id and status in ('approved', 'rejected')
         """),
         {"id": document_type["id"]},
     )
@@ -294,12 +309,15 @@ def add_files(
     document_type_id: str,
     uploads: list[tuple[str, str | None, bytes]],
     actor_id: str,
+    change_reason: str | None = None,
 ) -> list[dict[str, Any]]:
     """Attach many immutable objects, isolating every file in a DB savepoint."""
     from src.dossiers.documents import _validate_upload
 
     document_type = _document_type_for_update(db, document_type_id)
-    _assert_file_set_mutable(document_type)
+    normalized_change_reason = _change_reason_for_new_files(
+        document_type, change_reason
+    )
     if not uploads:
         raise HTTPException(status_code=422, detail="Phải chọn ít nhất một tệp.")
 
@@ -350,16 +368,19 @@ def add_files(
                 db.execute(
                     text("""
                         insert into public.checklist_result_document_type_files
-                            (document_type_id, document_id, created_by)
-                        values (:document_type_id, :document_id, :actor_id)
+                            (document_type_id, document_id, created_by,
+                             status, change_reason)
+                        values (:document_type_id, :document_id, :actor_id,
+                                'draft', :change_reason)
                     """),
                     {
                         "document_type_id": document_type_id,
                         "document_id": document_id,
                         "actor_id": actor_id,
+                        "change_reason": normalized_change_reason,
                     },
                 )
-                _reset_rejected_type(db, document_type)
+                _reset_type_for_new_review(db, document_type)
         except Exception as exc:
             if uploaded_object_key:
                 try:
@@ -380,6 +401,8 @@ def add_files(
             "content_type": content_type,
             "size_bytes": len(data),
             "status": "success",
+            "review_status": DocumentTypeStatus.DRAFT.value,
+            "change_reason": normalized_change_reason,
             "file_count": file_count,
         })
 
@@ -395,14 +418,18 @@ def remove_file(
     document_type_id: str,
     document_id: str,
     actor_id: str,
+    change_reason: str | None = None,
 ) -> dict[str, Any]:
     """Soft-remove one active file while retaining its object and audit row."""
     document_type = _document_type_for_update(db, document_type_id)
-    _assert_file_set_mutable(document_type)
+    normalized_change_reason = _change_reason_for_new_files(
+        document_type, change_reason
+    )
     removed = db.execute(
         text("""
             update public.checklist_result_document_type_files f
-            set is_active = false, removed_by = :actor_id, removed_at = now()
+            set is_active = false, removed_by = :actor_id, removed_at = now(),
+                change_reason = :change_reason
             where f.document_type_id = :document_type_id
               and f.document_id = :document_id and f.is_active
             returning f.document_id
@@ -411,6 +438,7 @@ def remove_file(
             "document_type_id": document_type_id,
             "document_id": document_id,
             "actor_id": actor_id,
+            "change_reason": normalized_change_reason,
         },
     ).mappings().first()
     if not removed:
@@ -423,12 +451,13 @@ def remove_file(
         """),
         {"document_id": document_id},
     )
-    _reset_rejected_type(db, document_type)
+    _reset_type_for_new_review(db, document_type)
     return {
         "document_type_id": document_type_id,
         "document_id": document_id,
         "status": "removed",
         "file_count": max(0, int(document_type.get("file_count") or 0) - 1),
+        "change_reason": normalized_change_reason,
     }
 
 
@@ -534,7 +563,7 @@ def attach_existing_file(
             }, ensure_ascii=False),
         },
     )
-    _reset_rejected_type(db, document_type)
+    _reset_type_for_new_review(db, document_type)
     return {
         "document_type_id": document_type_id,
         "document_id": document_id,
@@ -632,7 +661,7 @@ def node_type_review_summary(db: Session, task_node_id: str) -> dict[str, Any]:
 
 
 def submit_types_for_node(
-    db: Session, task_node_id: str, actor_id: str
+    db: Session, task_node_id: str, actor_id: str, *, allow_missing: bool = False
 ) -> dict[str, Any]:
     """Validate and submit every active runtime type in the locked node."""
     # One statement deliberately replaces the workflow's former unresolved-
@@ -641,7 +670,13 @@ def submit_types_for_node(
     summary = db.execute(
         text("""
             with locked_checklists as materialized (
-                select cr.id, cr.checklist_name, cr.status
+                select cr.id, cr.checklist_name, cr.status,
+                       exists (
+                           select 1
+                           from public.checklist_result_document_types runtime_type
+                           where runtime_type.checklist_result_id = cr.id
+                             and runtime_type.is_active
+                       ) as uses_runtime_types
                 from public.task_node_checklist_results cr
                 where cr.task_node_id = :task_node_id
                 order by cr.id
@@ -661,14 +696,15 @@ def submit_types_for_node(
             validation as (
                 select
                     coalesce((select array_agg(name order by name)
-                              from locked_types where file_count = 0), '{}'::text[])
+                              from locked_types
+                              where file_count = 0), '{}'::text[])
                       as missing_types,
                     coalesce((select array_agg(checklist_name order by checklist_name)
                               from locked_checklists
                               where status not in (
                                   'pending_approval', 'late_pending_approval',
                                   'approved', 'late_approved', 'not_applicable'
-                              )), '{}'::text[])
+                              ) and not uses_runtime_types), '{}'::text[])
                       as unresolved_checklists,
                     (select count(*) from locked_types) as total,
                     (select count(*) from locked_types where status = 'approved') as approved,
@@ -679,15 +715,21 @@ def submit_types_for_node(
                 update public.checklist_result_document_types t
                 set status = 'pending_review', rejection_reason = null,
                     reviewed_by = null, reviewed_at = null, updated_at = now()
-                where t.id in (select id from locked_types)
+                where t.id in (
+                    select id from locked_types
+                    where (:allow_missing and file_count > 0)
+                       or (not :allow_missing)
+                )
                   and t.status in ('draft', 'rejected')
-                  and not exists (select 1 from locked_types where file_count = 0)
+                  and (:allow_missing or not exists (
+                      select 1 from locked_types where file_count = 0
+                  ))
                   and not exists (
                       select 1 from locked_checklists
                       where status not in (
                           'pending_approval', 'late_pending_approval',
                           'approved', 'late_approved', 'not_applicable'
-                      )
+                      ) and not uses_runtime_types
                   )
                 returning t.id
             )
@@ -695,11 +737,15 @@ def submit_types_for_node(
                    v.already_pending + (select count(*) from updated) as pending_review
             from validation v
         """),
-        {"task_node_id": task_node_id, "actor_id": actor_id},
+        {
+            "task_node_id": task_node_id,
+            "actor_id": actor_id,
+            "allow_missing": allow_missing,
+        },
     ).mappings().first()
     summary = dict(summary or {})
     missing = list(summary.get("missing_types") or [])
-    if missing:
+    if missing and not allow_missing:
         raise HTTPException(
             status_code=422,
             detail="Các loại giấy sau chưa có tệp: " + ", ".join(missing) + ".",
@@ -825,7 +871,10 @@ def promote_completed_checklist_types(
                 select d.contract_id, f.document_id, :slot_id, :actor_id
                 from public.checklist_result_document_type_files f
                 join public.dossier_documents d on d.id = f.document_id
+                join public.checklist_result_document_types t
+                  on t.id = f.document_type_id
                 where f.document_type_id = :type_id and f.is_active
+                  and t.status = 'approved'
                 on conflict (document_id, slot_id) do nothing
             """),
             {
@@ -843,7 +892,10 @@ def promote_completed_checklist_types(
                        'approved', null, :actor_id, now()
                 from public.checklist_result_document_type_files f
                 join public.dossier_documents d on d.id = f.document_id
+                join public.checklist_result_document_types t
+                  on t.id = f.document_type_id
                 where f.document_type_id = :type_id and f.is_active
+                  and t.status = 'approved'
                 on conflict (checklist_result_id, document_id) do update
                 set review_status = 'approved', rejection_reason = null,
                     reviewed_by = excluded.reviewed_by,
@@ -886,8 +938,6 @@ def review_type(
     ).mappings().first()
     if not checklist:
         raise HTTPException(status_code=404, detail="Không tìm thấy mục checklist.")
-    if checklist["node_status"] != "submitted":
-        raise HTTPException(status_code=409, detail="Chỉ duyệt loại giấy khi bước đang chờ nghiệm thu.")
 
     document_type = db.execute(
         text("""
@@ -905,8 +955,36 @@ def review_type(
     ).mappings().first()
     if not document_type:
         raise HTTPException(status_code=404, detail="Không tìm thấy loại giấy trong checklist.")
-    if decision == DocumentTypeStatus.APPROVED.value and int(document_type["file_count"] or 0) == 0:
-        raise HTTPException(status_code=422, detail="Loại giấy chưa có tệp nên không thể duyệt đạt.")
+
+    # Idempotent: Nếu đã duyệt đạt (hoặc từ chối) trước đó rồi thì trả về kết quả thành công hiện tại,
+    # tránh báo lỗi 409 giả làm người dùng hiểu lầm khi click đúp hoặc sau khi bước đã hoàn tất tự động.
+    if document_type["status"] == decision:
+        return {
+            "id": type_id,
+            "checklist_result_id": checklist_result_id,
+            "task_node_id": checklist["task_node_id"],
+            "status": decision,
+            "rejection_reason": normalized_reason or None,
+            "node_status": checklist["node_status"],
+            "node_finalized": checklist["node_status"] in ("accepted", "completed"),
+            "progress": progress(db, checklist_result_id),
+            "promoted_template_ids": [],
+            "idempotent": True,
+        }
+
+    if checklist["node_status"] != "submitted":
+        raise HTTPException(status_code=409, detail="Chỉ duyệt loại giấy khi bước đang chờ nghiệm thu.")
+
+    if document_type["status"] != DocumentTypeStatus.PENDING_REVIEW.value:
+        raise HTTPException(
+            status_code=409,
+            detail="Loại giấy này không còn chờ duyệt.",
+        )
+    if int(document_type.get("file_count") or 0) == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="Loại giấy không có tệp mới đang chờ duyệt.",
+        )
 
     db.execute(
         text("""
@@ -923,12 +1001,51 @@ def review_type(
             "actor_id": actor_id,
         },
     )
+    current_progress = progress(db, checklist_result_id)
+    promoted = (
+        promote_completed_checklist_types(db, checklist_result_id, actor_id)
+        if decision == DocumentTypeStatus.APPROVED.value
+        and current_progress["is_complete"]
+        else []
+    )
+    node_progress = node_type_review_summary(db, checklist["task_node_id"])
+    result = {
+        "id": type_id,
+        "checklist_result_id": checklist_result_id,
+        "task_node_id": checklist["task_node_id"],
+        "status": decision,
+        "rejection_reason": normalized_reason or None,
+        "node_status": checklist["node_status"],
+        "node_finalized": False,
+        "progress": current_progress,
+        "promoted_template_ids": promoted,
+    }
 
-    if decision == DocumentTypeStatus.REJECTED.value:
-        # Runtime-type review joins the established batch path so the existing
-        # employee notification and rework machinery remain the single source
-        # of truth. The same transaction preserves the type and its files when
-        # the node is returned.
+    # Giám đốc phải chấm hết mọi loại trong lượt nộp. Trả Node ngay ở lần từ
+    # chối đầu tiên sẽ để các loại còn lại treo pending_review nhưng backend lại
+    # khóa duyệt vì Node đã rework_required.
+    if node_progress["pending_review"] > 0:
+        return result
+
+    if node_progress["rejected"] > 0:
+        rejected_rows = [dict(row) for row in db.execute(
+            text("""
+                select t.id, t.checklist_result_id, t.name, t.status,
+                       t.rejection_reason, cr.checklist_name
+                from public.checklist_result_document_types t
+                join public.task_node_checklist_results cr
+                  on cr.id = t.checklist_result_id
+                where cr.task_node_id = :task_node_id
+                  and t.is_active and t.status = 'rejected'
+                order by cr.created_at, t.created_at, t.id
+                for update of t
+            """),
+            {"task_node_id": checklist["task_node_id"]},
+        ).mappings().all()]
+        rejected_rows = [
+            row for row in rejected_rows
+            if row.get("status") == DocumentTypeStatus.REJECTED.value
+        ]
         db.execute(
             text("""
                 update public.task_nodes
@@ -944,41 +1061,124 @@ def review_type(
             task_node_id=checklist["task_node_id"],
             actor_id=actor_id,
             runtime_batch=[{
-                "review_status": decision,
-                "rejection_reason": normalized_reason,
-                "checklist_name": document_type["name"],
-                "checklist_result_id": checklist_result_id,
-                "document_name": document_type["name"],
-            }],
+                "review_status": DocumentTypeStatus.REJECTED.value,
+                "rejection_reason": row.get("rejection_reason") or normalized_reason,
+                "checklist_name": row.get("checklist_name") or row.get("name"),
+                "checklist_result_id": row.get("checklist_result_id") or checklist_result_id,
+                "document_name": row.get("name"),
+            } for row in rejected_rows],
         )
         if not batch_result or not batch_result["node_status_changed"]:
             raise HTTPException(
                 status_code=409,
                 detail="Không thể trả bước vì lượt nghiệm thu không còn chờ.",
             )
-        return {
-            "id": type_id,
-            "checklist_result_id": checklist_result_id,
-            "task_node_id": checklist["task_node_id"],
-            "status": decision,
-            "rejection_reason": normalized_reason,
-            "node_status": "rework_required",
-            "progress": progress(db, checklist_result_id),
-            "promoted_template_ids": [],
-        }
+        result["node_status"] = "rework_required"
+        return result
 
-    current_progress = progress(db, checklist_result_id)
-    promoted = (
-        promote_completed_checklist_types(db, checklist_result_id, actor_id)
-        if current_progress["is_complete"]
-        else []
+    # Duyệt loại giấy cuối cùng cũng chính là hoàn thành nghiệp vụ của Node.
+    # Không bắt Giám đốc bấm thêm một nút "Duyệt Node" cho luồng tuyến tính;
+    # hàm nghiệm thu chuẩn bên workflow_runtime vẫn là nơi duy nhất chốt Node,
+    # sinh khoán và mở bước kế tiếp.
+    if not node_progress["is_complete"]:
+        return result
+
+    # Loại giấy runtime là nguồn sự thật của checklist. Khi loại cuối cùng đã
+    # được Giám đốc duyệt, đưa các checklist tương ứng vào trạng thái chờ chốt
+    # gói để review_task_node_acceptance có thể hoàn tất Node trong cùng giao
+    # dịch. Nếu bỏ bước đồng bộ này, lớp bao checklist vẫn có thể nằm ở
+    # ``pending`` dù 100% loại giấy đã đạt, khiến Node treo ở ``submitted`` và
+    # giao diện hiện lại phiếu "Nghiệm thu Node" cũ.
+    db.execute(
+        text("""
+            update public.task_node_checklist_results cr
+            set status = case
+                    when cr.status in ('late_pending_approval', 'late_approved')
+                      then 'late_pending_approval'
+                    else 'pending_approval'
+                end,
+                updated_at = now()
+            where cr.task_node_id = :task_node_id
+              and cr.status <> 'not_applicable'
+              and exists (
+                  select 1
+                  from public.checklist_result_document_types t
+                  where t.checklist_result_id = cr.id and t.is_active
+              )
+              and not exists (
+                  select 1
+                  from public.checklist_result_document_types t
+                  where t.checklist_result_id = cr.id
+                    and t.is_active
+                    and (
+                        t.status <> 'approved'
+                        or not exists (
+                            select 1
+                            from public.checklist_result_document_type_files f
+                            where f.document_type_id = t.id and f.is_active
+                        )
+                    )
+              )
+        """),
+        {"task_node_id": checklist["task_node_id"]},
     )
-    return {
-        "id": type_id,
-        "checklist_result_id": checklist_result_id,
-        "status": decision,
-        "rejection_reason": None,
-        "node_status": checklist["node_status"],
-        "progress": current_progress,
-        "promoted_template_ids": promoted,
-    }
+
+    acceptance_id = db.execute(
+        text("""
+            select id
+            from public.task_node_acceptances
+            where task_node_id = :task_node_id and status = 'pending'
+            order by submitted_at desc, id desc
+            limit 1
+            for update
+        """),
+        {"task_node_id": checklist["task_node_id"]},
+    ).scalar()
+    if not acceptance_id:
+        return result
+
+    transitions = db.execute(
+        text("""
+            select coalesce(
+                r_defined.graph->'nodes'->n.node_key->'transitions',
+                '{}'::jsonb
+            )
+            from public.task_nodes n
+            left join public.workflow_instance_revisions r_defined
+              on r_defined.id = n.defined_by_revision_id
+            where n.id = :task_node_id
+        """),
+        {"task_node_id": checklist["task_node_id"]},
+    ).scalar() or {}
+    transitions = transitions if isinstance(transitions, dict) else {}
+
+    if not transitions:
+        outcome = None
+    elif "COMPLETED" in transitions:
+        outcome = "COMPLETED"
+    elif len(transitions) == 1:
+        outcome = next(iter(transitions))
+    else:
+        # Node nhiều nhánh cần quyết định nghiệp vụ của Giám đốc. Lúc này
+        # Dropup sẽ hiện mục nghiệm thu Node để chọn outcome, không tự đoán.
+        result["requires_node_outcome"] = True
+        return result
+
+    from src.contracts.workflow_runtime import review_task_node_acceptance
+
+    accepted = review_task_node_acceptance(
+        db,
+        acceptance_id=acceptance_id,
+        decision="accepted",
+        outcome=outcome,
+        review_note="Tự hoàn tất khi mọi loại giấy trong Node đã đạt",
+        actor_id=actor_id,
+    )
+    result.update({
+        "node_finalized": True,
+        "node_status": accepted.get("status", "accepted"),
+        "entitlement_count": accepted.get("entitlement_count", 0),
+        "entitlement_amount": accepted.get("entitlement_amount", 0),
+        "unlocked_node_id": accepted.get("unlocked_node_id"),
+    })
+    return result

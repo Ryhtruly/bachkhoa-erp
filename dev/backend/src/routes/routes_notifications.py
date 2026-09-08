@@ -74,6 +74,21 @@ _MANAGER_CHECKLIST_REVIEW_QUERY = text(
     """
 )
 
+_MANAGER_DEBT_REVIEW_QUERY = text(
+    """
+    select r.id as request_id, r.task_node_id, n.node_key,
+           r.contract_id, sl.id as service_line_id,
+           r.remaining_amount_snapshot, r.created_at
+    from public.handover_debt_requests r
+    join public.task_nodes n on n.id = r.task_node_id
+    join public.workflow_instances wi on wi.id = n.workflow_instance_id
+    join public.service_lines sl on sl.id = wi.service_line_id
+    where r.status = 'pending'
+    order by r.created_at asc
+    limit 50
+    """
+)
+
 # Phiếu thu/chi kế toán đã lập, đang nằm chờ giám đốc duyệt. Không có dòng này
 # thì kế toán bấm gửi xong là tiền rơi vào im lặng: giám đốc không biết có gì để
 # duyệt, kế toán không biết phiếu của mình đã đi tới đâu.
@@ -165,6 +180,36 @@ _EMPLOYEE_LEGAL_DOSSIER_QUERY = text(
 
 def _iso(value):
     return value.isoformat() if value else None
+
+
+def _manager_review_notifications(*, checklist_rows, debt_rows) -> list[dict]:
+    """Map hàng đợi duyệt sang đích điều hướng bất biến trên chuông."""
+    items = [{
+        "type": "checklist_review",
+        "target_type": "checklist_review",
+        "target_id": row["ref_id"],
+        "label": f"Checklist '{row['checklist_name']}' ({row['node_key'].upper()}) chờ duyệt minh chứng",
+        "contract_id": row["contract_id"],
+        "service_line_id": row["service_line_id"],
+        "node_key": row["node_key"],
+        "task_node_id": row["task_node_id"],
+        "created_at": _iso(row["created_at"]),
+    } for row in checklist_rows]
+    items.extend({
+        "type": "debt_review",
+        "target_type": "debt_review",
+        "target_id": row["request_id"],
+        "label": (
+            f"Hợp đồng {row['contract_id']} còn nợ "
+            f"{float(row['remaining_amount_snapshot'] or 0):,.0f}₫ — chờ duyệt cho nợ"
+        ),
+        "contract_id": row["contract_id"],
+        "service_line_id": row["service_line_id"],
+        "node_key": row["node_key"],
+        "task_node_id": row["task_node_id"],
+        "created_at": _iso(row["created_at"]),
+    } for row in debt_rows)
+    return items
 
 
 
@@ -313,6 +358,8 @@ def get_notifications_summary(
             so_mien = int(row["so_phieu_mien"] or 0)
             items.append({
                 "type": "node_review",
+                "target_type": "node_review",
+                "target_id": row["ref_id"],
                 "label": (
                     f"Node {row['node_key'].upper()} — {row['node_name']} chờ duyệt nghiệm thu"
                     + (f" · nhân viên xin bỏ {so_mien} loại giấy" if so_mien else "")
@@ -324,16 +371,10 @@ def get_notifications_summary(
                 "task_node_id": row["task_node_id"],
                 "created_at": _iso(row["created_at"]),
             })
-        for row in db.execute(_MANAGER_CHECKLIST_REVIEW_QUERY).mappings().all():
-            items.append({
-                "type": "checklist_review",
-                "label": f"Checklist '{row['checklist_name']}' ({row['node_key'].upper()}) chờ duyệt minh chứng",
-                "contract_id": row["contract_id"],
-                "service_line_id": row["service_line_id"],
-                "node_key": row["node_key"],
-                "task_node_id": row["task_node_id"],
-                "created_at": _iso(row["created_at"]),
-            })
+        items.extend(_manager_review_notifications(
+            checklist_rows=db.execute(_MANAGER_CHECKLIST_REVIEW_QUERY).mappings().all(),
+            debt_rows=db.execute(_MANAGER_DEBT_REVIEW_QUERY).mappings().all(),
+        ))
 
     # Người duyệt tiền là giám đốc. Kế toán lập phiếu xong thì phiếu phải hiện
     # ở chuông của người duyệt, không để nằm chờ vô hạn trong sổ quỹ.

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import unittest
 from io import BytesIO
 from types import SimpleNamespace
@@ -81,6 +82,10 @@ class ChecklistDocumentTypeRouteTests(unittest.TestCase):
                 asyncio.run(endpoint("NODE-1", "CR-1", "DT-1", [], self.db, self.user))
         self.assertEqual(caught.exception.status_code, 422)
 
+    def test_upload_accepts_change_reason_for_an_already_approved_type(self):
+        endpoint = required_route(self, "upload_checklist_document_type_files")
+        self.assertIn("change_reason", inspect.signature(endpoint).parameters)
+
     def test_upload_reads_multiple_files_and_passes_one_batch(self):
         endpoint = required_route(self, "upload_checklist_document_type_files")
         files = [
@@ -116,16 +121,22 @@ class ChecklistDocumentTypeRouteTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 404)
         add_files.assert_not_called()
 
-    def test_delete_authorizes_forwards_ids_and_commits(self):
+    def test_delete_authorizes_forwards_change_reason_and_commits(self):
         endpoint = required_route(self, "delete_checklist_document_type_file")
+        payload_type = getattr(routes, "ChecklistDocumentChangeIn", None)
+        self.assertIsNotNone(payload_type, "missing ChecklistDocumentChangeIn")
         active, authorize, domain = self._route_patches(
             "remove_file", {"document_type_id": "DT-1", "document_id": "D-1"},
         )
         with active, authorize as auth, domain as remove_file:
-            result = endpoint("NODE-1", "CR-1", "DT-1", "D-1", self.db, self.user)
+            result = endpoint(
+                "NODE-1", "CR-1", "DT-1", "D-1",
+                payload_type(change_reason="Thay bản ký mới"), self.db, self.user,
+            )
         auth.assert_called_once()
         remove_file.assert_called_once_with(
             self.db, document_type_id="DT-1", document_id="D-1", actor_id="USER-1",
+            change_reason="Thay bản ký mới",
         )
         self.db.commit.assert_called_once()
         self.assertEqual(result["data"]["document_id"], "D-1")

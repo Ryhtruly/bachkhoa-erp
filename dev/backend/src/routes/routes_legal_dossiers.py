@@ -128,6 +128,20 @@ def get_by_task_node(
         text(f"{_BASE_SQL} where d.task_node_id = :i"), {"i": task_node_id}
     ).mappings().first()
     if not row:
+        row = db.execute(
+            text(f"""
+                {_BASE_SQL}
+                where d.service_line_id = (
+                    select wi.service_line_id
+                    from public.task_nodes tn
+                    join public.workflow_instances wi on wi.id = tn.workflow_instance_id
+                    where tn.id = :i
+                )
+                order by d.updated_at desc limit 1
+            """),
+            {"i": task_node_id},
+        ).mappings().first()
+    if not row:
         return {"status": "success", "data": None}
     return {"status": "success", "data": _serialize(row)}
 

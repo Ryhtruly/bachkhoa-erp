@@ -1256,8 +1256,67 @@ class NhanBuocTheoMasterDataTests(unittest.TestCase):
         self.assertEqual(register.planned_node_by_template(self._db([]), "SL-1"), {})
 
 
+class GanGiayThoVaoChecklistTests(unittest.TestCase):
+    """Một thao tác phải đồng thời phân loại vào ô giấy và nối vào checklist."""
+
+    def test_gan_nguyen_tu_dung_template_cua_checklist(self):
+        db = MagicMock()
+        db.execute.side_effect = [
+            _row({
+                "output_documents": [{"template_id": "T-CCCD"}],
+                "service_line_id": "SL-1", "contract_id": "HD-1",
+                "task_node_id": "TN-1", "evidence_data": {},
+            }),
+            MagicMock(**{"mappings.return_value.all.return_value": [
+                {"id": "S-CCCD", "scope": "SERVICE_LINE", "name": "CCCD"},
+            ]}),
+            _row({
+                "id": "D-RAW", "file_name": "cccd.jpg", "doc_status": "DANG_DUNG",
+                "scope": "CONTRACT", "slot_id": None, "has_active_links": False,
+            }),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(**{"scalar.return_value": None}),
+            MagicMock(),
+        ]
+
+        with patch("src.dossiers.register.link_source_document") as link_source:
+            result = documents.classify_source_document_for_checklist(
+                db,
+                checklist_result_id="CR-1",
+                document_id="D-RAW",
+                template_id="T-CCCD",
+                actor_id="USER-1",
+            )
+
+        self.assertEqual(result["slot_id"], "S-CCCD")
+        link_source.assert_called_once_with(
+            db, "S-CCCD", "D-RAW", actor_id="USER-1",
+        )
+        sql = " ".join(str(call.args[0]).lower() for call in db.execute.call_args_list)
+        self.assertIn("update public.dossier_documents", sql)
+        self.assertIn("insert into public.checklist_result_document_links", sql)
+
+    def test_khong_nhan_template_ngoai_checklist(self):
+        db = MagicMock()
+        db.execute.side_effect = [_row({
+            "output_documents": [{"template_id": "T-CCCD"}],
+            "service_line_id": "SL-1", "contract_id": "HD-1", "task_node_id": "TN-1",
+        })]
+
+        with self.assertRaises(HTTPException) as caught:
+            documents.classify_source_document_for_checklist(
+                db,
+                checklist_result_id="CR-1",
+                document_id="D-RAW",
+                template_id="T-KHAC",
+                actor_id="USER-1",
+            )
+        self.assertEqual(caught.exception.status_code, 409)
+
+
 class TuHoSoTheoChecklistTests(unittest.TestCase):
-    def test_an_checklist_99_phan_tram_va_tra_du_moi_tep_cua_checklist_100_phan_tram(self):
+    def test_luon_hien_loai_giay_nhung_chi_tra_file_da_duyet(self):
         from src.dossiers import register
 
         db = MagicMock()
@@ -1272,6 +1331,15 @@ class TuHoSoTheoChecklistTests(unittest.TestCase):
                 "rejection_reason": None,
                 "files": [{"id": "D-99", "document_id": "D-99", "file_name": "gan-xong.pdf", "content_type": "application/pdf"}],
                 "file_count": 1,
+            },
+            {
+                "node_code": "K02", "node_name": "Khảo sát", "task_node_id": "TN-2",
+                "checklist_result_id": "CR-99", "checklist_name": "Checklist gần đạt",
+                "checklist_complete": False, "document_type_id": "DT-REJECTED",
+                "template_id": "T-REJECTED", "promoted_template_id": None,
+                "name": "Ảnh bị mờ", "source": "CONG_TY", "origin": "CONFIGURED",
+                "needs_original": False, "slot_id": None, "review_status": "rejected",
+                "rejection_reason": "Không đọc được số thửa", "files": [], "file_count": 0,
             },
             {
                 "node_code": "K02", "node_name": "Khảo sát", "task_node_id": "TN-2",
@@ -1306,23 +1374,25 @@ class TuHoSoTheoChecklistTests(unittest.TestCase):
         groups = register.checklist_cabinet_by_node(db, "SL-1")
 
         self.assertEqual(len(groups), 1)
-        self.assertEqual(groups[0]["total"], 2)
-        self.assertEqual(groups[0]["done"], 2)
+        self.assertEqual(groups[0]["total"], 4)
+        self.assertEqual(groups[0]["done"], 3)
         self.assertEqual(
             [item["name"] for item in groups[0]["documents"]],
-            ["Ảnh hiện trạng", "Biên bản ranh giới"],
+            ["Giấy còn thiếu", "Ảnh bị mờ", "Ảnh hiện trạng", "Biên bản ranh giới"],
         )
-        self.assertEqual(groups[0]["documents"][0]["template_id"], "T-ANH-MOI")
-        self.assertEqual(groups[0]["documents"][0]["file_count"], 3)
+        self.assertEqual(groups[0]["documents"][1]["file_count"], 0)
+        self.assertEqual(groups[0]["documents"][1]["files"], [])
+        self.assertEqual(groups[0]["documents"][2]["template_id"], "T-ANH-MOI")
+        self.assertEqual(groups[0]["documents"][2]["file_count"], 3)
         self.assertEqual(
-            [file["id"] for file in groups[0]["documents"][0]["files"]],
+            [file["id"] for file in groups[0]["documents"][2]["files"]],
             ["D-1", "D-2", "D-3"],
         )
         emitted_query = " ".join(str(db.execute.call_args.args[0]).lower().split())
         self.assertIn("checklist_result_document_types", emitted_query)
         self.assertIn("checklist_result_document_type_files", emitted_query)
-        self.assertIn("bool_and", emitted_query)
-        self.assertIn("file_count > 0", emitted_query)
+        self.assertIn("t.status = 'approved'", emitted_query)
+        self.assertNotIn("completion.checklist_complete", emitted_query)
         self.assertNotIn("limit 1", emitted_query)
 
     def test_get_register_exposes_the_completed_checklists_through_the_shared_field(self):
