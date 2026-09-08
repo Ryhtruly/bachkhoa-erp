@@ -75,3 +75,45 @@ def list_service_packages(
 ):
     """Cây Gói → Hạng mục cho ô chọn 2 tầng khi soạn hợp đồng."""
     return {"data": catalog_tree(db)}
+
+
+@router.get("/work-items")
+def list_work_items(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_authenticated_user),
+):
+    """Danh mục công việc khoán (work_items) kèm định mức lương khoán đã ban hành."""
+    rows = db.execute(
+        text("""
+            select wi.id, wi.code, wi.name, wi.default_unit,
+                   wr.id as rate_id, wr.role_code, wr.amount
+            from public.work_items wi
+            left join public.work_item_rates wr on wr.work_item_id = wi.id
+                 and wr.status = 'published'
+                 and (wr.effective_to is null or wr.effective_to >= current_date)
+            where coalesce(wi.is_active, true)
+            order by wi.name, wi.code, wr.role_code
+        """)
+    ).mappings().all()
+
+    items_by_id: dict[str, dict] = {}
+    item_order: list[str] = []
+    for r in rows:
+        wid = str(r["id"])
+        if wid not in items_by_id:
+            items_by_id[wid] = {
+                "id": wid,
+                "code": r["code"],
+                "name": r["name"],
+                "default_unit": r["default_unit"],
+                "rates": [],
+            }
+            item_order.append(wid)
+        if r["rate_id"] and r["role_code"]:
+            items_by_id[wid]["rates"].append({
+                "id": str(r["rate_id"]),
+                "role_code": r["role_code"],
+                "amount": float(r["amount"] or 0),
+            })
+    return {"data": [items_by_id[wid] for wid in item_order]}
+

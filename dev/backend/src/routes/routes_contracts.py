@@ -2614,4 +2614,4 @@ def apply_priority_bonus(
 
     db.commit()
     invalidate_cache("bachkhoa:payroll:*")
-    return {"status": "success", "data": {"created": created, "priority": prio, "multiplier": he_so}}
+    return {"status": "success", "data": {"created": created, "priority": prio, "multiplier": multiplier}}

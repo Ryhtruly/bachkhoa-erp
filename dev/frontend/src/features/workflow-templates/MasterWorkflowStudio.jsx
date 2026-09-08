@@ -572,22 +572,40 @@ export default function MasterWorkflowStudio() {
   const [nodePickerOpen, setNodePickerOpen] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [workItems, setWorkItems] = useState([])
 
   // Load catalogs on mount
   useEffect(() => {
     async function init() {
       try {
-        const [pkgRes, nodeRes, docRes] = await Promise.all([
-          apiFetch('/api/catalog/service-packages'),
-          apiFetch('/api/document-register/workflow-nodes'),
-          apiFetch('/api/document-register/templates'),
+        const [pkgRes, nodeRes, docRes, workItemRes] = await Promise.all([
+          apiFetch('/api/catalog/service-packages').catch((err) => {
+            console.error('Lỗi tải service-packages:', err)
+            return { data: [] }
+          }),
+          apiFetch('/api/document-register/workflow-nodes').catch((err) => {
+            console.error('Lỗi tải workflow-nodes:', err)
+            return { data: [] }
+          }),
+          apiFetch('/api/document-register/templates').catch((err) => {
+            console.error('Lỗi tải templates:', err)
+            return { data: { groups: [] } }
+          }),
+          apiFetch('/api/catalog/work-items').catch((err) => {
+            console.error('Lỗi tải work-items:', err)
+            return { data: [] }
+          }),
         ])
         const pkgs = pkgRes?.data || []
+        if (pkgs.length === 0) {
+          addToast?.('Không thể tải danh mục gói & hạng mục', 'error')
+        }
         setPackageTree(pkgs)
         setCatalogNodes(nodeRes?.data || [])
         const rawDocs = docRes?.data?.groups || []
         const flatDocs = (rawDocs || []).flatMap((g) => g.items || g.templates || [])
         setDocTemplates(flatDocs)
+        setWorkItems(workItemRes?.data || [])
 
         if (pkgs.length > 0) {
           setSelectedPackageId(pkgs[0].id)
@@ -601,6 +619,11 @@ export default function MasterWorkflowStudio() {
     }
     init()
   }, [addToast])
+
+  const workItemOptions = useMemo(
+    () => (workItems || []).map((wi) => ({ value: wi.id, label: wi.name })),
+    [workItems]
+  )
 
   const currentPackage = useMemo(
     () => packageTree.find((p) => p.id === selectedPackageId),
@@ -1561,11 +1584,45 @@ export default function MasterWorkflowStudio() {
                         <span className="wcl-prop__label"><Banknote size={13} /> Công việc</span>
                         <div className="wcl-prop__field">
                           {item.compensation?.is_payable ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span className="wcl-chip" style={{ fontSize: 13, fontWeight: 600 }}>
-                                <Banknote size={13} />
-                                {item.compensation?.work_item_name || 'Gói khoán theo hạng mục'}
-                              </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                              <CustomSelect
+                                aria-label="Chọn công việc khoán"
+                                className="wcl-work-item-select"
+                                value={
+                                  item.compensation?.work_item_id ||
+                                  workItems.find((w) => w.name === item.compensation?.work_item_name)?.id ||
+                                  ''
+                                }
+                                placeholder="— Chọn công việc —"
+                                options={
+                                  item.compensation?.work_item_name &&
+                                  !workItems.some(
+                                    (w) =>
+                                      w.id === item.compensation?.work_item_id ||
+                                      w.name === item.compensation?.work_item_name
+                                  )
+                                    ? [
+                                        {
+                                          value: item.compensation.work_item_id || 'custom',
+                                          label: item.compensation.work_item_name,
+                                        },
+                                        ...workItemOptions,
+                                      ]
+                                    : workItemOptions
+                                }
+                                onChange={(val) => {
+                                  const selectedWi = workItems.find((w) => w.id === val)
+                                  if (selectedWi) {
+                                    updateChecklistItem(item.key, {
+                                      compensation: {
+                                        is_payable: true,
+                                        work_item_id: selectedWi.id,
+                                        work_item_name: selectedWi.name,
+                                      },
+                                    })
+                                  }
+                                }}
+                              />
                               <button
                                 type="button"
                                 className="wcl-prop__clear"
@@ -1580,17 +1637,50 @@ export default function MasterWorkflowStudio() {
                             <button
                               type="button"
                               className="wcl-add-inline"
-                              onClick={() =>
+                              onClick={() => {
+                                const defaultWi = workItems[0]
                                 updateChecklistItem(item.key, {
-                                  compensation: { is_payable: true, work_item_name: 'Gói khoán theo hạng mục' },
+                                  compensation: {
+                                    is_payable: true,
+                                    work_item_id: defaultWi?.id || '',
+                                    work_item_name: defaultWi?.name || 'Gói khoán theo hạng mục',
+                                  },
                                 })
-                              }
+                              }}
                             >
                               <Plus size={13} /> Gắn gói khoán
                             </button>
                           )}
                         </div>
                       </div>
+
+                      {/* Hàng 3b: Lương khoán (định mức động từ CSDL theo công việc đã chọn) */}
+                      {item.compensation?.is_payable && (() => {
+                        const currentWiId =
+                          item.compensation?.work_item_id ||
+                          workItems.find((w) => w.name === item.compensation?.work_item_name)?.id
+                        const currentWi = workItems.find((w) => w.id === currentWiId)
+                        const rates = currentWi?.rates || []
+                        const shortRoleLabel = (code) =>
+                          ({ MAIN: 'Chính', ASSISTANT: 'Phụ', SUBMITTER: 'Nộp' }[code] || code)
+                        return (
+                          <div className="wcl-prop wcl-prop--rate">
+                            <span className="wcl-prop__label"><Banknote size={13} /> Lương khoán</span>
+                            <div className="wcl-prop__field wcl-rate-summary">
+                              {rates.length > 0 ? (
+                                rates.map((r) => (
+                                  <span key={r.id || r.role_code} className={`wcl-rr${Number(r.amount) > 0 ? '' : ' is-zero'}`}>
+                                    {shortRoleLabel(r.role_code)}:{' '}
+                                    <strong>{Number(r.amount || 0).toLocaleString('vi-VN')}đ</strong>
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="wcl-rate-empty">Chưa thiết lập định mức</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* Hàng 4: Người duyệt (CustomSelect chuẩn project) */}
                       <div className="wcl-prop">

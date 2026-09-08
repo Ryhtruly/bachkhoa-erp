@@ -1,22 +1,13 @@
 import { useEffect, useState } from 'react'
+import { AlertTriangle, FileText, Info, RotateCcw, Send } from 'lucide-react'
 
 import Modal from '../../components/ui/Modal'
 import { apiFetch } from '../../lib/api'
 
 /**
  * Chọn bước để kéo quy trình quay lại — chỉ mở khi tạm dừng vì SURVEYOR.
- *
- * ── Vùng ảnh hưởng do MÁY CHỦ tính ──────────────────────────────────────────
- * Kéo K02 về sửa thì K03, K04… cũng phải làm lại. Nhưng tự tô màu theo thứ tự
- * trên sơ đồ là sai với quy trình có nhánh — người bấm gửi tưởng mình mở lại ba
- * bước, thực tế mở lại năm. Nên mỗi lần chọn một bước là hỏi lại máy chủ.
- *
- * ── Vì sao vẫn phải Giám đốc duyệt ──────────────────────────────────────────
- * Mở lại những bước đã nghiệm thu xong là việc nặng: tiền khoán đã chốt, giấy đã
- * duyệt phải hạ về chờ duyệt lại. Không để một người tự quyết — gửi ở đây là gửi
- * một YÊU CẦU, không phải thực hiện.
+ * Thiết kế chuẩn Card sections theo Design System (Hình 1).
  */
-
 export default function RollbackPickerModal({
   open,
   nodes = [],
@@ -66,66 +57,92 @@ export default function RollbackPickerModal({
             disabled={!ready || busy}
             onClick={() => onSubmit?.({ target_task_node_id: picked, reason: note.trim() })}
           >
-            Gửi yêu cầu
+            <Send size={15} />
+            <span>Gửi yêu cầu</span>
           </button>
         </div>
       }
     >
-      <div className="eiw-picker">
-        <div className="eiw-picker__detail">
-          {nodeDaChon ? (
-            <>
-              <h4>{nodeDaChon.node_code} · {nodeDaChon.name}</h4>
-              <dl>
-                <div><dt>Người phụ trách</dt><dd>{nodeDaChon.assignee_name || 'Chưa phân công'}</dd></div>
-                <div><dt>Trạng thái</dt><dd>{nodeDaChon.status}</dd></div>
-              </dl>
-              {preview && (
-                <p className="eiw-picker__impact">
-                  Gửi đi sẽ kéo <b>{anhHuong.size}</b> bước về trạng thái cần sửa.
+      <div className="eiw-modal-sections">
+        {/* Khối 1: Lựa chọn bước & Đánh giá phạm vi ảnh hưởng */}
+        <section className="eiw-modal__section">
+          <div className="eiw-modal__section-head">
+            <RotateCcw size={16} />
+            <span>Chọn bước quy trình cần quay về</span>
+          </div>
+
+          <div className="eiw-picker">
+            <div className="eiw-picker__detail">
+              {nodeDaChon ? (
+                <>
+                  <h4>{nodeDaChon.node_code} · {nodeDaChon.name}</h4>
+                  <dl>
+                    <div><dt>Người phụ trách</dt><dd>{nodeDaChon.assignee_name || 'Chưa phân công'}</dd></div>
+                    <div><dt>Trạng thái</dt><dd>{nodeDaChon.status}</dd></div>
+                  </dl>
+                  {preview && (
+                    <p className="eiw-picker__impact">
+                      <AlertTriangle size={15} />
+                      <span>Gửi đi sẽ kéo <b>{anhHuong.size}</b> bước về trạng thái cần sửa.</span>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="eiw-picker__hint">
+                  <Info size={16} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} />
+                  Chọn một bước ở cột bên phải để xem chi tiết.
                 </p>
               )}
-            </>
-          ) : (
-            <p className="eiw-picker__hint">Chọn một bước ở cột bên phải để xem chi tiết.</p>
-          )}
-        </div>
+            </div>
 
-        <ul className="eiw-picker__nodes">
-          {chonDuoc.length === 0 && (
-            <li className="eiw-picker__hint">Chưa có bước nào đã chạy để quay lại.</li>
-          )}
-          {chonDuoc.map(node => {
-            const tone = node.id === picked ? 'picked'
-              : anhHuong.has(node.id) ? 'reset'
-                : preview ? 'safe' : 'idle'
-            return (
-              <li key={node.id}>
-                <button
-                  type="button"
-                  className={`eiw-picker__node is-${tone}`}
-                  aria-pressed={node.id === picked}
-                  onClick={() => setPicked(node.id)}
-                >
-                  <b>{node.node_code}</b>
-                  <span>{node.name}</span>
-                  {anhHuong.has(node.id) && node.id !== picked && <em>sẽ phải làm lại</em>}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+            <ul className="eiw-picker__nodes">
+              {chonDuoc.length === 0 && (
+                <li className="eiw-picker__hint">Chưa có bước nào đã chạy để quay lại.</li>
+              )}
+              {chonDuoc.map(node => {
+                const tone = node.id === picked ? 'picked'
+                  : anhHuong.has(node.id) ? 'reset'
+                    : preview ? 'safe' : 'idle'
+                return (
+                  <li key={node.id}>
+                    <button
+                      type="button"
+                      className={`eiw-picker__node is-${tone}`}
+                      aria-pressed={node.id === picked}
+                      onClick={() => setPicked(node.id)}
+                    >
+                      <b>{node.node_code}</b>
+                      <span>{node.name}</span>
+                      {anhHuong.has(node.id) && node.id !== picked && <em>sẽ phải làm lại</em>}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </section>
+
+        {/* Khối 2: Ghi chú cho Giám đốc */}
+        <section className="eiw-modal__section">
+          <div className="eiw-modal__section-head">
+            <FileText size={16} />
+            <span>Ghi chú gửi Giám đốc</span>
+          </div>
+
+          <label className="eiw-modal__field">
+            <span className="eiw-modal__field-label">
+              Ghi chú cho Giám đốc <em className="eiw-modal__req">*</em>
+            </span>
+            <textarea
+              rows={3}
+              className="eiw-modal__textarea"
+              value={note}
+              placeholder="Ví dụ: Bản vẽ sai ranh mốc số 4, giáp ranh đường."
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+        </section>
       </div>
-
-      <label className="eiw-modal__field">
-        <span>Ghi chú cho Giám đốc</span>
-        <textarea
-          rows={3}
-          value={note}
-          placeholder="Ví dụ: Bản vẽ sai ranh mốc số 4, giáp ranh đường."
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
     </Modal>
   )
 }

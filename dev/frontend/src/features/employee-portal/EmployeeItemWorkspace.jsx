@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, FolderOpen, Lock, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, FolderOpen, LifeBuoy, Lock, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch, getAccessToken, prefetchApi } from '../../lib/api'
@@ -14,6 +14,7 @@ import PriorDocumentsDrawer from './PriorDocumentsDrawer'
 import RollbackPickerModal from './RollbackPickerModal'
 import { countdown, effectiveDeadline, formatMoney } from './nodeWorkFormat'
 import DebtRequestAction from '../handover/DebtRequestAction'
+import './employeeWorkspace.css'
 
 
 /**
@@ -634,10 +635,10 @@ export default function EmployeeItemWorkspace({
                   activeNode?.my_help_request_id ? (
                     <button
                       type="button"
-                      className="eiw-btn eiw-btn--help"
+                      className="eiw-btn eiw-btn--help is-active"
                       onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
                     >
-                      Rút lời nhờ
+                      <LifeBuoy size={14} /> Rút lời nhờ
                     </button>
                   ) : (
                     <button
@@ -645,7 +646,7 @@ export default function EmployeeItemWorkspace({
                       className="eiw-btn eiw-btn--help"
                       onClick={() => onRequestHelp?.(task)}
                     >
-                      Nhờ hỗ trợ
+                      <LifeBuoy size={14} /> Nhờ hỗ trợ
                     </button>
                   )
                 )}

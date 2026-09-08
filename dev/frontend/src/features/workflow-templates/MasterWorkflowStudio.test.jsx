@@ -141,6 +141,26 @@ const mockWorkflowTemplates = [
   },
 ]
 
+const mockWorkItems = [
+  {
+    id: 'wi_survey_stakeout',
+    name: 'Cắm mốc',
+    code: 'SURVEY_STAKEOUT',
+    rates: [
+      { id: 'wr_01', role_code: 'MAIN', amount: 1200000 },
+      { id: 'wr_02', role_code: 'ASSISTANT', amount: 300000 },
+    ],
+  },
+  {
+    id: 'wi_survey_gps',
+    name: 'Đo GPS',
+    code: 'SURVEY_GPS',
+    rates: [
+      { id: 'wr_03', role_code: 'MAIN', amount: 800000 },
+    ],
+  },
+]
+
 describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', () => {
   beforeEach(() => {
     apiFetch.mockImplementation((path) => {
@@ -152,6 +172,9 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
       }
       if (path === '/api/document-register/templates') {
         return Promise.resolve(mockDocTemplates)
+      }
+      if (path === '/api/catalog/work-items') {
+        return Promise.resolve({ data: mockWorkItems })
       }
       if (path.startsWith('/api/contracts/workflow/templates')) {
         return Promise.resolve({ data: mockWorkflowTemplates })
@@ -447,5 +470,47 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     // Thử đổi người duyệt sang Kế toán bằng CustomSelect
     fireEvent.change(approverSelect, { target: { value: 'accountant' } })
     expect(approverSelect).toHaveValue('accountant')
+  })
+
+  it('cho phép gắn gói khoán và chọn công việc khoán từ danh mục CustomSelect', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    const nodeK01 = screen.getByTestId('flow-node-k01')
+    fireEvent.click(nodeK01)
+
+    // Bấm nút Gắn gói khoán
+    const addCompBtn = await screen.findByRole('button', { name: /Gắn gói khoán/i })
+    fireEvent.click(addCompBtn)
+
+    // Lúc này xuất hiện CustomSelect chọn công việc khoán
+    const workItemSelect = await screen.findByRole('combobox', { name: /chọn công việc khoán/i })
+    expect(workItemSelect).toBeInTheDocument()
+
+    // Hàng Lương khoán hiển thị theo dữ liệu định mức của Cắm mốc (Chính: 1.200.000đ, Phụ: 300.000đ)
+    expect(screen.getByText('Lương khoán')).toBeInTheDocument()
+    expect(screen.getByText(/1\.200\.000đ/)).toBeInTheDocument()
+    expect(screen.getByText(/300\.000đ/)).toBeInTheDocument()
+
+    // Đổi công việc sang Đo GPS
+    fireEvent.change(workItemSelect, { target: { value: 'wi_survey_gps' } })
+    expect(workItemSelect).toHaveValue('wi_survey_gps')
+
+    // Lương khoán cập nhật sang mức của Đo GPS (Chính: 800.000đ)
+    expect(screen.getByText(/800\.000đ/)).toBeInTheDocument()
+
+    // Bấm nút Bỏ gói khoán
+    const clearBtn = screen.getByRole('button', { name: /bỏ gói khoán/i })
+    fireEvent.click(clearBtn)
+
+    // Quay lại nút Gắn gói khoán ban đầu
+    // Quay lại nút Gắn gói khoán ban đầu và hàng Lương khoán ẩn đi
+    expect(await screen.findByRole('button', { name: /Gắn gói khoán/i })).toBeInTheDocument()
+    expect(screen.queryByText('Lương khoán')).not.toBeInTheDocument()
   })
 })
