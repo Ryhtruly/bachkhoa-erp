@@ -26,6 +26,7 @@ const EmployeePortalDashboard = lazy(() => import('./features/employee-portal/Em
 const MyPayroll = lazy(() => import('./features/employee-portal/MyPayroll'));
 const ApprovalQueue = lazy(() => import('./features/approvals/ApprovalQueue'));
 const DocumentTemplateSettings = lazy(() => import('./features/document-register/DocumentTemplateSettings'));
+const CustomerIntakePage = lazy(() => import('./pages/CustomerIntakePage'));
 
 const SIDEBAR_COLLAPSED_KEY = 'bachkhoa_sidebar_collapsed';
 const NAVIGATION_TARGET_PERMISSIONS = {
@@ -239,7 +240,7 @@ function App() {
 
   useEffect(() => {
     const navigateFromFeature = (event) => {
-      if (event.detail?.tab === 'cashflow') setActiveTab('cashflow');
+      if (event.detail?.tab) setActiveTab(event.detail.tab);
     };
     window.addEventListener('app:navigate', navigateFromFeature);
     return () => window.removeEventListener('app:navigate', navigateFromFeature);
@@ -253,6 +254,14 @@ function App() {
           handleLogin(token);
         }}
       />
+    );
+  }
+
+  if (window.location.pathname === '/intake' || window.location.pathname === '/yeu-cau-dich-vu') {
+    return (
+      <Suspense fallback={<TabSkeleton />}>
+        <CustomerIntakePage />
+      </Suspense>
     );
   }
 
