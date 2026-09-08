@@ -246,3 +246,22 @@
 [data-theme='dark'] .mws-canvas-area {
   background: #0f172a;
 }
+
+/* Input tên bước trong wf-node-grid */
+.mws-inspector .wf-node-grid__value input.mws-node-title-input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+  outline: none;
+  box-shadow: none;
+}
+
+.mws-inspector .wf-node-grid__value input.mws-node-title-input:focus {
+  outline: none;
+  box-shadow: none;
+}

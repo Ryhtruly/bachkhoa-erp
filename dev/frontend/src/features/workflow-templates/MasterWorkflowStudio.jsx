@@ -189,8 +189,8 @@ function StudioWorkflowNode({ id, data, selected }) {
         <span className="workflow-node__code">{data.code || 'K--'}</span>
         <span
           className="workflow-node__status-dot"
-          style={{ background: '#22a06b' }}
-          title="Sẵn sàng"
+          style={{ background: data.isStart ? '#22a06b' : '#94a3b8' }}
+          title={data.isStart ? 'Node bắt đầu (Sẵn sàng)' : 'Chờ kích hoạt'}
         />
       </div>
       <strong>{data.label || 'Bước quy trình'}</strong>
@@ -373,7 +373,7 @@ export function makeStarterFlow(packageObj) {
   const nodes = starterDefs.map((item, index) => ({
     id: item.code.toLowerCase(),
     type: 'studioNode',
-    position: { x: 80 + index * 280, y: 180 + (index % 2) * 60 },
+    position: { x: 80 + index * 280, y: 180 },
     data: {
       code: item.code,
       label: item.label,
@@ -477,7 +477,7 @@ function graphJsonToFlow(graph, packageObj) {
   const nodes = entries.map(([key, value], index) => ({
     id: key,
     type: 'studioNode',
-    position: graph.ui?.[key] || { x: 80 + index * 280, y: 180 + (index % 2) * 60 },
+    position: graph.ui?.[key] || { x: 80 + index * 280, y: 180 },
     data: {
       code: value.task_code || key.toUpperCase(),
       label: value.name || key,
@@ -510,7 +510,7 @@ function graphJsonToFlow(graph, packageObj) {
         source: sourceKey,
         target: targetKey,
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: 2, stroke: '#f97316' },
+        style: { strokeWidth: 2, stroke: '#94a3b8' },
       })
     })
   })
@@ -776,7 +776,7 @@ export default function MasterWorkflowStudio() {
     setNodes((nds) =>
       nds.map((node, index) => ({
         ...node,
-        position: { x: 80 + index * 280, y: 180 + (index % 2) * 60 },
+        position: { x: 80 + index * 280, y: 180 },
       }))
     )
     addToast?.('Đã căn lề tự động các node trên sơ đồ', 'success')
@@ -1031,6 +1031,18 @@ export default function MasterWorkflowStudio() {
     )
   }
 
+  const displayNodes = useMemo(
+    () =>
+      nodes.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          isStart: n.id === startNode,
+        },
+      })),
+    [nodes, startNode]
+  )
+
   return (
     <div className="workflow-designer mws-container">
       {/* ── Top Bar: Combo Selection (Gói Dịch Vụ & Hạng Mục) ── */}
@@ -1219,7 +1231,7 @@ export default function MasterWorkflowStudio() {
         {/* Canvas Area */}
         <div className="workflow-designer__canvas mws-canvas-area">
           <ReactFlow
-            nodes={nodes}
+            nodes={displayNodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
@@ -1243,7 +1255,7 @@ export default function MasterWorkflowStudio() {
               position="bottom-right"
               pannable
               zoomable
-              nodeColor={(node) => (node.id === startNode ? '#22a06b' : '#f97316')}
+              nodeColor={(node) => (node.id === startNode ? '#22a06b' : '#94a3b8')}
             />
           </ReactFlow>
         </div>
@@ -1276,126 +1288,121 @@ export default function MasterWorkflowStudio() {
           ) : inspectorTab === 'node' ? (
             <div className="workflow-inspector__content wf-node-panel">
               <div className="wf-node-panel__fixed">
-                {/* 1. Thông tin Node: Mã, Tên, Mô tả */}
+                {/* 1. Lưới cấu hình Node theo chuẩn contracts.css (.wf-node-grid) */}
                 <div className="wf-node-grid">
-                  <div className="wf-node-grid__label">Tên bước</div>
-                  <div className="wf-node-grid__value">
-                    <input
-                      type="text"
-                      className="form-control form-control-sm"
-                      value={selectedNode.data.label || ''}
-                      onChange={(e) => updateSelectedNodeData({ label: e.target.value })}
-                      placeholder="Tên bước thực hiện..."
-                    />
+                  <div className="wf-node-grid__row">
+                    <span className="wf-node-grid__label">Tên bước</span>
+                    <div className="wf-node-grid__value">
+                      <input
+                        type="text"
+                        className="mws-node-title-input"
+                        value={selectedNode.data.label || ''}
+                        onChange={(e) => updateSelectedNodeData({ label: e.target.value })}
+                        placeholder="Tên bước thực hiện..."
+                      />
+                    </div>
                   </div>
 
-                  <div className="wf-node-grid__label">Mô tả bước</div>
-                  <div className="wf-node-grid__value">
-                    {isEditingDesc ? (
-                      <div className="wf-node-desc-editor" style={{ display: 'flex', gap: 6, width: '100%' }}>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm"
+                  <div className="wf-node-grid__row">
+                    <span className="wf-node-grid__label">Mô tả</span>
+                    <div className="wf-node-grid__value wf-node-grid__value--desc">
+                      {isEditingDesc ? (
+                        <textarea
+                          rows={2}
+                          autoFocus
+                          placeholder="Việc phải làm ở bước này…"
                           value={selectedNode.data.description || ''}
                           onChange={(e) => updateSelectedNodeData({ description: e.target.value })}
-                          placeholder="Mô tả tóm tắt..."
-                          autoFocus
+                          onBlur={() => setIsEditingDesc(false)}
                         />
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          onClick={() => setIsEditingDesc(false)}
-                        >
-                          Xong
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                        <p style={{ margin: 0, fontSize: '13px' }}>{selectedNode.data.description || '—'}</p>
-                        <button
-                          type="button"
-                          className="wf-node-grid__edit"
-                          onClick={() => setIsEditingDesc(true)}
-                          title="Sửa mô tả bước"
-                          aria-label="Sửa mô tả bước"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      </div>
-                    )}
+                      ) : (
+                        <>
+                          <p>{selectedNode.data.description || '—'}</p>
+                          <button
+                            type="button"
+                            className="wf-node-grid__edit"
+                            onClick={() => setIsEditingDesc(true)}
+                            title="Sửa mô tả bước"
+                            aria-label="Sửa mô tả bước"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                {/* 2. Đội ngũ Bể việc */}
-                <section className="workflow-pool-config" aria-label="Đội ngũ nhận việc">
-                  <div className="workflow-pool-config__heading">
-                    <span>Đội ngũ</span>
-                    <strong>Bể việc</strong>
-                  </div>
-                  <div className="workflow-pool-config__department">
-                    <span className="workflow-pool-config__label">Phòng ban nhận việc</span>
-                    <CustomSelect
-                      aria-label="Phòng ban phụ trách"
-                      value={normalizeDepartmentCode(selectedNode.data.poolDepartmentCode)}
-                      options={STANDARD_DEPARTMENTS}
-                      placeholder="— Chọn phòng ban —"
-                      onChange={(val) =>
-                        updateSelectedNodeData({
-                          poolDepartmentCode: val,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="workflow-pool-config__roles">
-                    <RoleMultiSelect
-                      label="Vai trò được nhận việc"
-                      value={selectedNode.data.claimRoles || ['MAIN']}
-                      options={ASSIGNMENT_ROLES}
-                      onChange={(claimRoles) => updateSelectedNodeData({ claimRoles })}
-                    />
-                  </div>
-                </section>
+                  {/* 2. Đội ngũ Bể việc - contracts.css dùng display: contents để tạo dòng Phòng ban & Vai trò */}
+                  <section className="workflow-pool-config" aria-label="Đội ngũ nhận việc">
+                    <div className="workflow-pool-config__heading">
+                      <span>Đội ngũ</span>
+                      <strong>Bể việc</strong>
+                    </div>
+                    <div className="workflow-pool-config__department">
+                      <span className="workflow-pool-config__label">Phòng ban nhận việc</span>
+                      <CustomSelect
+                        aria-label="Phòng ban phụ trách"
+                        value={normalizeDepartmentCode(selectedNode.data.poolDepartmentCode)}
+                        options={STANDARD_DEPARTMENTS}
+                        placeholder="— Chọn phòng ban —"
+                        onChange={(val) =>
+                          updateSelectedNodeData({
+                            poolDepartmentCode: val,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="workflow-pool-config__roles">
+                      <RoleMultiSelect
+                        label="Vai trò được nhận việc"
+                        value={selectedNode.data.claimRoles || ['MAIN']}
+                        options={ASSIGNMENT_ROLES}
+                        onChange={(claimRoles) => updateSelectedNodeData({ claimRoles })}
+                      />
+                    </div>
+                  </section>
 
-                {/* 3. Thời hạn SLA */}
-                <section className="workflow-duration-editor" aria-label="Thời hạn xử lý Node">
-                  <div className="workflow-duration-editor__heading">
-                    <span>Thời hạn xử lý tiêu chuẩn</span>
-                    <strong>
+                  {/* 3. Thời hạn SLA - contracts.css dùng display: contents để tạo dòng Thời lượng */}
+                  <section className="workflow-duration-editor" aria-label="Thời hạn xử lý Node">
+                    <div className="workflow-duration-editor__heading">
+                      <span>Thời hạn xử lý tiêu chuẩn</span>
+                      <strong>
+                        {[
+                          Number(selectedNode.data.durationDays) ? `${selectedNode.data.durationDays} ngày` : null,
+                          Number(selectedNode.data.durationHours) ? `${selectedNode.data.durationHours} giờ` : null,
+                          Number(selectedNode.data.durationMinutes) ? `${selectedNode.data.durationMinutes} phút` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || 'Không đặt hạn'}
+                      </strong>
+                    </div>
+                    <div className="workflow-duration-editor__fields">
                       {[
-                        Number(selectedNode.data.durationDays) ? `${selectedNode.data.durationDays} ngày` : null,
-                        Number(selectedNode.data.durationHours) ? `${selectedNode.data.durationHours} giờ` : null,
-                        Number(selectedNode.data.durationMinutes) ? `${selectedNode.data.durationMinutes} phút` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' ') || 'Không đặt hạn'}
-                    </strong>
-                  </div>
-                  <div className="workflow-duration-editor__fields">
-                    {[
-                      ['durationDays', 'Ngày', 365],
-                      ['durationHours', 'Giờ', 23],
-                      ['durationMinutes', 'Phút', 59],
-                    ].map(([field, label, max]) => (
-                      <label key={field}>
-                        <input
-                          type="number"
-                          min="0"
-                          max={max}
-                          step="1"
-                          aria-label={label}
-                          value={selectedNode.data[field] ?? ''}
-                          onChange={(event) => {
-                            const raw = event.target.value
-                            updateSelectedNodeData({
-                              [field]: raw === '' ? '' : Math.min(max, Math.max(0, Math.trunc(Number(raw) || 0))),
-                            })
-                          }}
-                        />
-                        <span>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
+                        ['durationDays', 'Ngày', 365],
+                        ['durationHours', 'Giờ', 23],
+                        ['durationMinutes', 'Phút', 59],
+                      ].map(([field, label, max]) => (
+                        <label key={field}>
+                          <input
+                            type="number"
+                            min="0"
+                            max={max}
+                            step="1"
+                            aria-label={label}
+                            value={selectedNode.data[field] ?? ''}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              updateSelectedNodeData({
+                                [field]: raw === '' ? '' : Math.min(max, Math.max(0, Math.trunc(Number(raw) || 0))),
+                              })
+                            }}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
+                </div>
               </div>
 
               {/* 4. Dải tiêu đề Checklist */}
