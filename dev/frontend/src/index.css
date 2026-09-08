@@ -1649,6 +1649,12 @@ label {
   font-weight: 800;
 }
 
+@media (min-width: 701px) {
+  .responsive-table-hint {
+    display: none;
+  }
+}
+
 .kpi-table-shell .table-wrap th:first-child,
 .kpi-table-shell .table-wrap td:first-child,
 .payroll-office__table .table-wrap th:first-child,

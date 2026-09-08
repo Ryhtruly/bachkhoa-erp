@@ -29,7 +29,7 @@ const FINANCE_GROUPS = [
     tabs: [
       { id: 'debt-collection', label: 'Thu công nợ', icon: HandCoins, desc: 'Quản lý thu tiền theo đợt' },
       { id: 'receivables', label: 'Công nợ phải thu', icon: Receipt, desc: 'Sổ theo dõi nợ khách hàng' },
-      { id: 'advance-request', label: 'Đề xuất tạm ứng', icon: PlusCircle, desc: 'Tạo & duyệt phiếu tạm ứng' },
+      { id: 'advance-request', label: 'Đề xuất tạm ứng', icon: PlusCircle, desc: 'Gửi & theo dõi đề xuất tạm ứng' },
       { id: 'advance-clear', label: 'Quyết toán hoàn ứng', icon: RotateCcw, desc: 'Hoàn ứng & đối trừ chi phí' },
     ]
   },

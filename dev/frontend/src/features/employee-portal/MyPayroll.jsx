@@ -23,6 +23,28 @@ const formatMonth = (value) => {
 
 const PAGE_SIZE = 12;
 
+const getPayrollStatus = (payroll) => {
+  const status = String(payroll?.status || '').toLowerCase();
+  if (status === 'paid' || payroll?.is_paid) return 'paid';
+  if (status === 'locked' || payroll?.is_locked) return 'locked';
+  if (status === 'open' || status === 'opened' || (!status && payroll?.is_current)) return 'open';
+  if (status === 'noperiod' || status === 'no_period') return 'no_period';
+  return 'no_period';
+};
+
+const getPayrollStatusMeta = (payroll) => {
+  switch (getPayrollStatus(payroll)) {
+    case 'paid':
+      return { label: 'Đã chi trả', shortLabel: 'Đã chi trả', className: 'is-paid', icon: CheckCircle2, caption: 'Đã chi trả' };
+    case 'locked':
+      return { label: 'Đã chốt sổ', shortLabel: 'Đã chốt', className: 'is-closed', icon: CheckCircle2, caption: 'Đã khóa sổ' };
+    case 'open':
+      return { label: 'Tạm tính', shortLabel: 'Kỳ này', className: 'is-current', icon: Clock, caption: 'Sẽ chốt khi hết kỳ' };
+    default:
+      return { label: 'Chưa chốt', shortLabel: 'Chưa chốt', className: 'is-closed', icon: Clock, caption: 'Chưa có kỳ chốt' };
+  }
+};
+
 export default function MyPayroll({ isModal = false }) {
   const [profile, setProfile] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -31,36 +53,30 @@ export default function MyPayroll({ isModal = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const fetchPayroll = (month) => {
+  const fetchPayroll = async (month) => {
     setLoading(true);
     setError('');
     const url = month
       ? `/api/employee-portal/my-payroll?month=${encodeURIComponent(month)}`
       : '/api/employee-portal/my-payroll';
-    apiFetch(url)
-      .then((data) => {
-        setProfile(data);
-        if (data.selected_payroll?.month) {
-          setSelectedMonth(data.selected_payroll.month.slice(0, 7));
-        } else if (data.latest_payroll?.month) {
-          setSelectedMonth(data.latest_payroll.month.slice(0, 7));
-        }
-      })
-      .catch(() => {
-        apiFetch('/api/employee-portal/me')
-          .then((data) => {
-            setProfile(data);
-            if (data.latest_payroll?.month) {
-              setSelectedMonth(data.latest_payroll.month.slice(0, 7));
-            }
-          })
-          .catch(() => {
-            setError('Không tải được dữ liệu lương');
-          });
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      let data;
+      try {
+        data = await apiFetch(url);
+      } catch {
+        data = await apiFetch('/api/employee-portal/me');
+      }
+      setProfile(data);
+      if (data.selected_payroll?.month) {
+        setSelectedMonth(data.selected_payroll.month.slice(0, 7));
+      } else if (data.latest_payroll?.month) {
+        setSelectedMonth(data.latest_payroll.month.slice(0, 7));
+      }
+    } catch {
+      setError('Không tải được dữ liệu lương');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -141,6 +157,8 @@ export default function MyPayroll({ isModal = false }) {
     (payroll?.month &&
       new Date(payroll.month).getMonth() === new Date().getMonth() &&
       new Date(payroll.month).getFullYear() === new Date().getFullYear());
+  const payrollStatus = getPayrollStatusMeta(payroll);
+  const StatusIcon = payrollStatus.icon;
 
   return (
     <section className={`my-payroll ${isModal ? 'my-payroll--modal' : 'my-payroll--screen card card--workspace my-payroll-workspace'}`}>
@@ -157,11 +175,9 @@ export default function MyPayroll({ isModal = false }) {
           <div className="my-payroll__current-badge">
             <Calendar size={15} />
             <span>Đang xem: <strong>{formatMonth(payroll?.month)}</strong></span>
-            {isCurrentMonth ? (
-              <span className="my-payroll__pill is-current">Kỳ này (Tạm tính)</span>
-            ) : (
-              <span className="my-payroll__pill is-closed">Đã chốt sổ</span>
-            )}
+            <span className={`my-payroll__pill ${payrollStatus.className}`}>
+              {isCurrentMonth && payrollStatus.label === 'Tạm tính' ? 'Kỳ này (Tạm tính)' : payrollStatus.label}
+            </span>
           </div>
         </header>
       ) : (
@@ -173,11 +189,7 @@ export default function MyPayroll({ isModal = false }) {
           <div className="my-payroll__current-badge my-payroll__current-badge--compact">
             <Calendar size={14} />
             <span>Kỳ xem: <strong>{formatMonth(payroll?.month)}</strong></span>
-            {isCurrentMonth ? (
-              <span className="my-payroll__pill is-current">Tạm tính</span>
-            ) : (
-              <span className="my-payroll__pill is-closed">Đã chốt</span>
-            )}
+            <span className={`my-payroll__pill ${payrollStatus.className}`}>{payrollStatus.shortLabel}</span>
           </div>
         </div>
       )}
@@ -189,16 +201,16 @@ export default function MyPayroll({ isModal = false }) {
             <div className="my-payroll__net-head">
               <div>
                 <span className="my-payroll__eyebrow">Kỳ lương</span>
-                <span className="my-payroll__kpi-label">Tổng thực nhận</span>
+                <span className="my-payroll__kpi-label">Tổng lương</span>
               </div>
-              <span className={`my-payroll__status-tag ${isCurrentMonth ? 'is-current' : 'is-closed'}`}>
-                {isCurrentMonth ? <Clock size={11} /> : <CheckCircle2 size={11} />}
-                {isCurrentMonth ? 'Tạm tính' : 'Đã chốt'}
+              <span className={`my-payroll__status-tag ${payrollStatus.className}`}>
+                <StatusIcon size={11} />
+                {payrollStatus.label}
               </span>
             </div>
             <strong className="my-payroll__net-value">{formatVND(payroll.total_salary)}</strong>
             <span className="my-payroll__net-caption">
-              {formatMonth(payroll.month)} · {isCurrentMonth ? 'Sẽ chốt khi hết kỳ' : 'Đã khóa sổ'}
+              {formatMonth(payroll.month)} · {payrollStatus.caption}
             </span>
           </div>
 
@@ -214,7 +226,7 @@ export default function MyPayroll({ isModal = false }) {
                 <small>Theo hợp đồng lao động</small>
               </div>
               <div className="my-payroll__breakdown-item">
-                <span className="my-payroll__breakdown-label">Lương khoán / phụ cấp</span>
+                <span className="my-payroll__breakdown-label">Lương khoán</span>
                 <strong>{Number(payroll.piece_amount) > 0 ? formatVND(payroll.piece_amount) : '0₫'}</strong>
                 <small>
                   {Number(payroll.tasks_completed) > 0
@@ -281,7 +293,7 @@ export default function MyPayroll({ isModal = false }) {
                   <th className="is-num">Lương CB</th>
                   <th className="is-num">Khoán việc</th>
                   <th className="is-num">Điều chỉnh</th>
-                  <th className="is-num">Tổng thực nhận</th>
+                  <th className="is-num">Tổng lương</th>
                   <th className="is-action"></th>
                 </tr>
               </thead>
@@ -294,17 +306,30 @@ export default function MyPayroll({ isModal = false }) {
                       key={mKey}
                       className={`${isRowSelected ? 'is-selected' : ''}${h.is_current ? ' is-current-row' : ''}`}
                       onClick={() => handleSelectHistoryRow(h.month)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleSelectHistoryRow(h.month);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Xem chi tiết ${formatMonth(h.month)}`}
                       title="Bấm để xem chi tiết kỳ này ở khối tổng quan"
                     >
                       <td>
                         <div className="my-payroll__period-cell">
                           <strong>{formatMonth(h.month)}</strong>
-                          {h.is_current ? (
+                          {getPayrollStatus(h) === 'open' && h.is_current ? (
                             <span className="my-payroll__tag-curr">Kỳ này</span>
-                          ) : h.status === 'Paid' ? (
+                          ) : getPayrollStatus(h) === 'paid' ? (
                             <span className="my-payroll__tag-paid">Đã chi trả</span>
-                          ) : (
+                          ) : getPayrollStatus(h) === 'locked' ? (
                             <span className="my-payroll__tag-locked">Đã chốt</span>
+                          ) : getPayrollStatus(h) === 'no_period' ? (
+                            <span className="my-payroll__tag-locked">Chưa chốt</span>
+                          ) : (
+                            <span className="my-payroll__tag-locked">Đang mở</span>
                           )}
                         </div>
                       </td>

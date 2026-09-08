@@ -22,7 +22,7 @@ describe('AdvanceRequestScreen data integrity', () => {
 
     render(<AdvanceRequestScreen isDirector={false} user={{ username: 'tester' }} />)
 
-    const createButton = await screen.findByRole('button', { name: /Lập đề xuất tạm ứng/i })
+    const createButton = await screen.findByRole('button', { name: /Gửi đề xuất tạm ứng/i })
     fireEvent.click(createButton)
 
     const employeeSelect = screen.getByRole('button', { name: /Chưa có nhân sự khả dụng/ })

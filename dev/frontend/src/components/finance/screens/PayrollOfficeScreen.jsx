@@ -204,9 +204,9 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
           <span style={{ fontSize: '1rem' }}>{isLocked ? '🔒' : '💡'}</span>
           <span>
             {isLocked ? (
-              <><strong>Bảng lương đã chốt sổ:</strong> Số liệu thu nhập đã được đóng băng cố định. Giám đốc bấm <em>"Xác nhận đã chi trả"</em> khi hoàn tất chuyển khoản lương cho nhân sự.</>
+              <><strong>Bảng lương đã chốt:</strong> Số liệu đã được cố định. Kế toán xác nhận chi trả sau khi chuyển khoản.</>
             ) : (
-              <><strong>Kỳ lương đang mở (Tạm tính):</strong> Bảng lương hiển thị số liệu ước tính. Giám đốc bấm <em>"Chốt sổ lương"</em> để khóa số liệu trước khi giải ngân.</>
+              <><strong>Số liệu hiện là tạm tính.</strong> Giám đốc chốt kỳ lương trước khi giải ngân.</>
             )}
           </span>
         </div>

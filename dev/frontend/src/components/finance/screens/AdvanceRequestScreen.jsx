@@ -270,9 +270,9 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
               className="btn btn-primary"
               onClick={handleOpenModal}
               style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-              title="Nhân viên / Kế toán lập đề xuất xin tạm ứng kinh phí"
+              title="Gửi đề xuất xin tạm ứng kinh phí"
             >
-              <PlusCircle size={16} /> Lập đề xuất tạm ứng
+              <PlusCircle size={16} /> Gửi đề xuất tạm ứng
             </button>
           ) : null
         }
@@ -335,7 +335,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         onRowClick={row => setDetailId(row.id)}
       />
 
-      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Lập đề xuất tạm ứng">
+      <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Gửi đề xuất tạm ứng">
         <form onSubmit={handleSubmit}>
           {/* Header notice */}
           <div style={{

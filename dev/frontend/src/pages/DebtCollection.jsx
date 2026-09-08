@@ -291,7 +291,7 @@ export default function DebtCollection({ user = null, isDirector = false, initia
         <div>
           <span className="debt__eyebrow">Kế toán & Giám đốc</span>
           <h2>Thu công nợ & Xử lý nợ tồn</h2>
-          <p>Đỏ là hồ sơ đã được giao trước nhưng còn nợ; xanh chỉ xuất hiện sau khi phiếu thu được duyệt và số dư thực tế bằng 0.</p>
+          <p>Đỏ: còn nợ · Xanh: đã thu đủ và phiếu thu đã được duyệt.</p>
         </div>
         <div className="debt__head-actions">
           <span className="debt__sync-note">Tự cập nhật mỗi 30 giây</span>

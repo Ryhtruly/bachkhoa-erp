@@ -10,19 +10,25 @@ const getCurrentMonth = () => {
   return `${year}-${month}`;
 };
 
+const normalizeKpiScore = (value) => Math.min(100, Math.max(0, Number(value || 0)));
+
 export default function KPI() {
   const [kpiList, setKpiList] = useState([]);
   const [month, setMonth] = useState(getCurrentMonth);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const fetchKpi = useCallback(async (selectedMonth) => {
     const targetMonth = selectedMonth || month;
     setLoading(true);
+    setError('');
     try {
       const data = await apiFetch(`/api/kpi/scores?month=${targetMonth}`);
       setKpiList(data?.data || []);
     } catch (err) {
       console.error(err);
+      setKpiList([]);
+      setError('Không tải được dữ liệu KPI');
     } finally {
       setLoading(false);
     }
@@ -43,8 +49,8 @@ export default function KPI() {
 
     // Clone and sort with tie-breaking criteria
     const sorted = [...kpiList].sort((a, b) => {
-      const scoreA = Number(a.final_score || 0);
-      const scoreB = Number(b.final_score || 0);
+      const scoreA = normalizeKpiScore(a.final_score);
+      const scoreB = normalizeKpiScore(b.final_score);
       if (scoreB !== scoreA) return scoreB - scoreA;
 
       const tasksA = Number(a.total_completed || 0);
@@ -69,7 +75,7 @@ export default function KPI() {
     // Assign standard competition rank with 0-score exclusion
     let currentRank = 1;
     return sorted.map((item, i) => {
-      const score = Number(item.final_score || 0);
+      const score = normalizeKpiScore(item.final_score);
       const tasks = Number(item.total_completed || 0);
 
       // Nếu chưa có hoạt động / điểm = 0 và nhiệm vụ = 0 -> Chưa xếp hạng
@@ -83,7 +89,8 @@ export default function KPI() {
 
       if (i > 0) {
         const prev = sorted[i - 1];
-        const isTied = Number(prev.final_score || 0) === score
+        const previousScore = normalizeKpiScore(prev.final_score);
+        const isTied = previousScore === score
           && Number(prev.total_completed || 0) === tasks
           && Number(prev.on_time_rate || 0) === Number(item.on_time_rate || 0)
           && Number(prev.rejections || 0) === Number(item.rejections || 0)
@@ -142,7 +149,9 @@ export default function KPI() {
       label: 'TỶ LỆ ĐÚNG HẠN',
       width: 160,
       align: 'center',
-      render: (v) => (
+      render: (v) => v == null ? (
+        <span className="kpi-completion kpi-completion--muted">—</span>
+      ) : (
         <Badge variant={Number(v) >= 90 ? 'success' : Number(v) >= 75 ? 'warning' : 'danger'} dot>
           {v}%
         </Badge>
@@ -175,8 +184,9 @@ export default function KPI() {
       width: 130,
       align: 'center',
       render: (v) => {
-        const level = Number(v) >= 95 ? 'excellent' : Number(v) >= 80 ? 'good' : 'attention';
-        return <span className={`kpi-score kpi-score--${level}`}>{v}</span>;
+        const score = Math.min(100, Math.max(0, Number(v || 0)));
+        const level = score >= 95 ? 'excellent' : score >= 80 ? 'good' : 'attention';
+        return <span className={`kpi-score kpi-score--${level}`}>{score}</span>;
       }
     },
     {
@@ -203,7 +213,7 @@ export default function KPI() {
     const activeEmps = rankedKpiList.filter(k => Number(k.total_completed || 0) > 0);
     const avgOnTime = activeEmps.length > 0
       ? (activeEmps.reduce((s, k) => s + Number(k.on_time_rate || 0), 0) / activeEmps.length).toFixed(1)
-      : '100.0';
+      : null;
 
     const topPerformers = rankedKpiList.filter(k => k.isTop1);
     return { totalEmps, avgOnTime, topPerformers, totalTasksDone };
@@ -221,7 +231,7 @@ export default function KPI() {
       ? (activeEmps.reduce((s, k) => s + Number(k.avg_time || 0), 0) / activeEmps.length).toFixed(1)
       : '0.0';
 
-    const topScorers = rankedKpiList.slice(0, 5);
+    const topScorers = activeEmps.slice(0, 5);
 
     return {
       activeEmpsCount: activeEmps.length,
@@ -273,6 +283,19 @@ export default function KPI() {
           </div>
         </div>
 
+        {error && (
+          <div className="kpi-error" role="alert">
+            <strong>{error}</strong>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => fetchKpi(month)}
+            >
+              Thử lại
+            </button>
+          </div>
+        )}
+
         {stats && (
           <div className="kpi-summary" aria-label="Tổng quan KPI">
             <div className="kpi-summary__item">
@@ -287,7 +310,9 @@ export default function KPI() {
             </div>
             <div className="kpi-summary__item">
               <span className="kpi-summary__label">Đúng hạn trung bình</span>
-              <strong className="kpi-summary__value">{stats.avgOnTime}%</strong>
+              <strong className="kpi-summary__value">
+                {stats.avgOnTime == null ? '—' : `${stats.avgOnTime}%`}
+              </strong>
               <span className="kpi-summary__unit">trên nhân sự có phát sinh</span>
             </div>
             <div className="kpi-summary__item kpi-summary__item--leader">
@@ -295,8 +320,8 @@ export default function KPI() {
               <strong className="kpi-summary__leader">
                 {stats.topPerformers.length > 0 ? (
                   stats.topPerformers.length === 1
-                    ? `${stats.topPerformers[0].employee} (${stats.topPerformers[0].final_score}đ)`
-                    : `Đồng hạng 1: ${stats.topPerformers.map(p => p.employee).join(', ')} (${stats.topPerformers[0].final_score}đ)`
+                    ? `${stats.topPerformers[0].employee} (${normalizeKpiScore(stats.topPerformers[0].final_score)}đ)`
+                    : `Đồng hạng 1: ${stats.topPerformers.map(p => p.employee).join(', ')} (${normalizeKpiScore(stats.topPerformers[0].final_score)}đ)`
                 ) : 'Chưa có dữ liệu'}
               </strong>
             </div>
@@ -328,7 +353,7 @@ export default function KPI() {
               </div>
               <div className="kpi-bars-list">
                 {analytics.topScorers.map((emp) => {
-                  const score = Number(emp.final_score || 0);
+                  const score = normalizeKpiScore(emp.final_score);
                   const fillClass = score >= 90 ? 'is-excellent' : score >= 80 ? 'is-good' : score > 0 ? 'is-normal' : 'is-muted';
                   return (
                     <div key={emp.employee} className="kpi-bar-row">
