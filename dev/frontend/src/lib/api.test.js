@@ -1,10 +1,21 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiFetch, clearApiCache, downloadFile, getCacheTTL, peekApiCache, prefetchApi } from './api';
+import {
+  apiFetch,
+  clearAccessToken,
+  clearApiCache,
+  downloadFile,
+  getCacheTTL,
+  getAccessToken,
+  peekApiCache,
+  prefetchApi,
+  setAccessToken,
+} from './api';
 
 describe('apiFetch', () => {
   beforeEach(() => {
     localStorage.clear();
+    clearAccessToken();
     // apiFetch nhớ bản đọc trong vài giây; không xoá thì test sau ăn kết quả
     // của test trước.
     clearApiCache();
@@ -116,7 +127,7 @@ describe('apiFetch', () => {
   });
 
   it('adds the saved bearer token to protected requests', async () => {
-    localStorage.setItem('bachkhoa_access_token', 'jwt-token');
+    setAccessToken('jwt-token');
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ id: 'emp-1' }), { status: 200 }),
     );
@@ -132,8 +143,15 @@ describe('apiFetch', () => {
     );
   });
 
+  it('keeps the access token out of localStorage', () => {
+    setAccessToken('memory-only-token');
+
+    expect(getAccessToken()).toBe('memory-only-token');
+    expect(localStorage.getItem('bachkhoa_access_token')).toBeNull();
+  });
+
   it('clears the session, dispatches unauthorized, and throws on a 401 response', async () => {
-    localStorage.setItem('bachkhoa_access_token', 'expired-token');
+    setAccessToken('expired-token');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail: 'Token expired' }), { status: 401 }),
     ));
@@ -146,6 +164,74 @@ describe('apiFetch', () => {
     });
 
     expect(localStorage.getItem('bachkhoa_access_token')).toBeNull();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes an expired access token once and retries the original request', async () => {
+    setAccessToken('expired-token');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Token expired' }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'fresh-token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'emp-1' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(apiFetch('/api/employee-portal/me', { method: 'POST', body: '{}' }))
+      .resolves.toEqual({ id: 'emp-1' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/auth/refresh');
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+    }));
+    expect(fetchMock.mock.calls[2][1].headers).toEqual(expect.objectContaining({
+      Authorization: 'Bearer fresh-token',
+    }));
+  });
+
+  it('shares one refresh request across concurrent 401 responses', async () => {
+    setAccessToken('expired-token');
+    let refreshResolve;
+    const refreshPending = new Promise((resolve) => { refreshResolve = resolve; });
+    const protectedCalls = new Map();
+    const fetchMock = vi.fn((path) => {
+      if (path === '/api/auth/refresh') return refreshPending;
+      if (path === '/api/parallel-a' || path === '/api/parallel-b') {
+        const count = protectedCalls.get(path) || 0;
+        protectedCalls.set(path, count + 1);
+        if (count === 0) {
+          return Promise.resolve(new Response(JSON.stringify({ detail: 'Token expired' }), { status: 401 }));
+        }
+      }
+      return Promise.resolve(new Response(JSON.stringify({ ok: path }), { status: 200 }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = apiFetch('/api/parallel-a', { method: 'POST', body: '{}' });
+    const second = apiFetch('/api/parallel-b', { method: 'POST', body: '{}' });
+    await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/api/auth/refresh')).toHaveLength(1));
+
+    refreshResolve(new Response(JSON.stringify({ token: 'fresh-token' }), { status: 200 }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { ok: '/api/parallel-a' },
+      { ok: '/api/parallel-b' },
+    ]);
+    expect(fetchMock.mock.calls.filter(([path]) => path === '/api/auth/refresh')).toHaveLength(1);
+  });
+
+  it('logs out when the refresh cookie cannot renew the session', async () => {
+    setAccessToken('expired-token');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Token expired' }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Refresh expired' }), { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const onUnauthorized = vi.fn();
+    window.addEventListener('bachkhoa:unauthorized', onUnauthorized, { once: true });
+
+    await expect(apiFetch('/api/employee-portal/me', { method: 'POST', body: '{}' }))
+      .rejects.toMatchObject({ status: 401 });
+
+    expect(getAccessToken()).toBeNull();
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 

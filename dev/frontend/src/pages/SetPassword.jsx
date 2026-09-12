@@ -19,7 +19,7 @@ export default function SetPassword({ onDone }) {
       setChecking(false);
       return;
     }
-    fetch(`/api/auth/invite/${token}`)
+    fetch(`/api/auth/invite/${token}`, { credentials: 'include' })
       .then(async (response) => {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || 'Liên kết không hợp lệ.');
@@ -44,6 +44,7 @@ export default function SetPassword({ onDone }) {
     try {
       const response = await fetch(`/api/auth/invite/${token}/complete`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });

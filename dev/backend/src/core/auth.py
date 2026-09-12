@@ -19,7 +19,7 @@ from src.core.roles import (
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 bearer_scheme = HTTPBearer(auto_error=False)
 logger = logging.getLogger(__name__)
@@ -39,10 +39,11 @@ def verify_password(plain: str, hashed: str) -> bool:
     except Exception:
         return False
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, expires_delta: timedelta | None = None) -> str:
+    lifetime = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS),
+        "exp": datetime.now(timezone.utc) + lifetime,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Wiki from './Wiki'
+import { clearAccessToken, setAccessToken } from '../lib/api'
 
 const addToast = vi.fn()
 
@@ -15,6 +16,7 @@ describe('Wiki private documents', () => {
     vi.restoreAllMocks()
     addToast.mockReset()
     window.localStorage.clear()
+    clearAccessToken()
   })
 
   it('opens a Wiki document from an authenticated Blob fetch', async () => {
@@ -31,7 +33,7 @@ describe('Wiki private documents', () => {
       }
       return { ok: true, blob: async () => documentBlob }
     })
-    window.localStorage.setItem('bachkhoa_access_token', 'wiki-access-token')
+    setAccessToken('wiki-access-token')
     const viewer = { location: { href: '' }, close: vi.fn() }
     vi.spyOn(window, 'open').mockReturnValue(viewer)
     vi.stubGlobal('URL', {

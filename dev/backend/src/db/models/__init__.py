@@ -16,6 +16,7 @@ from src.db.models.auth import (
     UserPermissionOverride,
     RoleScopeRule,
     AuthToken,
+    RefreshSession,
     AuditLog,
     Notification,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "UserPermissionOverride",
     "RoleScopeRule",
     "AuthToken",
+    "RefreshSession",
     "AuditLog",
     "Notification",
     "Customer",
