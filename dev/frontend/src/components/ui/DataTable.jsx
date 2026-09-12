@@ -52,8 +52,10 @@ export default function DataTable({
 
   const activePageSize = pageSize === 0 ? 0 : currentPageSize;
 
-  const getKey = (row) =>
-    typeof rowKey === 'function' ? rowKey(row) : row[rowKey];
+  const getKey = (row, index) => {
+    const keyVal = typeof rowKey === 'function' ? rowKey(row, index) : row?.[rowKey];
+    return keyVal !== undefined && keyVal !== null && keyVal !== '' ? keyVal : `dt-row-${index}`;
+  };
 
   // ── Sort ──
   const sorted = useMemo(() => {
@@ -197,9 +199,15 @@ export default function DataTable({
                   </td>
                 </tr>
               )
-              : paged.map((row, index) => {
-                  const key = getKey(row);
-                  const isSelected = selected.includes(key);
+              : (() => {
+                  const seenKeys = new Set();
+                  return paged.map((row, index) => {
+                    let key = getKey(row, index);
+                    if (seenKeys.has(key)) {
+                      key = `${key}__${index}`;
+                    }
+                    seenKeys.add(key);
+                    const isSelected = selected.includes(key);
                   const customRowClass = typeof rowClassName === 'function'
                     ? rowClassName(row)
                     : rowClassName;
@@ -236,7 +244,8 @@ export default function DataTable({
                       ))}
                     </tr>
                   );
-                })}
+                });
+              })()}
           </tbody>
         </table>
       </div>
