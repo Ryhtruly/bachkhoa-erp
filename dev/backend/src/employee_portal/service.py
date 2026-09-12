@@ -418,25 +418,36 @@ _ITEM_NODE_DETAIL_QUERY = text(
         where e.task_node_id = n.id and e.employee_id = :employee_id
           and e.status <> 'void'
       ) as settled_amount,
+      -- Với phần việc đã giao, giá phải lấy từ rate đã khóa trên assignment.
+      -- Chỉ assignment cũ không có rate id mới rơi về giá hiện hành để tương
+      -- thích dữ liệu legacy; đổi bảng giá sau đó không được repricing công việc.
       coalesce((
-        select sum(wr.amount)
+        select sum(
+          coalesce(
+            ca.amount_override,
+            coalesce(
+              wr.amount,
+              (
+                select current_wr.amount
+                from public.work_item_rates current_wr
+                where current_wr.work_item_id = r.work_item_id
+                  and current_wr.role_code = ca.role_code
+                  and current_wr.status = 'published'
+                  and current_date <@ current_wr.effective_period
+                limit 1
+              ),
+              0
+            ) * ca.share_percent / 100.0
+          )
+        )
         from public.task_node_checklist_results r
-        join public.work_item_rates wr on wr.work_item_id = r.work_item_id
+        join public.task_node_checklist_assignments ca
+          on ca.checklist_result_id = r.id
+         and ca.employee_id = :employee_id
+         and ca.status not in ('replaced', 'cancelled')
+        left join public.work_item_rates wr on wr.id = ca.work_item_rate_id
         where r.task_node_id = n.id
           and coalesce(r.is_payable, false)
-          and wr.status = 'published'
-          and current_date <@ wr.effective_period
-          and (
-            case
-              when (
-                select a.role_code from public.task_node_assignments a
-                where a.task_node_id = n.id and a.employee_id = :employee_id
-                  and a.assignment_status in ('assigned', 'accepted')
-                limit 1
-              ) = 'ASSISTANT' then wr.role_code = 'ASSISTANT'
-              else wr.role_code in ('MAIN', 'SUBMITTER')
-            end
-          )
       ), 0) as amount,
       (
         select e.full_name

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from sqlalchemy import text
@@ -472,6 +472,36 @@ def _current_work_item_rates(db: Session) -> dict[str, dict[str, dict[str, Any]]
     for row in rows:
         result.setdefault(row["work_item_id"], {})[row["role_code"]] = dict(row)
     return result
+
+
+def resolve_assignment_rate(
+    assignment: Mapping[str, Any],
+    rates_by_id: Mapping[str, Mapping[str, Any]],
+    current_rates: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> Mapping[str, Any] | None:
+    """Resolve the immutable rate attached to a checklist assignment.
+
+    A rate change must not reprice work that was already assigned.  The
+    assignment's rate id is authoritative; the current published-rate map is
+    only a compatibility fallback for legacy rows created before assignments
+    started storing ``work_item_rate_id``.
+    """
+    work_item_id = assignment.get("work_item_id")
+    role_code = str(assignment.get("role_code") or "").upper()
+    assigned_rate_id = assignment.get("work_item_rate_id")
+    if assigned_rate_id:
+        rate = rates_by_id.get(assigned_rate_id)
+        if not rate:
+            return None
+        if rate.get("work_item_id") != work_item_id:
+            return None
+        if str(rate.get("role_code") or "").upper() != role_code:
+            return None
+        if rate.get("status") not in (None, "published", "archived"):
+            return None
+        return rate
+
+    return current_rates.get(work_item_id, {}).get(role_code)
 
 
 def _checklist_evidence_data(item: dict[str, Any], *, include_files: bool) -> dict[str, Any]:
@@ -5886,8 +5916,10 @@ def _generate_work_pay_entitlements(
         )
     payable = db.execute(
         text("""
-            select r.id as checklist_result_id, r.checklist_name, r.work_item_id
+            select r.id as checklist_result_id, r.checklist_name, r.work_item_id,
+                   wi.code as work_item_code, wi.name as work_item_name
             from public.task_node_checklist_results r
+            left join public.work_items wi on wi.id = r.work_item_id
             where r.task_node_id = :task_node_id and r.is_payable
               and r.status in ('approved', 'late_approved')
         """),
@@ -5902,18 +5934,43 @@ def _generate_work_pay_entitlements(
     for checklist in payable:
         assignments = db.execute(
             text("""
-                select id, employee_id, role_code, work_item_rate_id
-                from public.task_node_checklist_assignments
-                where checklist_result_id = :checklist_result_id
-                  and status not in ('replaced', 'cancelled')
+                select ca.id, ca.employee_id, ca.role_code, ca.work_item_rate_id,
+                       wr.work_item_id as rate_work_item_id,
+                       wr.role_code as rate_role_code,
+                       wr.amount as rate_amount,
+                       wr.status as rate_status
+                from public.task_node_checklist_assignments ca
+                left join public.work_item_rates wr on wr.id = ca.work_item_rate_id
+                where ca.checklist_result_id = :checklist_result_id
+                  and ca.status not in ('replaced', 'cancelled')
             """),
             {"checklist_result_id": checklist["checklist_result_id"]},
         ).mappings().all()
+        rates_by_id = {
+            assignment["work_item_rate_id"]: {
+                "id": assignment["work_item_rate_id"],
+                "work_item_id": assignment["rate_work_item_id"],
+                "role_code": assignment["rate_role_code"],
+                "amount": assignment["rate_amount"],
+                "status": assignment["rate_status"],
+            }
+            for assignment in assignments
+            if assignment["work_item_rate_id"]
+        }
         for assignment in assignments:
-            rate = work_item_rates.get(checklist["work_item_id"], {}).get(assignment["role_code"])
+            rate = resolve_assignment_rate(
+                {
+                    "work_item_id": checklist["work_item_id"],
+                    "work_item_rate_id": assignment["work_item_rate_id"],
+                    "role_code": assignment["role_code"],
+                },
+                rates_by_id,
+                work_item_rates,
+            )
             amount = float(rate["amount"]) if rate else None
             if not amount or amount <= 0:
                 continue
+            applied_rate_id = rate.get("id")
             # Khoá theo SUẤT KHOÁN, không theo lần nghiệm thu. Một hồ sơ bị trả về
             # rồi nghiệm thu lại sẽ sinh acceptance_id mới; nếu khoá gồm cả nó thì
             # cùng một người làm lại đúng phần việc cũ vẫn được trả tiền lần hai.
@@ -5947,14 +6004,18 @@ def _generate_work_pay_entitlements(
                     "checklist_result_id": checklist["checklist_result_id"],
                     "checklist_assignment_id": assignment["id"],
                     "acceptance_id": acceptance_id,
-                    "work_item_rate_id": assignment["work_item_rate_id"],
+                    "work_item_rate_id": applied_rate_id,
                     "employee_id": assignment["employee_id"],
                     "role_code": assignment["role_code"],
                     "amount": amount,
                     "snapshot": json.dumps({
                         "checklist_name": checklist["checklist_name"],
+                        "work_item_id": checklist["work_item_id"],
+                        "work_item_code": checklist["work_item_code"],
+                        "work_item_name": checklist["work_item_name"],
                         "role_code": assignment["role_code"],
                         "rate_amount": amount,
+                        "rate_id": applied_rate_id,
                     }),
                     "idempotency_key": idempotency_key,
                 },

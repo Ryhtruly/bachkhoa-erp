@@ -1,0 +1,82 @@
+.piece-rate-item-modal .modal {
+  max-height: min(90vh, 760px);
+}
+
+.piece-rate-item-form {
+  display: grid;
+  gap: 16px;
+}
+
+.piece-rate-item-form__grid,
+.piece-rate-item-form__rates {
+  display: grid;
+  gap: 14px 20px;
+}
+
+.piece-rate-item-form__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.piece-rate-item-form__rates {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.piece-rate-item-form__wide {
+  grid-column: 1 / -1;
+}
+
+.piece-rate-item-form .form-row label {
+  text-align: left;
+}
+
+.piece-rate-item-form .form-control[readonly] {
+  background: var(--border-subtle);
+  cursor: not-allowed;
+}
+
+.piece-rate-item-form textarea.form-control {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.piece-rate-item-form__note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid #f6d9a6;
+  border-radius: 10px;
+  background: #fff8eb;
+  color: #8a5a13;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.piece-rate-item-form__note strong {
+  color: #9a5b00;
+}
+
+.piece-rate-item-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-default);
+}
+
+@media (max-width: 640px) {
+  .piece-rate-item-form__grid,
+  .piece-rate-item-form__rates {
+    grid-template-columns: 1fr;
+  }
+
+  .piece-rate-item-form__footer {
+    flex-direction: column-reverse;
+  }
+
+  .piece-rate-item-form__footer .btn {
+    width: 100%;
+  }
+}

@@ -34,6 +34,8 @@ from src.db.models.crm import (
 from src.db.models.operations import (
     TaskType,
     ServicePackage,
+    WorkItem,
+    WorkItemRate,
 )
 from src.db.models.finance import (
     CashflowTransaction,
@@ -92,6 +94,8 @@ __all__ = [
     "ContractGeneratedDocument",
     "TaskType",
     "ServicePackage",
+    "WorkItem",
+    "WorkItemRate",
     "CashflowTransaction",
     "AdvanceRequest",
     "Receivable",

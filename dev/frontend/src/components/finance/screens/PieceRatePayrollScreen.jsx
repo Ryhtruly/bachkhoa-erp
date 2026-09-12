@@ -585,7 +585,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
           columns={detailColumns}
           data={ledger?.details || []}
           loading={loading || optionsLoading}
-          rowKey="id"
+          rowKey={(row, idx) => row.id || `task_${row.task_id || 'item'}_${idx}`}
           emptyText="Không có nhiệm vụ phát sinh lương trong kỳ này"
           pageSize={10}
           compact
