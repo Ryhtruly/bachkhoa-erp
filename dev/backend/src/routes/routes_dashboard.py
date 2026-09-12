@@ -1,13 +1,19 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import and_, case, func, select, text
 from src.db.database import get_db
-from src.db.models import Contract, Receivable, Customer, CashflowTransaction
+from src.db.models import Contract, Customer, CashflowTransaction
 from src.core.auth import require_authenticated_user, User
 from src.core.redis_utils import get_cached_json, set_cached_json
 from src.finance.enums import TransactionType
 
 router = APIRouter(prefix="/api", tags=["02. Dashboard & Analytics"])
+
+_APPROVED_INCOME_STATUSES = [
+    "COMPLETED", "Hoàn thành", "Đã duyệt", "approved", "Đã quyết toán"
+]
+_INCOME_TYPES = ["INCOME", "Thu"]
+_APPROVED_EXPENSE_STATUSES = _APPROVED_INCOME_STATUSES
 
 @router.get("/dashboard/summary", summary="Get Executive Dashboard Summary", description="Retrieve high-level KPIs, active tasks, revenue, and receivables summary.")
 def get_dashboard(
@@ -35,11 +41,32 @@ def get_dashboard(
               and status not in ('accepted', 'skipped', 'cancelled')
         """)).scalar_one()
         
-        # PostgreSQL Numeric values arrive as Decimal while the empty SUM
-        # fallback used to be a float. Normalize both aggregates before doing
-        # arithmetic so an empty receivables table cannot break the dashboard.
-        total_val = float(db.query(func.sum(Contract.total_value)).scalar() or 0)
-        total_collected = float(db.query(func.sum(Receivable.paid_amount)).scalar() or 0)
+        # PostgreSQL Numeric values arrive as Decimal while an empty SUM can be
+        # null. Normalize both aggregates before arithmetic. Positive contract
+        # values and approved income are deliberately selected here so a legacy
+        # invalid contract cannot distort the executive figures.
+        total_val = float(
+            db.query(func.sum(case(
+                (Contract.total_value > 0, Contract.total_value),
+                else_=0,
+            )))
+            .scalar() or 0
+        )
+        valid_contract_ids = select(Contract.id).where(Contract.total_value > 0)
+        total_collected = float(
+            db.query(func.sum(case(
+                (
+                    and_(
+                        CashflowTransaction.contract_id.in_(valid_contract_ids),
+                        CashflowTransaction.transaction_type.in_(_INCOME_TYPES),
+                        CashflowTransaction.status.in_(_APPROVED_INCOME_STATUSES),
+                    ),
+                    CashflowTransaction.amount,
+                ),
+                else_=0,
+            )))
+            .scalar() or 0
+        )
         debt = total_val - total_collected
 
         recent_tasks = [dict(row) for row in db.execute(text("""
@@ -103,10 +130,22 @@ def get_dashboard_charts(
         return cached
 
     try:
-        contracts = db.query(Contract.id, Contract.customer_id, Contract.service_type, Contract.total_value, Contract.date_signed).all()
-        receivables = db.query(Receivable.contract_id, Receivable.remaining_amount).all()
-        
-        contracts_by_id = {c.id: c for c in contracts}
+        contracts = db.query(
+            Contract.id, Contract.customer_id, Contract.service_type,
+            Contract.total_value, Contract.date_signed
+        ).filter(Contract.total_value > 0).all()
+
+        paid_rows = db.query(
+            CashflowTransaction.contract_id,
+            func.sum(CashflowTransaction.amount),
+        ).filter(
+            CashflowTransaction.transaction_type.in_(_INCOME_TYPES),
+            CashflowTransaction.status.in_(_APPROVED_INCOME_STATUSES),
+        ).group_by(CashflowTransaction.contract_id).all()
+        paid_by_contract = {
+            contract_id: float(amount or 0)
+            for contract_id, amount in paid_rows
+        }
         
         revenue_by_month = {}
         for c in contracts:
@@ -116,12 +155,14 @@ def get_dashboard_charts(
                 revenue_by_month[month] = {"month": month, "revenue": 0, "debt": 0}
             revenue_by_month[month]["revenue"] += float(c.total_value or 0)
             
-        for r in receivables:
-            c = contracts_by_id.get(r.contract_id)
+        for c in contracts:
             if c and c.date_signed:
                 month = c.date_signed.strftime("%Y-%m")
                 if month in revenue_by_month:
-                    revenue_by_month[month]["debt"] += float(r.remaining_amount or 0)
+                    paid = paid_by_contract.get(c.id, 0.0)
+                    revenue_by_month[month]["debt"] += max(
+                        0.0, float(c.total_value or 0) - paid
+                    )
                 
         line_data = list(revenue_by_month.values())
         line_data.sort(key=lambda x: x["month"])
@@ -147,7 +188,11 @@ def get_dashboard_charts(
         ]
         
         cashflow = db.query(CashflowTransaction.category_code, CashflowTransaction.amount).filter(
-            CashflowTransaction.transaction_type.in_([TransactionType.EXPENSE.value, "Chi", "EXPENSE", TransactionType.ADVANCE.value, "Tạm ứng"])
+            CashflowTransaction.transaction_type.in_([
+                TransactionType.EXPENSE.value, "Chi", "EXPENSE",
+                TransactionType.ADVANCE.value, "Tạm ứng"
+            ]),
+            CashflowTransaction.status.in_(_APPROVED_EXPENSE_STATUSES),
         ).all()
         expense_cats = {}
         for tc in cashflow:
@@ -164,10 +209,12 @@ def get_dashboard_charts(
             
         # Top Debtors
         debt_by_customer = {}
-        for r in receivables:
-            c = contracts_by_id.get(r.contract_id)
+        for c in contracts:
             if c and c.customer_id:
-                debt_amt = float(r.remaining_amount or 0)
+                debt_amt = max(
+                    0.0,
+                    float(c.total_value or 0) - paid_by_contract.get(c.id, 0.0),
+                )
                 if debt_amt > 0:
                     debt_by_customer[c.customer_id] = debt_by_customer.get(c.customer_id, 0) + debt_amt
         

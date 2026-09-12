@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
-import { DatePicker, Select } from '../../ui';
+import { DatePicker, Select, TimePicker } from '../../ui';
 import { fmt, parseAmt, getLocalISOTime } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
@@ -432,19 +432,21 @@ export default function SettingsScreen({ user = null, isDirector: _isDirector = 
                     className="date-picker--fill"
                     placement="bottom"
                   />
-                  <input
-                    type="time"
-                    aria-label="Giờ chốt quỹ"
-                    className="fin-input fin-input--time"
+                  <TimePicker
                     value={reconcileMoment.slice(11, 16)}
-                    onChange={(e) => {
-                      const nextClosingMoment = `${reconcileMoment.slice(0, 10)}T${e.target.value}`;
+                    onChange={(timeStr) => {
+                      if (!timeStr) return;
+                      const nextClosingMoment = `${reconcileMoment.slice(0, 10)}T${timeStr}`;
                       setReconcileMoment(nextClosingMoment);
                       setActualCashBalance('');
                       setActualBankBalance('');
                       fetchSystemBalance(nextClosingMoment);
                     }}
-                    required
+                    placeholder="Chọn giờ"
+                    ariaLabel="Giờ chốt quỹ"
+                    format="12"
+                    className="time-picker--fill"
+                    placement="bottom"
                   />
                 </div>
               </div>

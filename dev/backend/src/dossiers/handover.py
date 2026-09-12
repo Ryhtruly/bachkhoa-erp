@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from src.files.payment_receipts import public_receipt_attachments
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+from src.core.finance_validation import parse_issued_money
 
 # Trạng thái node coi như đã đóng — không thao tác được nữa.
 _NODE_FINISHED = ("accepted", "cancelled", "skipped")
@@ -94,7 +95,15 @@ def debt_summary(
     chỉ làm ``gate_open`` đúng cho đúng Node K06 được duyệt; nó không xóa nợ và
     không được dùng để chốt hợp đồng hoàn thành.
     """
-    total = float(total_value or 0)
+    if contract_id:
+        total = float(parse_issued_money(total_value, f"Giá trị hợp đồng {contract_id}"))
+    else:
+        total = float(total_value or 0)
+        if total < 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Giá trị công nợ không được âm.",
+            )
     if not contract_id:
         settled = total <= 0
         return {"contract_id": None, "total_value": total, "paid": 0.0,

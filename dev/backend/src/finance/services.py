@@ -915,6 +915,11 @@ class FinanceService:
             # Số còn lại luôn suy ra từ giá trị hợp đồng, không trừ dần vào chính nó.
             # Trừ dần thì mỗi lần hoàn tác lại lệch thêm một ít và không bao giờ khớp lại.
             rec.remaining_amount = max(0.0, total - float(rec.paid_amount or 0))
+            if rec.remaining_amount <= 0.009 and float(rec.paid_amount or 0) >= total - 0.009 and getattr(rec, 'is_written_off', False):
+                rec.is_written_off = False
+                rec.written_off_reason = None
+                rec.written_off_by = None
+                rec.written_off_at = None
         else:
             paid = max(0.0, amount)
             due_date_val = c.date_signed + timedelta(days=30) if c and c.date_signed else None
@@ -1255,6 +1260,8 @@ class FinanceService:
                 "period_month": str(period.period_month),
                 "new_status": period.status,
                 "paid_at": period.paid_at.isoformat() if period.paid_at else None,
+                "payment_source": "external",
+                "cashflow_recorded": False,
             }
         except HTTPException:
             raise

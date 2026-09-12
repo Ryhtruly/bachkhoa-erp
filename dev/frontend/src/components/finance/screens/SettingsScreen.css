@@ -236,12 +236,15 @@
 
 .fin-time-group {
   display: grid;
-  grid-template-columns: 1fr 120px;
+  grid-template-columns: 1fr 148px;
   gap: 8px;
+  align-items: center;
 }
 
-.fin-input--time {
-  width: 100%;
+@media (max-width: 480px) {
+  .fin-time-group {
+    grid-template-columns: 1fr;
+  }
 }
 
 .fin-textarea {

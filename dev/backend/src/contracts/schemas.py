@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, FiniteFloat
 from typing import Optional
 
 class ContractCreateSchema(BaseModel):
@@ -9,7 +9,7 @@ class ContractCreateSchema(BaseModel):
     customer_id: Optional[str] = None
     code: Optional[str] = None
     service_type: str
-    contract_value: float
+    contract_value: FiniteFloat = Field(gt=0)
     paid_amount: Optional[float] = 0.0
     sales_source: str
     notes: Optional[str] = ""
@@ -56,7 +56,7 @@ class ContractGenerateSchema(BaseModel):
     province_name: Optional[str] = None
     ward_code: Optional[str] = None
     ward_name: Optional[str] = None
-    contract_value: float
+    contract_value: FiniteFloat = Field(gt=0)
     date_signed: str
     due_date: str
     sales_source: str

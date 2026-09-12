@@ -564,7 +564,7 @@ def mark_paid_payroll_period(
     db: Session = Depends(get_db),
     user: User = Depends(require_payroll_all)
 ):
-    """Kế toán/Giám đốc đánh dấu đã chi trả lương (locked -> paid)."""
+    """Kế toán/Giám đốc xác nhận đã thanh toán bên ngoài Sổ quỹ (locked -> paid)."""
     result = FinanceService.mark_paid_payroll_period(db, period_id, actor_id=user.id)
     invalidate_cache("bachkhoa:finance:*")
     invalidate_cache("bachkhoa:payroll:*")

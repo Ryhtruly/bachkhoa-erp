@@ -21,6 +21,7 @@ from src.contracts.services import ContractService, _create_initial_service_line
 from src.services.storage_service import upload_contract_document, CONTRACT_TEMPLATE_CONTENT_TYPE
 from src.files.references import DossierFileReference
 from src.core.auth import require_permission, User
+from src.core.finance_validation import parse_issued_money
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,11 @@ def update_lead_status(
         raise HTTPException(status_code=404, detail="Lead not found")
         
     old_status = lead.status
+    issued_total = None
+    if body.new_status == "Chốt" and old_status != "Chốt":
+        # Validate before changing the lead or creating any finance/dossier row.
+        issued_total = parse_issued_money(body.price)
+
     lead.status = body.new_status
     contract_created = False
     # --- AUTOMATION: Nếu chốt thành công -> Sinh Hợp đồng & Hồ sơ hoàn chỉnh ---
@@ -141,12 +147,7 @@ def update_lead_status(
         contract_id = ContractService.get_next_contract_code(db)
 
         # 2. Xử lý giá trị hợp đồng
-        numeric_total_value = 0.0
-        if body.price:
-            try:
-                numeric_total_value = float(str(body.price).replace(".", "").replace(",", "").strip())
-            except (ValueError, TypeError):
-                numeric_total_value = 0.0
+        numeric_total_value = float(issued_total)
 
         # 3. Quy đổi diện tích cho cột số (service_area)
         numeric_area = None

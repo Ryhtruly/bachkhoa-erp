@@ -171,6 +171,11 @@ export default function CRM() {
 
   const handleConfirmClose = (e) => {
     e.preventDefault();
+    const amount = Number(closingData.price);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      addToast('Giá trị hợp đồng phải là số lớn hơn 0.', 'error');
+      return;
+    }
     submitStatusChange(closingLead.id, 'Chốt', closingData);
   };
 
@@ -597,8 +602,17 @@ export default function CRM() {
                   value={closingData.price}
                   onChange={e => setClosingData({ ...closingData, price: e.target.value })}
                   type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  aria-invalid={closingData.price !== '' && (!Number.isFinite(Number(closingData.price)) || Number(closingData.price) <= 0)}
                   placeholder="Ví dụ: 15000000"
                 />
+                {closingData.price !== '' && (!Number.isFinite(Number(closingData.price)) || Number(closingData.price) <= 0) && (
+                  <div role="alert" style={{ color: 'var(--red-600, #dc2626)', fontSize: '0.78rem', marginTop: '6px' }}>
+                    Giá trị hợp đồng phải lớn hơn 0.
+                  </div>
+                )}
                 {closingData.price && Number(closingData.price) > 0 && (
                   <div className="currency-live-preview">
                     <span>Số tiền hiển thị:</span>
