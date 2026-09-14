@@ -50,6 +50,7 @@ from src.contracts.read_model import (
 )
 
 from src.config.settings import settings
+from src.core.refresh_sessions import cleanup_refresh_sessions as cleanup_refresh_session_rows
 from src.core.logging_config import setup_logging
 from src.core.middleware import RequestIdMiddleware
 
@@ -87,6 +88,30 @@ async def refresh_contract_cache_loop():
             logger.warning("Periodic contract cache refresh failed: %s", exc)
 
 
+def _cleanup_refresh_session_rows_once() -> int:
+    db = SessionLocal()
+    try:
+        deleted = cleanup_refresh_session_rows(db)
+        if deleted:
+            logger.info("Cleaned up %s stale refresh-session rows", deleted)
+        return deleted
+    except Exception as exc:
+        logger.warning("Periodic refresh-session cleanup failed: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+
+async def refresh_session_cleanup_loop():
+    interval_hours = settings.AUTH_REFRESH_SESSION_CLEANUP_INTERVAL_HOURS
+    if interval_hours <= 0:
+        return
+
+    while True:
+        await asyncio.to_thread(_cleanup_refresh_session_rows_once)
+        await asyncio.sleep(interval_hours * 60 * 60)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     if not os.getenv("TESTING"):
@@ -99,12 +124,21 @@ async def lifespan(_app: FastAPI):
     if CONTRACT_CACHE_REFRESH_SECONDS > 0:
         refresh_task = asyncio.create_task(refresh_contract_cache_loop())
 
+    refresh_session_cleanup_task = None
+    if not os.getenv("TESTING") and settings.AUTH_REFRESH_SESSION_CLEANUP_INTERVAL_HOURS > 0:
+        refresh_session_cleanup_task = asyncio.create_task(refresh_session_cleanup_loop())
+
     yield
 
     if refresh_task:
         refresh_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await refresh_task
+
+    if refresh_session_cleanup_task:
+        refresh_session_cleanup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresh_session_cleanup_task
 
 
 setup_logging()

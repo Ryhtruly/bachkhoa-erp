@@ -396,7 +396,7 @@ class FinanceRepository:
     def list_contracts_with_payments(db: Session) -> list:
         rows = db.query(Contract, Customer.full_name, Customer.phone).outerjoin(
             Customer, Contract.customer_id == Customer.id
-        ).order_by(Contract.created_at.desc()).all()
+        ).filter(Contract.total_value > 0).order_by(Contract.created_at.desc()).all()
         
         # Batch pre-aggregate payments by contract in 1 single query
         paid_map = dict(
@@ -434,12 +434,44 @@ class FinanceRepository:
         today = date.today()
         contracts_q = db.query(Contract, Customer.full_name, Customer.representative_name).outerjoin(
             Customer, Contract.customer_id == Customer.id
-        ).all()
+        ).filter(Contract.total_value > 0).all()
+
         contracts_map = {}
         contracts_customer_map = {}
         for c, cust_name, representative_name in contracts_q:
             contracts_map[c.id] = float(c.total_value or 0)
             contracts_customer_map[c.id] = cust_name or representative_name or ""
+
+        # A Receivable row is a projection for metadata, not the source of
+        # truth for money.  Keep the first deterministic projection when legacy
+        # duplicates exist; the reconciliation endpoint can report duplicates
+        # separately without making this GET mutate the database.
+        projection_rows = db.query(Receivable).order_by(
+            Receivable.due_date.asc().nullslast(),
+            Receivable.created_at.asc(),
+            Receivable.id.asc(),
+        ).all()
+        receivable_map = {}
+        for projection in projection_rows:
+            receivable_map.setdefault(projection.contract_id, projection)
+
+        # Approved income cashflow is the single read/report source for actual
+        # collections.  This includes a contract that has no Receivable row and
+        # excludes pending/rejected/cancelled receipts.
+        paid_rows = db.query(
+            CashflowTransaction.contract_id,
+            func.sum(CashflowTransaction.amount),
+        ).filter(
+            CashflowTransaction.contract_id.in_(list(contracts_map)),
+            CashflowTransaction.transaction_type.in_([
+                TransactionType.INCOME.value, "Thu", "INCOME"
+            ]),
+            CashflowTransaction.status.in_([
+                TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt",
+                "approved", "COMPLETED", "Đã quyết toán"
+            ]),
+        ).group_by(CashflowTransaction.contract_id).all()
+        paid_map = {contract_id: float(amount or 0) for contract_id, amount in paid_rows}
 
         # Batch pre-fetch all pending refund transactions in 1 single query
         pending_refunds = db.query(CashflowTransaction).filter(
@@ -449,23 +481,22 @@ class FinanceRepository:
         ).all()
         pending_refund_map = {t.contract_id: t for t in pending_refunds}
 
-        rows = db.query(Receivable).order_by(Receivable.due_date.asc().nullslast()).all()
         result = []
-        for r in rows:
-            paid = float(r.paid_amount or 0)
-            remaining = float(r.remaining_amount or 0)
-            total_val = contracts_map.get(r.contract_id, 0.0)
+        for contract_id, total_val in contracts_map.items():
+            r = receivable_map.get(contract_id)
+            paid = paid_map.get(contract_id, 0.0)
+            remaining = max(0.0, total_val - paid)
             excess_amount = max(paid - total_val, 0) if (total_val > 0 and paid > total_val + 0.009) else 0.0
-            overdue = bool(r.due_date and r.due_date < today and remaining > 0)
+            overdue = bool(r and r.due_date and r.due_date < today and remaining > 0)
 
             is_written_off = bool(getattr(r, 'is_written_off', False))
             is_refunded = bool(getattr(r, 'is_refunded', False))
             carried_forward_to = getattr(r, 'carried_forward_to', None)
             carried_forward_from = getattr(r, 'carried_forward_from', None)
 
-            pending_refund = pending_refund_map.get(r.contract_id)
+            pending_refund = pending_refund_map.get(contract_id)
 
-            if is_written_off:
+            if is_written_off and paid < total_val - 0.009:
                 status = "written_off"
             elif is_refunded:
                 status = "refunded"
@@ -473,8 +504,10 @@ class FinanceRepository:
                 status = "overpaid"
             elif carried_forward_to:
                 status = "settled"
-            elif remaining <= 0:
+            elif remaining <= 0.009:
                 status = "settled"
+            elif is_written_off:
+                status = "written_off"
             elif overdue:
                 status = "overdue"
             elif paid > 0:
@@ -482,11 +515,11 @@ class FinanceRepository:
             else:
                 status = "not_started"
 
-            cust_name = contracts_customer_map.get(r.contract_id, "") or getattr(r, 'customer_name', '') or ""
+            cust_name = contracts_customer_map.get(contract_id, "") or getattr(r, 'customer_name', '') or ""
 
             result.append({
-                "id": r.id,
-                "contract_id": r.contract_id or "",
+                "id": r.id if r else f"contract:{contract_id}",
+                "contract_id": contract_id or "",
                 "customer_name": cust_name,
                 "customer": cust_name,
                 "total_value": total_val,
@@ -497,7 +530,7 @@ class FinanceRepository:
                 "has_pending_refund": bool(pending_refund),
                 "pending_refund_id": pending_refund.id if pending_refund else "",
                 "pending_refund_amount": float(pending_refund.amount or 0) if pending_refund else 0.0,
-                "due_date": str(r.due_date) if r.due_date else "",
+                "due_date": str(r.due_date) if r and r.due_date else "",
                 "overdue": overdue,
                 "status": status,
                 "is_written_off": is_written_off,
@@ -506,7 +539,12 @@ class FinanceRepository:
                 "refund_reason": getattr(r, 'refund_reason', '') or "",
                 "carried_forward_to": carried_forward_to or "",
                 "carried_forward_from": carried_forward_from or "",
-                "created_at": r.created_at.strftime("%d/%m/%y") if r.created_at else "",
+                "created_at": (
+                    r.created_at.strftime("%d/%m/%y")
+                    if r and r.created_at
+                    else ""
+                ),
+                "is_projection_missing": r is None,
             })
         return result
 

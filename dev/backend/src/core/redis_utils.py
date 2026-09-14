@@ -1,6 +1,9 @@
+import fnmatch
 import json
 import logging
 import os
+import threading
+import time
 from contextlib import contextmanager
 from typing import Any, Optional
 
@@ -34,34 +37,68 @@ def get_redis_client() -> Optional[redis.Redis]:
             _client = None
     return _client
 
+_fallback_store: dict[str, tuple[float, str]] = {}
+_fallback_lock = threading.Lock()
+
+
+def _fallback_get(key: str) -> Optional[Any]:
+    with _fallback_lock:
+        item = _fallback_store.get(key)
+        if not item:
+            return None
+        expires_at, raw = item
+        if time.time() > expires_at:
+            _fallback_store.pop(key, None)
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
+
+def _fallback_set(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
+    try:
+        from fastapi.encoders import jsonable_encoder
+
+        raw = json.dumps(jsonable_encoder(data), ensure_ascii=False)
+        with _fallback_lock:
+            _fallback_store[key] = (time.time() + ttl_seconds, raw)
+        return True
+    except Exception as exc:
+        logger.warning("Fallback cache set error for key '%s': %s", key, exc)
+        return False
+
+
+def _fallback_invalidate(key_or_prefix: str) -> None:
+    with _fallback_lock:
+        if "*" in key_or_prefix:
+            keys_to_delete = [k for k in _fallback_store if fnmatch.fnmatch(k, key_or_prefix)]
+            for k in keys_to_delete:
+                _fallback_store.pop(k, None)
+        else:
+            _fallback_store.pop(key_or_prefix, None)
+
 
 def get_cached_json(key: str) -> Optional[Any]:
-    """Lấy dữ liệu JSON từ cache Redis; tự động bỏ qua nếu lỗi."""
+    """Lấy dữ liệu JSON từ cache Redis (hoặc in-memory fallback nếu Redis offline)."""
     client = get_redis_client()
     if not client:
-        return None
+        return _fallback_get(key)
     try:
         raw = client.get(key)
         if raw:
             return json.loads(raw)
     except Exception as exc:
         logger.warning("Redis cache get error cho key '%s': %s", key, exc)
+        return _fallback_get(key)
     return None
 
 
 def set_cached_json(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
-    """Lưu dữ liệu JSON vào cache Redis với TTL; tự động bỏ qua nếu lỗi.
-
-    Đi qua `jsonable_encoder` chứ không `json.dumps` trần: payload thật có
-    `datetime`, `Decimal`, `UUID` — `json.dumps` ném lỗi, và vì lỗi bị nuốt vào
-    log warning nên cache **im lặng không ghi được dòng nào**, tưởng là có cache
-    mà thực tế mọi request vẫn xuống thẳng DB. Encoder này cũng chính là thứ
-    FastAPI dùng để trả response, nên dữ liệu đọc từ cache khớp từng kiểu với
-    dữ liệu trả thẳng.
-    """
+    """Lưu dữ liệu JSON vào cache Redis với TTL; fallback RAM nếu Redis offline."""
     client = get_redis_client()
     if not client:
-        return False
+        return _fallback_set(key, data, ttl_seconds)
     try:
         from fastapi.encoders import jsonable_encoder
 
@@ -70,11 +107,12 @@ def set_cached_json(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
         return True
     except Exception as exc:
         logger.warning("Redis cache set error cho key '%s': %s", key, exc)
-    return False
+        return _fallback_set(key, data, ttl_seconds)
 
 
 def invalidate_cache(key_or_prefix: str) -> None:
-    """Xóa cache theo key hoặc tiền tố."""
+    """Xóa cache theo key hoặc tiền tố trên cả Redis và in-memory fallback."""
+    _fallback_invalidate(key_or_prefix)
     client = get_redis_client()
     if not client:
         return

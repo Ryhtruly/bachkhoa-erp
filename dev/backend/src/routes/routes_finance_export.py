@@ -11,6 +11,7 @@ from src.db.database import get_db
 from src.core.auth import require_any_permission, User
 from src.db.models import Employee, Department
 from src.finance.repository import FinanceRepository
+from src.finance.access import assert_director
 from src.finance.excel_exporter import (
     generate_monthly_dashboard_excel,
     generate_employee_payroll_excel,
@@ -50,6 +51,7 @@ def export_monthly_dashboard_excel(
     user: User = Depends(require_any_permission(("finance", "read"), ("payroll", "read")))
 ):
     """Xuất Báo Cáo Dòng Tiền và Thu Chi Tháng ra file Excel (.xlsx)."""
+    assert_director(db, user, "Chỉ Giám đốc được xuất báo cáo có dữ liệu thu.")
     try:
         data = FinanceRepository.get_monthly_dashboard(db, month)
         excel_stream = generate_monthly_dashboard_excel(data, month)

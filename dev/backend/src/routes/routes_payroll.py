@@ -195,6 +195,7 @@ def get_employee_ledger(
             c.id as contract_id,
             c.total_value as contract_value,
             cust.full_name as customer_name,
+            wpe.id as entitlement_id,
             wpe.amount as entitlement_amount,
             wpe.status as entitlement_status,
             wpe.earned_at
@@ -269,7 +270,7 @@ def get_employee_ledger(
     recorded_total = 0.0
     paid_total = 0.0
 
-    for r in rows:
+    for idx, r in enumerate(rows):
         event_date_val = r["completed_at"] or r["earned_at"] or r["started_at"] or r["assigned_at"] or r["node_created_at"]
         if event_date_val:
             if isinstance(event_date_val, str):
@@ -347,8 +348,14 @@ def get_employee_ledger(
 
         event_date_str = event_date_val.strftime("%Y-%m-%d") if hasattr(event_date_val, "strftime") else (str(event_date_val)[:10] if event_date_val else date.today().isoformat())
 
+        ent_id = r.get("entitlement_id") if hasattr(r, "get") else (r["entitlement_id"] if "entitlement_id" in r else None)
+        assignment_id_val = r.get("assignment_id") if hasattr(r, "get") else (r["assignment_id"] if "assignment_id" in r else None)
+        task_node_id_val = r.get("task_node_id") if hasattr(r, "get") else (r["task_node_id"] if "task_node_id" in r else None)
+        row_unique_id = str(ent_id) if ent_id else f"{assignment_id_val or 'task'}_{task_node_id_val or 'node'}_{idx}"
+
         details.append({
-            "id": r["assignment_id"] or f"task_{r['task_node_id']}",
+            "id": row_unique_id,
+            "assignment_id": r["assignment_id"],
             "task_id": r["node_code"] or "NODE",
             "contract_id": r["contract_id"] or "HĐ-Nhiệm vụ",
             "customer_name": r["customer_name"] or "Khách hàng Bách Khoa",

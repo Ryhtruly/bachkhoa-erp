@@ -16,6 +16,7 @@ from src.db.models.auth import (
     UserPermissionOverride,
     RoleScopeRule,
     AuthToken,
+    RefreshSession,
     AuditLog,
     Notification,
 )
@@ -33,6 +34,8 @@ from src.db.models.crm import (
 from src.db.models.operations import (
     TaskType,
     ServicePackage,
+    WorkItem,
+    WorkItemRate,
 )
 from src.db.models.finance import (
     CashflowTransaction,
@@ -77,6 +80,7 @@ __all__ = [
     "UserPermissionOverride",
     "RoleScopeRule",
     "AuthToken",
+    "RefreshSession",
     "AuditLog",
     "Notification",
     "Customer",
@@ -90,6 +94,8 @@ __all__ = [
     "ContractGeneratedDocument",
     "TaskType",
     "ServicePackage",
+    "WorkItem",
+    "WorkItemRate",
     "CashflowTransaction",
     "AdvanceRequest",
     "Receivable",

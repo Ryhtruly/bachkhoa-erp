@@ -54,6 +54,7 @@ from src.core.redis_utils import (
 from src.services.storage_service import get_contract_template, get_contract_document_file
 
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+from src.finance.access import assert_director
 
 # Hằng số cho truy vấn tiền — dùng chung một định nghĩa với tầng tài chính,
 # tránh mỗi nơi liệt kê một kiểu rồi lệch nhau.
@@ -2617,6 +2618,7 @@ def write_off_debt(
     user: User = Depends(require_permission("finance", "approve")),
 ):
     """Giám đốc duyệt xóa nợ / miễn giảm công nợ cho hợp đồng."""
+    assert_director(db, user, "Chỉ Giám đốc được xóa nợ hoặc miễn giảm công nợ.")
     result = ContractService.write_off_debt(db, contract_id, payload.reason, actor_id=user.id)
     invalidate_money_caches()
     return result
@@ -2629,6 +2631,7 @@ def get_eligible_carry_forward_targets(
     user: User = Depends(require_permission("finance", "read")),
 ):
     """Lấy danh sách các hợp đồng hợp lệ của cùng khách hàng để chuyển nợ sang."""
+    assert_director(db, user, "Chỉ Giám đốc được xem và xử lý chuyển nợ hợp đồng.")
     return ContractService.get_eligible_carry_forward_targets(db, contract_id)
 
 
@@ -2640,6 +2643,7 @@ def carry_forward_debt(
     user: User = Depends(require_permission("finance", "approve")),
 ):
     """Giám đốc duyệt chuyển nợ hợp đồng cũ sang hợp đồng mới."""
+    assert_director(db, user, "Chỉ Giám đốc được chuyển nợ hợp đồng.")
     result = ContractService.carry_forward_debt(
         db, contract_id, payload.target_contract_id, payload.reason, actor_id=user.id
     )

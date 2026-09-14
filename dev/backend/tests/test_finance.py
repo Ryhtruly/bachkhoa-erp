@@ -11,15 +11,21 @@ def test_list_cashflow(client, finance_clerk_user):
     assert "items" in data or isinstance(data, list)
 
 
+def test_missing_cashflow_detail_returns_404(client, finance_clerk_user):
+    _, headers = finance_clerk_user
+    response = client.get("/api/finance/cashflow/does-not-exist", headers=headers)
+    assert response.status_code == 404
+
+
 def test_create_and_void_cashflow(client, finance_clerk_user, db):
     user, headers = finance_clerk_user
 
     payload = {
-        "type": "Thu",
+        "type": "Chi",
         "amount": 2500000.0,
-        "category": "Thu tiền dịch vụ test",
-        "payer_payee": "Khách hàng Test Pytest",
-        "payment_method": "Tiền mặt",
+        "category": "Chi dịch vụ test",
+        "payer_payee": "Nhà cung cấp Test Pytest",
+        "payment_method": "Chuyển khoản",
         "transaction_date": datetime.now().strftime("%Y-%m-%d"),
         "description": "Test cashflow creation flow",
         "scope": "Công ty"
@@ -61,10 +67,10 @@ def test_cashflow_cash_and_bank_endpoints(client, finance_clerk_user, db):
     # Create test cash transaction (legacy Vietnamese payment_method)
     tx_cash = CashflowTransaction(
         id="PT-CASH-TEST-001",
-        transaction_type="Thu",
+        transaction_type="EXPENSE",
         amount=1500000.0,
-        category_code="Thu tiền mặt test",
-        payer_payee_name="Khách test tiền mặt",
+        category_code="Chi tiền mặt test",
+        payer_payee_name="Nhà cung cấp test tiền mặt",
         payment_method="Tiền mặt",
         scope="Công ty",
         status="Hoàn thành"
@@ -72,10 +78,10 @@ def test_cashflow_cash_and_bank_endpoints(client, finance_clerk_user, db):
     # Create test bank transaction (canonical BANK_TRANSFER payment_method)
     tx_bank = CashflowTransaction(
         id="PT-BANK-TEST-001",
-        transaction_type="INCOME",
+        transaction_type="EXPENSE",
         amount=3500000.0,
-        category_code="Thu ngân hàng test",
-        payer_payee_name="Khách test ngân hàng",
+        category_code="Chi ngân hàng test",
+        payer_payee_name="Nhà cung cấp test ngân hàng",
         payment_method="BANK_TRANSFER",
         scope="COMPANY",
         status="COMPLETED"
@@ -89,7 +95,7 @@ def test_cashflow_cash_and_bank_endpoints(client, finance_clerk_user, db):
         assert res_cash.status_code == 200, f"Cash fund failed: {res_cash.text}"
         data_cash = res_cash.json()
         assert "balance" in data_cash
-        assert "total_income" in data_cash
+        assert "total_income" not in data_cash
         assert "total_expenditure" in data_cash
         assert "transactions" in data_cash
         cash_tx_ids = [t["id"] for t in data_cash["transactions"]]
@@ -100,7 +106,7 @@ def test_cashflow_cash_and_bank_endpoints(client, finance_clerk_user, db):
         assert res_bank.status_code == 200, f"Bank fund failed: {res_bank.text}"
         data_bank = res_bank.json()
         assert "balance" in data_bank
-        assert "total_income" in data_bank
+        assert "total_income" not in data_bank
         assert "total_expenditure" in data_bank
         assert "transactions" in data_bank
         bank_tx_ids = [t["id"] for t in data_bank["transactions"]]

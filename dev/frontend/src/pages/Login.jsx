@@ -68,8 +68,13 @@ export default function Login({ onLogin }) {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password }),
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          remember_me: remember,
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.detail || 'Không thể đăng nhập');
@@ -97,6 +102,7 @@ export default function Login({ onLogin }) {
     try {
       const response = await fetch('/api/auth/forgot-password/request-otp', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: forgotIdentifier.trim() }),
       });
@@ -121,6 +127,7 @@ export default function Login({ onLogin }) {
     try {
       const response = await fetch('/api/auth/forgot-password/request-otp', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: forgotIdentifier.trim() }),
       });
@@ -150,6 +157,7 @@ export default function Login({ onLogin }) {
     try {
       const response = await fetch('/api/auth/forgot-password/verify-otp', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: forgotIdentifier.trim(), otp: cleanOtp }),
       });
@@ -182,6 +190,7 @@ export default function Login({ onLogin }) {
     try {
       const response = await fetch('/api/auth/forgot-password/reset-password', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           identifier: forgotIdentifier.trim(),

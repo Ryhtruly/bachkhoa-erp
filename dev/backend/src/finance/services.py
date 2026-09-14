@@ -23,6 +23,7 @@ from src.finance.domain_rules import (
 )
 from src.finance.serializers import serialize_employee
 from src.core.audit import log_action
+from src.core.auth import is_accountant_user
 from src.core.redis_utils import invalidate_money_caches
 from src.contracts.read_model import sync_contract_read_model_after_write
 from src.finance.enums import (
@@ -191,6 +192,13 @@ class FinanceService:
             canon_pm = normalize_payment_method(payload.payment_method)
             canon_scope = normalize_scope(payload.scope)
 
+            actor = db.query(User).filter(User.id == actor_id).first() if actor_id else None
+            if actor and not check_is_director(db, actor.id):
+                if canon_type == TransactionType.INCOME.value:
+                    raise HTTPException(status_code=403, detail="Chỉ Giám đốc được lập phiếu thu.")
+                if not is_accountant_user(db, actor):
+                    raise HTTPException(status_code=403, detail="Chỉ Kế toán được lập phiếu chi.")
+
             # 3. Check cash balance for EXPENSE and CASH
             if canon_type == TransactionType.EXPENSE.value and canon_pm == PaymentMethod.CASH.value:
                 check_cash_balance(db, payload.amount)
@@ -339,6 +347,13 @@ class FinanceService:
             t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
             if not t:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu thu/chi này")
+
+            actor = db.query(User).filter(User.id == actor_id).first() if actor_id else None
+            if actor and not check_is_director(db, actor.id):
+                if normalize_transaction_type(t.transaction_type) == TransactionType.INCOME.value:
+                    raise HTTPException(status_code=403, detail="Chỉ Giám đốc được cập nhật phiếu thu.")
+                if not is_accountant_user(db, actor):
+                    raise HTTPException(status_code=403, detail="Chỉ Kế toán được cập nhật phiếu chi.")
 
             parsed_date = t.transaction_date
             if payload.transaction_date:
@@ -662,12 +677,8 @@ class FinanceService:
                     cash_balance_after=bal_tm,
                     bank_balance_after=bal_ck,
                     created_by_user_id=creator,
-                    status=TransactionStatus.COMPLETED.value,
-                    signer_snapshot=capture_document_signer_snapshot(
-                        db,
-                        actor_id or creator,
-                        recipient={"name": advance.payer_payee_name},
-                    ),
+                    status=TransactionStatus.PENDING.value,
+                    signer_snapshot=None,
                 )
                 db.add(tc)
                 auto_vouchers.append({"id": tc.id, "type": vtype, "amount": abs(diff), "purpose": note_prefix})
@@ -915,6 +926,11 @@ class FinanceService:
             # Số còn lại luôn suy ra từ giá trị hợp đồng, không trừ dần vào chính nó.
             # Trừ dần thì mỗi lần hoàn tác lại lệch thêm một ít và không bao giờ khớp lại.
             rec.remaining_amount = max(0.0, total - float(rec.paid_amount or 0))
+            if rec.remaining_amount <= 0.009 and float(rec.paid_amount or 0) >= total - 0.009 and getattr(rec, 'is_written_off', False):
+                rec.is_written_off = False
+                rec.written_off_reason = None
+                rec.written_off_by = None
+                rec.written_off_at = None
         else:
             paid = max(0.0, amount)
             due_date_val = c.date_signed + timedelta(days=30) if c and c.date_signed else None
@@ -991,6 +1007,8 @@ class FinanceService:
     def approve_cashflow(db: Session, transaction_id: str, actor_id: str) -> dict:
         """Giám đốc duyệt phiếu. ĐÂY là lúc công nợ mới thực sự được ghi nhận."""
         try:
+            if not check_is_director(db, actor_id):
+                raise HTTPException(status_code=403, detail="Chỉ Giám đốc được duyệt phiếu thu/chi.")
             t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
             if not t:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
@@ -1054,6 +1072,8 @@ class FinanceService:
         """Giám đốc từ chối phiếu chờ duyệt. Không đụng công nợ vì phiếu chưa từng được tính."""
         if not (reason or "").strip():
             raise HTTPException(status_code=400, detail="Phải ghi lý do từ chối")
+        if not check_is_director(db, actor_id):
+            raise HTTPException(status_code=403, detail="Chỉ Giám đốc được từ chối phiếu thu/chi.")
         try:
             t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
             if not t:
@@ -1255,6 +1275,8 @@ class FinanceService:
                 "period_month": str(period.period_month),
                 "new_status": period.status,
                 "paid_at": period.paid_at.isoformat() if period.paid_at else None,
+                "payment_source": "external",
+                "cashflow_recorded": False,
             }
         except HTTPException:
             raise

@@ -21,6 +21,7 @@ from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import handover as HO
 from src.dossiers.actor_guard import assert_can_act_on_node, assert_can_view_node, format_on_behalf_note
+from src.finance.access import assert_director, is_income_transaction
 from src.files.payment_receipts import (
     MAX_RECEIPT_BYTES,
     MAX_RECEIPT_FILES,
@@ -69,7 +70,8 @@ def list_outstanding(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read")),
 ):
-    """Đã giao — chưa thu đủ. Màn hình chính của kế toán."""
+    """Đã giao — chưa thu đủ. Màn hình quản lý thu công nợ của Giám đốc."""
+    assert_director(db, user, "Chỉ Giám đốc được quản lý danh sách thu công nợ.")
     cache_key = "bachkhoa:handover:outstanding"
     cached = get_cached_json(cache_key)
     if cached is not None:
@@ -275,7 +277,7 @@ def view_payment_receipt(
     """Stream one private receipt to finance readers or the payment creator."""
     row = db.execute(
         text("""
-            select id, created_by_user_id, receipt_attachments
+            select id, created_by_user_id, transaction_type, receipt_attachments
             from public.cashflow_transactions
             where receipt_attachments @> cast(:needle as jsonb)
             limit 1
@@ -284,6 +286,8 @@ def view_payment_receipt(
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy bill/biên lai")
+    if is_income_transaction(row.get("transaction_type")):
+        assert_director(db, user, "Chỉ Giám đốc được xem bill/biên lai thu tiền.")
     can_read_finance = check_user_permission(db, user, "finance", "read")
     is_creator = str(row["created_by_user_id"] or "") == str(user.id)
     if not can_read_finance and not is_creator:
@@ -517,6 +521,7 @@ def record_contract_payment(
     user: User = Depends(require_permission("finance", "read")),
 ):
     """Thu tiền theo hợp đồng — không phụ thuộc quy trình đang đứng ở bước nào."""
+    assert_director(db, user, "Chỉ Giám đốc được ghi nhận tiền thu theo hợp đồng.")
     with redis_distributed_lock(
         f"payment:contract:{contract_id}",
         timeout_seconds=5,
@@ -549,6 +554,7 @@ def record_payment(
     user: User = Depends(require_permission("finance", "read")),
 ):
     """Làn B — ghi nhận một đợt khách đưa tiền. Phiếu vào trạng thái Chờ duyệt."""
+    assert_director(db, user, "Chỉ Giám đốc được ghi nhận tiền thu.")
     with redis_distributed_lock(
         f"payment:node:{task_node_id}",
         timeout_seconds=5,

@@ -63,7 +63,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
     setSubmitting(true);
     try {
       await apiFetch(`${API}/api/finance/payroll/periods/${targetId}/mark-paid`, { method: 'POST' });
-      addToast(`Đã đánh dấu chi trả bảng lương tháng ${month}!`, 'success');
+      addToast(`Đã xác nhận chi trả ngoài Sổ quỹ cho bảng lương tháng ${month}!`, 'success');
       setSensitiveModal(null);
       await load();
     } catch (err) {
@@ -82,7 +82,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
   const payrollMonthLabel = periodYear && periodMonth
     ? `Tháng ${Number(periodMonth)}/${periodYear}`
     : month;
-  const payrollStatusLabel = isPaid ? 'Đã chi trả' : isLocked ? 'Đã chốt' : 'Đang mở';
+  const payrollStatusLabel = isPaid ? 'Đã xác nhận chi trả ngoài sổ' : isLocked ? 'Đã chốt' : 'Đang mở';
 
   const printColumns = [
     { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
@@ -154,7 +154,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
           </div>
 
           <Badge variant={isPaid ? 'success' : isLocked ? 'warning' : 'neutral'} dot>
-            Kỳ lương: {isPaid ? 'Đã chi trả' : isLocked ? 'Đã chốt sổ' : 'Đang mở · Chưa chốt'}
+            Kỳ lương: {isPaid ? 'Đã xác nhận chi trả ngoài sổ' : isLocked ? 'Đã chốt sổ' : 'Đang mở · Chưa chốt'}
           </Badge>
 
           <button
@@ -187,6 +187,26 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
           )}
         </div>
       </div>
+
+      {isPaid && (
+        <div style={{
+          fontSize: '0.8rem',
+          color: 'var(--blue-700, #1d4ed8)',
+          background: 'rgba(59, 130, 246, 0.08)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: 8,
+          padding: '8px 14px',
+          margin: '0 0 14px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span style={{ fontSize: '1rem' }}>ℹ️</span>
+          <span>
+            <strong>Đã xác nhận chi trả ngoài sổ:</strong> trạng thái này ghi nhận việc thanh toán bên ngoài hệ thống; chưa tạo phiếu Chi trong Sổ quỹ.
+          </span>
+        </div>
+      )}
 
       {!isPaid && (
         <div style={{
@@ -283,7 +303,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
         onClose={() => setSensitiveModal(null)}
         onConfirm={sensitiveModal === 'lock' ? handleLockPayroll : handlePayPayroll}
         title={sensitiveModal === 'lock' ? `Xác nhận chốt bảng lương tháng ${month}` : `Xác nhận đã chi trả lương tháng ${month}`}
-        description={sensitiveModal === 'lock' ? 'Sau khi chốt sổ, các chính sách lương và hoa hồng trong tháng sẽ được khóa cố định để kế toán thực hiện chi trả.' : 'Hành động này xác nhận doanh nghiệp đã hoàn tất chuyển tiền/thanh toán lương cho toàn bộ CBNV trong tháng.'}
+      description={sensitiveModal === 'lock' ? 'Sau khi chốt sổ, các chính sách lương và hoa hồng trong tháng sẽ được khóa cố định để kế toán thực hiện chi trả.' : 'Hành động này chỉ xác nhận doanh nghiệp đã hoàn tất thanh toán bên ngoài hệ thống; hệ thống không tự tạo phiếu Chi trong Sổ quỹ.'}
         requireReason={false}
         actionLabel={sensitiveModal === 'lock' ? 'Chốt sổ lương' : 'Đánh dấu đã trả'}
         isLoading={submitting}

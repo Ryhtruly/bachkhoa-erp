@@ -265,7 +265,7 @@ const emptyForm = {
   signer_snapshot: null
 };
 
-export default function PrintVoucherScreen({ month, user }) {
+export default function PrintVoucherScreen({ month, user, isDirector = false }) {
   const voucherDocumentRef = useRef(null);
   const [mode, setMode] = useState('create');
   const [txType, setTxType] = useState('Chi');
@@ -276,6 +276,10 @@ export default function PrintVoucherScreen({ month, user }) {
   const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
   const [approvedAdvanceRequests, setApprovedAdvanceRequests] = useState([]);
   const [selectedAdvanceRequestId, setSelectedAdvanceRequestId] = useState('');
+
+  useEffect(() => {
+    if (!isDirector && txType === 'Thu') setTxType('Chi');
+  }, [isDirector, txType]);
 
   const currentUserName = user?.full_name || user?.name || user?.username || '';
   const [form, setForm] = useState({ ...emptyForm, created_by: currentUserName });
@@ -628,7 +632,7 @@ export default function PrintVoucherScreen({ month, user }) {
 
           {mode === 'create' && (
             <div className="print-screen-type-group">
-              {Object.keys(TX_TYPE_META).map(t => {
+              {Object.keys(TX_TYPE_META).filter(t => isDirector || t !== 'Thu').map(t => {
                 const meta = TX_TYPE_META[t];
                 const active = txType === t;
                 return (

@@ -9,10 +9,18 @@ const contractNavigationReceived = vi.hoisted(() => vi.fn())
 const cashflowNavigationReceived = vi.hoisted(() => vi.fn())
 const employeeTaskNavigationReceived = vi.hoisted(() => vi.fn())
 const dashboardRendered = vi.hoisted(() => vi.fn())
+const hasRefreshSessionHint = vi.hoisted(() => vi.fn())
+const markRefreshSessionActive = vi.hoisted(() => vi.fn())
 
 vi.mock('./lib/api', () => ({
   apiFetch: vi.fn(),
   clearAccessToken: vi.fn(),
+  getAccessToken: vi.fn(() => 'test-token'),
+  hasRefreshSessionHint,
+  logoutSession: vi.fn().mockResolvedValue(undefined),
+  markRefreshSessionActive,
+  refreshAccessToken: vi.fn().mockResolvedValue('fresh-token'),
+  setAccessToken: vi.fn(),
 }))
 vi.mock('./lib/unsavedChangesGuard', () => ({
   requestNavigationPermission: vi.fn(),
@@ -151,6 +159,8 @@ describe('App sidebar preference', () => {
     dashboardRendered.mockReset()
     requestNavigationPermission.mockReset()
     requestNavigationPermission.mockResolvedValue(true)
+    hasRefreshSessionHint.mockReturnValue(true)
+    markRefreshSessionActive.mockReset()
     localStorage.clear()
     localStorage.setItem('bachkhoa_access_token', 'test-token')
     localStorage.setItem('bachkhoa_sidebar_collapsed', 'true')
@@ -160,6 +170,15 @@ describe('App sidebar preference', () => {
       default_workspace: 'management',
       permissions: {},
     })
+  })
+
+  it('does not bootstrap auth requests on the login page without a saved session hint', () => {
+    hasRefreshSessionHint.mockReturnValue(false)
+
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: 'Test login' })).toBeInTheDocument()
+    expect(apiFetch).not.toHaveBeenCalled()
   })
 
   it('restores and updates the desktop collapsed preference', async () => {
@@ -191,6 +210,31 @@ describe('App sidebar preference', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Thu gọn thanh điều hướng' }))
 
     expect(dashboardRendered).not.toHaveBeenCalled()
+  })
+
+  it('logs out when session validation returns 401', async () => {
+    apiFetch.mockRejectedValue({ status: 401, message: 'expired' })
+
+    render(<App />)
+
+    expect(await screen.findByRole('button', { name: 'Test login' })).toBeInTheDocument()
+  })
+
+  it('keeps the session when a transient validation timeout recovers', async () => {
+    apiFetch
+      .mockRejectedValueOnce({ status: 408, message: 'backend is starting' })
+      .mockResolvedValueOnce({
+        username: 'staff',
+        full_name: 'Nhân viên',
+        default_workspace: 'management',
+        permissions: { finance: true },
+      })
+
+    render(<App />)
+
+    expect(await screen.findByText('Cashflow protected screen', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(apiFetch.mock.calls.slice(0, 2).map(([path]) => path)).toEqual(['/api/auth/me', '/api/auth/me'])
+    expect(screen.queryByRole('button', { name: 'Test login' })).not.toBeInTheDocument()
   })
 
   it('opens the responsive overlay and closes it with Escape', async () => {

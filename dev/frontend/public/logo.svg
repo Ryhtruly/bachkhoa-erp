@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="bkPillarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffbe0b" style="stop-color:#ffbe0b;stop-opacity:1" />
+      <stop offset="35%" stop-color="#fb5607" style="stop-color:#fb5607;stop-opacity:1" />
+      <stop offset="100%" stop-color="#eb4a23" style="stop-color:#eb4a23;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bkMonogramGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff5400" style="stop-color:#ff5400;stop-opacity:1" />
+      <stop offset="100%" stop-color="#c1121f" style="stop-color:#c1121f;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Trụ tháp trái vát góc -->
+  <path d="M20 32 L38 12 V86 H20 Z" fill="url(#bkPillarGrad)" />
+  <!-- Biểu tượng chữ b kiến trúc & góc lượn -->
+  <path
+    d="M44 26 L62 44 L84 66 C91 73 89 86 76 86 H44 V26 Z M58 60 L72 74 H58 V60 Z"
+    fill="url(#bkMonogramGrad)"
+  />
+</svg>

@@ -9,6 +9,7 @@ from src.finance.enums import (
     get_transaction_type_label, get_payment_method_label,
     TransactionType
 )
+from src.finance.access import assert_transaction_write_scope, finance_visibility, is_expense_transaction
 from datetime import datetime, timezone
 import uuid
 
@@ -20,7 +21,10 @@ def list_transactions(
     user: User = Depends(require_permission("finance", "read"))
 ):
     try:
+        visibility = finance_visibility(db, user)
         transactions = db.query(CashflowTransaction).order_by(CashflowTransaction.created_at.desc()).all()
+        if visibility != "director":
+            transactions = [t for t in transactions if is_expense_transaction(t.transaction_type)]
         result = []
         for t in transactions:
             canon_type = normalize_transaction_type(t.transaction_type)
@@ -58,6 +62,7 @@ def create_transaction(
     try:
         canon_type = normalize_transaction_type(payload.transaction_type)
         canon_pm = normalize_payment_method(payload.payment_method)
+        assert_transaction_write_scope(db, user, canon_type)
         if canon_type in (TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value):
             raise HTTPException(
                 status_code=400,

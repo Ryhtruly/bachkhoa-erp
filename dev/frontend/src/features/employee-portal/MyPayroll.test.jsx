@@ -81,7 +81,7 @@ describe('MyPayroll period status and interaction semantics', () => {
 
   it.each([
     ['Locked', 'Đã chốt sổ'],
-    ['Paid', 'Đã chi trả'],
+    ['Paid', 'Đã xác nhận chi trả'],
   ])('shows the persisted %s status for the current period', async (status, label) => {
     const row = payrollRow({ status });
     apiFetchMock.mockResolvedValue({

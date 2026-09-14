@@ -35,7 +35,7 @@ const getPayrollStatus = (payroll) => {
 const getPayrollStatusMeta = (payroll) => {
   switch (getPayrollStatus(payroll)) {
     case 'paid':
-      return { label: 'Đã chi trả', shortLabel: 'Đã chi trả', className: 'is-paid', icon: CheckCircle2, caption: 'Đã chi trả' };
+      return { label: 'Đã xác nhận chi trả', shortLabel: 'Đã xác nhận chi trả', className: 'is-paid', icon: CheckCircle2, caption: 'Đã xác nhận chi trả ngoài sổ' };
     case 'locked':
       return { label: 'Đã chốt sổ', shortLabel: 'Đã chốt', className: 'is-closed', icon: CheckCircle2, caption: 'Đã khóa sổ' };
     case 'open':
@@ -323,7 +323,7 @@ export default function MyPayroll({ isModal = false }) {
                           {getPayrollStatus(h) === 'open' && h.is_current ? (
                             <span className="my-payroll__tag-curr">Kỳ này</span>
                           ) : getPayrollStatus(h) === 'paid' ? (
-                            <span className="my-payroll__tag-paid">Đã chi trả</span>
+                            <span className="my-payroll__tag-paid">Đã xác nhận chi trả</span>
                           ) : getPayrollStatus(h) === 'locked' ? (
                             <span className="my-payroll__tag-locked">Đã chốt</span>
                           ) : getPayrollStatus(h) === 'no_period' ? (

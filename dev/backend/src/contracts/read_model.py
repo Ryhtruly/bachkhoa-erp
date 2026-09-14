@@ -117,7 +117,7 @@ def build_contract_read_model(db: Session):
         carried_forward_to = getattr(receivable, 'carried_forward_to', None) if receivable else None
         carried_forward_from = getattr(receivable, 'carried_forward_from', None) if receivable else None
 
-        if is_written_off:
+        if is_written_off and paid < total - 0.009:
             status = "written_off"
         elif is_refunded:
             status = "refunded"
@@ -125,8 +125,10 @@ def build_contract_read_model(db: Session):
             status = "overpaid"
         elif carried_forward_to:
             status = "settled"
-        elif debt <= 0:
+        elif debt <= 0.009:
             status = "settled"
+        elif is_written_off:
+            status = "written_off"
         elif due_date and due_date < date.today():
             status = "overdue"
         elif paid > 0:

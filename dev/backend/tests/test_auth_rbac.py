@@ -89,11 +89,11 @@ def test_finance_clerk_rbac_and_audit_propagation(client, finance_clerk_user, db
 
     # AuditLog actor_id verification on write
     payload = {
-        "type": "Thu",
+        "type": "Chi",
         "amount": 500000.0,
-        "category": "Thu test audit",
-        "payer_payee": "Khách hàng Audit Pytest",
-        "payment_method": "Tiền mặt",
+        "category": "Chi test audit",
+        "payer_payee": "Nhà cung cấp Audit Pytest",
+        "payment_method": "Chuyển khoản",
         "transaction_date": "2026-07-28",
         "description": "Test audit log propagation in pytest",
         "scope": "Công ty"

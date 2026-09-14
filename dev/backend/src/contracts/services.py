@@ -30,6 +30,7 @@ from src.services.storage_service import (
 )
 from src.core import doc_generator
 from src.core.audit import log_action
+from src.core.finance_validation import parse_issued_money
 from src.contracts.read_model import sync_contract_read_model_after_write
 from src.files.references import DossierFileReference
 
@@ -456,13 +457,11 @@ class ContractService:
     @staticmethod
     def create_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
+            contract_val = float(parse_issued_money(payload.contract_value))
             template = resolve_published_contract_template(db, payload.contract_template_id)
             cust_name = payload.customer_name
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             service_type = payload.service_type
-            contract_val = float(payload.contract_value or 0)
-            if contract_val < 0:
-                raise ValueError("Giá trị hợp đồng không được là số âm")
             paid_val = float(payload.paid_amount or 0)
             if paid_val < 0:
                 raise ValueError("Số tiền đã thanh toán không được là số âm")
@@ -638,6 +637,7 @@ class ContractService:
 
     @staticmethod
     def generate_and_save_contract(db: Session, payload, actor_id: Optional[str] = None) -> dict:
+        contract_val = float(parse_issued_money(payload.contract_value))
         # Phân giải lựa chọn giấy tờ NGAY ĐẦU, trước mọi lệnh ghi.
         #
         # Payload thiếu hoặc mâu thuẫn phải nổ 422 khi chưa có gì được tạo — bảo
@@ -656,9 +656,6 @@ class ContractService:
             phone = payload.phone
             address = payload.address
             service_type = payload.service_type
-            contract_val = float(payload.contract_value or 0)
-            if contract_val < 0:
-                raise ValueError("Giá trị hợp đồng không được là số âm")
             date_signed_str = payload.date_signed
 
             customer = ContractService._find_or_create_customer(
@@ -872,6 +869,15 @@ class ContractService:
                 )
                 db.add(rec)
                 db.flush()
+
+            total_val = float(contract.total_value or 0.0)
+            paid = float(rec.paid_amount or 0.0)
+            remaining = float(rec.remaining_amount if rec.remaining_amount is not None else max(0.0, total_val - paid))
+            if remaining <= 0.009 and paid >= total_val - 0.009:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Hợp đồng này đã thu đủ tiền, không còn nợ để xóa / miễn giảm."
+                )
 
             rec.is_written_off = True
             rec.written_off_by = actor_id
