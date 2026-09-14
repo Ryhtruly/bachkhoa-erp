@@ -32,7 +32,7 @@
      + `supabase/migrations/20260914000000_combo_first_workflow_and_document_architecture.sql`
      + `supabase/migrations/20260914130000_drop_task_nodes_node_code_fkey.sql`
      + `supabase/migrations/20260914140000_add_color_to_catalog.sql`
-   - **Tổng cộng**: 5 file migration chính và 2 file rollback. Do tên các file hoàn toàn khác nhau và tác động lên các bảng độc lập, Git sẽ tự động hợp nhất vào codebase mà không xảy ra bất kỳ xung đột file nào.
+   - **Tổng cộng**: 5 file migration chính và 2 file rollback (tổng 7 file DB). Do tên các file hoàn toàn khác nhau và tác động lên các bảng độc lập, Git sẽ tự động hợp nhất vào codebase mà không xảy ra bất kỳ xung đột file nào.
 
 ---
 
@@ -40,7 +40,7 @@
 
 ```mermaid
 flowchart TD
-    A["Bước 1: Nhánh hiện tại đã commit sạch sẽ (b9bf9e2)"] --> B["Bước 2: Tạo nhánh tích hợp test/merge-accounting"]
+    A["Bước 1: Nhánh hiện tại đã commit sạch sẽ (working tree clean)"] --> B["Bước 2: Tạo nhánh tích hợp test/merge-accounting"]
     B --> C["Bước 3: Git merge --no-commit từ origin"]
     C --> D["Bước 4: Hòa giải 16 file giao thoa theo bảng hướng dẫn"]
     D --> E["Bước 5: Chạy kiểm thử npm test & npm run build"]
@@ -50,7 +50,7 @@ flowchart TD
 ---
 
 ### BƯỚC 1: XÁC NHẬN NHÁNH HIỆN TẠI ĐÃ COMMIT SẠCH SẼ
-Nhánh `fix/backend-errors` hiện tại đã được commit lưu trữ tại commit: `b9bf9e2` (`working tree clean`).
+Nhánh `fix/backend-errors` hiện tại đã được commit lưu trữ sạch sẽ (`working tree clean`).
 
 ---
 
