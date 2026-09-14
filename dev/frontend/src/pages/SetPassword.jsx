@@ -41,7 +41,6 @@ export default function SetPassword({ onDone }) {
       setChecking(false);
       return;
     }
-    fetch(`/api/auth/invite/${token}`)
     fetch(`/api/auth/invite/${token}`, { credentials: 'include' })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));

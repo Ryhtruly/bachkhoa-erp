@@ -22,8 +22,15 @@
    - Tối ưu hiệu năng: Cache L1/L2 Employee Portal, loại bỏ vòng lặp re-render, CSS Modal bo góc.
    - **Đã commit lưu trữ toàn bộ code an toàn**: Mã commit `59020dd`.
 
-3. **Cơ sở dữ liệu**:
-   - Có **5 file migration độc lập** tác động lên các bảng khác nhau (2 của accounting, 3 của backend-fix), không hề trùng lặp.
+3. **Cơ sở dữ liệu (Supabase Migrations)**:
+   - Nhánh `feature/accounting-module` tạo 2 file migration mới:
+     + `20260912000000_auth_refresh_sessions.sql` (bảng phiên đăng nhập refresh session)
+     + `20260912000001_auth_refresh_session_cleanup.sql` (index dọn session)
+   - Nhánh `fix/backend-errors` tạo 3 file migration mới:
+     + `20260914000000_combo_first_workflow_and_document_architecture.sql` (kiến trúc combo, loại giấy)
+     + `20260914130000_drop_task_nodes_node_code_fkey.sql` (gỡ khóa ngoại node_code)
+     + `20260914140000_add_color_to_catalog.sql` (màu sắc danh mục)
+   - Do tên 5 file hoàn toàn khác nhau và tác động lên các bảng độc lập, Git sẽ tự động hợp nhất cả 5 file vào thư mục `supabase/migrations/` mà không bị conflict file.
 
 ---
 
@@ -111,3 +118,4 @@ git merge integrate/accounting-into-backend-fix --ff-only
 # Xoá nhánh test tạm thời
 git branch -d integrate/accounting-into-backend-fix
 ```
+
