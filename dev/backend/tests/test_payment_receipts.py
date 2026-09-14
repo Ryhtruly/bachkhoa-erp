@@ -178,6 +178,13 @@ def test_rejected_payment_cleans_up_uploaded_objects(monkeypatch):
     class FakeDb:
         rolled_back = False
 
+        class Result:
+            def first(self):
+                return (1,)
+
+        def execute(self, *_args, **_kwargs):
+            return self.Result()
+
         def rollback(self):
             self.rolled_back = True
 
@@ -206,7 +213,7 @@ def test_rejected_payment_cleans_up_uploaded_objects(monkeypatch):
             note=None,
             receipt_files=[upload],
             db=db,
-            user=SimpleNamespace(id="accountant-1"),
+                user=SimpleNamespace(id="director-1"),
         )
 
     assert error.value.status_code == 400

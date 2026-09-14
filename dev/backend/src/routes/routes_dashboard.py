@@ -6,6 +6,7 @@ from src.db.models import Contract, Customer, CashflowTransaction
 from src.core.auth import require_authenticated_user, User
 from src.core.redis_utils import get_cached_json, set_cached_json
 from src.finance.enums import TransactionType
+from src.finance.access import assert_director
 
 router = APIRouter(prefix="/api", tags=["02. Dashboard & Analytics"])
 
@@ -20,6 +21,7 @@ def get_dashboard(
     db: Session = Depends(get_db),
     user: User = Depends(require_authenticated_user)
 ):
+    assert_director(db, user, "Chỉ Giám đốc được xem bảng điều hành có dữ liệu thu và công nợ.")
     cache_key = "bachkhoa:dashboard:summary"
     cached = get_cached_json(cache_key)
     if cached:
@@ -124,6 +126,7 @@ def get_dashboard_charts(
     db: Session = Depends(get_db),
     user: User = Depends(require_authenticated_user)
 ):
+    assert_director(db, user, "Chỉ Giám đốc được xem biểu đồ doanh thu và công nợ.")
     cache_key = "bachkhoa:dashboard:charts"
     cached = get_cached_json(cache_key)
     if cached:

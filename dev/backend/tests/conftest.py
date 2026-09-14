@@ -332,21 +332,29 @@ def finance_clerk_user(db):
     db.flush()
 
     from sqlalchemy import func
-    max_role_id = db.query(func.max(Role.id)).scalar() or 0
-    role = Role(id=max_role_id + 1, role_name=f"finance_clerk_{uuid.uuid4().hex[:6]}")
-    db.add(role)
-    db.flush()
+    role = db.query(Role).filter(Role.role_name == "accountant").first()
+    role_created = False
+    if role is None:
+        max_role_id = db.query(func.max(Role.id)).scalar() or 0
+        role = Role(id=max_role_id + 1, role_name="accountant")
+        db.add(role)
+        db.flush()
+        role_created = True
 
     user_role = UserRole(user_id=user.id, role_id=role.id)
-    perm = RolePermission(
-        role_id=role.id,
-        resource="finance",
-        can_read=True,
-        can_create=True,
-        can_update=True,
-        can_delete=True,
-        can_approve=True
-    )
+    perm = db.query(RolePermission).filter(
+        RolePermission.role_id == role.id,
+        RolePermission.resource == "finance",
+    ).first()
+    permission_created = perm is None
+    if perm is None:
+        perm = RolePermission(role_id=role.id, resource="finance")
+        db.add(perm)
+    perm.can_read = True
+    perm.can_create = True
+    perm.can_update = True
+    perm.can_delete = True
+    perm.can_approve = True
     db.add(user_role)
     db.add(perm)
     db.commit()
@@ -358,9 +366,11 @@ def finance_clerk_user(db):
 
     # Cleanup
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
-    db.query(RolePermission).filter(RolePermission.role_id == role.id).delete()
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
-    db.delete(role)
+    if permission_created:
+        db.delete(perm)
+    if role_created:
+        db.delete(role)
     db.delete(user)
     db.commit()
 

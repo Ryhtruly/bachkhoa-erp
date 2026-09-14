@@ -390,7 +390,7 @@ function App() {
     { key: 'timeline', Component: ContractTimeline, directorOnly: true, props: { user: profile, isDirector } },
     { key: 'approvals', Component: ApprovalQueue, directorOnly: true, props: {} },
     { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
-    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'debt-collection', user: profile, isDirector } },
+    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'cashflow-all', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
     { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
   ];

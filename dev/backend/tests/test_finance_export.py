@@ -3,8 +3,8 @@ from unittest.mock import patch
 from src.db.models import Employee, Department
 
 
-def test_export_monthly_dashboard_excel(client, finance_clerk_user):
-    user, headers = finance_clerk_user
+def test_export_monthly_dashboard_excel(client, admin_headers):
+    headers = admin_headers
     res = client.get("/api/finance/export/monthly-dashboard-excel?month=2026-08", headers=headers)
     assert res.status_code == 200
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers.get("content-type", "")

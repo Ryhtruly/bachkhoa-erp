@@ -35,7 +35,7 @@ const EXPENSE_CATEGORIES = [
   { value: "Khác", label: "Chi khác (Tự nhập)" }
 ];
 
-export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess, user: propUser }) {
+export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess, user: propUser, isDirector = false }) {
   const [currentUser, setCurrentUser] = useState(propUser || null);
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
 
   useEffect(() => {
     if (open) {
-      const initType = defaultType || 'Thu';
+      const initType = !isDirector ? 'Chi' : (defaultType || 'Thu');
       const initCat = initType === 'Thu' ? 'Thu lãi tiền gửi ngân hàng' : 'Chi tiếp khách & Giao tế';
       setType(initType);
       setAmtDisplay('');
@@ -101,9 +101,10 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
         .then(d => setEmployees(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
     }
-  }, [open, defaultType, creatorName]);
+  }, [open, defaultType, creatorName, isDirector]);
 
   const handleTypeChange = (newType) => {
+    if (!isDirector && newType === 'Thu') return;
     setType(newType);
     const newCat = newType === 'Thu' ? 'Thu lãi tiền gửi ngân hàng' : 'Chi tiếp khách & Giao tế';
     setCategory(newCat);
@@ -235,7 +236,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
       <form onSubmit={handleSubmit}>
         {/* Type toggle */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {['Thu', 'Chi'].map(t => (
+          {(isDirector ? ['Thu', 'Chi'] : ['Chi']).map(t => (
             <button key={t} type="button" onClick={() => handleTypeChange(t)}
               style={{
                 flex: 1, height: 40, borderRadius: 8, border: '2px solid',

@@ -22,6 +22,12 @@ export default function Cashflow({ landing, user, isDirector }) {
   const [focusDebtContract, setFocusDebtContract] = useState('');
 
   useEffect(() => {
+    if (!isDirector && ['monthly-dashboard', 'debt-collection', 'receivables', 'cashflow-settings'].includes(activeMenu)) {
+      setActiveMenu('cashflow-all');
+    }
+  }, [activeMenu, isDirector]);
+
+  useEffect(() => {
     const openVoucher = (e) => {
       const voucherId = e?.detail?.voucher_id || e?.detail?.id;
       const nonce = e?.detail?.nonce || Date.now();
@@ -46,20 +52,28 @@ export default function Cashflow({ landing, user, isDirector }) {
 
   const renderContent = () => {
     switch (activeMenu) {
-      case 'monthly-dashboard': return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'monthly-dashboard': return isDirector
+        ? <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />
+        : <CashflowScreen key="all-fallback-monthly" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-all': return <CashflowScreen key="all" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} focusVoucher={focusVoucher} />;
       case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
-      case 'debt-collection': return <DebtCollection user={user} isDirector={isDirector} initialSearch={focusDebtContract} />;
-      case 'receivables': return <ReceivablesScreen user={user} isDirector={isDirector} />;
+      case 'debt-collection': return isDirector
+        ? <DebtCollection user={user} isDirector={isDirector} initialSearch={focusDebtContract} />
+        : <CashflowScreen key="all-fallback" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'receivables': return isDirector
+        ? <ReceivablesScreen user={user} isDirector={isDirector} />
+        : <CashflowScreen key="all-fallback-receivables" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'advance-request': return <AdvanceRequestScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'advance-clear': return <AdvanceClearScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'payroll-worker': return <PieceRatePayrollScreen user={user} isDirector={isDirector} />;
       case 'bang-gia': return <PieceRatePricingScreen user={user} isDirector={isDirector} />;
       case 'payroll-office': return <PayrollOfficeScreen user={user} isDirector={isDirector} />;
-      case 'cashflow-settings': return isDirector ? <SettingsScreen user={user} isDirector={isDirector} /> : <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
-      default: return <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      case 'cashflow-settings': return isDirector ? <SettingsScreen user={user} isDirector={isDirector} /> : <CashflowScreen key="all-fallback-settings" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
+      default: return isDirector
+        ? <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />
+        : <CashflowScreen key="all-fallback-default" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
     }
   };
 
