@@ -20,17 +20,19 @@
    - Bổ sung 2 API lớn: Hủy hợp đồng (`PUT /cancel`) & Xóa hợp đồng rác (`DELETE /{id}`).
    - Nâng cấp toàn diện giao diện đặt mật khẩu `SetPassword.jsx` chuẩn nhận diện Bách Khoa ERP.
    - Tối ưu hiệu năng: Cache L1/L2 Employee Portal, loại bỏ vòng lặp re-render, CSS Modal bo góc.
-   - **Đã commit lưu trữ toàn bộ code an toàn**: Mã commit `59020dd`.
+   - **Đã commit lưu trữ toàn bộ code an toàn**: Mã commit nền `66dd859`.
 
-3. **Cơ sở dữ liệu (Supabase Migrations)**:
-   - Nhánh `feature/accounting-module` tạo 2 file migration mới:
-     + `20260912000000_auth_refresh_sessions.sql` (bảng phiên đăng nhập refresh session)
-     + `20260912000001_auth_refresh_session_cleanup.sql` (index dọn session)
-   - Nhánh `fix/backend-errors` tạo 3 file migration mới:
-     + `20260914000000_combo_first_workflow_and_document_architecture.sql` (kiến trúc combo, loại giấy)
-     + `20260914130000_drop_task_nodes_node_code_fkey.sql` (gỡ khóa ngoại node_code)
-     + `20260914140000_add_color_to_catalog.sql` (màu sắc danh mục)
-   - Do tên 5 file hoàn toàn khác nhau và tác động lên các bảng độc lập, Git sẽ tự động hợp nhất cả 5 file vào thư mục `supabase/migrations/` mà không bị conflict file.
+3. **Cơ sở dữ liệu & Rollback (Supabase Migrations)**:
+   - Nhánh `feature/accounting-module` có 2 migration và 2 script rollback tương ứng:
+     + `supabase/migrations/20260912000000_auth_refresh_sessions.sql`
+     + `supabase/migrations/20260912000001_auth_refresh_session_cleanup.sql`
+     + `supabase/rollback/20260912000000_auth_refresh_sessions_down.sql`
+     + `supabase/rollback/20260912000001_auth_refresh_session_cleanup_down.sql`
+   - Nhánh `fix/backend-errors` có 3 migration mới:
+     + `supabase/migrations/20260914000000_combo_first_workflow_and_document_architecture.sql`
+     + `supabase/migrations/20260914130000_drop_task_nodes_node_code_fkey.sql`
+     + `supabase/migrations/20260914140000_add_color_to_catalog.sql`
+   - **Tổng cộng**: 5 file migration chính và 2 file rollback. Do tên các file hoàn toàn khác nhau và tác động lên các bảng độc lập, Git sẽ tự động hợp nhất vào codebase mà không xảy ra bất kỳ xung đột file nào.
 
 ---
 
@@ -38,7 +40,7 @@
 
 ```mermaid
 flowchart TD
-    A["Bước 1: Nhánh hiện tại đã commit sạch sẽ (59020dd)"] --> B["Bước 2: Tạo nhánh tích hợp test/merge-accounting"]
+    A["Bước 1: Nhánh hiện tại đã commit sạch sẽ (b9bf9e2)"] --> B["Bước 2: Tạo nhánh tích hợp test/merge-accounting"]
     B --> C["Bước 3: Git merge --no-commit từ origin"]
     C --> D["Bước 4: Hòa giải 16 file giao thoa theo bảng hướng dẫn"]
     D --> E["Bước 5: Chạy kiểm thử npm test & npm run build"]
@@ -48,7 +50,7 @@ flowchart TD
 ---
 
 ### BƯỚC 1: XÁC NHẬN NHÁNH HIỆN TẠI ĐÃ COMMIT SẠCH SẼ
-Nhánh `fix/backend-errors` hiện tại đã được commit lưu trữ tại commit: `59020dd` (`working tree clean`).
+Nhánh `fix/backend-errors` hiện tại đã được commit lưu trữ tại commit: `b9bf9e2` (`working tree clean`).
 
 ---
 
