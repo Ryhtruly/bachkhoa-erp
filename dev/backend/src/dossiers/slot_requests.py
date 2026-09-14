@@ -46,6 +46,13 @@ _DEFAULT_SOURCE_BY_NODE = {
     "K02": "CONG_TY", "K03": "CONG_TY", "K04": "CONG_TY",
     "K05a": "CONG_TY",
     "K05b": "CO_QUAN", "K06": "CO_QUAN",
+    # Capabilities:
+    "STANDARD": "KHACH_HANG",
+    "SURVEY_FIELD": "CONG_TY",
+    "SURVEY_CAD": "CONG_TY",
+    "LEGAL_PREP": "CONG_TY",
+    "GOV_SUBMISSION": "CO_QUAN",
+    "HANDOVER": "CO_QUAN",
 }
 # Mã bước có chữ thường ("K05a") nên phải tra qua chỉ mục viết hoa.
 _DEFAULT_SOURCE_BY_UPPER_NODE = {
@@ -54,12 +61,18 @@ _DEFAULT_SOURCE_BY_UPPER_NODE = {
 
 
 def default_source_for_node(db: Session, task_node_id: str) -> str:
-    """Nguồn nghiệp vụ suy từ bước. Bước lạ thì rơi về công ty soạn."""
-    node_code = db.execute(
-        text("select node_code from public.task_nodes where id = :id"),
+    """Nguồn nghiệp vụ suy từ bước. Tra capability_code hoặc node_code, bước lạ rơi về công ty soạn."""
+    node_row = db.execute(
+        text("select node_code, capability_code from public.task_nodes where id = :id"),
         {"id": task_node_id},
-    ).scalar()
-    return _DEFAULT_SOURCE_BY_UPPER_NODE.get(str(node_code or "").strip().upper(), "CONG_TY")
+    ).mappings().first()
+    if not node_row:
+        return "CONG_TY"
+    cap = str(node_row.get("capability_code") or "").strip().upper()
+    if cap in _DEFAULT_SOURCE_BY_UPPER_NODE:
+        return _DEFAULT_SOURCE_BY_UPPER_NODE[cap]
+    code = str(node_row.get("node_code") or "").strip().upper()
+    return _DEFAULT_SOURCE_BY_UPPER_NODE.get(code, "CONG_TY")
 
 
 # Trạng thái đề xuất mà tài liệu bên trong CHƯA phải tài liệu chính thức.

@@ -179,9 +179,9 @@ function App() {
         console.warn('Authentication verification timed out.');
         handleLogout();
       }
-    }, 7000);
+    }, 16000);
 
-    apiFetch('/api/auth/me', { timeout: 6000 })
+    apiFetch('/api/auth/me', { timeout: 15000 })
       .then((user) => {
         if (!mounted) return;
         setProfile(user);
@@ -196,7 +196,7 @@ function App() {
         }
       })
       .catch((err) => {
-        console.error('Session validation error:', err);
+        console.warn('Session validation error:', err);
         if (mounted) handleLogout();
       })
       .finally(() => {
@@ -246,7 +246,9 @@ function App() {
     return () => window.removeEventListener('app:navigate', navigateFromFeature);
   }, []);
 
-  if (window.location.pathname === '/set-password') {
+  const normalizedPath = window.location.pathname.replace(/\/$/, '');
+  const windowHash = window.location.hash || '';
+  if (normalizedPath === '/set-password' || windowHash.startsWith('#/set-password')) {
     return (
       <SetPassword
         onDone={(token) => {
@@ -369,6 +371,8 @@ function App() {
       taskNodeId: item.task_node_id,
       targetType: item.target_type || item.type,
       targetId: item.target_id || item.ref_id,
+      checklistResultId: item.checklist_result_id,
+      documentTypeId: item.document_type_id,
       nonce: Date.now(),
     });
   };

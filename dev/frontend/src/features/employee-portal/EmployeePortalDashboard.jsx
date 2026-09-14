@@ -1,18 +1,29 @@
-import { useCallback, useEffect, useState } from 'react'
-
-import { apiFetch, getAccessToken } from '../../lib/api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import * as api from '../../lib/api'
 import EmployeeWorkspace from './EmployeeWorkspace'
 import './employeePortal.css'
 import './employeeWorkspace.css'
 
+const apiFetch = api.apiFetch
+const getAccessToken = api.getAccessToken
+let peekApiCache = () => undefined
+let getLastLocalMutationTime = () => 0
+try {
+  if (typeof api.peekApiCache === 'function') peekApiCache = api.peekApiCache
+} catch {}
+try {
+  if (typeof api.getLastLocalMutationTime === 'function') getLastLocalMutationTime = api.getLastLocalMutationTime
+} catch {}
+
 export default function EmployeePortalDashboard() {
-  const [data, setData] = useState(null)
-  const [taskPool, setTaskPool] = useState({ items: [], restrictions: {} })
-  const [dailySummary, setDailySummary] = useState(null)
-  const [completedItems, setCompletedItems] = useState({ count: 0, items: [] })
+  const [data, setData] = useState(() => peekApiCache('/api/employee-portal/me') || null)
+  const [taskPool, setTaskPool] = useState(() => peekApiCache('/api/employee-portal/task-pool') || { items: [], restrictions: {} })
+  const [dailySummary, setDailySummary] = useState(() => peekApiCache('/api/employee-portal/daily-summary') || null)
+  const [completedItems, setCompletedItems] = useState(() => peekApiCache('/api/employee-portal/completed-items') || { count: 0, items: [] })
   const [error, setError] = useState(null)
   const [actionError, setActionError] = useState('')
   const [claimingKey, setClaimingKey] = useState('')
+  const sseDebounceTimerRef = useRef(null)
 
   const loadWorkspace = useCallback((showError = false) => {
     return Promise.all([
@@ -65,7 +76,14 @@ export default function EmployeePortalDashboard() {
           const messages = buffer.split('\n\n')
           buffer = messages.pop() || ''
           if (messages.some(message => message.includes('event: employee-task-change'))) {
-            loadWorkspace(false)
+            // Echo Cancellation: Nếu vừa có thao tác từ chính client này trong 1500ms thì bỏ qua
+            if (Date.now() - getLastLocalMutationTime() < 1500) {
+              continue
+            }
+            if (sseDebounceTimerRef.current) window.clearTimeout(sseDebounceTimerRef.current)
+            sseDebounceTimerRef.current = window.setTimeout(() => {
+              loadWorkspace(false)
+            }, 400)
           }
         }
       } catch (streamError) {

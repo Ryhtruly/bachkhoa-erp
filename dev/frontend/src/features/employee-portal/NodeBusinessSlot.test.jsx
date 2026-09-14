@@ -156,4 +156,42 @@ describe('Thanh công nợ K06', () => {
     expect(screen.getByText(/0đ \/ 0đ/)).toBeInTheDocument()
     expect(screen.queryByText(/còn/)).not.toBeInTheDocument()
   })
+
+  it('node tự do có capability_code HANDOVER vẫn hiển thị thanh công nợ đầy đủ', () => {
+    mount({ node_code: 'N02', capability_code: 'HANDOVER' })
+    expect(screen.getByText(/còn 11\.070\.000đ/)).toBeInTheDocument()
+  })
+
+  it('node tự do có capability_code GOV_SUBMISSION vẫn hiển thị bảng theo dõi cơ quan và nút tạm dừng', () => {
+    mount({ node_code: 'N01', capability_code: 'GOV_SUBMISSION', status: 'in_progress' })
+    expect(screen.getByRole('button', { name: /Tạm dừng/ })).toBeInTheDocument()
+    expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
+  })
+
+  it('node tự do có capability_code SURVEY_FIELD hiển thị thông tin nghiệp vụ đo đạc thực địa', () => {
+    mount({ node_code: 'N03', capability_code: 'SURVEY_FIELD' })
+    expect(screen.getByText('Khảo sát & Đo thực địa')).toBeInTheDocument()
+    expect(screen.getByText(/Bấm "Bắt đầu đo hiện trường"/)).toBeInTheDocument()
+  })
+
+  it('node SURVEY_FIELD đã bắt đầu đo hiển thị giờ xuất phát và thông báo khóa slot thợ phụ', () => {
+    mount({
+      node_code: 'N03',
+      capability_code: 'SURVEY_FIELD',
+      field_started_at: '2026-09-14T08:30:00Z',
+    })
+    expect(screen.getByText('Đang thực hiện đo thực địa')).toBeInTheDocument()
+    expect(screen.getByText(/Đã xuất phát đo lúc/)).toBeInTheDocument()
+  })
+
+  it('node tự do có capability_code SURVEY_CAD hiển thị nghiệp vụ biên tập bản vẽ CAD', () => {
+    mount({ node_code: 'N04', capability_code: 'SURVEY_CAD' })
+    expect(screen.getByText('Nội nghiệp biên tập bản vẽ CAD & GIS')).toBeInTheDocument()
+  })
+
+  it('node tự do có capability_code LEGAL_PREP hiển thị nghiệp vụ soạn thảo pháp lý', () => {
+    mount({ node_code: 'N05', capability_code: 'LEGAL_PREP' })
+    expect(screen.getByText('Soạn thảo hồ sơ pháp lý & Rà quy hoạch')).toBeInTheDocument()
+  })
 })
+

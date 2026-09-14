@@ -71,7 +71,7 @@ export function flattenTemplates(groups) {
  */
 export function filterTemplates(templates, { packageId, taskTypeId, source }) {
   return (templates || []).filter(template => {
-    if (source && template.source !== source) return false
+    if (source && source !== 'ALL' && template.source !== source) return false
     return (template.applicabilities || [])
       .some(scope => matchesScope(scope, packageId, taskTypeId))
   })

@@ -415,8 +415,8 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     // KHÔNG chứa tài liệu thuộc combo khác
     expect(screen.queryByText(/Hồ sơ cấp đổi sổ đỏ/)).not.toBeInTheDocument()
 
-    // KHÔNG chứa tài liệu nguồn Khách hàng cung cấp (chỉ cho phép tài liệu đầu ra)
-    expect(screen.queryByText(/CCCD\/CMND khách hàng/)).not.toBeInTheDocument()
+    // Chứa tài liệu nguồn Khách hàng cung cấp thuộc combo này (hỗ trợ cả 3 nguồn Khách hàng, Công ty, Cơ quan)
+    expect(screen.getByText(/CCCD\/CMND khách hàng/)).toBeInTheDocument()
   })
 
   it('khởi tạo luồng mẫu không bao giờ có node K05 mà dùng K05a (Đo vẽ) hoặc K05b (Pháp lý)', () => {
@@ -508,9 +508,100 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     const clearBtn = screen.getByRole('button', { name: /bỏ gói khoán/i })
     fireEvent.click(clearBtn)
 
-    // Quay lại nút Gắn gói khoán ban đầu
     // Quay lại nút Gắn gói khoán ban đầu và hàng Lương khoán ẩn đi
     expect(await screen.findByRole('button', { name: /Gắn gói khoán/i })).toBeInTheDocument()
     expect(screen.queryByText('Lương khoán')).not.toBeInTheDocument()
+  })
+
+  it('cho phép chọn thẻ năng lực bước và tự động gợi ý phòng ban phụ trách tương ứng', async () => {
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    const nodeK01 = screen.getByTestId('flow-node-k01')
+    fireEvent.click(nodeK01)
+
+    // Kiểm tra hiển thị 6 thẻ năng lực trong Inspector
+    const inspector = document.querySelector('.mws-inspector')
+    expect(await within(inspector).findByText('Tác nghiệp tiêu chuẩn')).toBeInTheDocument()
+    expect(within(inspector).getByText('Khảo sát & Đo thực địa')).toBeInTheDocument()
+    expect(within(inspector).getByText('Biên tập bản vẽ CAD')).toBeInTheDocument()
+    expect(within(inspector).getByText('Soạn thảo hồ sơ pháp lý')).toBeInTheDocument()
+    expect(within(inspector).getByText('Nộp & Theo dõi Một Cửa')).toBeInTheDocument()
+    expect(within(inspector).getByText('Bàn giao & Quyết toán')).toBeInTheDocument()
+
+    // Bấm chọn năng lực "Khảo sát & Đo thực địa"
+    const surveyFieldCard = within(inspector).getByText('Khảo sát & Đo thực địa').closest('button')
+    fireEvent.click(surveyFieldCard)
+
+    // Thẻ được active
+    expect(surveyFieldCard).toHaveClass('is-selected')
+
+    // Phòng ban tự động gợi ý sang Phòng Đo vẽ
+    const deptSelect = within(inspector).getByRole('combobox', { name: /phòng ban phụ trách/i })
+    expect(deptSelect).toHaveValue('SURVEY')
+  })
+
+  it('hỗ trợ 1-Click Clone nhân bản quy trình sang Combo khác', async () => {
+    apiFetch.mockImplementation((path, opts) => {
+      if (path.includes('/clone') && opts?.method === 'POST') {
+        return Promise.resolve({
+          data: {
+            id: 'TPL-CLONED',
+            name: 'Quy trình Tách thửa chuẩn - Nhân bản',
+            service_package_id: 'sp_002',
+            task_type_id: 'tt_010',
+          },
+        })
+      }
+      if (path === '/api/catalog/service-packages') return Promise.resolve({ data: mockPackages })
+      if (path === '/api/document-register/workflow-nodes') return Promise.resolve({ data: mockCatalogNodes })
+      if (path === '/api/document-register/templates') return Promise.resolve(mockDocTemplates)
+      if (path.startsWith('/api/contracts/workflow/templates')) {
+        return Promise.resolve({ data: mockWorkflowTemplates })
+      }
+      return Promise.resolve({ data: [] })
+    })
+
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    // Bấm nút Nhân bản sang Combo trên toolbar
+    const cloneBtn = screen.getByRole('button', { name: /nhân bản sang combo/i })
+    fireEvent.click(cloneBtn)
+
+    // Modal nhân bản mở ra
+    expect(await screen.findByText('⚡ Nhân bản quy trình sang Combo khác')).toBeInTheDocument()
+
+    // Đổi gói đích sang Pháp Lý (sp_002)
+    const targetPkgSelect = screen.getByRole('combobox', { name: /gói dịch vụ đích/i })
+    fireEvent.change(targetPkgSelect, { target: { value: 'sp_002' } })
+
+    // Đổi tên quy trình nhân bản
+    const nameInput = screen.getByPlaceholderText(/VD: Quy trình Cắm mốc nhanh/i)
+    fireEvent.change(nameInput, { target: { value: 'Quy trình Cấp đổi sổ chuẩn - Nhân bản' } })
+
+    // Bấm nút Xác nhận nhân bản
+    const confirmBtn = screen.getByRole('button', { name: /xác nhận nhân bản/i })
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/contracts/workflow/templates/TPL-001/clone',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('sp_002'),
+        })
+      )
+    })
   })
 })

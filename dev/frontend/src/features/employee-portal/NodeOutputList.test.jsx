@@ -666,4 +666,72 @@ describe('Loại giấy runtime — trạng thái ở cấp loại, nhiều file
     expect(within(box).getByText(/Đã lưu kho tài liệu xong/)).toBeInTheDocument()
     expect(screen.queryByPlaceholderText(/Nhập lý do hoàn thành/)).not.toBeInTheDocument()
   })
+
+  it('giữ nguyên loại giấy tờ vừa thêm khi checklistItem bị re-render với danh sách cũ', async () => {
+    apiFetch.mockResolvedValueOnce({
+      data: [
+        { template_id: 'TPL-1', name: 'Giấy đo vẽ', source: 'CONG_TY', source_label: 'Công ty soạn' },
+      ],
+      context: {},
+    })
+
+    const { rerender } = render(
+      <NodeOutputList
+        taskNodeId="TASK-NODE-PRESERVE"
+        checklistItem={{
+          id: 'CR-PRESERVE',
+          name: 'Checklist nghiệm thu',
+          document_types: [
+            { id: 'TYPE-OLD', name: 'Phiếu nộp hồ sơ', source: 'CONG_TY', status: 'draft', files: [] },
+          ],
+        }}
+        nodeStatus="in_progress"
+        canPropose={true}
+      />,
+    )
+
+    expect(screen.getByText('Phiếu nộp hồ sơ')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Thêm loại giấy/i }))
+    await screen.findByText('Giấy đo vẽ')
+
+    fireEvent.click(screen.getByRole('option', { name: /Không thấy loại giấy — Tạo mới/i }))
+    fireEvent.change(screen.getByLabelText('Tên loại giấy'), { target: { value: 'aaa' } })
+    fireEvent.change(screen.getByLabelText('Nhóm'), { target: { value: 'KHACH_HANG' } })
+
+    apiFetch.mockResolvedValueOnce({
+      status: 'success',
+      data: { id: 'TYPE-NEW-AAA', name: 'aaa', source: 'KHACH_HANG', status: 'draft' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Thêm vào checklist' }))
+
+    // "aaa" phải xuất hiện trên giao diện
+    expect(screen.getByText((content, element) => (
+      element?.classList?.contains('eiw-doc__name') && element.textContent.trim() === 'aaa'
+    ))).toBeInTheDocument()
+
+    // Giả lập cha re-render với danh sách cũ (chưa kịp đồng bộ)
+    rerender(
+      <NodeOutputList
+        taskNodeId="TASK-NODE-PRESERVE"
+        checklistItem={{
+          id: 'CR-PRESERVE',
+          name: 'Checklist nghiệm thu',
+          document_types: [
+            { id: 'TYPE-OLD', name: 'Phiếu nộp hồ sơ', source: 'CONG_TY', status: 'draft', files: [] },
+          ],
+        }}
+        nodeStatus="in_progress"
+        canPropose={true}
+      />,
+    )
+
+    // "aaa" vẫn phải tồn tại, không được biến mất!
+    expect(screen.getByText((content, element) => (
+      element?.classList?.contains('eiw-doc__name') && element.textContent.trim() === 'aaa'
+    ))).toBeInTheDocument()
+    expect(screen.getByText('Phiếu nộp hồ sơ')).toBeInTheDocument()
+  })
 })
+

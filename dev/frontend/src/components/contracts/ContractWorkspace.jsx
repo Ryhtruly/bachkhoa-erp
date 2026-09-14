@@ -200,7 +200,7 @@ export function clearWorkspaceMemoryCache(key) {
   else workspaceMemoryCache.clear();
 }
 
-export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetTaskNodeId, targetType, targetId, targetNonce, isDirector = false }) {
+export default function ContractWorkspace({ tab, contract, _contracts, _onContractChange, onBack, addToast, targetServiceLineId, targetNodeKey, targetTaskNodeId, targetType, targetId, targetChecklistResultId, targetDocumentTypeId, targetNonce, isDirector = false }) {
   const contractId = getContractId(contract);
   const contextKey = `${contractId}:${tab}`;
   const [workspace, setWorkspace] = useState(() => workspaceMemoryCache.get(contextKey) || null);
@@ -505,6 +505,8 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
                   targetTaskNodeId={selectedServiceLine?.id === targetServiceLineId ? targetTaskNodeId : undefined}
                   targetType={selectedServiceLine?.id === targetServiceLineId ? targetType : undefined}
                   targetId={selectedServiceLine?.id === targetServiceLineId ? targetId : undefined}
+                  targetChecklistResultId={selectedServiceLine?.id === targetServiceLineId ? targetChecklistResultId : undefined}
+                  targetDocumentTypeId={selectedServiceLine?.id === targetServiceLineId ? targetDocumentTypeId : undefined}
                   targetNonce={selectedServiceLine?.id === targetServiceLineId ? targetNonce : undefined}
                 />
               </div>

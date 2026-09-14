@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Files, Loader, AlertTriangle, DollarSign, Clock } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsGrid, StatCard, StatusBadge } from '../components/ui';
-import PendingApprovals from '../features/approvals/PendingApprovals';
 import { apiFetch } from '../lib/api';
 
 
@@ -88,12 +87,6 @@ export default function Dashboard({ user }) {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', fontWeight: 500 }}>Dưới đây là bức tranh tài chính và tiến độ công việc tổng quan của công ty. Mọi thứ đang trong tầm kiểm soát!</p>
         </div>
         <div style={{ position: 'absolute', right: '-5%', top: '-50%', width: '300px', height: '300px', background: 'radial-gradient(circle, rgba(235,74,35,0.15) 0%, transparent 70%)', borderRadius: '50%' }}></div>
-      </div>
-
-      {/* Việc đang chặn người khác phải đứng TRƯỚC mọi thống kê — kế toán ghi tiền
-          xong là hồ sơ treo cho tới khi giám đốc duyệt. Tự ẩn khi không còn phiếu nào. */}
-      <div style={{ marginBottom: '16px' }}>
-        <PendingApprovals />
       </div>
 
       <StatsGrid>

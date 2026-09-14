@@ -502,7 +502,9 @@ def list_workflow_nodes(
     rows = db.execute(
         text("""
             select code, name, description from public.workflow_nodes
-            where coalesce(is_active, true) order by code
+            where coalesce(is_active, true)
+              and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMISSION', 'HANDOVER')
+            order by code
         """)
     ).mappings().all()
     return {"status": "success", "data": [dict(row) for row in rows]}
@@ -824,6 +826,13 @@ def list_templates(
 ):
     """Bộ mẫu giấy tờ theo từng Dạng hồ sơ — màn cấu hình của Giám đốc."""
     return {"status": "success", "data": register.list_templates(db)}
+
+
+@router.get("/package-tree")
+def get_package_tree_alias(db: Session = Depends(get_db)):
+    """Tương thích ngược cho các lời gọi prefetch / API cũ."""
+    from src.routes.routes_catalog import catalog_tree
+    return {"status": "success", "data": catalog_tree(db)}
 
 
 @router.post("/templates")

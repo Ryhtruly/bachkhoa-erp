@@ -75,6 +75,10 @@ def _node_or_404(db: Session, task_node_id: str) -> dict:
 def is_handover_node(node: dict) -> bool:
     """Nhận diện bằng CỜ, không bao giờ bằng mã node."""
     return bool((node.get("node_def") or {}).get("is_handover"))
+    """Nhận diện bằng CỜ hoặc Năng lực HANDOVER."""
+    node_def = node.get("node_def") or {}
+    cap = str(node_def.get("capability") or node_def.get("capability_code") or node.get("capability_code") or "").upper()
+    return bool(node_def.get("is_handover") or cap == "HANDOVER" or str(node.get("node_code") or "").upper() == "K06")
 
 
 # ══════════════════════════════════════════════════════════════════

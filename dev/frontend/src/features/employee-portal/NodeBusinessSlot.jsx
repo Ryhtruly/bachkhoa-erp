@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronDown, Pause, Play } from 'lucide-react'
+import { ChevronDown, Compass, Monitor, Pause, Play, Scale } from 'lucide-react'
 
 import CustomerSourceDocuments from './CustomerSourceDocuments'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import { formatMoney } from './nodeWorkFormat'
+
+function formatTime(iso) {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString('vi-VN')
+  } catch {
+    return String(iso)
+  }
+}
 
 /**
  * Ô NGHIỆP VỤ — hàng thứ hai của cột phải, thứ duy nhất đổi theo bước.
@@ -33,10 +43,20 @@ export default function NodeBusinessSlot({
   const [customerDocsOpen, setCustomerDocsOpen] = useState(true)
   const paused = Boolean(task.pause_reason_type)
 
-  const isHandover = Boolean(task.is_handover)
-  const allowPause = Boolean(task.allow_pause)
-  const allowGovTracking = Boolean(task.allow_gov_tracking)
-  const requiresGovSubmission = Boolean(task.requires_gov_submission)
+  const isHandover = Boolean(task.is_handover || task.capability_code === 'HANDOVER' || task.capability === 'HANDOVER' || task.node_code === 'K06')
+  const allowPause = Boolean(task.allow_pause || task.capability_code === 'GOV_SUBMISSION' || task.capability === 'GOV_SUBMISSION')
+  const allowGovTracking = Boolean(task.allow_gov_tracking || task.capability_code === 'GOV_SUBMISSION' || task.capability === 'GOV_SUBMISSION')
+  const requiresGovSubmission = Boolean(task.requires_gov_submission || task.capability_code === 'GOV_SUBMISSION' || task.capability === 'GOV_SUBMISSION')
+  const isSurveyField = Boolean(
+    task.capability_code === 'SURVEY_FIELD' || task.capability === 'SURVEY_FIELD'
+    || task.creates_survey_record
+  )
+  const isSurveyCad = Boolean(
+    task.capability_code === 'SURVEY_CAD' || task.capability === 'SURVEY_CAD'
+  )
+  const isLegalPrep = Boolean(
+    task.capability_code === 'LEGAL_PREP' || task.capability === 'LEGAL_PREP'
+  )
 
   useEffect(() => {
     setCustomerDocsOpen(true)
@@ -112,6 +132,43 @@ export default function NodeBusinessSlot({
           nghiệm thu nằm ở footer để không tạo thêm một panel checklist trùng. */}
       {isHandover && (
         <DebtBand item={item} />
+      )}
+
+      {/* ── Khảo sát & Đo thực địa: thông tin xuất phát đo và trạng thái slot thợ phụ ── */}
+      {isSurveyField && (
+        <div className="eiw-band eiw-band--info eiw-band--survey">
+          <Compass size={16} />
+          <div className="eiw-band__content">
+            <strong>{task.field_started_at ? 'Đang thực hiện đo thực địa' : 'Khảo sát & Đo thực địa'}</strong>
+            <span>
+              {task.field_started_at
+                ? `Đã xuất phát đo lúc ${formatTime(task.field_started_at)} · Khóa slot thợ phụ`
+                : 'Bấm "Bắt đầu đo hiện trường" ở chân trang khi có mặt tại khu đất để chốt đội hình'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Biên tập CAD: thông tin xử lý nội nghiệp ── */}
+      {isSurveyCad && (
+        <div className="eiw-band eiw-band--info eiw-band--cad">
+          <Monitor size={16} />
+          <div className="eiw-band__content">
+            <strong>Nội nghiệp biên tập bản vẽ CAD & GIS</strong>
+            <span>Kế thừa toạ độ GPS máy đo và hoàn thiện hồ sơ kỹ thuật thửa đất</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Soạn thảo pháp lý: thông tin thẩm định và rà quy hoạch ── */}
+      {isLegalPrep && (
+        <div className="eiw-band eiw-band--info eiw-band--legal">
+          <Scale size={16} />
+          <div className="eiw-band__content">
+            <strong>Soạn thảo hồ sơ pháp lý & Rà quy hoạch</strong>
+            <span>Thẩm định điều kiện pháp lý, rà cứu quy hoạch và lập hồ sơ tờ trình</span>
+          </div>
+        </div>
       )}
 
     </>

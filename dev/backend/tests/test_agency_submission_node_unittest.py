@@ -33,6 +33,11 @@ class AgencySubmissionNodeTestCase(unittest.TestCase):
         self.assertFalse(is_agency_submission_node(node_code="", requires_gov_submission=False))
         self.assertTrue(is_agency_submission_node(node_code=None, requires_gov_submission=True))
 
+    def test_capability_gov_submission_is_agency_node(self):
+        self.assertTrue(is_agency_submission_node(capability="GOV_SUBMISSION", requires_gov_submission=False))
+        self.assertTrue(is_agency_submission_node(node_code="NODE_CUSTOM", capability="GOV_SUBMISSION", requires_gov_submission=False))
+        self.assertFalse(is_agency_submission_node(node_code="NODE_CUSTOM", capability="SURVEY_FIELD", requires_gov_submission=False))
+
 
 if __name__ == "__main__":
     unittest.main()

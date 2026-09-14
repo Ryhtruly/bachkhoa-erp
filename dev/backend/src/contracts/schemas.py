@@ -9,8 +9,8 @@ class ContractCreateSchema(BaseModel):
     customer_id: Optional[str] = None
     code: Optional[str] = None
     service_type: str
-    contract_value: float
-    paid_amount: Optional[float] = 0.0
+    contract_value: float = Field(ge=0, description="Giá trị hợp đồng phải >= 0")
+    paid_amount: Optional[float] = Field(default=0.0, ge=0, description="Số tiền đã trả phải >= 0")
     sales_source: str
     notes: Optional[str] = ""
 
@@ -56,7 +56,7 @@ class ContractGenerateSchema(BaseModel):
     province_name: Optional[str] = None
     ward_code: Optional[str] = None
     ward_name: Optional[str] = None
-    contract_value: float
+    contract_value: float = Field(ge=0, description="Giá trị hợp đồng phải >= 0")
     date_signed: str
     due_date: str
     sales_source: str

@@ -2316,21 +2316,62 @@ tbody tr:last-child td {
 .modal-overlay.modal-overlay--top { z-index: 200; }
 
 .modal {
+  display: flex;
+  flex-direction: column;
   width: 560px;
   max-width: 92vw;
-  max-height: 85vh;
+  max-height: min(88vh, 850px);
   background: #ffffff;
-  padding: 32px;
-  border-radius: var(--radius-lg);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  padding: 0;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.05);
   transform: scale(0.9) translateY(20px);
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden; /* Tránh lòi thanh cuộn dọc ra khỏi góc bo viền border-radius */
 }
 
 .modal-overlay.open .modal {
   transform: scale(1) translateY(0);
+}
+
+.modal-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px 14px 24px !important;
+  margin-bottom: 0 !important;
+  border-bottom: 1px solid var(--border-subtle, #f1f5f9);
+  background: inherit;
+}
+
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* Custom sleek, rounded scrollbar inside modal body — comfortably inset, never protruding */
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 8px 0;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 99px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* Preview in A4: body được cuộn độc lập, footer luôn nằm trong modal và không
@@ -2387,19 +2428,22 @@ tbody tr:last-child td {
 }
 
 .modal-header h2 {
-  font-size: 1.25rem;
-  font-weight: 800;
+  font-size: 1.18rem;
+  font-weight: 750;
   color: var(--text-primary);
-  margin-bottom: 24px;
+  margin: 0 !important;
 }
 
 .modal-footer {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border-subtle);
+  padding: 14px 24px 16px 24px;
+  margin-top: 0 !important;
+  border-top: 1px solid var(--border-subtle, #f1f5f9);
+  background: inherit;
 }
 
 /* ==========================================
@@ -5017,6 +5061,23 @@ textarea.form-control {
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   color: var(--text-primary);
+}
+
+[data-theme='dark'] .modal-header,
+[data-theme='dark'] .modal-footer {
+  border-color: var(--border-subtle, #334155);
+}
+
+[data-theme='dark'] .modal-body {
+  scrollbar-color: #475569 transparent;
+}
+
+[data-theme='dark'] .modal-body::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+[data-theme='dark'] .modal-body::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 [data-theme='dark'] .btn-ghost {

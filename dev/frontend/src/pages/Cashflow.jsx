@@ -23,7 +23,7 @@ export default function Cashflow({ landing, user, isDirector }) {
 
   useEffect(() => {
     const openVoucher = (e) => {
-      const voucherId = e?.detail?.voucher_id || e?.detail?.id;
+      const voucherId = e?.detail?.voucherId || e?.detail?.voucher_id || e?.detail?.id;
       const nonce = e?.detail?.nonce || Date.now();
       if (!voucherId) return;
       setActiveMenu('cashflow-all');

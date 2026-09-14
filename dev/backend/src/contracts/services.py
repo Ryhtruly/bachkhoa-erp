@@ -461,7 +461,11 @@ class ContractService:
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             service_type = payload.service_type
             contract_val = float(payload.contract_value or 0)
+            if contract_val < 0:
+                raise ValueError("Giá trị hợp đồng không được là số âm")
             paid_val = float(payload.paid_amount or 0)
+            if paid_val < 0:
+                raise ValueError("Số tiền đã thanh toán không được là số âm")
 
             customer = db.query(Customer).filter(Customer.full_name == cust_name).first()
             if not customer:
@@ -653,6 +657,8 @@ class ContractService:
             address = payload.address
             service_type = payload.service_type
             contract_val = float(payload.contract_value or 0)
+            if contract_val < 0:
+                raise ValueError("Giá trị hợp đồng không được là số âm")
             date_signed_str = payload.date_signed
 
             customer = ContractService._find_or_create_customer(

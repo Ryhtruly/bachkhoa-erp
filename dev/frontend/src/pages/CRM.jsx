@@ -171,6 +171,11 @@ export default function CRM() {
 
   const handleConfirmClose = (e) => {
     e.preventDefault();
+    const priceNum = Number(closingData.price);
+    if (isNaN(priceNum) || priceNum < 0) {
+      addToast('Giá trị hợp đồng phải lớn hơn hoặc bằng 0', 'error');
+      return;
+    }
     submitStatusChange(closingLead.id, 'Chốt', closingData);
   };
 
@@ -597,6 +602,8 @@ export default function CRM() {
                   value={closingData.price}
                   onChange={e => setClosingData({ ...closingData, price: e.target.value })}
                   type="number"
+                  min="0"
+                  step="any"
                   placeholder="Ví dụ: 15000000"
                 />
                 {closingData.price && Number(closingData.price) > 0 && (

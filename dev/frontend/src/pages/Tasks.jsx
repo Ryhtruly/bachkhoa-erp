@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Pencil,
   ScrollText,
+  Clock,
 } from 'lucide-react';
 import {
   DataTable,
@@ -117,7 +118,23 @@ export default function Tasks() {
   const [pagination, setPagination] = useState({ total: 0, total_pages: 1 });
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filters, setFilters] = useState({ status: 'All', priority: 'All', ward_code: 'All' });
+  const [filters, setFilters] = useState({
+    status: 'All',
+    priority: 'All',
+    ward_code: 'All',
+    package_id: 'All',
+    task_type_id: 'All',
+  });
+  const [packages, setPackages] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API}/api/catalog/service-packages`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data) setPackages(data.data);
+      })
+      .catch(() => {});
+  }, []);
 
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
@@ -323,6 +340,29 @@ export default function Tasks() {
     },
   ];
 
+  const packageOptions = (packages || []).map((p) => ({ value: p.id, label: p.name }));
+  const currentPkg = (packages || []).find((p) => p.id === filters.package_id);
+  const taskTypeOptions = currentPkg
+    ? (currentPkg.task_types || []).map((t) => ({ value: t.name, label: t.name }))
+    : (packages || []).flatMap((p) => (p.task_types || []).map((t) => ({ value: t.name, label: t.name })));
+
+  const displayedRecords = (records || []).filter((rec) => {
+    if (filters.package_id && filters.package_id !== 'All') {
+      const pkg = packages.find((p) => p.id === filters.package_id);
+      if (pkg) {
+        const names = [pkg.name, ...(pkg.task_types || []).map((t) => t.name)];
+        const slName = rec.service_line_name || '';
+        const match = names.some((n) => slName.toLowerCase().includes(n.toLowerCase()));
+        if (!match) return false;
+      }
+    }
+    if (filters.task_type_id && filters.task_type_id !== 'All') {
+      const slName = (rec.service_line_name || '').toLowerCase();
+      if (!slName.includes(filters.task_type_id.toLowerCase())) return false;
+    }
+    return true;
+  });
+
   return (
     <section className="tab-pane active hoso-page list-page-frame" id="tab-hoso">
       <header className="contract-pane-title">
@@ -345,13 +385,15 @@ export default function Tasks() {
           onSearchChange={(value) => { setSearchTerm(value); setPage(1); }}
           searchPlaceholder="Tìm theo tên hồ sơ, mã hợp đồng, khách hàng, hạng mục..."
           filters={[
-            { key: 'status', label: 'Trạng thái', type: 'select', width: 180, options: STATUS_OPTIONS.map((s) => ({ value: s, label: s })) },
-            { key: 'priority', label: 'Độ ưu tiên', type: 'select', width: 165, options: PRIORITY_OPTIONS },
-            { key: 'ward_code', label: 'Phường', type: 'select', width: 190, options: wards.map((w) => ({ value: w.code, label: w.name })) },
+            { key: 'status', label: 'Trạng thái', type: 'select', width: 160, options: STATUS_OPTIONS.map((s) => ({ value: s, label: s })) },
+            { key: 'package_id', label: 'Gói dịch vụ', type: 'select', width: 160, options: packageOptions },
+            { key: 'task_type_id', label: 'Hạng mục', type: 'select', width: 160, options: taskTypeOptions },
+            { key: 'priority', label: 'Độ ưu tiên', type: 'select', width: 130, options: PRIORITY_OPTIONS },
+            { key: 'ward_code', label: 'Phường', type: 'select', width: 160, options: wards.map((w) => ({ value: w.code, label: w.name })) },
           ]}
           values={filters}
           onFilterChange={(key, value) => { setFilters((current) => ({ ...current, [key]: value || 'All' })); setPage(1); }}
-          onReset={() => { setSearchTerm(''); setFilters({ status: 'All', priority: 'All', ward_code: 'All' }); setPage(1); }}
+          onReset={() => { setSearchTerm(''); setFilters({ status: 'All', priority: 'All', ward_code: 'All', package_id: 'All', task_type_id: 'All' }); setPage(1); }}
           actions={(
             <button type="button" className="btn btn-ghost" title="Làm mới" onClick={() => { fetchRecords(true); fetchStats(); }}>
               <RefreshCw size={16} />
@@ -363,7 +405,7 @@ export default function Tasks() {
       <div className="list-page-frame__table">
         <DataTable
           columns={columns}
-          data={records}
+          data={displayedRecords}
           loading={loading}
           rowKey="id"
           emptyText="Chưa có hồ sơ đo vẽ nào — hồ sơ sẽ tự sinh khi nhân viên bắt đầu bước đo vẽ"
@@ -391,6 +433,33 @@ export default function Tasks() {
         size="md"
         closeOnOverlay={!saving}
         title={<span className="survey-modal-title"><ScrollText size={20} /> Chi tiết Hồ Sơ Đo Vẽ</span>}
+        footer={(!detailLoading && !detailError && editForm) ? (
+          <div className="survey-detail__footer">
+            {isDossierLocked(detailData, editForm.status) ? (
+              <>
+                <span className="survey-muted" role="status">Hồ sơ đã hoàn tất và không thể chỉnh sửa.</span>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>
+              </>
+            ) : editing ? (
+              <>
+                <button type="button" className="btn btn-secondary" disabled={saving}
+                  onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>
+                  Huỷ
+                </button>
+                <button type="submit" form="survey-detail-form" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>
+                <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
+                  <Pencil size={15} /> Sửa
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
       >
         {detailLoading ? (
           <div className="survey-loading">Đang tải…</div>
@@ -404,7 +473,7 @@ export default function Tasks() {
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSave}>
+          <form id="survey-detail-form" onSubmit={handleSave}>
             <div className="survey-detail__identity">
               <div>
                 <div className="survey-detail__code">
@@ -420,7 +489,7 @@ export default function Tasks() {
             </div>
 
             <section className="survey-detail__section">
-              <h4>Hồ sơ</h4>
+              <h4><FolderKanban size={15} /> Thông tin hồ sơ</h4>
               <div className="survey-detail__grid">
                 <Field label="Tên hồ sơ" wide editing={editing} value={editForm.dossier_name}>
                   <input className="form-control" value={editForm.dossier_name}
@@ -447,7 +516,7 @@ export default function Tasks() {
             </section>
 
             <section className="survey-detail__section">
-              <h4>Tiến độ</h4>
+              <h4><Clock size={15} /> Tiến độ thực hiện</h4>
               <div className="survey-detail__grid">
                 <Field label="Trạng thái" editing={editing} value={detailData?.status}>
                   {/* Chỉ cho chọn 2 trạng thái thủ công. Ba giá trị còn lại do hệ thống
@@ -481,31 +550,7 @@ export default function Tasks() {
               title="TỦ HỒ SƠ ĐO VẼ"
             />
 
-            <div className="survey-detail__footer">
-              {isDossierLocked(detailData, editForm.status) ? (
-                <>
-                  <span className="survey-muted" role="status">Hồ sơ đã hoàn tất và không thể chỉnh sửa.</span>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>
-                </>
-              ) : editing ? (
-                <>
-                  <button type="button" className="btn btn-secondary" disabled={saving}
-                    onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>
-                    Huỷ
-                  </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
-                    {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailOpen(false)}>Đóng</button>
-                  <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
-                    <Pencil size={15} /> Sửa
-                  </button>
-                </>
-              )}
-            </div>
+
           </form>
         )}
       </Modal>

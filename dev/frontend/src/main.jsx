@@ -19,6 +19,12 @@ window.fetch = (input, init = {}) => {
   return nativeFetch(input, { ...init, headers })
 }
 
+window.addEventListener('error', (e) => {
+  if (e.message?.includes('ResizeObserver loop') || e.message?.includes('ResizeObserver loop completed')) {
+    e.stopImmediatePropagation()
+  }
+})
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />

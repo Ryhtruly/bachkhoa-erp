@@ -58,7 +58,9 @@ _TASKS_QUERY = text(
            -- cùng một việc bằng hai cái tên khác nhau.
            coalesce(
              nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
-             wn.name
+             nullif(n.name, ''),
+             wn.name,
+             n.node_code
            ) as node_name,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'description' as node_description,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key as node_definition,
@@ -87,7 +89,7 @@ _TASKS_QUERY = text(
     join public.task_nodes n on n.id = a.task_node_id
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where a.employee_id = :employee_id
@@ -105,7 +107,9 @@ _TASK_POOL_QUERY = text(
            coalesce(cu.full_name, 'Khách hàng') as customer_name,
            coalesce(
              nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
-             wn.name
+             nullif(n.name, ''),
+             wn.name,
+             n.node_code
            ) as node_name,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'description' as node_description,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key as node_definition,
@@ -146,7 +150,7 @@ _TASK_POOL_QUERY = text(
     join public.contracts c on c.id = sl.contract_id
     left join public.customers cu on cu.id = c.customer_id
     left join public.task_types tt on tt.id = sl.task_type_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     left join lateral (
@@ -171,7 +175,9 @@ _HELP_POOL_QUERY = text(
            coalesce(cu.full_name, 'Khách hàng') as customer_name,
            coalesce(
              nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
-             wn.name
+             nullif(n.name, ''),
+             wn.name,
+             n.node_code
            ) as node_name,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key as node_definition,
            e.full_name as yielded_by_name
@@ -181,7 +187,7 @@ _HELP_POOL_QUERY = text(
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.contracts c on c.id = sl.contract_id
     join public.employees e on e.id = h.requested_by_employee_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     left join public.customers cu on cu.id = c.customer_id
     left join public.task_types tt on tt.id = sl.task_type_id
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
@@ -244,7 +250,9 @@ _MY_ITEMS_QUERY = text(
               'status', n2.status,
               'name', coalesce(
                 nullif(coalesce(r_act.graph, r_def2.graph)->'nodes'->n2.node_key->>'name', ''),
-                wn2.name
+                nullif(n2.name, ''),
+                wn2.name,
+                n2.node_code
               ),
               'mine', exists (
                 select 1 from public.task_node_assignments a2
@@ -254,7 +262,7 @@ _MY_ITEMS_QUERY = text(
               )
             ) as node
           from public.task_nodes n2
-          join public.workflow_nodes wn2 on wn2.code = n2.node_code
+          left join public.workflow_nodes wn2 on wn2.code = n2.node_code
           left join public.workflow_instance_revisions r_def2
             on r_def2.id = n2.defined_by_revision_id
           where n2.workflow_instance_id = wi.id
@@ -337,7 +345,9 @@ _COMPLETED_ITEMS_QUERY = text(
               'accepted_at', n2.accepted_at,
               'name', coalesce(
                 nullif(coalesce(r_act.graph, r_def2.graph)->'nodes'->n2.node_key->>'name', ''),
-                wn2.name
+                nullif(n2.name, ''),
+                wn2.name,
+                n2.node_code
               ),
               'mine', exists (
                 select 1 from public.task_node_assignments a2
@@ -347,7 +357,7 @@ _COMPLETED_ITEMS_QUERY = text(
               )
             ) as node
           from public.task_nodes n2
-          join public.workflow_nodes wn2 on wn2.code = n2.node_code
+          left join public.workflow_nodes wn2 on wn2.code = n2.node_code
           left join public.workflow_instance_revisions r_def2
             on r_def2.id = n2.defined_by_revision_id
           where n2.workflow_instance_id = wi.id
@@ -534,12 +544,14 @@ _POOL_DETAIL_STEPS_QUERY = text(
     select n.id as task_node_id, n.node_code, n.node_key, n.status, n.occurrence_no,
            coalesce(
              nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
-             wn.name
+             nullif(n.name, ''),
+             wn.name,
+             n.node_code
            ) as node_name,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key as node_definition
     from public.task_nodes n
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where n.workflow_instance_id = :instance_id
@@ -831,9 +843,26 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
     }
 
     items = []
+    # Khử N+1: Đọc một lượt duy nhất toàn bộ bảng hệ số còn hiệu lực vào bộ nhớ
+    priorities_needed = {row["priority"] for row in rows if row.get("priority") in ("HIGH", "URGENT")}
+    active_multipliers = {}
+    if priorities_needed:
+        active_multipliers = {
+            r[0]: float(r[1])
+            for r in db.execute(
+                text(
+                    "select priority, multiplier from public.priority_multipliers "
+                    "where status = 'published' "
+                    "  and priority = any(:p) "
+                    "  and current_date <@ daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]')"
+                ),
+                {"p": list(priorities_needed)},
+            ).all()
+        }
+
     for row in rows:
-        # Hệ số ưu tiên là của cả Hạng mục, hỏi một lần rồi dùng cho mọi bước.
-        he_so_uu_tien = priority_multiplier(db, row["priority"])
+        # Hệ số ưu tiên đọc O(1) từ dict bộ nhớ, không bắn query SQL nào trong vòng lặp
+        he_so_uu_tien = active_multipliers.get(row["priority"], 1.0)
         nodes = []
         for node in list(row["nodes"] or []):
             detail = detail_by_node.get(node["id"], {})
@@ -1044,12 +1073,14 @@ class EmployeePortalService:
             db.query(LeaveRecord)
             .filter(LeaveRecord.employee_id == employee.id)
             .order_by(LeaveRecord.start_date.desc().nulls_last())
+            .limit(30)
             .all()
         )
         attendance = (
             db.query(Attendance)
             .filter(Attendance.employee_id == employee.id)
             .order_by(Attendance.date.desc().nulls_last())
+            .limit(30)
             .all()
         )
         period_start = date.today().replace(day=1)

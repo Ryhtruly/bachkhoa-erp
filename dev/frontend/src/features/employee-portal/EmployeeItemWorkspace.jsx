@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FolderOpen, LifeBuoy, Lock, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
-import { apiFetch, getAccessToken, prefetchApi } from '../../lib/api'
+import { apiFetch, getAccessToken, peekApiCache, prefetchApi } from '../../lib/api'
 import DocumentPreviewModal from './DocumentPreviewModal'
 import { ChecklistEvidenceItem, NodeActionBar } from './EmployeeWorkspaceCalendar'
 
@@ -84,7 +84,13 @@ export default function EmployeeItemWorkspace({
   const { addToast } = useToast() || {}
   const [pickedNodeId, setPickedNodeId] = useState(null)
   const [cabinetOpen, setCabinetOpen] = useState(false)
-  const [gate, setGate] = useState(null)
+  const [gate, setGate] = useState(() => {
+    const targetId = item?.current_task_node_id
+    if (targetId && typeof peekApiCache === 'function') {
+      return peekApiCache(`/api/employee-portal/tasks/${encodeURIComponent(targetId)}/shortage`) || null
+    }
+    return null
+  })
   const [handoverState, setHandoverState] = useState(null)
   const [pauseOpen, setPauseOpen] = useState(false)
   const [rollbackOpen, setRollbackOpen] = useState(false)
@@ -141,13 +147,17 @@ export default function EmployeeItemWorkspace({
     [runtimeDocumentTypes],
   )
   const paused = Boolean(task?.pause_reason_type)
-  const isHandover = Boolean(task?.is_handover || task?.node_code === 'K06')
+  const isHandover = Boolean(task?.is_handover || task?.capability_code === 'HANDOVER' || task?.capability === 'HANDOVER' || task?.node_code === 'K06')
   const clock = countdown(effectiveDeadline(task), { pausedAt: task?.paused_at })
 
   useEffect(() => {
     setHandoverState(null)
     setLocallyFilledTypeIds(new Set())
     setOptimisticStatus(null)
+    if (task?.id && typeof peekApiCache === 'function') {
+      const cached = peekApiCache(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
+      if (cached) setGate(cached)
+    }
   }, [task?.id])
 
   // Vì sao chưa nộp được — máy chủ trả đủ ba lý do trong một lượt hỏi. Bày ra
@@ -388,7 +398,43 @@ export default function EmployeeItemWorkspace({
   // upload. Số đang nhìn thấy trong checklist mới là snapshot mới nhất của màn;
   // thay riêng blocker thiếu file bằng số này để nút và badge không đứng số cũ.
   const effectiveGate = useMemo(() => {
-    if (!gate || runtimeDocumentTypes.length === 0) return gate
+    if (!gate) {
+      if (runtimeDocumentTypes.length > 0 || paused) {
+        const blockers = []
+        if (paused) {
+          blockers.push({
+            kind: 'paused',
+            message: 'Bước đang tạm dừng — bấm “Chạy tiếp” rồi mới nộp được.',
+          })
+        }
+        if (runtimeRejectedTypeCount > 0) {
+          blockers.push({
+            kind: 'rejected_documents',
+            message: (
+              `Còn ${runtimeRejectedTypeCount} loại giấy bị Giám đốc trả lại chưa sửa. `
+              + 'Gỡ hoặc tải lại file trong đúng loại giấy đó rồi nộp nghiệm thu lại.'
+            ),
+          })
+        }
+        if (runtimeMissingTypeCount > 0) {
+          blockers.push({
+            kind: 'missing_document_type_files',
+            message: `Còn ${runtimeMissingTypeCount} loại giấy chưa được gán file.`,
+          })
+        }
+        return {
+          can_submit: blockers.length === 0,
+          blockers,
+          data: [],
+          review_summary: {
+            rejected_count: 0,
+            runtime_type_rejected_count: runtimeRejectedTypeCount,
+          },
+        }
+      }
+      return gate
+    }
+    if (runtimeDocumentTypes.length === 0) return gate
     const hasRuntimeReviewBreakdown = Object.prototype.hasOwnProperty.call(
       gate.review_summary || {},
       'runtime_type_rejected_count',
@@ -417,7 +463,7 @@ export default function EmployeeItemWorkspace({
       })
     }
     return { ...gate, blockers, can_submit: blockers.length === 0 }
-  }, [gate, runtimeDocumentTypes.length, runtimeMissingTypeCount, runtimeRejectedTypeCount])
+  }, [gate, paused, runtimeDocumentTypes.length, runtimeMissingTypeCount, runtimeRejectedTypeCount])
 
   const visibleBlockers = (effectiveGate?.blockers || []).filter(blocker => (
     blocker.kind !== 'missing_documents'
@@ -581,7 +627,7 @@ export default function EmployeeItemWorkspace({
                         checklistResultId: muc.id,
                         ...payload,
                       })}
-                      onChanged={onRefresh}
+                      onChanged={refreshGate}
                       addToast={addToast}
                     />
                   ) : (

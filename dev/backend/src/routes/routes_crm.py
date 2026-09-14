@@ -147,6 +147,8 @@ def update_lead_status(
                 numeric_total_value = float(str(body.price).replace(".", "").replace(",", "").strip())
             except (ValueError, TypeError):
                 numeric_total_value = 0.0
+        if numeric_total_value < 0:
+            raise HTTPException(status_code=422, detail="Giá trị hợp đồng không được là số âm")
 
         # 3. Quy đổi diện tích cho cột số (service_area)
         numeric_area = None
