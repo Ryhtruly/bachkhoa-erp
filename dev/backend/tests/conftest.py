@@ -255,7 +255,6 @@ def init_test_db():
 
 @pytest.fixture(scope="session")
 def client():
-    with TestClient(app) as c:
     with TestClient(app, base_url="https://testserver") as c:
         yield c
 

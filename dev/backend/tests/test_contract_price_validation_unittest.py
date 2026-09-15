@@ -27,18 +27,6 @@ class TestContractPriceValidation(unittest.TestCase):
                 sales_source="Facebook",
             )
 
-    def test_contract_create_schema_accepts_zero_or_positive(self):
-        schema_zero = ContractCreateSchema(
-            contract_template_id="tpl-1",
-            task_id="task-1",
-            customer_name="Test Customer",
-            service_type="DO_VE",
-            contract_value=0.0,
-            paid_amount=0.0,
-            sales_source="Facebook",
-        )
-        self.assertEqual(schema_zero.contract_value, 0.0)
-        self.assertEqual(schema_zero.paid_amount, 0.0)
     def test_contract_create_schema_rejects_zero_value(self):
         with self.assertRaises(ValidationError):
             ContractCreateSchema(
