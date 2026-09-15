@@ -207,6 +207,46 @@
    Trước đây là nút nổi (position: fixed) lơ lửng góc phải, đè lên nội dung và
    nằm sát nút chat nên trông rời rạc. Giờ là con cuối của .contract-detail-pane
    (flex column), phần nội dung ở trên chiếm flex:1 nên nút luôn tự dính đáy. */
+.contract-lifecycle-action {
+  flex-shrink: 0;
+  margin: 0 18px 10px;
+  min-height: 42px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.contract-lifecycle-action.btn-outline-danger {
+  border: 1px solid var(--red-300, #fca5a5);
+  color: var(--red-600, #dc2626);
+  background: var(--red-50, #fef2f2);
+}
+
+.contract-lifecycle-action.btn-outline-danger:hover {
+  border-color: var(--red-500, #ef4444);
+  background: var(--red-100, #fee2e2);
+  color: var(--red-700, #b91c1c);
+}
+
+.contract-lifecycle-action.btn-outline-warning {
+  border: 1px solid var(--amber-300, #fcd34d);
+  color: var(--amber-700, #b45309);
+  background: var(--amber-50, #fffbeb);
+}
+
+.contract-lifecycle-action.btn-outline-warning:hover {
+  border-color: var(--amber-500, #f59e0b);
+  background: var(--amber-100, #fef3c7);
+  color: var(--amber-800, #92400e);
+}
+
 .contract-workflow-action {
   flex-shrink: 0;
   /* Thụt 18px và bo 12px cho khớp đúng các thẻ phía trên trong cùng cột
@@ -1774,7 +1814,11 @@
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-card);
+  background: #ffffff;
   box-shadow: 0 12px 32px rgba(15, 23, 42, .16);
+}
+[data-theme='dark'] .workflow-node-picker__menu {
+  background: #1e293b;
 }
 .workflow-node-picker__item {
   display: flex;
@@ -3810,7 +3854,150 @@
 
 .wcl-output-modal {
   display: grid;
+  gap: 14px;
+}
+
+.wcl-output-modal__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+
+.wcl-output-modal__search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.wcl-output-modal__search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-tertiary, #94a3b8);
+  pointer-events: none;
+}
+
+.wcl-output-modal__search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 36px 0 36px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-primary, #0f172a);
+  font-size: 0.88rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.wcl-output-modal__search-input:focus {
+  outline: none;
+  border-color: var(--orange-500, #ea580c);
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.12);
+}
+
+.wcl-output-modal__search-clear {
+  position: absolute;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 999px;
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+}
+
+.wcl-output-modal__search-clear:hover {
+  background: var(--border-default, #cbd5e1);
+  color: var(--text-primary, #0f172a);
+}
+
+.wcl-output-modal__tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.wcl-output-modal__tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.wcl-output-modal__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.8rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.wcl-output-modal__tab:hover {
+  border-color: color-mix(in srgb, var(--orange-500, #ea580c) 40%, var(--border-default, #e2e8f0));
+  color: var(--text-primary, #0f172a);
+  background: color-mix(in srgb, var(--orange-500, #ea580c) 4%, #fff);
+}
+
+.wcl-output-modal__tab.is-active {
+  border-color: var(--orange-500, #ea580c);
+  background: color-mix(in srgb, var(--orange-500, #ea580c) 10%, #fff);
+  color: var(--orange-600, #c23816);
+  font-weight: 750;
+}
+
+.wcl-output-modal__tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-secondary, #64748b);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.wcl-output-modal__tab.is-active .wcl-output-modal__tab-count {
+  background: var(--orange-500, #ea580c);
+  color: #fff;
+}
+
+.wcl-output-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
   gap: 12px;
+}
+
+.wcl-output-modal__footer-summary {
+  font-size: 0.86rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.wcl-output-modal__footer-count {
+  color: var(--orange-600, #c23816);
+  font-weight: 750;
+}
+
+.wcl-output-modal__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .wcl-output-modal__hint {
@@ -5620,6 +5807,70 @@
 .workflow-designer .wf-agency__preview > div { display: grid; gap: 2px; min-width: 0; }
 .workflow-designer .wf-agency__preview strong { font-size: 12.5px; color: var(--np-label-ink); }
 .workflow-designer .wf-agency__preview span { font-size: 11.5px; line-height: 1.45; color: var(--text-secondary); }
+.workflow-designer .wf-agency__preview--handover {
+  border-color: #a7f3d0;
+  background: color-mix(in srgb, #059669 8%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--handover svg,
+.workflow-designer .wf-agency__preview--handover strong {
+  color: #059669;
+}
+.workflow-designer .wf-agency__preview--survey {
+  border-color: #bfdbfe;
+  background: color-mix(in srgb, #2563eb 8%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--survey svg,
+.workflow-designer .wf-agency__preview--survey strong {
+  color: #2563eb;
+}
+.workflow-designer .wf-agency__preview--cad {
+  border-color: #99f6e4;
+  background: color-mix(in srgb, #0d9488 8%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--cad svg,
+.workflow-designer .wf-agency__preview--cad strong {
+  color: #0d9488;
+}
+.workflow-designer .wf-agency__preview--legal {
+  border-color: #ddd6fe;
+  background: color-mix(in srgb, #8b5cf6 8%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--legal svg,
+.workflow-designer .wf-agency__preview--legal strong {
+  color: #8b5cf6;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--handover {
+  border-color: rgba(5, 150, 105, 0.4);
+  background: rgba(5, 150, 105, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--handover svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--handover strong {
+  color: #34d399;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--survey {
+  border-color: rgba(37, 99, 235, 0.4);
+  background: rgba(37, 99, 235, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--survey svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--survey strong {
+  color: #60a5fa;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--cad {
+  border-color: rgba(13, 148, 136, 0.4);
+  background: rgba(13, 148, 136, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--cad svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--cad strong {
+  color: #2dd4bf;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--legal {
+  border-color: rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--legal svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--legal strong {
+  color: #a78bfa;
+}
 .workflow-designer .wf-agency__gate b { font-weight: 700; }
 
 /* Hộp xác nhận kích hoạt: hai nhóm cảnh báo, mỗi nhóm một tiêu đề riêng. */
@@ -5637,3 +5888,176 @@
   line-height: 1.6;
 }
 .workflow-activation-warning-dialog__list li { margin-bottom: 4px; }
+
+/* Highlight khi điều hướng từ thông báo duyệt loại giấy hoặc checklist */
+.wf-check-type.is-highlighted,
+.wf-check-card.is-highlighted,
+.workflow-checklist-card.is-highlighted {
+  position: relative;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35) !important;
+  animation: wf-pulse-highlight 2s ease-in-out infinite;
+}
+
+@keyframes wf-pulse-highlight {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(245, 158, 11, 0.12);
+  }
+}
+
+/* ── Năng Lực Bước (6 Thẻ Chuẩn Bách Khoa ERP) ── */
+.mws-capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.mws-capability-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-surface, #f8fafc);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.mws-capability-card:hover:not(:disabled) {
+  border-color: var(--orange-500, #eb4a23);
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.mws-capability-card:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mws-capability-card.is-selected {
+  border-color: var(--orange-600, #ea580c);
+  background: #fff7ed;
+  box-shadow: 0 0 0 1.5px var(--orange-500, #ea580c);
+}
+
+[data-theme='dark'] .mws-capability-card {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme='dark'] .mws-capability-card:hover:not(:disabled) {
+  background: #283548;
+  border-color: #f97316;
+}
+
+[data-theme='dark'] .mws-capability-card.is-selected {
+  background: rgba(234, 88, 12, 0.15);
+  border-color: #ea580c;
+  box-shadow: 0 0 0 1.5px #ea580c;
+}
+
+.mws-capability-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+
+[data-theme='dark'] .mws-capability-card__header {
+  color: #f1f5f9;
+}
+
+.mws-capability-card__desc {
+  font-size: 10.5px;
+  color: var(--text-tertiary, #64748b);
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+[data-theme='dark'] .mws-capability-card__desc {
+  color: #94a3b8;
+}
+
+/* ── Canvas Node Capability Tag ── */
+.workflow-node__cap-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.workflow-node__cap-tag--standard {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.workflow-node__cap-tag--survey-field {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.workflow-node__cap-tag--survey-cad {
+  background: #f0fdfa;
+  color: #0d9488;
+}
+
+.workflow-node__cap-tag--legal-prep {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.workflow-node__cap-tag--gov-submission {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.workflow-node__cap-tag--handover {
+  background: #fefce8;
+  color: #d97706;
+}
+
+[data-theme='dark'] .workflow-node__cap-tag--standard {
+  background: rgba(37, 99, 235, 0.15);
+  color: #60a5fa;
+}
+
+[data-theme='dark'] .workflow-node__cap-tag--survey-field {
+  background: rgba(5, 150, 105, 0.15);
+  color: #34d399;
+}
+
+[data-theme='dark'] .workflow-node__cap-tag--survey-cad {
+  background: rgba(13, 148, 136, 0.15);
+  color: #2dd4bf;
+}
+
+[data-theme='dark'] .workflow-node__cap-tag--legal-prep {
+  background: rgba(124, 58, 237, 0.15);
+  color: #a78bfa;
+}
+
+[data-theme='dark'] .workflow-node__cap-tag--gov-submission {
+  background: rgba(234, 88, 12, 0.15);
+  color: #fb923c;
+}
+
+[data-theme='dark'] .workflow-node__cap-tag--handover {
+  background: rgba(217, 119, 6, 0.15);
+  color: #facc15;
+}
+

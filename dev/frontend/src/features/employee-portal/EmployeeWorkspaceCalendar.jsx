@@ -7,7 +7,7 @@ import { AlertTriangle, BriefcaseBusiness, CalendarDays, ChevronLeft, ChevronRig
 import { useToast } from '../../contexts/ToastContext'
 import ChecklistOutputDocuments from './ChecklistOutputDocuments'
 import ModalThieuTaiLieu from './ModalThieuTaiLieu'
-import { apiFetch, prefetchApi } from '../../lib/api'
+import { apiFetch, getAccessToken, markLocalMutation, peekApiCache, prefetchApi } from '../../lib/api'
 import AvatarImage from '../../components/AvatarImage'
 import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage'
 import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './employeePortalMappers'
@@ -17,8 +17,8 @@ import LegalDossierNodePanel from '../legal-dossier/LegalDossierNodePanel'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import HandoverPanel from '../handover/HandoverPanel'
 
-const requiresGovSubmission = (task) => task?.requires_gov_submission === true
-const isHandoverTask = (task) => task?.is_handover === true || task?.node_code === 'K06'
+const requiresGovSubmission = (task) => task?.requires_gov_submission === true || task?.capability_code === 'GOV_SUBMISSION' || task?.capability === 'GOV_SUBMISSION'
+const isHandoverTask = (task) => task?.is_handover === true || task?.capability_code === 'HANDOVER' || task?.capability === 'HANDOVER' || task?.node_code === 'K06'
 
 const CHECKLIST_STATUS = Object.freeze({
   NOT_STARTED: 'pending',
@@ -445,11 +445,11 @@ export function NodeActionBar({
   }
   if (task.status === 'in_progress' || task.status === 'rework_required') {
     const isResubmission = task.status === 'rework_required'
-    const isHandover = task.is_handover || task.node_code === 'K06'
+    const isHandover = task.is_handover || task.capability_code === 'HANDOVER' || task.capability === 'HANDOVER' || task.node_code === 'K06'
 
     // Thợ chính tới hiện trường bấm mốc này. Từ đây suất thợ phụ 100.000đ đóng
     // lại nếu chưa ai nhận — người tới sau không còn hỗ trợ được gì cho ca đo.
-    if (!isResubmission && task.node_code === 'K02' && !task.field_started_at) {
+    if (!isResubmission && (task.capability_code === 'SURVEY_FIELD' || task.capability === 'SURVEY_FIELD' || task.node_code === 'K02') && !task.field_started_at) {
       const startFieldWork = async () => {
         setBusy(true)
         try {
@@ -533,6 +533,25 @@ export function NodeActionBar({
             })
           }
         }
+        const thieuFiles = types.filter(t => {
+          const count = Math.max(Number(t.file_count || 0), Array.isArray(t.files) ? t.files.length : 0)
+          return count === 0
+        })
+        if (thieuFiles.length > 0) {
+          const daCoTrongDanhSach = danhSach.some(d => d.checklist_result_id === item.id)
+          if (!daCoTrongDanhSach) {
+            danhSach.push({
+              checklist_result_id: item.id,
+              checklist_name: item.checklist_name || item.name,
+              thieu: thieuFiles.map(t => ({
+                name: t.name || t.document_name || 'Loại giấy chưa có file',
+                can: 1,
+                da_co: 0,
+                con_thieu: 1,
+              })),
+            })
+          }
+        }
       })
       return danhSach
     }
@@ -548,6 +567,9 @@ export function NodeActionBar({
       setThieu(null)
       setOptimisticSubmitted(true)
       onOptimisticStatusChange?.('submitted')
+      if (typeof markLocalMutation === 'function') {
+        markLocalMutation()
+      }
       addToast(
         isResubmission
           ? 'Đã nộp nghiệm thu lại — chờ Giám đốc duyệt'
@@ -576,14 +598,20 @@ export function NodeActionBar({
     }
 
     const bamNop = async () => {
-      // 0ms Fast Path: Nếu gate truyền vào từ EmployeeItemWorkspace đã có sẵn data mảng:
-      if (gate && Array.isArray(gate.data)) {
-        const chanCung = hardBlockerFrom(gate, task.status)
+      // 0ms Fast Path: Nếu gate truyền vào hoặc cache đã có sẵn dữ liệu:
+      const gateData = (gate && (Array.isArray(gate.data) || gate.can_submit === true))
+        ? gate
+        : (task?.id && typeof peekApiCache === 'function'
+            ? peekApiCache(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/shortage`)
+            : null)
+
+      if (gateData && (Array.isArray(gateData.data) || gateData.can_submit === true)) {
+        const chanCung = hardBlockerFrom(gateData, task.status)
         if (chanCung) {
           addToast(chanCung.message, 'error')
           return
         }
-        const danhSach = extractShortageList(gate)
+        const danhSach = extractShortageList(gateData)
         if (danhSach.length) {
           setThieu(danhSach)
           return
@@ -592,7 +620,7 @@ export function NodeActionBar({
         return
       }
 
-      // Đọc shortage (nếu đã prefetch qua hover thì apiFetch trả cache ngay tức khắc)
+      // Đọc shortage nếu chưa có dữ liệu gate đầy đủ (nếu đã prefetch qua hover thì apiFetch trả cache ngay tức khắc)
       setBusy(true)
       try {
         const ket = await apiFetch(`/api/employee-portal/tasks/${task.id}/shortage`)
@@ -697,7 +725,7 @@ function TaskPoolPanel({ taskPool, onClaim, claimingKey, now }) {
             const key = `${item.id}:${role}`
             const blocked = (item.preference_locked && preferenceSecondsLeft(item) > 0)
               || restrictions.active_in_progress > 0
-              || (item.node_code === 'K02' && restrictions.wip_locked)
+              || ((item.capability_code === 'SURVEY_FIELD' || item.node_code === 'K02') && restrictions.wip_locked)
             return <button
               key={role}
               type="button"

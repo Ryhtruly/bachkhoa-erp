@@ -10,7 +10,7 @@ class ContractCreateSchema(BaseModel):
     code: Optional[str] = None
     service_type: str
     contract_value: FiniteFloat = Field(gt=0)
-    paid_amount: Optional[float] = 0.0
+    paid_amount: Optional[float] = Field(default=0.0, ge=0, description="Số tiền đã trả phải >= 0")
     sales_source: str
     notes: Optional[str] = ""
 

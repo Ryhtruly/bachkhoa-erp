@@ -5,6 +5,7 @@ import { AlertCircle, Check, X, Trash2, Printer } from 'lucide-react';
 import { parseAmt, spellVietnameseCurrency } from '../utils';
 import { apiFetch } from '../../../lib/api';
 import { API } from '../financeConstants';
+import ReceiptLinks from '../ReceiptLinks';
 import { VoucherTemplate } from '../screens/PrintVoucherScreen';
 import { printElement } from '../print/printDocument';
 import voucherPrintStyles from '../screens/PrintVoucherScreen.print.css?inline';
@@ -405,6 +406,23 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                 </tr>
               </tbody>
             </table>
+
+            <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border-default, #e2e8f0)', borderRadius: 8 }}>
+              <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Minh chứng / bill đính kèm
+              </div>
+              {detail?.receipt_attachments?.length || detail?.receipt_attachment_url ? (
+                <ReceiptLinks
+                  attachments={detail.receipt_attachments}
+                  legacyUrl={detail.receipt_attachment_url}
+                  addToast={addToast}
+                />
+              ) : (
+                <div style={{ color: '#991b1b', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                  Phiếu này chưa có ảnh bill hoặc tài liệu minh chứng.
+                </div>
+              )}
+            </div>
 
             {isReadOnly && !isPending && (
               <div style={{

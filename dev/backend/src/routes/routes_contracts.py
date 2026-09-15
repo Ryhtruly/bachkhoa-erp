@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.db.database import get_db
 from src.core.auth import check_user_permission, require_authenticated_user, require_permission, User
-from src.db.models import Contract, ContractGeneratedDocument, ContractTemplate, Customer, LeadPipeline, Role, ServiceLine, ServicePackage, TaskType, UserRole
+from src.db.models import Contract, ContractGeneratedDocument, ContractTemplate, Customer, Employee, LeadPipeline, Receivable, Role, ServiceLine, ServicePackage, TaskType, UserRole
 from src.core import doc_generator
 from src.contracts.services import build_current_contract_document_data
 from src.contracts import (
@@ -228,6 +228,14 @@ class WorkflowTemplateUpdateIn(BaseModel):
     graph: dict | None = None
 
 
+class WorkflowTemplateCloneIn(BaseModel):
+    service_package_id: str = Field(min_length=1)
+    task_type_id: str = Field(min_length=1)
+    name: str = Field(min_length=2, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    is_default: bool = False
+
+
 class WorkflowAssignmentPayload(BaseModel):
     employee_id: str = Field(min_length=1, max_length=50)
     role_code: str = Field(default="MAIN", min_length=1, max_length=50)
@@ -317,11 +325,12 @@ def _timeline_node_type(node_code: str | None, definition: dict) -> str:
     các cờ trên node. Node bàn giao (cờ is_handover) dùng chung cho cả hai phân
     hệ nên không thuộc riêng bên nào.
     """
-    if definition.get("is_handover"):
+    cap = str(definition.get("capability") or definition.get("capability_code") or "").upper()
+    if definition.get("is_handover") or cap == "HANDOVER":
         return "shared"
-    if definition.get("requires_gov_submission"):
+    if definition.get("requires_gov_submission") or cap in ("GOV_SUBMISSION", "LEGAL_PREP"):
         return "legal"
-    if definition.get("creates_survey_record"):
+    if definition.get("creates_survey_record") or cap in ("SURVEY_FIELD", "SURVEY_CAD"):
         return "survey"
     return "shared"
 
@@ -574,7 +583,9 @@ def list_contract_workspace(
         ).mappings():
             financial_progress_by_contract[r["id"]] = dict(r)
 
-    def _resolve_contract_progress_status(info: dict, total_val: float) -> str:
+    def _resolve_contract_progress_status(info: dict, total_val: float, raw_status: str | None = None) -> str:
+        if raw_status == "cancelled":
+            return "Đã huỷ"
         if not info or not info.get("workflow_count"):
             return "Chưa có quy trình"
         if info.get("cancelled_count") == info.get("workflow_count"):
@@ -592,8 +603,8 @@ def list_contract_workspace(
         total_contract_value = _money_value(contract.total_value)
         info = financial_progress_by_contract.get(contract_id)
         paid_amount = float(info.get("paid_amount") or 0) if info else 0.0
-        remaining_amount = max(0.0, total_contract_value - paid_amount)
-        status_val = _resolve_contract_progress_status(info, total_contract_value)
+        remaining_amount = None if total_contract_value < 0 else max(0.0, total_contract_value - paid_amount)
+        status_val = _resolve_contract_progress_status(info, total_contract_value, contract.status)
         rows.append({
             "id": contract.id,
             "customer_name": customer.full_name if customer else "Chưa cập nhật",
@@ -1261,6 +1272,7 @@ def get_contract_workspace(
                 select code, name, description, checklist_template
                 from public.workflow_nodes
                 where coalesce(is_active, true)
+                  and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMISSION', 'HANDOVER')
                 order by code
                 """
             )
@@ -1590,6 +1602,86 @@ def create_workflow_template(
     return {"data": dict(row)}
 
 
+@router.post("/workflow/templates/{source_template_id}/clone")
+def clone_workflow_template(
+    source_template_id: str,
+    payload: WorkflowTemplateCloneIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("workflow", "approve")),
+):
+    """1-Click Clone quy trình: Sao chép toàn bộ graph sang Combo (Gói + Hạng mục) mới."""
+    source = db.execute(
+        text("select id, name, graph from public.workflow_templates where id = :id"),
+        {"id": source_template_id},
+    ).mappings().first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Không tìm thấy mẫu quy trình nguồn")
+
+    # Kiểm tra gói và hạng mục đích tồn tại
+    target_combo = db.execute(
+        text("""
+            select p.id as package_id, t.id as task_type_id
+            from public.service_packages p
+            join public.task_types t on t.service_package_id = p.id
+            where p.id = :package_id and t.id = :task_type_id
+        """),
+        {"package_id": payload.service_package_id, "task_type_id": payload.task_type_id},
+    ).mappings().first()
+    if not target_combo:
+        raise HTTPException(status_code=404, detail="Combo Gói và Hạng mục đích không hợp lệ")
+
+    template_name = payload.name.strip()
+    existing = db.execute(
+        text("select 1 from public.workflow_templates where lower(name) = lower(:n) limit 1"),
+        {"n": template_name},
+    ).scalar()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Đã có mẫu tên “{template_name}”. Đặt tên khác.")
+
+    source_graph = source["graph"] or {}
+    try:
+        graph = validate_workflow_graph(db, source_graph, require_connected=True)
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Đồ thị nguồn không hợp lệ: {exc}") from exc
+
+    if payload.is_default:
+        db.execute(
+            text("""
+                update public.workflow_templates
+                set is_default = false, updated_at = now()
+                where service_package_id = :package_id
+                  and task_type_id = :task_type_id
+                  and is_default = true
+            """),
+            {"package_id": payload.service_package_id, "task_type_id": payload.task_type_id},
+        )
+
+    code = f"WF_CLONE_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    row = db.execute(
+        text("""
+            insert into public.workflow_templates
+                (code, version, name, description, service_package_id, task_type_id, is_default, status, graph, created_by)
+            values
+                (:code, 1, :name, :description, :package_id, :task_type_id, :is_default, 'published', cast(:graph as jsonb), :user_id)
+            returning id, code, name, service_package_id, task_type_id, is_default
+        """),
+        {
+            "code": code,
+            "name": template_name,
+            "description": (payload.description or "").strip() or None,
+            "package_id": payload.service_package_id,
+            "task_type_id": payload.task_type_id,
+            "is_default": bool(payload.is_default),
+            "graph": json.dumps(graph, ensure_ascii=False),
+            "user_id": user.id,
+        },
+    ).mappings().first()
+    db.commit()
+    invalidate_cache("bachkhoa:catalog:*")
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    return {"data": dict(row)}
+
+
 @router.put("/workflow/templates/{template_id}")
 def update_workflow_template(
     template_id: str,
@@ -1864,7 +1956,7 @@ def review_checklist_evidence(
     checklist = db.execute(
         text(
             """
-            select id, task_node_id, status, is_payable, approver_role, is_overdue, late_reason
+            select id, task_node_id, checklist_name, status, is_payable, approver_role, is_overdue, late_reason
             from public.task_node_checklist_results
             where id = :id
             """
@@ -1891,6 +1983,11 @@ def review_checklist_evidence(
             status_code=422,
             detail="Xử lý từ chối checklist nộp trễ thuộc quyết định nghiệp vụ riêng, chưa áp dụng ở phiên bản này.",
         )
+    if payload.decision == "failed" and len((payload.note or "").strip()) < 5:
+        raise HTTPException(
+            status_code=422,
+            detail="Vui lòng nhập lý do yêu cầu làm lại (tối thiểu 5 ký tự).",
+        )
     if checklist["is_payable"] and payload.decision == "approved" and not check_user_permission(db, user, "finance", "approve"):
         raise HTTPException(
             status_code=403,
@@ -1914,22 +2011,154 @@ def review_checklist_evidence(
         {"id": checklist_result_id, "decision": next_status, "user_id": user.id, "note": payload.note},
     )
 
-    # Cơ chế nghiệm thu mới: duyệt xong checklist mà CẢ BƯỚC đã đạt hết thì hệ thống
-    # TỰ nghiệm thu bước — bỏ bước "Nộp nghiệm thu" thủ công. Bọc savepoint để dù
-    # auto-finalize có trục trặc cũng không làm hỏng việc duyệt checklist vừa rồi.
+    if payload.decision == "failed":
+        db.execute(
+            text("""
+                update public.task_nodes
+                set status = 'rework_required', updated_at = now()
+                where id = :task_node_id
+            """),
+            {"task_node_id": checklist["task_node_id"]},
+        )
+        db.execute(
+            text("""
+                update public.task_node_acceptances
+                set status = 'rework_required', reviewer_user_id = :user_id, reviewed_at = now(),
+                    review_note = :note
+                where task_node_id = :task_node_id and status = 'pending'
+            """),
+            {"task_node_id": checklist["task_node_id"], "user_id": user.id, "note": payload.note},
+        )
+        db.execute(
+            text("""
+                insert into public.task_node_events
+                    (task_node_id, event_type, actor_user_id, payload, created_at)
+                values (:task_node_id, 'NODE_REVIEW_COMPLETED', :user_id,
+                        jsonb_build_object(
+                            'summary', jsonb_build_object('rejectedCount', 1),
+                            'rejectedItems', jsonb_build_array(
+                                jsonb_build_object(
+                                    'documentName', :checklist_name,
+                                    'reason', :note
+                                )
+                            )
+                        ), now())
+            """),
+            {
+                "task_node_id": checklist["task_node_id"],
+                "user_id": user.id,
+                "checklist_name": checklist.get("checklist_name") or "Checklist",
+                "note": payload.note or "Yêu cầu làm lại",
+            },
+        )
+
     auto = {"finalized": False}
+    requires_node_outcome = False
     if next_status in ("approved", "late_approved"):
-        try:
-            with db.begin_nested():
-                auto = auto_finalize_node_if_ready(
-                    db, task_node_id=checklist["task_node_id"], actor_id=user.id
+        db.execute(
+            text("""
+                update public.task_node_checklist_results cr
+                set status = case
+                        when cr.status in ('late_pending_approval', 'late_approved')
+                          then 'late_approved'
+                        else 'approved'
+                    end,
+                    completed_by = coalesce(completed_by, :user_id),
+                    completed_at = coalesce(completed_at, now()),
+                    updated_at = now()
+                where cr.task_node_id = :task_node_id
+                  and cr.status not in ('approved', 'late_approved', 'not_applicable')
+                  and exists (
+                      select 1
+                      from public.checklist_result_document_types t
+                      where t.checklist_result_id = cr.id and t.is_active
+                  )
+                  and not exists (
+                      select 1
+                      from public.checklist_result_document_types t
+                      where t.checklist_result_id = cr.id
+                        and t.is_active
+                        and (
+                            t.status <> 'approved'
+                            or not exists (
+                                select 1
+                                from public.checklist_result_document_type_files f
+                                where f.document_type_id = t.id and f.is_active
+                            )
+                        )
+                  )
+            """),
+            {"task_node_id": checklist["task_node_id"], "user_id": user.id},
+        )
+        from src.dossiers.checklist_document_types import node_type_review_summary
+        summary = node_type_review_summary(db, checklist["task_node_id"])
+
+        acceptance_id = db.execute(
+            text("""
+                select id from public.task_node_acceptances
+                where task_node_id = :task_node_id and status = 'pending'
+                order by submitted_at desc, id desc limit 1
+                for update
+            """),
+            {"task_node_id": checklist["task_node_id"]},
+        ).scalar()
+
+        if summary["is_complete"] and acceptance_id:
+            transitions = db.execute(
+                text("""
+                    select coalesce(
+                        r_defined.graph->'nodes'->n.node_key->'transitions',
+                        '{}'::jsonb
+                    )
+                    from public.task_nodes n
+                    left join public.workflow_instance_revisions r_defined
+                      on r_defined.id = n.defined_by_revision_id
+                    where n.id = :task_node_id
+                """),
+                {"task_node_id": checklist["task_node_id"]},
+            ).scalar() or {}
+            transitions = transitions if isinstance(transitions, dict) else {}
+
+            if not transitions:
+                outcome = None
+            elif "COMPLETED" in transitions:
+                outcome = "COMPLETED"
+            elif len(transitions) == 1:
+                outcome = next(iter(transitions))
+            else:
+                outcome = None
+                requires_node_outcome = True
+
+            if not requires_node_outcome:
+                try:
+                    with db.begin_nested():
+                        accepted = review_task_node_acceptance(
+                            db,
+                            acceptance_id=acceptance_id,
+                            decision="accepted",
+                            outcome=outcome,
+                            review_note="Tự hoàn tất khi mọi checklist và loại giấy trong Node đã đạt",
+                            actor_id=user.id,
+                        )
+                        auto = {"finalized": True, "task_node_id": checklist["task_node_id"]}
+                except Exception:
+                    import logging
+                    logging.getLogger(__name__).exception(
+                        "Auto-finalize acceptance failed for task node %s", checklist["task_node_id"]
+                    )
+                    auto = {"finalized": False}
+        elif not acceptance_id:
+            try:
+                with db.begin_nested():
+                    auto = auto_finalize_node_if_ready(
+                        db, task_node_id=checklist["task_node_id"], actor_id=user.id
+                    )
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception(
+                    "Auto-finalize node failed for checklist %s", checklist_result_id
                 )
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "Auto-finalize node failed for checklist %s", checklist_result_id
-            )
-            auto = {"finalized": False}
+                auto = {"finalized": False}
 
     db.commit()
     invalidate_cache("bachkhoa:contract_workspace:*")
@@ -1948,6 +2177,7 @@ def review_checklist_evidence(
         "status": next_status,
         "node_finalized": bool(auto.get("finalized")),
         "node_submitted": bool(auto.get("submitted")),
+        "requires_node_outcome": requires_node_outcome,
     }
 
 
@@ -2161,7 +2391,7 @@ def list_pending_rollback_requests(
         text("""
             select r.id, r.reason, r.created_at, r.workflow_instance_id,
                    n.node_code, n.status as node_status,
-                   coalesce(nullif(wn.name, ''), n.node_code) as node_name,
+                   coalesce(nullif(n.name, ''), nullif(wn.name, ''), n.node_code) as node_name,
                    sl.contract_id,
                    coalesce(tt.name, sl.service_type, 'Hạng mục') as service_line_name,
                    coalesce(cu.full_name, 'Khách hàng') as customer_name,
@@ -2169,7 +2399,7 @@ def list_pending_rollback_requests(
                    jsonb_array_length(coalesce(r.affected_node_ids, '[]'::jsonb)) as affected_count
             from public.workflow_rollback_requests r
             join public.task_nodes n on n.id = r.target_task_node_id
-            join public.workflow_nodes wn on wn.code = n.node_code
+            left join public.workflow_nodes wn on wn.code = n.node_code
             join public.workflow_instances wi on wi.id = r.workflow_instance_id
             join public.service_lines sl on sl.id = wi.service_line_id
             join public.contracts c on c.id = sl.contract_id
@@ -2648,3 +2878,275 @@ def apply_priority_bonus(
     db.commit()
     invalidate_cache("bachkhoa:payroll:*")
     return {"status": "success", "data": {"created": created, "priority": prio, "multiplier": multiplier}}
+
+
+class ContractCancelPayload(BaseModel):
+    reason: str = Field(min_length=5, description="Lý do hủy hợp đồng (tối thiểu 5 ký tự)")
+
+
+def _require_director_or_contract_admin(user: User, db: Session):
+    is_admin = (user.username or "").lower() == "admin"
+    has_perm = (
+        check_user_permission(db, user, "contract", "delete")
+        or check_user_permission(db, user, "contract", "update")
+        or check_user_permission(db, user, "workflow", "approve")
+    )
+    if is_admin or has_perm:
+        return
+    has_dir_role = db.query(Role.id).join(
+        UserRole, UserRole.role_id == Role.id
+    ).filter(
+        UserRole.user_id == user.id,
+        func.lower(Role.role_name).in_(["admin", "giamdoc", "giám đốc", "giam_doc", "director"]),
+    ).first() is not None
+    if not has_dir_role:
+        raise HTTPException(status_code=403, detail="Chỉ Giám đốc hoặc Quản trị viên mới có quyền thực hiện thao tác này")
+
+
+@router.post("/{contract_id:path}/cancel")
+def cancel_contract_endpoint(
+    contract_id: str,
+    payload: ContractCancelPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authenticated_user),
+):
+    """Hủy hợp đồng: Đóng băng hợp đồng, hủy quy trình liên quan, bảo lưu dữ liệu kiểm toán."""
+    _require_director_or_contract_admin(user, db)
+
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
+
+    if contract.status == "cancelled":
+        raise HTTPException(status_code=400, detail="Hợp đồng này đã ở trạng thái đã hủy")
+
+    # 1. Cập nhật trạng thái hợp đồng và ghi chú lý do hủy
+    contract.status = "cancelled"
+    actor_emp = db.query(Employee).filter(Employee.user_id == user.id).first() if hasattr(user, "id") else None
+    actor_name = (actor_emp.full_name if actor_emp else None) or getattr(user, "full_name", None) or getattr(user, "username", None) or "Quản trị viên"
+    now_str = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M")
+    cancel_stamp = f"[ĐÃ HỦY vào {now_str} bởi {actor_name}] Lý do: {payload.reason.strip()}"
+    if contract.appendix_summary:
+        contract.appendix_summary = f"{cancel_stamp}\n{contract.appendix_summary}"
+    else:
+        contract.appendix_summary = cancel_stamp
+
+    # 2. Hủy các workflow_instances đang chạy thuộc contract
+    service_lines = db.query(ServiceLine).filter(ServiceLine.contract_id == contract_id).all()
+    cancelled_wf_count = 0
+    for sl in service_lines:
+        try:
+            with db.begin_nested():
+                cancel_workflow(
+                    db,
+                    service_line_id=sl.id,
+                    cancellation_code="CONTRACT_TERMINATED",
+                    reason=f"Hủy hợp đồng {contract_id}: {payload.reason.strip()}",
+                    agency_handling_confirmed=True,
+                    agency_handling_note=f"Hủy toàn bộ hợp đồng {contract_id}: {payload.reason.strip()}",
+                    actor_id=user.id,
+                )
+                cancelled_wf_count += 1
+        except WorkflowValidationError:
+            pass
+        except Exception as e:
+            logging.getLogger(__name__).warning("Không thể hủy workflow hạng mục %s: %s", sl.id, e)
+
+    db.commit()
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    invalidate_cache("bachkhoa:contracts:*")
+
+    return {
+        "status": "success",
+        "message": f"Hợp đồng {contract_id} đã được hủy thành công",
+        "contract_id": contract_id,
+        "contract_status": "cancelled",
+        "cancelled_workflows": cancelled_wf_count,
+    }
+
+
+@router.delete("/{contract_id:path}")
+def delete_contract_endpoint(
+    contract_id: str,
+    confirm_code: Optional[str] = Query(None, description="Mã hợp đồng cần khớp để xác nhận xoá"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authenticated_user),
+):
+    """Xoá hợp đồng tạo nhầm/nháp: Chỉ cho phép khi chưa thu tiền và chưa chạy quy trình."""
+    _require_director_or_contract_admin(user, db)
+
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
+
+    if confirm_code and confirm_code.strip() != contract_id.strip():
+        raise HTTPException(status_code=400, detail="Mã hợp đồng xác nhận không khớp")
+
+    # 1. Kiểm tra tài chính: Đã thu tiền chưa?
+    receivable = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
+    paid_in_rec = float(receivable.paid_amount or 0.0) if receivable else 0.0
+    if paid_in_rec > 0.001:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Không thể xoá hợp đồng đã phát sinh thu tiền ({paid_in_rec:,.0f}đ). Vui lòng sử dụng tính năng Hủy hợp đồng."
+        )
+
+    cashflow_count = db.execute(
+        text("SELECT count(*) FROM public.cashflow_transactions WHERE contract_id = :id"),
+        {"id": contract_id}
+    ).scalar() or 0
+    if cashflow_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Không thể xoá hợp đồng đã có giao dịch dòng tiền / phiếu thu trong hệ thống. Vui lòng sử dụng tính năng Hủy hợp đồng."
+        )
+
+    # 2. Kiểm tra quy trình: Đã chạy quy trình chưa?
+    wf_count = db.execute(
+        text("""
+            SELECT count(*)
+            FROM public.workflow_instances wi
+            JOIN public.service_lines sl ON sl.id = wi.service_line_id
+            WHERE sl.contract_id = :id
+        """),
+        {"id": contract_id}
+    ).scalar() or 0
+    if wf_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Hợp đồng đang có quy trình thực hiện. Vui lòng sử dụng tính năng Hủy hợp đồng thay vì Xoá."
+        )
+
+    # 3. Dọn dẹp sạch sẽ toàn bộ các bảng liên quan theo thứ tự ràng buộc khóa ngoại (FK):
+    # a. Gỡ liên kết tiếp nhận khách hàng (customer_intake_submissions)
+    db.execute(
+        text("""
+            UPDATE public.customer_intake_submissions
+            SET linked_contract_id = NULL, linked_service_line_id = NULL
+            WHERE linked_contract_id = :id
+        """),
+        {"id": contract_id}
+    )
+
+    # b. Gỡ liên kết công nợ chuyển tiếp (nếu có)
+    db.execute(
+        text("UPDATE public.receivables SET carried_forward_to = NULL WHERE carried_forward_to = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("UPDATE public.receivables SET carried_forward_from = NULL WHERE carried_forward_from = :id"),
+        {"id": contract_id}
+    )
+
+    # c. Xoá checklist items & files gắn với hợp đồng
+    db.execute(
+        text("""
+            DELETE FROM public.checklist_result_document_type_files 
+            WHERE document_id IN (SELECT id FROM public.dossier_documents WHERE contract_id = :id)
+        """),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("""
+            DELETE FROM public.checklist_result_document_types 
+            WHERE slot_id IN (SELECT id FROM public.dossier_document_slots WHERE contract_id = :id)
+        """),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.checklist_result_document_links WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.task_node_checklist_results WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+
+    # d. Xoá yêu cầu tài liệu & liên kết hồ sơ & slot & tài liệu hồ sơ
+    db.execute(
+        text("DELETE FROM public.document_slot_creation_request_documents WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.document_slot_creation_requests WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("""
+            DELETE FROM public.document_slot_change_requests 
+            WHERE slot_id IN (SELECT id FROM public.dossier_document_slots WHERE contract_id = :id)
+        """),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.dossier_document_links WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.dossier_documents WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.dossier_document_slots WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+
+    # e. Xoá file hợp đồng mẫu sinh ra, phụ lục & các yêu cầu phụ trợ
+    db.execute(
+        text("DELETE FROM public.contract_generated_documents WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.contract_appendices WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.handover_debt_requests WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.legal_submissions WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.legal_dossiers WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.survey_records WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.advance_requests WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+    db.execute(
+        text("DELETE FROM public.contract_expenses WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+
+    # f. Xoá công nợ receivables
+    db.execute(
+        text("DELETE FROM public.receivables WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+
+    # g. Xoá hạng mục service_lines
+    db.execute(
+        text("DELETE FROM public.service_lines WHERE contract_id = :id"),
+        {"id": contract_id}
+    )
+
+    # h. Xoá hợp đồng
+    db.delete(contract)
+
+    db.commit()
+    invalidate_cache("bachkhoa:contract_workspace:*")
+    invalidate_cache("bachkhoa:contracts:*")
+
+    return {
+        "status": "success",
+        "message": f"Đã xoá vĩnh viễn hợp đồng {contract_id} và các dữ liệu liên quan thành công",
+        "contract_id": contract_id
+    }
+

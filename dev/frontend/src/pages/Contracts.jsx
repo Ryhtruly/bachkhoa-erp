@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Plus, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Plus, Workflow as WorkflowIcon, UserRound, CalendarDays, CircleDollarSign, FileText, Layers3, Trash2, Ban } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { DataTable, StatusBadge, FilterBar } from '../components/ui';
+import { DataTable, StatusBadge, FilterBar, Modal } from '../components/ui';
 import ContractComposer from '../features/contracts/ContractComposer';
 import { fetchProtectedDocumentBlob, requestDocxSaveHandle, writeBlobToFileHandle } from '../lib/fileSave';
 import { apiFetch, getAccessToken, peekApiCache, prefetchApi } from '../lib/api';
@@ -86,6 +86,12 @@ export default function Contracts({ isDirector = false }) {
   const navTargetContractRef = useRef(null);
   const { addToast } = useToast();
 
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [deleteConfirmCode, setDeleteConfirmCode] = useState('');
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+
   const prefetchContractData = useCallback((contract) => {
     const cId = getContractId(contract);
     if (!cId || typeof prefetchApi !== 'function') return;
@@ -112,7 +118,7 @@ export default function Contracts({ isDirector = false }) {
     const handler = (event) => {
       const {
         contractId, serviceLineId, nodeKey, taskNodeId,
-        targetType, targetId, type, nonce,
+        targetType, targetId, type, checklistResultId, documentTypeId, nonce,
       } = event.detail || {};
       if (!contractId) return;
       // Ghim lại hợp đồng đích: danh sách có phân trang, hợp đồng cần tới có thể không nằm
@@ -125,6 +131,8 @@ export default function Contracts({ isDirector = false }) {
         taskNodeId,
         targetType: targetType || type,
         targetId,
+        checklistResultId,
+        documentTypeId,
         nonce,
       });
       switchContractView('workflow');
@@ -224,6 +232,58 @@ export default function Contracts({ isDirector = false }) {
       setLoading(false);
     }
   }, [addToast, filterValues.task_type_id, page, prefetchContractData, searchTerm, signedDate, sort]);
+
+  const handleCancelContract = async () => {
+    if (!selectedContract) return;
+    const contractId = getContractId(selectedContract);
+    if (!cancelReason || cancelReason.trim().length < 5) {
+      addToast('Vui lòng nhập lý do hủy hợp đồng (tối thiểu 5 ký tự)', 'error');
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/contracts/${encodeURIComponent(contractId)}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      });
+      addToast(res.message || `Đã hủy hợp đồng ${contractId}`, 'success');
+      setSelectedContract(prev => (prev ? { ...prev, status: 'Đã huỷ', progress: 'Đã huỷ' } : prev));
+      setContracts(prev => prev.map(c => (getContractId(c) === contractId ? { ...c, status: 'Đã huỷ', progress: 'Đã huỷ' } : c)));
+      setCancelModalOpen(false);
+      setCancelReason('');
+      fetchContracts(false);
+    } catch (err) {
+      addToast(err.message || 'Lỗi khi hủy hợp đồng', 'error');
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleDeleteContract = async () => {
+    if (!selectedContract) return;
+    const contractId = getContractId(selectedContract);
+    if (deleteConfirmCode.trim() !== contractId.trim()) {
+      addToast('Mã hợp đồng xác nhận không khớp', 'error');
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      const res = await apiFetch(`/api/contracts/${encodeURIComponent(contractId)}?confirm_code=${encodeURIComponent(deleteConfirmCode.trim())}`, {
+        method: 'DELETE',
+      });
+      addToast(res.message || `Đã xoá vĩnh viễn hợp đồng ${contractId}`, 'success');
+      setContracts(prev => prev.filter(c => getContractId(c) !== contractId));
+      setSelectedContract(null);
+      setDeleteModalOpen(false);
+      setDeleteConfirmCode('');
+      fetchContracts(false);
+    } catch (err) {
+      addToast(err.message || 'Lỗi khi xoá hợp đồng', 'error');
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
 
   const openContractModal = async () => {
     setTemplatesLoading(true);
@@ -470,18 +530,30 @@ export default function Contracts({ isDirector = false }) {
       label: 'Giá trị / Còn nợ',
       align: 'right',
       width: 145,
-      render: (value, row) => (
-        <span className="contract-money">
-          <strong>{formatVND(value)}</strong>
-          {/* Chỉ dám nói "đã thu đủ" khi thật sự có số để đối chiếu — thiếu dữ
-              liệu mà báo đã thu đủ là báo sai chiều nguy hiểm nhất. */}
-          {row.remaining_amount == null
-            ? <em className="is-unknown">chưa có số liệu</em>
-            : Number(row.remaining_amount) > 0
-              ? <em className="is-owed">còn {formatVND(row.remaining_amount)}</em>
-              : <em className="is-paid">đã thu đủ</em>}
-        </span>
-      )
+      render: (value, row) => {
+        const total = Number(value || 0);
+        const paid = Number(row.paid_amount || 0);
+        const remaining = row.remaining_amount != null ? Number(row.remaining_amount) : null;
+        const isNegative = total < 0;
+        const isPaidOff = total > 0 ? (remaining !== null && remaining <= 0.009) : (total === 0 && paid === 0);
+
+        return (
+          <span className="contract-money">
+            <strong>{formatVND(value)}</strong>
+            {/* Chỉ dám nói "đã thu đủ" khi thật sự có số để đối chiếu — thiếu dữ
+                liệu mà báo đã thu đủ là báo sai chiều nguy hiểm nhất. */}
+            {isNegative ? (
+              <em className="is-unknown" style={{ color: 'var(--text-danger, #ef4444)' }}>giá trị không hợp lệ</em>
+            ) : remaining == null ? (
+              <em className="is-unknown">chưa có số liệu</em>
+            ) : isPaidOff ? (
+              <em className="is-paid">đã thu đủ</em>
+            ) : (
+              <em className="is-owed">còn {formatVND(remaining)}</em>
+            )}
+          </span>
+        );
+      }
     },
     {
       key: 'status',
@@ -638,6 +710,36 @@ export default function Contracts({ isDirector = false }) {
                       addToast={addToast}
                     />
                   </div>
+
+                  {/* Nút thao tác ngữ cảnh: Xoá nếu chưa có quy trình / Hủy nếu đã có quy trình */}
+                  {selectedContract && isDirector && selectedContract.status === 'Chưa có quy trình' && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger contract-lifecycle-action"
+                      onClick={() => {
+                        setDeleteConfirmCode('');
+                        setDeleteModalOpen(true);
+                      }}
+                      title="Xoá hợp đồng tạo nhầm / nháp"
+                    >
+                      <Trash2 size={15} /> Xoá hợp đồng
+                    </button>
+                  )}
+
+                  {selectedContract && isDirector && selectedContract.status !== 'Chưa có quy trình' && !/hu[ỷy]|cancel/i.test(selectedContract.status || '') && (
+                    <button
+                      type="button"
+                      className="btn btn-outline-warning contract-lifecycle-action"
+                      onClick={() => {
+                        setCancelReason('');
+                        setCancelModalOpen(true);
+                      }}
+                      title="Hủy hợp đồng dừng thực hiện"
+                    >
+                      <Ban size={15} /> Hủy hợp đồng
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     className="btn btn-primary contract-workflow-action"
@@ -677,6 +779,8 @@ export default function Contracts({ isDirector = false }) {
           targetTaskNodeId={navTarget?.taskNodeId}
           targetType={navTarget?.targetType}
           targetId={navTarget?.targetId}
+          targetChecklistResultId={navTarget?.checklistResultId}
+          targetDocumentTypeId={navTarget?.documentTypeId}
           targetNonce={navTarget?.nonce}
           isDirector={isDirector}
         />
@@ -702,6 +806,129 @@ export default function Contracts({ isDirector = false }) {
         accessToken={getAccessToken()}
         onClose={() => setDocumentUrl('')}
       />
+
+      {/* Modal Hủy Hợp Đồng */}
+      <Modal
+        open={cancelModalOpen}
+        onClose={() => !actionSubmitting && setCancelModalOpen(false)}
+        title={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--amber-600, #d97706)' }}>
+            <Ban size={20} /> Hủy hợp đồng: {getContractId(selectedContract)}
+          </span>
+        }
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setCancelModalOpen(false)}
+              disabled={actionSubmitting}
+            >
+              Đóng
+            </button>
+            <button
+              type="button"
+              className="btn btn-warning"
+              onClick={handleCancelContract}
+              disabled={actionSubmitting || cancelReason.trim().length < 5}
+            >
+              {actionSubmitting ? 'Đang xử lý...' : 'Xác nhận hủy hợp đồng'}
+            </button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '10px 14px', background: 'var(--amber-50, #fffbeb)', border: '1px solid var(--amber-200, #fde68a)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--amber-800, #92400e)', lineHeight: 1.5 }}>
+            <strong>Lưu ý quan trọng:</strong> Khi hủy hợp đồng, toàn bộ quy trình công việc đang chạy sẽ được chuyển sang trạng thái <strong>Đã huỷ</strong> và dừng thực hiện. Dữ liệu tài chính và hồ sơ tài liệu vẫn được bảo lưu phục vụ kiểm tra/đối soát.
+          </div>
+          <div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 4 }}>Khách hàng: <strong>{selectedContract?.customer_name || 'Chưa cập nhật'}</strong></div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Giá trị hợp đồng: <strong>{formatVND(selectedContract?.total_value)}</strong></div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+              Lý do hủy hợp đồng <span style={{ color: 'var(--red-500, #ef4444)' }}>*</span>
+            </label>
+            <textarea
+              className="form-control"
+              rows={3}
+              placeholder="Nhập lý do chi tiết (tối thiểu 5 ký tự, ví dụ: Khách hàng đổi ý dừng dự án...)"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              disabled={actionSubmitting}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-default)', resize: 'vertical' }}
+            />
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Xoá Hợp Đồng */}
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => !actionSubmitting && setDeleteModalOpen(false)}
+        title={
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--red-600, #dc2626)' }}>
+            <Trash2 size={20} /> Xoá hợp đồng: {getContractId(selectedContract)}
+          </span>
+        }
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setDeleteModalOpen(false)}
+              disabled={actionSubmitting}
+            >
+              Bỏ qua
+            </button>
+            {Number(selectedContract?.paid_amount || 0) <= 0.009 && (
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleDeleteContract}
+                disabled={actionSubmitting || deleteConfirmCode.trim() !== getContractId(selectedContract).trim()}
+              >
+                {actionSubmitting ? 'Đang xoá...' : 'Xác nhận xoá vĩnh viễn'}
+              </button>
+            )}
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {Number(selectedContract?.paid_amount || 0) > 0.009 ? (
+            <div style={{ padding: '12px 14px', background: 'var(--red-50, #fef2f2)', border: '1px solid var(--red-200, #fecaca)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--red-800, #991b1b)', lineHeight: 1.5 }}>
+              <strong>Không thể xoá:</strong> Hợp đồng này đã phát sinh thanh toán ({formatVND(selectedContract?.paid_amount)}). Để bảo vệ tính toàn vẹn của sổ sách kế toán và kiểm toán dòng tiền, hệ thống không cho phép xoá vĩnh viễn. Vui lòng sử dụng tính năng <strong>Hủy hợp đồng</strong> nếu muốn ngừng thực hiện.
+            </div>
+          ) : (
+            <>
+              <div style={{ padding: '12px 14px', background: 'var(--red-50, #fef2f2)', border: '1px solid var(--red-200, #fecaca)', borderRadius: 8, fontSize: '0.85rem', color: 'var(--red-800, #991b1b)', lineHeight: 1.5 }}>
+                <strong>Cảnh báo nguy hiểm:</strong> Hành động này sẽ xoá hoàn toàn hợp đồng <strong>{getContractId(selectedContract)}</strong> và toàn bộ hạng mục công việc, công nợ liên kết khỏi hệ thống. Dữ liệu sau khi xoá <strong>KHÔNG THỂ KHÔI PHỤC</strong>.
+              </div>
+              <div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 4 }}>Khách hàng: <strong>{selectedContract?.customer_name || 'Chưa cập nhật'}</strong></div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Giá trị: <strong>{formatVND(selectedContract?.total_value)}</strong> (Đã thu: 0đ)</div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                  Vui lòng gõ lại chính xác mã hợp đồng <code style={{ color: 'var(--red-600, #dc2626)', fontWeight: 700 }}>{getContractId(selectedContract)}</code> để xác nhận:
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder={`Nhập ${getContractId(selectedContract)}`}
+                  value={deleteConfirmCode}
+                  onChange={(e) => setDeleteConfirmCode(e.target.value)}
+                  disabled={actionSubmitting}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border-default)', fontFamily: 'var(--font-mono)' }}
+                  autoFocus
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </section>
   );
 }

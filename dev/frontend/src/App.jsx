@@ -291,7 +291,9 @@ function App() {
     return () => window.removeEventListener('app:navigate', navigateFromFeature);
   }, []);
 
-  if (window.location.pathname === '/set-password') {
+  const normalizedPath = window.location.pathname.replace(/\/$/, '');
+  const windowHash = window.location.hash || '';
+  if (normalizedPath === '/set-password' || windowHash.startsWith('#/set-password')) {
     return (
       <SetPassword
         onDone={(token) => {
@@ -456,6 +458,8 @@ function App() {
       taskNodeId: item.task_node_id,
       targetType: item.target_type || item.type,
       targetId: item.target_id || item.ref_id,
+      checklistResultId: item.checklist_result_id,
+      documentTypeId: item.document_type_id,
       nonce: Date.now(),
     });
   };

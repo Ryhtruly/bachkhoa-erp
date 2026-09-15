@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add app directory to Python path
@@ -262,3 +262,17 @@ app.include_router(intake_router)
 @app.get("/")
 def read_root():
     return {"message": "OpenClaw ERP API is running"}
+
+
+@app.get("/set-password", include_in_schema=False)
+def fallback_redirect_set_password(token: str = ""):
+    """Fail-safe redirect: if an employee clicks an invite link that was generated with
+    the backend port (or from prior emails), redirect immediately to the frontend UI
+    with the invite token preserved.
+    """
+    from src.user_admin.service import _frontend_base_url
+    base = _frontend_base_url().rstrip("/")
+    target = f"{base}/set-password"
+    if token:
+        target += f"?token={token}"
+    return RedirectResponse(url=target, status_code=307)

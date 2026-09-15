@@ -102,7 +102,7 @@ export default function Modal({
       >
         {/* Header */}
         {(title || !hideClose) && (
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             {title && (
               <h2 id={`${modalId}-title`} style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
                 {title}

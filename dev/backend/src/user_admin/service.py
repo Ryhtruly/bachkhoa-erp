@@ -29,7 +29,7 @@ def _hash_token(token: str) -> str:
 
 
 def _frontend_base_url() -> str:
-    return os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+    return os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
 
 
 def _mask_email(email: str) -> str:

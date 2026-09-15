@@ -78,7 +78,11 @@ export function getCacheTTL(path) {
     cleanPath.startsWith('/api/contracts/workspace') ||
     cleanPath.startsWith('/api/document-register/templates') ||
     cleanPath.startsWith('/api/document-register/register') ||
-    cleanPath.startsWith('/api/contracts/workflow/templates')
+    cleanPath.startsWith('/api/contracts/workflow/templates') ||
+    cleanPath.startsWith('/api/employee-portal/me') ||
+    cleanPath.startsWith('/api/employee-portal/task-pool') ||
+    cleanPath.startsWith('/api/employee-portal/daily-summary') ||
+    cleanPath.startsWith('/api/employee-portal/completed-items')
   ) {
     return DATA_CACHE_TTL_MS;
   }
@@ -111,7 +115,11 @@ function setL2Cache(path, raw, ttlMs) {
   const isPersistable = cleanPath.startsWith('/api/catalog/')
     || cleanPath.startsWith('/api/config')
     || cleanPath.startsWith('/api/document-register/')
-    || cleanPath.startsWith('/api/contracts/workflow/templates');
+    || cleanPath.startsWith('/api/contracts/workflow/templates')
+    || cleanPath === '/api/employee-portal/me'
+    || cleanPath === '/api/employee-portal/task-pool'
+    || cleanPath === '/api/employee-portal/daily-summary'
+    || cleanPath === '/api/employee-portal/completed-items';
   if (!isPersistable) return;
 
   try {
@@ -248,11 +256,28 @@ function invalidateOnMutation(path) {
   } else if (clean.startsWith('/api/document-register/')) {
     clearApiCache('/api/document-register/');
   } else if (clean.startsWith('/api/employee-portal/')) {
-    clearApiCache('/api/employee-portal/');
+    // Phân tách: Nếu chỉ là thao tác trên loại giấy / file của một checklist,
+    // CHỈ xóa cache shortage liên quan, KHÔNG xóa sạch toàn bộ me/task-pool/daily-summary
+    if (clean.includes('/document-types') || clean.includes('/files') || clean.includes('/output-documents')) {
+      clearApiCache('/shortage');
+      clearApiCache('/api/employee-portal/me');
+    } else {
+      clearApiCache('/api/employee-portal/');
+    }
   } else {
     // Với các mutation chung (như test /api/z), xóa sạch
     clearApiCache();
   }
+}
+
+let lastLocalMutationAt = 0;
+
+export function markLocalMutation() {
+  lastLocalMutationAt = Date.now();
+}
+
+export function getLastLocalMutationTime() {
+  return lastLocalMutationAt;
 }
 
 export async function apiFetch(path, options = {}) {
@@ -261,7 +286,10 @@ export async function apiFetch(path, options = {}) {
   // Chỉ gộp/nhớ lượt ĐỌC, và bỏ qua khi bên gọi tự mang signal: chia chung một
   // promise thì một bên huỷ là bên kia gãy theo.
   if (method !== 'GET' || options.signal) {
-    if (method !== 'GET') invalidateOnMutation(path);
+    if (method !== 'GET') {
+      markLocalMutation();
+      invalidateOnMutation(path);
+    }
     return requestOnce(path, options);
   }
 

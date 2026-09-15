@@ -16,7 +16,7 @@ const TAB_PREFETCH_HANDLERS = {
     if (typeof prefetchApi === 'function') {
       prefetchApi('/api/document-register/templates');
       prefetchApi('/api/document-register/workflow-nodes');
-      prefetchApi('/api/document-register/package-tree');
+      prefetchApi('/api/catalog/service-packages');
     }
   },
   crm: () => {

@@ -90,8 +90,9 @@ export default function NodeAgencyPanel({
 
   useEffect(() => { load(); }, [load]);
 
+  const isGovSub = taskNode?.capability === 'GOV_SUBMISSION' || taskNode?.capability_code === 'GOV_SUBMISSION' || taskNode?.requiresGovSubmission || taskNode?.requires_gov_submission;
   const isTracking = nodeCode === 'K05b';
-  const title = isTracking ? 'Theo dõi & rút kết quả' : 'Nộp & lấy biên nhận';
+  const title = isTracking ? 'Theo dõi & rút kết quả' : (isGovSub ? 'Nộp cơ quan & Theo dõi một cửa' : 'Nộp & lấy biên nhận');
 
   // ── Bước chưa chạy ──
   // Xem trước cho biết sẽ có gì, thay vì để trống khiến Giám đốc tưởng chưa làm.

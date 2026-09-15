@@ -463,6 +463,8 @@ class ContractService:
             contract_id = (payload.contract_id or "").strip() or ContractService.get_next_contract_code(db)
             service_type = payload.service_type
             paid_val = float(payload.paid_amount or 0)
+            if paid_val < 0:
+                raise ValueError("Số tiền đã thanh toán không được là số âm")
 
             customer = db.query(Customer).filter(Customer.full_name == cust_name).first()
             if not customer:

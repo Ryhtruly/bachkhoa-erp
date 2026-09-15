@@ -6,6 +6,8 @@ import { useDropdownPosition } from '../lib/useDropdownPosition';
 
 const TYPE_ICON = {
   node_review: <Clock3 size={14} />,
+  document_type_review: <Clock3 size={14} />,
+  checklist_confirmation: <CheckCircle2 size={14} />,
   checklist_review: <CheckCircle2 size={14} />,
   node_start: <RotateCcw size={14} />,
   checklist_resubmit: <XCircle size={14} />,
@@ -44,9 +46,12 @@ export default function NotificationBell({ open, onOpenChange, onNavigate }) {
     let abortController = null;
     let fallbackPollId = null;
 
-    const poll = () => apiFetch('/api/notifications/summary')
+    const poll = () => {
+      if (!getAccessToken()) return Promise.resolve();
+      return apiFetch('/api/notifications/summary')
       .then((payload) => { if (!cancelled) setItems(payload.items || []); })
       .catch(() => {});
+    };
 
     const startFallbackPolling = () => {
       if (fallbackPollId !== null) return;

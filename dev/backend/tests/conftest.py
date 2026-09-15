@@ -121,6 +121,28 @@ def _ensure_audit_log_sequence(connection):
     connection.execute(text("create sequence if not exists public.audit_log_id_seq as bigint"))
 
 
+def _ensure_task_nodes_columns(connection):
+    if connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    connection.execute(text("""
+        alter table public.task_nodes
+        add column if not exists name text,
+        add column if not exists capability_code varchar(50);
+        alter table public.task_nodes
+        drop constraint if exists task_nodes_node_code_fkey;
+
+        alter table public.service_packages
+        add column if not exists category_type varchar(30) not null default 'GENERAL';
+
+        alter table public.task_types
+        add column if not exists category_type varchar(30) not null default 'GENERAL',
+        add column if not exists display_order int null default 100,
+        add column if not exists is_active boolean not null default true;
+    """))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_test_db():
     import src.db.models
@@ -137,6 +159,7 @@ def init_test_db():
             )).scalar())
     with engine.begin() as conn:
         _ensure_audit_log_sequence(conn)
+        _ensure_task_nodes_columns(conn)
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
@@ -232,7 +255,7 @@ def init_test_db():
 
 @pytest.fixture(scope="session")
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, base_url="https://testserver") as c:
         yield c
 
 

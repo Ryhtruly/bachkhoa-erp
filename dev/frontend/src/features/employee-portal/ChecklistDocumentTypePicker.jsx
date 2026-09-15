@@ -20,6 +20,8 @@ export default function ChecklistDocumentTypePicker({
   taskNodeId,
   checklistResultId,
   onAdded,
+  onReconcile,
+  onError,
   onClose,
   addToast,
 }) {
@@ -136,8 +138,36 @@ export default function ChecklistDocumentTypePicker({
       return
     }
 
-    setBusy(true)
-    setError('')
+    const resolvedName = selected?.name || name
+    const resolvedSource = selected?.source || source
+    const tempId = `opt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const optimisticType = {
+      id: tempId,
+      template_id: selected?.template_id || null,
+      name: resolvedName,
+      source: resolvedSource,
+      source_label: selected?.source_label || (resolvedSource === 'CONG_TY' ? 'Công ty soạn' : resolvedSource === 'CO_QUAN' ? 'Pháp lý' : 'Khách hàng cung cấp'),
+      origin: selected ? 'CONFIGURED' : 'EMPLOYEE',
+      status: 'draft',
+      files: files.map((f, i) => ({
+        document_id: `opt_doc_${Date.now()}_${i}`,
+        file_name: f.name,
+        content_type: f.type,
+      })),
+      file_count: files.length,
+      is_optimistic: true,
+    }
+
+    if (onReconcile) {
+      // 0ms TỨC THÌ: Báo về component cha để hiện ngay trên giao diện và đóng modal lập tức
+      onAdded?.(optimisticType)
+      addToast?.(`Đã thêm ${resolvedName} vào checklist.`, 'success')
+      onClose?.()
+    } else {
+      setBusy(true)
+      setError('')
+    }
+
     let created
     try {
       const createdPayload = await apiFetch(
@@ -154,13 +184,18 @@ export default function ChecklistDocumentTypePicker({
       created = createdPayload?.data || createdPayload
     } catch (requestError) {
       const message = requestError?.message || 'Không thêm được loại giấy vào checklist.'
-      setError(message)
-      addToast?.(message, 'error')
-      setBusy(false)
+      if (onReconcile) {
+        onError?.(tempId, message)
+      } else {
+        setError(message)
+        addToast?.(message, 'error')
+        setBusy(false)
+      }
       return
     }
 
     try {
+      let uploadedFiles = []
       if (files.length > 0) {
         const body = new FormData()
         files.forEach(file => body.append('files', file))
@@ -169,19 +204,38 @@ export default function ChecklistDocumentTypePicker({
             + `/document-types/${encodeURIComponent(created.id)}/files`,
           { method: 'POST', body },
         )
-        const failed = (uploaded?.data || []).filter(item => item?.status === 'failed')
-        if (failed.length > 0) {
-          addToast?.(`${failed.length} tệp chưa tải được. Bạn có thể tải lại ngay tại loại giấy.`, 'warning')
+        const successList = (uploaded?.data || []).filter(item => item?.status === 'success')
+        const failedList = (uploaded?.data || []).filter(item => item?.status === 'failed')
+        if (failedList.length > 0) {
+          addToast?.(`${failedList.length} tệp chưa tải được. Bạn có thể tải lại ngay tại loại giấy.`, 'warning')
         }
+        uploadedFiles = successList
       }
-      addToast?.(`Đã thêm ${created.name || selected?.name || name} vào checklist.`, 'success')
+
+      if (onReconcile) {
+        const reconciledType = {
+          ...created,
+          files: uploadedFiles.length > 0 ? uploadedFiles : (created.files || optimisticType.files),
+          file_count: uploadedFiles.length > 0 ? uploadedFiles.length : (created.file_count ?? files.length),
+          is_optimistic: false,
+        }
+        onReconcile?.(tempId, reconciledType)
+      } else {
+        addToast?.(`Đã thêm ${created.name || selected?.name || name} vào checklist.`, 'success')
+      }
     } catch {
       const message = 'Đã tạo loại giấy nhưng file chưa tải được. Bạn có thể tải lại tại hàng loại giấy.'
-      setError(message)
+      if (onReconcile) {
+        onReconcile?.(tempId, { ...created, is_optimistic: false })
+      } else {
+        setError(message)
+      }
       addToast?.(message, 'warning')
     } finally {
-      onAdded?.(created)
-      setBusy(false)
+      if (!onReconcile) {
+        onAdded?.(created)
+        setBusy(false)
+      }
     }
   }
 

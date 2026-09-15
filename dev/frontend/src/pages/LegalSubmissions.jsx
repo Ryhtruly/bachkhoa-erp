@@ -7,6 +7,10 @@ import {
   ExternalLink,
   Pencil,
   Clock3,
+  FolderKanban,
+  Receipt,
+  FolderArchive,
+  Landmark,
 } from 'lucide-react';
 import {
   DataTable,
@@ -99,6 +103,18 @@ export default function LegalSubmissions() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [packages, setPackages] = useState([]);
+  const [packageFilter, setPackageFilter] = useState('All');
+  const [taskTypeFilter, setTaskTypeFilter] = useState('All');
+
+  useEffect(() => {
+    fetch(`${API}/api/catalog/service-packages`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.data) setPackages(data.data);
+      })
+      .catch(() => {});
+  }, []);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState(null);
@@ -318,12 +334,35 @@ export default function LegalSubmissions() {
     },
   ];
 
+  const packageOptions = (packages || []).map((p) => ({ value: p.id, label: p.name }));
+  const currentPkg = (packages || []).find((p) => p.id === packageFilter);
+  const taskTypeOptions = currentPkg
+    ? (currentPkg.task_types || []).map((t) => ({ value: t.name, label: t.name }))
+    : (packages || []).flatMap((p) => (p.task_types || []).map((t) => ({ value: t.name, label: t.name })));
+
+  const displayedSubmissions = (submissions || []).filter((sub) => {
+    if (packageFilter && packageFilter !== 'All') {
+      const pkg = packages.find((p) => p.id === packageFilter);
+      if (pkg) {
+        const names = [pkg.name, ...(pkg.task_types || []).map((t) => t.name)];
+        const slName = sub.service_line_name || '';
+        const match = names.some((n) => slName.toLowerCase().includes(n.toLowerCase()));
+        if (!match) return false;
+      }
+    }
+    if (taskTypeFilter && taskTypeFilter !== 'All') {
+      const slName = (sub.service_line_name || '').toLowerCase();
+      if (!slName.includes(taskTypeFilter.toLowerCase())) return false;
+    }
+    return true;
+  });
+
   return (
-    <section className="tab-pane active phaply-page list-page-frame">
+    <section className="tab-pane active hoso-page list-page-frame" id="tab-legal-submissions">
       <header className="contract-pane-title">
         <div>
-          <FileCheck size={20} style={{ color: 'var(--orange-500)' }} />
-          <span>Hồ Sơ Pháp Lý</span>
+          <Landmark size={20} style={{ color: 'var(--orange-500)' }} />
+          <span>Hồ Sơ Một Cửa</span>
           <strong>{stats.total ?? pagination.total ?? submissions.length}</strong>
         </div>
       </header>
@@ -338,19 +377,47 @@ export default function LegalSubmissions() {
         <FilterBar
           search={searchTerm}
           onSearchChange={(val) => { setSearchTerm(val); setPage(1); }}
-          searchPlaceholder="Tìm theo tên hồ sơ, số biên nhận, mã hợp đồng..."
+          searchPlaceholder="Tìm theo tên hồ sơ, số biên nhận, mã hợp đồng, hạng mục..."
           filters={[
             {
               key: 'gov_status',
               label: 'Tình trạng',
               type: 'select',
-              width: 190,
+              width: 170,
               options: GOV_STATUS_OPTIONS.map(opt => ({ value: opt, label: opt })),
             },
+            {
+              key: 'package_id',
+              label: 'Gói dịch vụ',
+              type: 'select',
+              width: 170,
+              options: packageOptions,
+            },
+            {
+              key: 'task_type_id',
+              label: 'Hạng mục',
+              type: 'select',
+              width: 170,
+              options: taskTypeOptions,
+            },
           ]}
-          values={{ gov_status: statusFilter }}
-          onFilterChange={(_key, value) => { setStatusFilter(value || 'All'); setPage(1); }}
-          onReset={() => { setSearchTerm(''); setStatusFilter('All'); setPage(1); }}
+          values={{ gov_status: statusFilter, package_id: packageFilter, task_type_id: taskTypeFilter }}
+          onFilterChange={(key, value) => {
+            if (key === 'gov_status') setStatusFilter(value || 'All');
+            if (key === 'package_id') {
+              setPackageFilter(value || 'All');
+              setTaskTypeFilter('All');
+            }
+            if (key === 'task_type_id') setTaskTypeFilter(value || 'All');
+            setPage(1);
+          }}
+          onReset={() => {
+            setSearchTerm('');
+            setStatusFilter('All');
+            setPackageFilter('All');
+            setTaskTypeFilter('All');
+            setPage(1);
+          }}
           actions={(
             <button type="button" className="btn btn-ghost" title="Làm mới" onClick={() => { fetchSubmissions(true); fetchStats(); }}>
               <RefreshCw size={16} />
@@ -362,7 +429,7 @@ export default function LegalSubmissions() {
       <div className="list-page-frame__table">
         <DataTable
           columns={columns}
-          data={submissions}
+          data={displayedSubmissions}
           loading={loading}
           rowKey="id"
           emptyText="Chưa có hồ sơ pháp lý nào — hồ sơ sẽ tự sinh khi nhân viên bắt đầu làm Node Pháp lý"
@@ -391,6 +458,35 @@ export default function LegalSubmissions() {
             Chi tiết Hồ Sơ Pháp Lý
           </span>
         }
+        footer={(!detailLoading && !detailError && editForm) ? (
+          <div className="legal-detail__footer">
+            {isDossierLocked(detailData, editForm.gov_status) ? (
+              <>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }} role="status">
+                  Hồ sơ đã hoàn tất và không thể chỉnh sửa.
+                </span>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>Đóng</button>
+              </>
+            ) : editing ? (
+              <>
+                <button type="button" className="btn btn-secondary" disabled={saving}
+                  onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>
+                  Huỷ
+                </button>
+                <button type="submit" form="legal-detail-form" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>Đóng</button>
+                <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
+                  <Pencil size={15} /> Sửa
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
       >
         {detailLoading ? (
           <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-tertiary)' }}>Đang tải…</div>
@@ -405,7 +501,7 @@ export default function LegalSubmissions() {
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSaveDetail}>
+          <form id="legal-detail-form" onSubmit={handleSaveDetail}>
             <div className="legal-detail__identity">
               <div>
                 <div className="legal-detail__identity-code">
@@ -426,7 +522,7 @@ export default function LegalSubmissions() {
             )}
 
             <section className="legal-detail__section">
-              <h4 className="legal-detail__section-title">Hồ sơ</h4>
+              <h4 className="legal-detail__section-title"><FolderKanban size={15} /> Thông tin hồ sơ</h4>
               <div className="legal-detail__grid">
                 <Field label="Tên hồ sơ" wide editing={editing} value={editForm.dossier_name}>
                   <input className="form-control" value={editForm.dossier_name}
@@ -447,7 +543,7 @@ export default function LegalSubmissions() {
             </section>
 
             <section className="legal-detail__section">
-              <h4 className="legal-detail__section-title">Biên nhận cơ quan</h4>
+              <h4 className="legal-detail__section-title"><Receipt size={15} /> Biên nhận cơ quan</h4>
               {editing ? (
                 <div className="legal-detail__grid">
                   <Field label="Số biên nhận" editing value={editForm.receipt_code}>
@@ -512,7 +608,7 @@ export default function LegalSubmissions() {
             </section>
 
             <section className="legal-detail__section">
-              <h4 className="legal-detail__section-title">Tài liệu &amp; theo dõi</h4>
+              <h4 className="legal-detail__section-title"><FolderArchive size={15} /> Tài liệu &amp; theo dõi</h4>
               <div className="legal-detail__grid">
                 <Field label="Tệp hồ sơ" wide editing={editing}
                   value={driveLink(editForm.dossier_file_url, 'Mở tệp hồ sơ')} empty="Chưa đính kèm">
@@ -552,33 +648,7 @@ export default function LegalSubmissions() {
               />
             </section>
 
-            <div className="legal-detail__footer">
-              {isDossierLocked(detailData, editForm.gov_status) ? (
-                <>
-                  <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }} role="status">
-                    Hồ sơ đã hoàn tất và không thể chỉnh sửa.
-                  </span>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>Đóng</button>
-                </>
-              ) : editing ? (
-                <>
-                  <button type="button" className="btn btn-secondary" disabled={saving}
-                    onClick={() => { setEditForm(toEditForm(detailData || {})); setEditing(false); }}>
-                    Huỷ
-                  </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
-                    {saving ? 'Đang lưu…' : 'Lưu thay đổi'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>Đóng</button>
-                  <button type="button" className="btn btn-primary" onClick={() => setEditing(true)}>
-                    <Pencil size={15} /> Sửa
-                  </button>
-                </>
-              )}
-            </div>
+
           </form>
         )}
       </Modal>

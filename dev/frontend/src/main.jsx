@@ -65,6 +65,12 @@ window.fetch = async (input, init = {}) => {
   })
 }
 
+window.addEventListener('error', (e) => {
+  if (e.message?.includes('ResizeObserver loop') || e.message?.includes('ResizeObserver loop completed')) {
+    e.stopImmediatePropagation()
+  }
+})
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
