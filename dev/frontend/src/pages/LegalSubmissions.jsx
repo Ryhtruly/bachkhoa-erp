@@ -10,6 +10,7 @@ import {
   FolderKanban,
   Receipt,
   FolderArchive,
+  Landmark,
 } from 'lucide-react';
 import {
   DataTable,
