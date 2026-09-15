@@ -100,6 +100,51 @@ def _sqlite_get_column_default_string(self, column):
 
 SQLiteDDLCompiler.get_column_default_string = _sqlite_get_column_default_string
 
+from src.core import redis_utils
+
+
+class _FakeRedisLock:
+    def acquire(self, blocking: bool = True) -> bool:
+        return True
+
+    def release(self) -> None:
+        pass
+
+
+class _FakeRedisClient:
+    def lock(self, name: str, timeout=None, blocking_timeout=None, **kwargs):
+        return _FakeRedisLock()
+
+    def get(self, key: str):
+        return None
+
+    def set(self, key: str, val, **kwargs):
+        return True
+
+    def setex(self, key: str, time, value):
+        return True
+
+    def delete(self, *keys):
+        return len(keys)
+
+    def keys(self, pattern: str = "*"):
+        return []
+
+    def ping(self):
+        return True
+
+
+if redis_utils.get_redis_client() is None:
+    redis_utils._client = _FakeRedisClient()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_fake_redis_when_redis_offline():
+    if redis_utils._client is None:
+        redis_utils._client = _FakeRedisClient()
+    yield
+
+
 from src.index import app
 from src.db.database import engine, Base, get_db
 from src.db.models import User, Role, UserRole, RolePermission, AuditLog

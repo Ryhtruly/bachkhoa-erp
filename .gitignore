@@ -21,6 +21,8 @@ env/
 .pytest_cache/
 /.pytest-tmp*/
 /dev/backend/.pytest-tmp*/
+/.pytest_temp*/
+/dev/backend/.pytest_temp*/
 
 # OS & DB
 .DS_Store
