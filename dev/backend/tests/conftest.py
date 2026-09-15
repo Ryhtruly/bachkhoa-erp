@@ -112,37 +112,70 @@ class _FakeRedisLock:
 
 
 class _FakeRedisClient:
+    def __init__(self):
+        self._store = {}
+
     def lock(self, name: str, timeout=None, blocking_timeout=None, **kwargs):
         return _FakeRedisLock()
 
     def get(self, key: str):
-        return None
+        return self._store.get(key)
 
     def set(self, key: str, val, **kwargs):
+        self._store[key] = str(val) if not isinstance(val, (str, bytes)) else val
         return True
 
     def setex(self, key: str, time, value):
+        self._store[key] = str(value) if not isinstance(value, (str, bytes)) else value
+        return True
+
+    def setnx(self, key: str, val):
+        if key in self._store:
+            return False
+        self._store[key] = str(val) if not isinstance(val, (str, bytes)) else val
+        return True
+
+    def incr(self, key: str, amount: int = 1):
+        try:
+            cur = int(self._store.get(key, 0))
+        except (ValueError, TypeError):
+            cur = 0
+        new_val = cur + amount
+        self._store[key] = str(new_val)
+        return new_val
+
+    def expire(self, key: str, time: int):
         return True
 
     def delete(self, *keys):
-        return len(keys)
+        count = 0
+        for k in keys:
+            if k in self._store:
+                del self._store[k]
+                count += 1
+        return count
 
     def keys(self, pattern: str = "*"):
-        return []
+        import fnmatch
+        return [k for k in self._store.keys() if fnmatch.fnmatch(k, pattern)]
 
     def ping(self):
         return True
 
 
-if redis_utils.get_redis_client() is None:
+if redis_utils.get_redis_client() is None or not isinstance(redis_utils.get_redis_client(), _FakeRedisClient):
     redis_utils._client = _FakeRedisClient()
 
 
 @pytest.fixture(autouse=True)
 def _ensure_fake_redis_when_redis_offline():
-    if redis_utils._client is None:
+    if redis_utils._client is None or not isinstance(redis_utils._client, _FakeRedisClient):
         redis_utils._client = _FakeRedisClient()
+    else:
+        redis_utils._client._store.clear()
     yield
+    if isinstance(redis_utils._client, _FakeRedisClient):
+        redis_utils._client._store.clear()
 
 
 from src.index import app

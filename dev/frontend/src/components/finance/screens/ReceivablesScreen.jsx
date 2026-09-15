@@ -173,11 +173,14 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
 
   const overdueCount = data.filter(r => r.overdue).length;
   const overpaidCount = data.filter(r => r.is_overpaid || r.status === 'overpaid').length;
-  const totalRemaining = data.reduce((s, r) => s + (r.remaining_amount || 0), 0);
+  const totalRemaining = data.reduce((s, r) => s + (r.is_overpaid ? 0 : (r.remaining_amount || 0)), 0);
   const totalExcess = data.reduce((s, r) => s + (r.excess_amount || 0), 0);
   const totalValueSum = data.reduce((s, r) => s + (r.total_value || 0), 0);
   const totalPaidSum = data.reduce((s, r) => s + (r.paid_amount || 0), 0);
-  const printTotalRemaining = filteredData.reduce((s, r) => s + (r.remaining_amount || 0), 0);
+  const printTotalRemaining = filteredData.reduce(
+    (sum, row) => sum + (row.is_overpaid ? 0 : row.remaining_amount || 0),
+    0
+  );
   const printTotalExcess = filteredData.reduce((s, r) => s + (r.excess_amount || 0), 0);
   const printTotalValueSum = filteredData.reduce((s, r) => s + (r.total_value || 0), 0);
   const printTotalPaidSum = filteredData.reduce((s, r) => s + (r.paid_amount || 0), 0);

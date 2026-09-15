@@ -53,6 +53,12 @@ def test_cashflow_cash_returns_period_balance_context(client, admin_headers):
 
 def test_export_employee_ledger_excel(client, finance_clerk_user, db):
     user, headers = finance_clerk_user
+    emp = db.query(Employee).filter(Employee.id == "emp-01").first()
+    if not emp:
+        emp = Employee(id="emp-01", full_name="Nguyen Hoan Khai", is_active=True)
+        db.add(emp)
+        db.commit()
+
     mock_ledger = {
         "status": "success",
         "data": {
@@ -96,6 +102,53 @@ def test_export_employee_ledger_excel(client, finance_clerk_user, db):
         assert res.status_code == 200
         assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers.get("content-type", "")
         assert len(res.content) > 1000
+
+
+def test_unprivileged_employee_can_export_own_ledger_excel(client, unprivileged_user, db):
+    user, headers = unprivileged_user
+    emp_id = f"emp-own-{uuid.uuid4().hex[:6]}"
+    emp = Employee(id=emp_id, user_id=user.id, full_name="Nhan Vien Rieng", is_active=True)
+    db.add(emp)
+    db.commit()
+
+    mock_ledger = {
+        "status": "success",
+        "data": {
+            "employee": {"id": emp_id, "full_name": "Nhan Vien Rieng"},
+            "summary": {"approved": 1000000.0, "total_net": 1000000.0},
+            "details": [],
+            "adjustments": []
+        }
+    }
+    with patch("src.routes.routes_finance_export.get_employee_ledger", return_value=mock_ledger):
+        res = client.get(f"/api/payroll/export/employee-ledger-excel?employee_id={emp_id}&year=2026&month=8", headers=headers)
+        assert res.status_code == 200
+        assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers.get("content-type", "")
+        assert len(res.content) > 500
+
+
+def test_unprivileged_employee_cannot_export_other_employee_ledger_excel(client, unprivileged_user, db):
+    user, headers = unprivileged_user
+    other_emp = Employee(id=f"emp-other-{uuid.uuid4().hex[:6]}", user_id="other-user-id", full_name="Nhan Vien Khac", is_active=True)
+    db.add(other_emp)
+    db.commit()
+
+    res = client.get(f"/api/payroll/export/employee-ledger-excel?employee_id={other_emp.id}&year=2026&month=8", headers=headers)
+    assert res.status_code == 403
+    assert "Bạn chỉ được xem bảng lương của chính mình." in res.json()["detail"]
+
+
+def test_export_employee_ledger_excel_returns_404_for_nonexistent_employee(client, finance_clerk_user, db):
+    _, headers = finance_clerk_user
+    res = client.get("/api/payroll/export/employee-ledger-excel?employee_id=nonexistent-999&year=2026&month=8", headers=headers)
+    assert res.status_code == 404
+    assert "Không tìm thấy hồ sơ nhân sự." in res.json()["detail"]
+
+
+def test_unprivileged_employee_cannot_export_department_summary(client, unprivileged_user):
+    _, headers = unprivileged_user
+    res = client.get("/api/payroll/export/department-summary-excel?department_id=dept_general&year=2026&month=8", headers=headers)
+    assert res.status_code == 403
 
 
 def test_export_department_summary_excel(client, finance_clerk_user, db):
