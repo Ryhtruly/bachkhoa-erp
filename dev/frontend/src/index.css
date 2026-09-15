@@ -5950,7 +5950,9 @@ textarea.form-control {
   flex-direction: column;
   gap: 2px;
   max-height: min(260px, calc(100vh - 24px));
+  max-width: calc(100vw - 24px);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 5px;
   border: 1px solid var(--border-default, #dbe3ed);
   border-radius: 12px;
@@ -6005,7 +6007,9 @@ textarea.form-control {
 }
 
 .ui-select__option-label {
+  display: block;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

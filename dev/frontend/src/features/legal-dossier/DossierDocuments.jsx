@@ -3,7 +3,7 @@ import { FileImage, FileSpreadsheet, FileText, FolderOpen, Lock, Trash2, Upload 
 
 import { apiFetch, getAccessToken } from '../../lib/api'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
 const sizeLabel = (bytes) => {
   const size = Number(bytes || 0)

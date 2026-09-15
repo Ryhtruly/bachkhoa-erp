@@ -14,6 +14,7 @@ from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import register
 from src.services.timeline_realtime import publish_timeline_change
+from src.contracts.access import assert_contract_read_access, user_has_all_contract_read_access
 
 router = APIRouter(prefix="/api/document-register", tags=["Document Register"])
 
@@ -108,6 +109,15 @@ def get_contract_register(
     hợp đồng", không phân biệt đo vẽ hay pháp lý. Đó là điểm của tài liệu
     chuyển giao — hai bên thấy giấy của nhau.
     """
+    if not user_has_all_contract_read_access(db, user):
+        try:
+            assert_contract_read_access(db, user, contract_id)
+        except HTTPException:
+            if not _can_work_on_contract(db, user, contract_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Bạn không có quyền xem sổ giấy tờ của hợp đồng này.",
+                )
     return register.get_register(db, contract_id, service_line_id=service_line_id)
 
 

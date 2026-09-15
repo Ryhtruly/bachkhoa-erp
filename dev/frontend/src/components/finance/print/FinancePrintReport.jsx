@@ -67,8 +67,11 @@ export default function FinancePrintReport({
                 className={column.align ? `is-${column.align}` : ''}
                 style={{
                   width: column.width || 'auto',
-                  textAlign: column.headerAlign || column.align || 'left',
-                  whiteSpace: 'nowrap'
+                  textAlign: column.headerAlign || column.align || 'center',
+                  whiteSpace: column.headerNowrap ? 'nowrap' : 'normal',
+                  wordBreak: 'normal',
+                  overflowWrap: 'break-word',
+                  lineHeight: 1.25,
                 }}
               >
                 {column.label}

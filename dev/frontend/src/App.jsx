@@ -436,6 +436,8 @@ function App() {
     if (item.type === 'cashflow_approval') {
       queueTabNavigation('cashflow', 'bachkhoa:open-cashflow-voucher', {
         voucherId: item.voucher_id,
+        voucher_id: item.voucher_id,
+        id: item.voucher_id,
         nonce: Date.now(),
       });
       return;

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add app directory to Python path
@@ -198,8 +198,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+class PublicStaticFiles(StaticFiles):
+    """Serve UI assets only; generated/business documents are never public."""
+
+    _private_prefixes = (
+        "contracts/",
+        "generated_docs/",
+        "generated_quotes/",
+    )
+
+    async def get_response(self, path: str, scope):
+        normalized = path.replace("\\", "/").lstrip("/")
+        if normalized.startswith(self._private_prefixes):
+            return PlainTextResponse("Not Found", status_code=404)
+        return await super().get_response(path, scope)
+
+
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "static", "contracts"), exist_ok=True)
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")), name="static")
+app.mount(
+    "/static",
+    PublicStaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")),
+    name="static",
+)
 
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(

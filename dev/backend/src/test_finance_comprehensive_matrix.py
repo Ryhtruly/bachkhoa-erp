@@ -13,6 +13,7 @@ from src.db.models import (
     CashflowTransaction, Receivable, FundOpeningBalance, FinanceSetting
 )
 from src.finance.services import FinanceService, counts_toward_receivable
+from src.finance.enums import TransactionStatus
 from src.dossiers.actor_guard import is_director
 from src.finance.repository import FinanceRepository
 from src.finance.schemas import (
@@ -29,7 +30,9 @@ class TestFinanceMatrix:
         self.db = SessionLocal()
         self.cleanup_records = []
         self.admin_user = self.db.query(User).filter(User.username == "admin").first()
-        self.staff_user = self.db.query(User).filter(User.username == "survey_staff").first()
+        self.staff_user = self.db.query(User).filter(User.username == "ketoan").first()
+        if not self.staff_user:
+            self.staff_user = self.db.query(User).filter(User.username == "survey_staff").first()
         if not self.staff_user:
             self.staff_user = self.db.query(User).filter(User.id != self.admin_user.id).first()
         self._clean_leftovers()
@@ -150,7 +153,7 @@ class TestFinanceMatrix:
         self.cleanup_records.append(("cashflow_transactions", res_non_c["id"]))
         
         tx_check = self.db.query(CashflowTransaction).filter(CashflowTransaction.id == res_non_c["id"]).first()
-        assert tx_check.status == "Hoàn thành"
+        assert tx_check.status in (TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt")
         assert float(tx_check.amount) == 1500000.0
 
         # 2. Test Contract Income in Sổ Quỹ -> MUST BE BLOCKED (Forces user to use Debt Collection with receipt attachment)
@@ -294,7 +297,7 @@ class TestFinanceMatrix:
         self.cleanup_records.append(("cashflow_transactions", res_staff["id"]))
         
         tx = self.db.query(CashflowTransaction).filter(CashflowTransaction.id == res_staff["id"]).first()
-        assert tx.status == "Chờ duyệt", f"Phiếu do nhân viên tạo phải có status 'Chờ duyệt', got {tx.status}"
+        assert tx.status in (TransactionStatus.PENDING.value, "Chờ duyệt", "PENDING"), f"Phiếu do nhân viên tạo phải có status PENDING, got {tx.status}"
 
         # Verify it is NOT counted towards running balance yet
         assert not counts_toward_receivable(tx.status, tx.transaction_type)
@@ -312,8 +315,24 @@ class TestFinanceMatrix:
         res_approved = FinanceService.approve_cashflow(self.db, tx.id, actor_id=self.admin_user.id)
         self.db.expire_all()
         tx_approved = self.db.query(CashflowTransaction).filter(CashflowTransaction.id == tx.id).first()
-        assert tx_approved.status in ("Hoàn thành", "Đã duyệt"), f"Sau khi duyệt status phải là 'Hoàn thành'/'Đã duyệt', got {tx_approved.status}"
+        assert tx_approved.status in (TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt"), f"Sau khi duyệt status phải là COMPLETED, got {tx_approved.status}"
         assert tx_approved.approved_by_user_id == self.admin_user.id
+
+        # 4. Director creates voucher directly -> Status must be 'Hoàn thành' / 'Đã duyệt' immediately
+        p_director = CashflowIn(
+            type="Chi",
+            amount=200000.0,
+            payment_method="Chuyển khoản",
+            payer_payee="Quán Cafe Đối tác",
+            category="Chi tiếp khách",
+            description="Giám đốc trực tiếp lập phiếu chi",
+            transaction_date=str(datetime.date.today())
+        )
+        res_dir = FinanceService.create_cashflow(self.db, p_director, actor_id=self.admin_user.id)
+        self.cleanup_records.append(("cashflow_transactions", res_dir["id"]))
+        tx_dir = self.db.query(CashflowTransaction).filter(CashflowTransaction.id == res_dir["id"]).first()
+        assert tx_dir.status in ("Hoàn thành", "Đã duyệt", "COMPLETED"), f"Phiếu do Giám đốc tạo phải được duyệt ngay, got {tx_dir.status}"
+        assert tx_dir.approved_by_user_id == self.admin_user.id
 
     # -------------------------------------------------------------
     # SUITE 4: Voiding, Counter-entries & Reversal Immutability

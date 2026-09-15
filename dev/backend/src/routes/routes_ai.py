@@ -1,13 +1,14 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request, status
 from sqlalchemy.orm import Session
-from typing import List, Dict
-from pydantic import BaseModel
+from typing import List, Dict, Literal
+from pydantic import BaseModel, Field
 from src.db.database import get_db
 from src.db.models import SystemSetting
 from src.core import ai_vision_engine
 from src.core.chatbot_engine import ask_chatbot
 from src.services.wiki_rag_service import search_chunks as wiki_search
 from src.core.auth import require_authenticated_user, User
+from src.core.redis_utils import consume_rate_limit
 
 router = APIRouter(prefix="/api/ai", tags=["10. AI Assistant"])
 
@@ -26,15 +27,34 @@ async def analyze_planning(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class ChatMessage(BaseModel):
+    # System instructions are server-owned and must never be supplied by the
+    # browser as part of the conversation history.
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
 class ChatRequest(BaseModel):
-    history: List[Dict[str, str]]
+    history: List[ChatMessage] = Field(min_length=1, max_length=20)
 
 @router.post("/chat")
 async def chat_with_bot(
     req: ChatRequest,
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(require_authenticated_user)
 ):
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:ai:chat:{user.id}",
+        limit=30,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Bạn đã gửi quá nhiều yêu cầu AI. Vui lòng thử lại sau.",
+        )
+    history = [message.model_dump() for message in req.history]
     try:
         # Get settings from DB
         settings = db.query(SystemSetting).all()
@@ -54,7 +74,7 @@ async def chat_with_bot(
         # Search wiki documents relevant to the latest user message
         wiki_context = None
         last_user_msg = next(
-            (m["content"] for m in reversed(req.history) if m["role"] == "user"),
+            (m["content"] for m in reversed(history) if m["role"] == "user"),
             None
         )
         if last_user_msg:
@@ -64,7 +84,7 @@ async def chat_with_bot(
                 print(f"[wiki_rag] Search error (non-fatal): {wiki_err}")
 
         reply_text, is_safe, reason = await ask_chatbot(
-            history=req.history,
+            history=history,
             sheet_id=sheet_id,
             service_account_json=service_account_json,
             provider=provider,

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from src.db.database import get_db
 from src.core.auth import check_user_permission, require_authenticated_user, require_permission, User
-from src.db.models import Contract, ContractGeneratedDocument, ContractTemplate, Customer, Role, ServiceLine, ServicePackage, TaskType, UserRole
+from src.db.models import Contract, ContractGeneratedDocument, ContractTemplate, Customer, LeadPipeline, Role, ServiceLine, ServicePackage, TaskType, UserRole
 from src.core import doc_generator
 from src.contracts.services import build_current_contract_document_data
 from src.contracts import (
@@ -52,14 +52,21 @@ from src.core.redis_utils import (
     invalidate_cache, invalidate_money_caches,
 )
 from src.services.storage_service import get_contract_template, get_contract_document_file
+from src.contracts.access import (
+    assert_contract_read_access,
+    filter_contract_rows_for_user,
+    user_has_all_contract_read_access,
+)
 
-from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+from src.finance.enums import APPROVED_STATUS_DB_VALUES
+from src.finance.services import INCOME_TX_TYPES
 from src.finance.access import assert_director
 
 # Hằng số cho truy vấn tiền — dùng chung một định nghĩa với tầng tài chính,
 # tránh mỗi nơi liệt kê một kiểu rồi lệch nhau.
-_APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
+_APPROVED_SQL = "'" + "','".join(APPROVED_STATUS_DB_VALUES) + "'"
 _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
+MAX_CONTRACT_UPLOAD_BYTES = 25 * 1024 * 1024
 
 router = APIRouter(tags=["03. Contracts & Workflows"])
 
@@ -298,14 +305,7 @@ def _require_director(
     db: Session = Depends(get_db),
 ) -> User:
     """Timeline tổng chứa dữ liệu toàn công ty nên chỉ Giám đốc/Admin được đọc."""
-    is_director = (user.username or "").lower() == "admin" or db.query(Role.id).join(
-        UserRole, UserRole.role_id == Role.id
-    ).filter(
-        UserRole.user_id == user.id,
-        Role.role_name == "admin",
-    ).first() is not None
-    if not is_director:
-        raise HTTPException(status_code=403, detail="Chỉ Giám đốc được xem Quản Lý Timeline")
+    assert_director(db, user, detail="Chỉ Giám đốc được xem Quản Lý Timeline")
     return user
 
 
@@ -420,6 +420,11 @@ def list_contracts(
 ):
     try:
         rows, source = get_contract_read_model(db)
+        rows = filter_contract_rows_for_user(
+            rows,
+            user.id,
+            user_has_all_contract_read_access(db, user),
+        )
         response.headers["X-Contract-Read-Source"] = source
         result = query_contract_read_model(
             rows,
@@ -455,7 +460,9 @@ def list_contract_workspace(
     clean_service = (service or "").strip()
     clean_task_type = (task_type_id or "").strip()
     clean_date = (date_signed or "").strip()
-    cache_key = f"bachkhoa:contracts:workspace_list:{clean_search}:{clean_service}:{clean_task_type}:{clean_date}:{sort}:{page}:{page_size}"
+    has_all_contract_access = user_has_all_contract_read_access(db, user)
+    scope_key = "all" if has_all_contract_access else user.id
+    cache_key = f"bachkhoa:contracts:workspace_list:{scope_key}:{clean_search}:{clean_service}:{clean_task_type}:{clean_date}:{sort}:{page}:{page_size}"
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
@@ -465,6 +472,10 @@ def list_contract_workspace(
         .join(ServiceLine, ServiceLine.contract_id == Contract.id)
         .outerjoin(Customer, Customer.id == Contract.customer_id)
     )
+    if not has_all_contract_access:
+        id_query = id_query.outerjoin(LeadPipeline, LeadPipeline.id == Contract.lead_id).filter(
+            or_(Contract.sale_id == user.id, LeadPipeline.assigned_to == user.id)
+        )
     if search and search.strip():
         keyword = f"%{search.strip()}%"
         id_query = id_query.filter(or_(
@@ -867,6 +878,7 @@ def get_contract_workspace(
     contract = db.query(Contract).filter(Contract.id == clean_contract_id).first()
     if not contract:
         raise HTTPException(status_code=404, detail="Không tìm thấy hợp đồng")
+    assert_contract_read_access(db, user, contract.id)
 
     customer = (
         db.query(Customer).filter(Customer.id == contract.customer_id).first()
@@ -1866,6 +1878,7 @@ def review_checklist_evidence(
     if user.username != "admin":
         has_approver_role = db.query(UserRole.id).join(Role, Role.id == UserRole.role_id).filter(
             UserRole.user_id == user.id,
+            Role.is_active.is_(True),
             Role.role_name.ilike(checklist["approver_role"]),
         ).first()
         if not has_approver_role:
@@ -2220,7 +2233,7 @@ def search_customers(
     q: str = Query(..., min_length=2),
     customer_type: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("contract", "read")),
+    user: User = Depends(require_permission("contract", "read")),
 ):
     """Tìm khách cũ để tự điền — theo tên, SĐT, CCCD, hoặc mã số thuế.
 
@@ -2232,6 +2245,19 @@ def search_customers(
     if customer_type in ("individual", "business"):
         filter_sql = "and c.customer_type = :customer_type"
         params["customer_type"] = customer_type
+    if not user_has_all_contract_read_access(db, user):
+        filter_sql += """
+            and exists (
+                select 1
+                from public.contracts scope_contract
+                left join public.lead_pipeline scope_lead
+                  on scope_lead.id = scope_contract.lead_id
+                where scope_contract.customer_id = c.id
+                  and (scope_contract.sale_id = :scope_user_id
+                       or scope_lead.assigned_to = :scope_user_id)
+            )
+        """
+        params["scope_user_id"] = user.id
 
     rows = db.execute(
         text(f"""
@@ -2288,7 +2314,9 @@ async def upload_contract_file(
     if not ten.lower().endswith(".docx"):
         raise HTTPException(status_code=422, detail="Chỉ nhận file .docx")
 
-    data = await file.read()
+    data = await file.read(MAX_CONTRACT_UPLOAD_BYTES + 1)
+    if len(data) > MAX_CONTRACT_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Tệp hợp đồng vượt quá giới hạn 25MB.")
     try:
         ket_qua = _register.upload_source_document(
             db,
@@ -2349,8 +2377,9 @@ def list_published_contract_templates(
 def get_contract_document(
     contract_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission("contract", "read")),
+    user: User = Depends(require_permission("contract", "read")),
 ):
+    assert_contract_read_access(db, user, contract_id)
     return render_current_contract_document(db, contract_id)
 
 

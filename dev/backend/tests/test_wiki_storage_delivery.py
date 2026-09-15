@@ -211,6 +211,7 @@ def test_employee_portal_evidence_read_is_scoped_to_the_assigned_contract_task(m
     app.dependency_overrides[routes_employee_portal.get_current_user] = lambda: current_user["value"]
     app.dependency_overrides[get_db] = AssignmentDb
     monkeypatch.setattr(routes_employee_portal, "check_user_permission", lambda *_args: False)
+    monkeypatch.setattr(routes_employee_portal, "user_has_all_contract_read_access", lambda *_args: False)
     monkeypatch.setattr(
         routes_employee_portal,
         "get_file",

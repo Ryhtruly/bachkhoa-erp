@@ -13,7 +13,7 @@ def test_list_projects_keeps_internal_id_out_of_display_label():
         service_package=None,
         land_owner_name=None,
     )
-    contract = SimpleNamespace(id="2006/BK-2026")
+    contract = SimpleNamespace(id="2006/BK-2026", customer_id="customer-2006")
     customer = SimpleNamespace(full_name="Nguyễn Văn Y")
 
     query = MagicMock()
@@ -29,6 +29,7 @@ def test_list_projects_keeps_internal_id_out_of_display_label():
     assert result == [{
         "id": internal_id,
         "contract_id": "2006/BK-2026",
+        "customer_id": "customer-2006",
         "label": "2006/BK-2026 — Tách thửa — Nguyễn Văn Y",
     }]
     assert internal_id not in result[0]["label"]

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import FinanceNav from '../components/finance/FinanceNav';
 
 // Nhập các màn hình (screens) đã được bóc tách
@@ -29,7 +29,7 @@ export default function Cashflow({ landing, user, isDirector }) {
 
   useEffect(() => {
     const openVoucher = (e) => {
-      const voucherId = e?.detail?.voucher_id || e?.detail?.id;
+      const voucherId = e?.detail?.voucherId || e?.detail?.voucher_id || e?.detail?.id;
       const nonce = e?.detail?.nonce || Date.now();
       if (!voucherId) return;
       setActiveMenu('cashflow-all');
@@ -37,6 +37,10 @@ export default function Cashflow({ landing, user, isDirector }) {
     };
     window.addEventListener('bachkhoa:open-cashflow-voucher', openVoucher);
     return () => window.removeEventListener('bachkhoa:open-cashflow-voucher', openVoucher);
+  }, []);
+
+  const consumeFocusVoucher = useCallback(() => {
+    setFocusVoucher(null);
   }, []);
 
   useEffect(() => {
@@ -55,7 +59,7 @@ export default function Cashflow({ landing, user, isDirector }) {
       case 'monthly-dashboard': return isDirector
         ? <MonthlyDashboardScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />
         : <CashflowScreen key="all-fallback-monthly" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
-      case 'cashflow-all': return <CashflowScreen key="all" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} focusVoucher={focusVoucher} />;
+      case 'cashflow-all': return <CashflowScreen key="all" mode="all" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} focusVoucher={focusVoucher} onFocusVoucherConsumed={consumeFocusVoucher} />;
       case 'cashflow-cash': return <CashflowScreen key="cash" mode="cash" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-bank': return <CashflowScreen key="bank" mode="bank" month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;
       case 'cashflow-print': return <PrintVoucherScreen month={globalMonth} setMonth={setGlobalMonth} user={user} isDirector={isDirector} />;

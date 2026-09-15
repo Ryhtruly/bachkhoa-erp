@@ -22,6 +22,7 @@ from src.finance import (
     EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee,
     TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
+    APPROVED_STATUS_SET,
     normalize_transaction_type, normalize_status, normalize_payment_method, normalize_scope,
     get_transaction_type_label, get_status_label, get_payment_method_label, get_scope_label
 )
@@ -46,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/next-voucher-id")
 def get_next_voucher_id(
-    type: str = "Thu",
+    type: str = TransactionType.INCOME.value,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
@@ -149,10 +150,10 @@ def cashflow_cash(
         status=status, category=category
     )
     
-    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán"}
+    approved_set = APPROVED_STATUS_SET
     rows = restrict_cashflow_rows(rows, visibility)
-    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and r.status in approved_set)
-    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value) and r.status in approved_set)
+    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and normalize_status(r.status) in approved_set)
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value) and normalize_status(r.status) in approved_set)
 
     result = {
         "balance": balance,
@@ -193,10 +194,10 @@ def cashflow_bank(
         status=status, category=category
     )
     
-    approved_set = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán"}
+    approved_set = APPROVED_STATUS_SET
     rows = restrict_cashflow_rows(rows, visibility)
-    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and r.status in approved_set)
-    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value) and r.status in approved_set)
+    filtered_income = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) == TransactionType.INCOME.value and normalize_status(r.status) in approved_set)
+    filtered_expenditure = sum(float(r.amount or 0) for r in rows if normalize_transaction_type(r.transaction_type) in (TransactionType.EXPENSE.value, TransactionType.ADVANCE.value, TransactionType.REIMBURSEMENT.value) and normalize_status(r.status) in approved_set)
 
     result = {
         "balance": balance,
@@ -216,6 +217,7 @@ def create_cashflow(
 ):
     assert_transaction_write_scope(db, user, payload.type)
     result = FinanceService.create_cashflow(db, payload, actor_id=user.id)
+    publish_timeline_change("cashflow_created", entity_id=result.get("id"))
     invalidate_money_caches()
     return result
 
@@ -250,6 +252,7 @@ def update_cashflow(
         raise HTTPException(status_code=404, detail="Không tìm thấy phiếu thu/chi này")
     assert_transaction_write_scope(db, user, current.get("transaction_type"))
     result = FinanceService.update_cashflow(db, transaction_id, payload, actor_id=user.id)
+    publish_timeline_change("cashflow_updated", entity_id=transaction_id)
     invalidate_money_caches()
     return result
 
@@ -262,6 +265,7 @@ def void_cashflow(
 ):
     # Actor identity comes from the verified token; never trust a body field.
     result = FinanceService.void_cashflow(db, transaction_id, payload.reason, user.id)
+    publish_timeline_change("cashflow_voided", entity_id=transaction_id)
     invalidate_money_caches()
     return result
 
@@ -308,7 +312,9 @@ def list_contracts(
     user: User = Depends(require_permission("finance", "read"))
 ):
     visibility = finance_visibility(db, user)
-    cache_key = f"bachkhoa:finance:contracts:{visibility}"
+    # v2 includes customer_id so the cashflow form can enforce customer-aware
+    # contract filtering without serving the legacy cached shape.
+    cache_key = f"bachkhoa:finance:contracts:v2:{visibility}"
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
@@ -386,6 +392,7 @@ def create_advance(
             detail="Phiếu tạm ứng chính thức phải được lập từ yêu cầu đã được Giám đốc duyệt.",
         )
     result = FinanceService.create_advance(db, payload, actor_id=user.id)
+    publish_timeline_change("advance_created", entity_id=result.get("id"))
     invalidate_money_caches()
     return result
 
@@ -422,6 +429,7 @@ def approve_advance_request(
     result = FinanceService.review_advance_request(
         db, request_id, approved=True, reason=None, actor_id=user.id
     )
+    publish_timeline_change("advance_request_approved", entity_id=request_id)
     invalidate_money_caches()
     return result
 
@@ -436,6 +444,7 @@ def reject_advance_request(
     result = FinanceService.review_advance_request(
         db, request_id, approved=False, reason=payload.reason, actor_id=user.id
     )
+    publish_timeline_change("advance_request_rejected", entity_id=request_id)
     invalidate_money_caches()
     return result
 
@@ -446,6 +455,7 @@ def clear_advance(
     user: User = Depends(require_permission("finance", "update"))
 ):
     result = FinanceService.clear_advance(db, payload, actor_id=user.id)
+    publish_timeline_change("advance_cleared", entity_id=result.get("transaction_id"))
     invalidate_money_caches()
     return result
 
@@ -524,7 +534,7 @@ async def upload_employee_avatar(
     if file.content_type not in ALLOWED_AVATAR_TYPES:
         raise HTTPException(status_code=422, detail="Chỉ chấp nhận ảnh JPEG, PNG, WEBP hoặc GIF.")
 
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_AVATAR_BYTES + 1)
     if len(file_bytes) > MAX_AVATAR_BYTES:
         raise HTTPException(status_code=422, detail="Ảnh không được vượt quá 5MB.")
 
@@ -653,7 +663,8 @@ def list_projects(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read"))
 ):
-    cache_key = "bachkhoa:finance:projects"
+    # v2 includes customer_id for customer-aware project filtering.
+    cache_key = "bachkhoa:finance:projects:v2"
     cached = get_cached_json(cache_key)
     if cached is not None:
         return cached
@@ -839,13 +850,16 @@ def create_refund_excess_voucher(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "create"))
 ):
-    """Lập phiếu chi hoàn trả tiền thừa cho khách hàng (trạng thái Chờ duyệt)."""
+    """Lập phiếu chi hoàn trả tiền thừa cho khách hàng."""
     assert_director(db, user, "Chỉ Giám đốc được xử lý hoàn tiền cho khách hàng.")
-    return FinanceService.create_refund_voucher(
+    result = FinanceService.create_refund_voucher(
         db=db,
         contract_id=contract_id,
         amount=payload.amount,
         reason=payload.reason,
         actor_id=user.id
     )
+    publish_timeline_change("cashflow_created", entity_id=result.get("transaction_id"))
+    invalidate_money_caches()
+    return result
 

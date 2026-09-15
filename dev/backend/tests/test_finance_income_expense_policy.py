@@ -159,14 +159,15 @@ def test_accountant_cannot_approve_cashflow(db):
     assert error.value.status_code == 403
 
 
-def test_advance_settlement_difference_creates_pending_voucher(db, admin_user):
+def test_advance_settlement_difference_creates_pending_voucher(db):
+    accountant, _ = _accountant_headers(db)
     returned_advance = _seed_transaction(db, "ADVANCE", 1000000)
     returned_advance.description = "Tạm ứng công tác"
     db.commit()
     returned = FinanceService.clear_advance(
         db,
         AdvanceClearIn(advance_id=returned_advance.id, actual_amount=700000, note="Hoàn ứng"),
-        actor_id=admin_user.id,
+        actor_id=accountant.id,
     )
     voucher = db.query(CashflowTransaction).filter(
         CashflowTransaction.id == returned["auto_vouchers"][0]["id"]
@@ -180,7 +181,7 @@ def test_advance_settlement_difference_creates_pending_voucher(db, admin_user):
     deficit = FinanceService.clear_advance(
         db,
         AdvanceClearIn(advance_id=deficit_advance.id, actual_amount=1300000, note="Chi bù"),
-        actor_id=admin_user.id,
+        actor_id=accountant.id,
     )
     voucher = db.query(CashflowTransaction).filter(
         CashflowTransaction.id == deficit["auto_vouchers"][0]["id"]
@@ -194,6 +195,6 @@ def test_advance_settlement_difference_creates_pending_voucher(db, admin_user):
     exact = FinanceService.clear_advance(
         db,
         AdvanceClearIn(advance_id=exact_advance.id, actual_amount=1000000, note="Đủ chi"),
-        actor_id=admin_user.id,
+        actor_id=accountant.id,
     )
     assert exact["auto_vouchers"] == []

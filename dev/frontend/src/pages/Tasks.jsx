@@ -21,7 +21,7 @@ import { isDossierLocked } from '../lib/dossierStatus';
 import DocumentCabinet from '../features/contracts/DocumentCabinet';
 import './surveyRecords.css';
 
-const API = '';
+const API = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || '').replace(/\/+$/, '');
 
 // Ba trạng thái đầu do HỆ THỐNG tính theo tiến độ quy trình, không ai gõ tay được.
 // Chỉ hai giá trị cuối là nhân viên tự chọn.

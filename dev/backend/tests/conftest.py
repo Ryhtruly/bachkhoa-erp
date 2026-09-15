@@ -368,10 +368,16 @@ def finance_clerk_user(db):
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
     if permission_created:
-        db.delete(perm)
+        db.query(RolePermission).filter(
+            RolePermission.role_id == role.id,
+            RolePermission.resource == "finance",
+        ).delete(synchronize_session=False)
     if role_created:
-        db.delete(role)
-    db.delete(user)
+        db.query(RolePermission).filter(
+            RolePermission.role_id == role.id,
+        ).delete(synchronize_session=False)
+        db.query(Role).filter(Role.id == role.id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user.id).delete(synchronize_session=False)
     db.commit()
 
 

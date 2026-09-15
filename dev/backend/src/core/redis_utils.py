@@ -110,6 +110,36 @@ def set_cached_json(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
         return _fallback_set(key, data, ttl_seconds)
 
 
+def consume_rate_limit(key: str, *, limit: int, window_seconds: int) -> tuple[bool, int]:
+    """Atomically consume one request from a short-lived Redis rate limit.
+
+    The in-memory fallback is intentionally process-local and is used only when
+    Redis is unavailable for non-financial public endpoints. Financial locks do
+    not use this fallback.
+    """
+    client = get_redis_client()
+    if client:
+        try:
+            count = int(client.incr(key))
+            if count == 1:
+                client.expire(key, window_seconds)
+            return count <= limit, count
+        except RedisError as exc:
+            logger.warning("Redis rate-limit error cho key '%s': %s", key, exc)
+
+    with _fallback_lock:
+        now = time.time()
+        item = _fallback_store.get(key)
+        if item and now <= item[0]:
+            expires_at, raw = item
+            count = int(raw) + 1
+        else:
+            expires_at = now + window_seconds
+            count = 1
+        _fallback_store[key] = (expires_at, str(count))
+    return count <= limit, count
+
+
 def invalidate_cache(key_or_prefix: str) -> None:
     """Xóa cache theo key hoặc tiền tố trên cả Redis và in-memory fallback."""
     _fallback_invalidate(key_or_prefix)
@@ -152,13 +182,14 @@ def redis_distributed_lock(
     """Khóa phân tán Redis chống race condition / bấm trùng nút.
 
     - Nếu Redis hoạt động: Lấy khóa lock trong timeout_seconds. Nếu đang bị giữ, báo lỗi 429.
-    - Nếu Redis sập: Bỏ qua lỗi lock và cho phép đi tiếp (Graceful degradation).
+    - Nếu Redis sập: Từ chối thao tác để bảo toàn tính nguyên tử của nghiệp vụ.
     """
     client = get_redis_client()
     if not client:
-        # Fallback khi Redis không khả dụng
-        yield True
-        return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Dịch vụ khóa giao dịch tạm thời không khả dụng. Vui lòng thử lại.",
+        )
 
     full_key = f"bachkhoa:lock:{lock_key}"
     lock = client.lock(full_key, timeout=timeout_seconds, blocking_timeout=blocking_timeout)
@@ -170,8 +201,11 @@ def redis_distributed_lock(
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
         yield True
     except RedisError as exc:
-        logger.warning("Redis lock error cho '%s': %s (fallback proceed)", full_key, exc)
-        yield True
+        logger.error("Redis lock error cho '%s': thao tác bị từ chối: %s", full_key, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Không thể xác nhận khóa giao dịch. Vui lòng thử lại.",
+        ) from exc
     finally:
         if acquired:
             try:

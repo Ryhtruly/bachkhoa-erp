@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.core.auth import require_authenticated_user, User
+from src.core.auth import require_authenticated_user, require_permission, User
 from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
 from src.db.database import get_db
 
@@ -80,7 +80,7 @@ def list_service_packages(
 @router.get("/work-items")
 def list_work_items(
     db: Session = Depends(get_db),
-    _: User = Depends(require_authenticated_user),
+    _: User = Depends(require_permission("finance", "read")),
 ):
     """Danh mục công việc khoán (work_items) kèm định mức lương khoán đã ban hành."""
     rows = db.execute(

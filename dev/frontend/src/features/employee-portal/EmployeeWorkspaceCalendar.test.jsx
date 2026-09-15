@@ -329,7 +329,7 @@ describe('EmployeeWorkspaceCalendar', () => {
 
     const textarea = screen.getByPlaceholderText(/Nhập lý do hoàn thành checklist chưa có loại giấy/)
     fireEvent.change(textarea, { target: { value: 'Đã hoàn tất lưu kho và khoá hồ sơ' } })
-    expect(nutNop).toBeEnabled()
+    await vi.waitFor(() => expect(nutNop).toBeEnabled())
 
     fireEvent.click(nutNop)
 

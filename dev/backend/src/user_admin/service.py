@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from src.core.auth import hash_password, verify_password
-from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
 from src.core.roles import validate_assignable_role_name
 from src.db.models import Employee, Role, User, UserRole
 from src.services.email_service import EmailSendError, send_email
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 INVITE_TOKEN_TTL_HOURS = 48
 OTP_TTL_MINUTES = 10
 MAX_OTP_ATTEMPTS = 5
+OTP_REQUEST_COOLDOWN_SECONDS = 60
 
 
 def _hash_token(token: str) -> str:
@@ -249,6 +250,13 @@ def prepare_password_reset_otp(db: Session, identifier: str) -> tuple[dict, User
             detail="Tài khoản chưa được liên kết email. Vui lòng liên hệ Quản trị viên để đặt lại mật khẩu."
         )
 
+    cooldown_key = f"bachkhoa:auth:otp-cooldown:{user.id}"
+    if get_cached_json(cooldown_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Bạn vừa yêu cầu mã OTP. Vui lòng thử lại sau ít phút.",
+        )
+
     otp = f"{secrets.randbelow(900000) + 100000}"
     otp_hash = _hash_token(otp)
     ttl_seconds = OTP_TTL_MINUTES * 60
@@ -264,6 +272,8 @@ def prepare_password_reset_otp(db: Session, identifier: str) -> tuple[dict, User
         },
         ttl_seconds=ttl_seconds,
     )
+    invalidate_cache(f"bachkhoa:auth:otp-attempts:{user.id}")
+    set_cached_json(cooldown_key, True, ttl_seconds=OTP_REQUEST_COOLDOWN_SECONDS)
 
     response_data = {
         "success": True,
@@ -304,15 +314,22 @@ def verify_password_reset_otp(db: Session, identifier: str, otp: str) -> dict:
             detail="Chưa có yêu cầu đặt lại mật khẩu hoặc mã OTP đã hết hiệu lực (quá 10 phút). Vui lòng yêu cầu mã mới."
         )
 
-    attempts = cached_otp_data.get("attempts", 0)
-    if attempts >= MAX_OTP_ATTEMPTS:
+    # Keep OTPs issued before the atomic counter rollout fail-closed. New
+    # attempts are counted by Redis INCR below; this legacy field is only a
+    # compatibility guard for an already locked code.
+    if int(cached_otp_data.get("attempts", 0) or 0) >= MAX_OTP_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Mã OTP đã bị khóa do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.")
+
+    allowed, attempts = consume_rate_limit(
+        f"bachkhoa:auth:otp-attempts:{user.id}",
+        limit=MAX_OTP_ATTEMPTS,
+        window_seconds=OTP_TTL_MINUTES * 60,
+    )
+    if not allowed:
         raise HTTPException(status_code=429, detail="Mã OTP đã bị khóa do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.")
 
     target_hash = cached_otp_data.get("otp_hash")
     if clean_hash != target_hash:
-        attempts += 1
-        cached_otp_data["attempts"] = attempts
-        set_cached_json(redis_key, cached_otp_data, ttl_seconds=OTP_TTL_MINUTES * 60)
         remaining = MAX_OTP_ATTEMPTS - attempts
         if remaining <= 0:
             raise HTTPException(status_code=429, detail="Mã OTP đã bị khóa do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.")

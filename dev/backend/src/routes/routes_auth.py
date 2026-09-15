@@ -1,5 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 from src.db.database import get_db
@@ -28,7 +28,7 @@ from src.user_admin.service import (
     reset_password_with_otp,
     change_user_password,
 )
-from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
 
 router = APIRouter(prefix="/api/auth", tags=["01. Authentication & Security"])
 
@@ -45,7 +45,7 @@ class CompleteInviteSchema(BaseModel):
     password: str
 
 class ForgotPasswordRequestOtpSchema(BaseModel):
-    identifier: str
+    identifier: str = Field(min_length=1, max_length=320)
 
 class ForgotPasswordVerifyOtpSchema(BaseModel):
     identifier: str
@@ -314,11 +314,44 @@ def complete_invite_route(
 def request_otp_route(
     body: ForgotPasswordRequestOtpSchema,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    response_data, user, otp = prepare_password_reset_otp(db, body.identifier)
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:auth:forgot-password:{client_ip}",
+        limit=5,
+        window_seconds=300,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.",
+        )
+
+    try:
+        _, user, otp = prepare_password_reset_otp(db, body.identifier)
+    except HTTPException as exc:
+        # Do not disclose whether the identifier exists, is active, or has an
+        # email address. Only rate-limit and OTP cooldown errors remain visible.
+        if exc.status_code in {
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+        }:
+            return {
+                "success": True,
+                "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
+                "email_sent": False,
+            }
+        raise
+
     background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp)
-    return response_data
+    return {
+        "success": True,
+        "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
+        "email_sent": True,
+    }
 
 
 @router.post(
@@ -326,7 +359,19 @@ def request_otp_route(
     summary="Verify Password Reset OTP",
     description="Public endpoint (no auth) — validates the 6-digit OTP.",
 )
-def verify_otp_route(body: ForgotPasswordVerifyOtpSchema, db: Session = Depends(get_db)):
+def verify_otp_route(
+    body: ForgotPasswordVerifyOtpSchema,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    # IP-level throttling complements the atomic per-user OTP counter in the
+    # service and limits identifier spraying from one client.
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:auth:forgot-password-verify:{client_ip}", limit=30, window_seconds=300
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.")
     return verify_password_reset_otp(db, body.identifier, body.otp)
 
 
@@ -341,6 +386,12 @@ def reset_password_route(
     response: Response,
     db: Session = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:auth:forgot-password-reset:{client_ip}", limit=10, window_seconds=300
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.")
     user_info = reset_password_with_otp(db, body.identifier, body.otp, body.new_password)
     user = db.query(User).filter(User.id == user_info["id"]).first()
     revoke_user_sessions(db, user.id)

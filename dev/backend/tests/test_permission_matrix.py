@@ -83,7 +83,7 @@ def test_active_role_grant_allows_permission_and_expired_override_is_ignored():
     assert decision.reason == "role_grant"
 
 
-def test_shadow_decision_never_overrides_legacy_authorization(caplog):
+def test_normalized_decision_is_authoritative(caplog):
     class Query:
         def join(self, *args, **kwargs):
             return self
@@ -115,7 +115,7 @@ def test_shadow_decision_never_overrides_legacy_authorization(caplog):
             "update",
         )
 
-    assert allowed is False
+    assert allowed is True
     assert "RBAC shadow mismatch" not in caplog.text
 
 

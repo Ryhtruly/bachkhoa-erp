@@ -121,14 +121,14 @@ def test_approved_cashflow_stores_signer_snapshot_and_serializes_it(client, fina
     created = client.post(
         "/api/finance/cashflow/create",
         json={
-            "type": "Chi",
+            "type": "EXPENSE",
             "amount": 1000,
             "category": "Test snapshot",
             "payer_payee": "Đối tác snapshot",
-            "payment_method": "Chuyển khoản",
+            "payment_method": "BANK_TRANSFER",
             "transaction_date": "2026-08-23",
             "description": "Kiểm tra snapshot người ký",
-            "scope": "Công ty",
+            "scope": "COMPANY",
         },
         headers=headers,
     )

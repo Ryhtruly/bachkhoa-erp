@@ -230,7 +230,7 @@ export default function DebtCollection({ user = null, isDirector = false, initia
         method: 'POST',
         body: buildPaymentFormData(form, receiptFiles),
       })
-      addToast(`Đã ghi nhận ${formatMoney(form.amount)} — chờ giám đốc duyệt`, 'success')
+      addToast(`Đã ghi nhận thanh toán ${formatMoney(form.amount)} thành công`, 'success')
       setRecordingRow(null)
       setForm({ amount: '', payment_method: 'CASH', note: '' })
       setReceiptFiles([])
@@ -484,16 +484,14 @@ export default function DebtCollection({ user = null, isDirector = false, initia
                     <div className="debt__actions">
                       {r.remaining > 0 && (
                         <>
-                          {!effectiveIsDirector && (
-                            <button type="button" className="btn btn-primary btn-sm"
-                              onClick={() => {
-                                setRecordingRow(r)
-                                setForm({ amount: '', payment_method: 'CASH', note: '' })
-                                setReceiptFiles([])
-                              }}>
-                              <Plus size={14} /> Ghi nhận thanh toán
-                            </button>
-                          )}
+                          <button type="button" className="btn btn-primary btn-sm"
+                            onClick={() => {
+                              setRecordingRow(r)
+                              setForm({ amount: '', payment_method: 'CASH', note: '' })
+                              setReceiptFiles([])
+                            }}>
+                            <Plus size={14} /> Ghi nhận thanh toán
+                          </button>
 
                           {effectiveIsDirector && (
                             <>
@@ -586,8 +584,7 @@ export default function DebtCollection({ user = null, isDirector = false, initia
           <div className="debt__form">
             <p className="debt__form-hint">
               <strong>{recordingRow.customer_name}</strong> · {recordingRow.contract_id}<br />
-              Còn thiếu <strong>{formatMoney(recordingRow.remaining)}</strong>. Phiếu tạo ra ở trạng thái
-              <strong> Chờ duyệt</strong> — công nợ chỉ giảm sau khi giám đốc duyệt.
+              Còn thiếu <strong>{formatMoney(recordingRow.remaining)}</strong>. Ghi nhận thanh toán sẽ trừ công nợ và cập nhật sổ quỹ ngay lập tức.
             </p>
             <label>Số tiền khách đưa
               <input className="form-control" type="number" min="0" max={recordingRow.remaining}

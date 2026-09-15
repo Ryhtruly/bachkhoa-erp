@@ -23,7 +23,7 @@ import DossierDocuments from '../features/legal-dossier/DossierDocuments';
 import DocumentCabinet from '../features/contracts/DocumentCabinet';
 import './legalSubmissions.css';
 
-const API = '';
+const API = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || '').replace(/\/+$/, '');
 
 const GOV_STATUS_OPTIONS = ['Đang chi nhánh', 'Hoàn thành', 'Rút hồ sơ', 'Trả công văn'];
 

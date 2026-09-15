@@ -327,6 +327,35 @@
   font-weight: 600;
 }
 
+.print-screen-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--text-primary, #0f172a);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.print-screen-checkbox-label input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--orange-500, #f97316);
+}
+
+.print-screen-checkbox-label input:disabled {
+  cursor: not-allowed;
+}
+
+.print-screen-link-hint.is-required {
+  display: inline;
+  margin-left: 4px;
+  color: var(--orange-600, #ea580c);
+  font-weight: 600;
+}
+
 /* ─── Responsive A4 preview ─────────────────────────────────────── */
 .print-screen-preview-scroll {
   min-width: 0;

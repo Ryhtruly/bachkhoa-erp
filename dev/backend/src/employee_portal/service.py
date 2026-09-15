@@ -815,12 +815,13 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
     ngôn ngữ Hạng mục: đang ở bước nào, còn mấy bước, đã chốt bao nhiêu tiền
     trên tổng bao nhiêu. Liệt kê rời từng node là bắt họ tự ghép lại trong đầu.
     """
-    from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+    from src.finance.enums import APPROVED_STATUS_DB_VALUES
+    from src.finance.services import INCOME_TX_TYPES
 
     rows = db.execute(_MY_ITEMS_QUERY, {
         "employee_id": employee_id,
         "income_types": list(INCOME_TX_TYPES),
-        "approved_statuses": list(APPROVED_TX_STATUSES),
+        "approved_statuses": list(APPROVED_STATUS_DB_VALUES),
     }).mappings().all()
     if not rows:
         return []

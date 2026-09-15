@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Save, CheckCircle, XCircle, Loader, FileText, MessageSquare, Brain, Camera, ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 
-const API_BASE = '/api';
+const API_BASE = `${(typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || '').replace(/\/+$/, '')}/api`;
 
 const FIELD_GROUPS = [
   {
@@ -63,7 +63,7 @@ const FIELD_GROUPS = [
         key: 'hanet_webhook_url',
         label: 'Webhook URL (Dán vào Hanet Dashboard)',
         type: 'readonly',
-        value: `${window.location.origin.replace(':5173', ':8080')}/webhook/hanet`,
+        value: `${(typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || window.location.origin.replace(':5173', ':8080')).replace(/\/+$/, '')}/webhook/hanet`,
         hint: 'Copy URL này và dán vào Hanet Dashboard → Settings → Webhook để nhận sự kiện chấm công'
       },
     ]

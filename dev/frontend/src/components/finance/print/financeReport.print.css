@@ -173,9 +173,12 @@
   font-size: 8.5pt !important;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  white-space: nowrap;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  line-height: 1.25 !important;
   text-align: center;
-  padding: 2.5mm 3mm !important;
+  padding: 2.2mm 2mm !important;
   border: 1px solid var(--print-border) !important;
   vertical-align: middle !important;
 }
@@ -199,14 +202,29 @@
   cursor: default !important;
 }
 
-.finance-print-document .finance-print-table .is-right {
+.finance-print-document .finance-print-table td.is-right {
   text-align: right !important;
-  white-space: nowrap;
+  white-space: nowrap !important;
 }
 
-.finance-print-document .finance-print-table .is-center {
+.finance-print-document .finance-print-table td.is-center {
   text-align: center !important;
-  white-space: nowrap;
+  white-space: nowrap !important;
+}
+
+.finance-print-document .finance-print-table th.is-right {
+  text-align: right !important;
+  white-space: normal !important;
+}
+
+.finance-print-document .finance-print-table th.is-center {
+  text-align: center !important;
+  white-space: normal !important;
+}
+
+.finance-print-document .finance-print-table th.is-left {
+  text-align: left !important;
+  white-space: normal !important;
 }
 
 /* TỔNG CỘNG là tổng của toàn báo cáo, không phải tổng từng trang. */

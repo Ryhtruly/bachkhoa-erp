@@ -156,6 +156,8 @@ def build_contract_read_model(db: Session):
             "is_overpaid": excess_amount > 0.009,
             "status": status,
             "sales_source": lead.source if lead and lead.source else "",
+            "sale_id": contract.sale_id or "",
+            "lead_assignee_id": lead.assigned_to if lead else "",
             "due_date": due_date_str,
             "contract_status": contract.status or "in_progress",
             "completion_override": bool(contract.completion_override),

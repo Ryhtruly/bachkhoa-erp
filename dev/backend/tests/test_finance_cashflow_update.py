@@ -33,10 +33,10 @@ def test_update_completed_cashflow_invalidates_money_caches_after_relink(monkeyp
     """Relinking a completed voucher must return success on the first request."""
     transaction = SimpleNamespace(
         id="PT-08/2026-026",
-        status="Hoàn thành",
+        status="COMPLETED",
         transaction_date=date(2026, 8, 23),
         contract_id="old-contract",
-        transaction_type="Thu",
+        transaction_type="INCOME",
         amount=70_000,
     )
     db = _CashflowSession(transaction)

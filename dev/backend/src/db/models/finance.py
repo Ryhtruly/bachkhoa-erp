@@ -12,12 +12,12 @@ class CashflowTransaction(Base):
     # mọi lần tạo phiếu thu/chi đều lỗi 500.
     project_id = Column(String, ForeignKey("service_lines.id"), nullable=True)
     contract_id = Column(String, ForeignKey("contracts.id"), nullable=True)
-    transaction_type = Column(String, nullable=True)  # Thu / Chi or INCOME / EXPENSE
+    transaction_type = Column(String, nullable=True)  # Canonical: INCOME / EXPENSE / ADVANCE / REIMBURSEMENT
     amount = Column(Numeric, nullable=True)
-    category_code = Column(String, nullable=True)
+    category_code = Column(Text, nullable=True)
     is_pass_through_fee = Column(Boolean, default=False)
     payer_payee_name = Column(String, nullable=True)
-    payment_method = Column(String, nullable=True)
+    payment_method = Column(String, nullable=True)  # Canonical: CASH / BANK_TRANSFER
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
     transaction_date = Column(Date, nullable=True)
@@ -32,8 +32,8 @@ class CashflowTransaction(Base):
     notes = Column(Text, nullable=True)
     created_by_user_id = Column(String, nullable=True)
     approved_by_user_id = Column(String, nullable=True)
-    status = Column(String, nullable=True)
-    scope = Column(String, default="COMPANY")
+    status = Column(String, nullable=True, default="PENDING")
+    scope = Column(String, default="COMPANY")  # Canonical: COMPANY / INTERNAL
     cancellation_reason = Column(String, nullable=True)
     cancelled_at = Column(DateTime(timezone=True), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)

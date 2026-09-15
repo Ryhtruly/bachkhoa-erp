@@ -8,7 +8,7 @@ import { apiFetch, getAccessToken } from '../../lib/api'
 import { laLoiChuaKichHoat, loiHienThi } from '../../lib/schemaV2'
 import './documentRegister.css'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
 const STATUS_TONE = {
   CHUA_CO: 'idle',

@@ -1,6 +1,11 @@
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from core import pricing_engine
+from src.core import doc_generator
 from src.core.auth import User, require_authenticated_user
 
 router = APIRouter(tags=["08. CRM & Quotations"])
@@ -36,15 +41,18 @@ def generate_quote(
             "date_generated": datetime.now().strftime("%d/%m/%Y")
         }
         
-        from src.core import doc_generator
         is_generated, download_url, full_path = doc_generator.generate_document(
             data=quote_data,
             template_name="mau_bao_gia.docx", # Giả định đã có file này trong thư mục templates
-            output_prefix="Quotation"
+            output_prefix="Quotation",
+            owner_id=user.id,
         )
         
         if not is_generated:
-             download_url = f"/static/generated_quotes/Quotation_{payload.customer_name}.docx" # Fallback if no template exists
+             raise HTTPException(
+                 status_code=503,
+                 detail="Không thể tạo tệp báo giá từ mẫu hiện tại.",
+             )
         
         # 3. Giả lập gửi tự động qua Zalo (nếu có Webhook thì có thể gọi zalo_service)
         print(f"====== AUTO SEND QUOTE ======")
@@ -61,3 +69,28 @@ def generate_quote(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/documents/{filename:path}")
+def download_generated_quotation(
+    filename: str,
+    user: User = Depends(require_authenticated_user),
+):
+    """Serve a generated quotation only to the authenticated creator."""
+    if not filename or Path(filename).name != filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu báo giá.")
+
+    owner_marker = f"Quotation_{doc_generator.sanitize_filename_component(user.id, fallback='user')}_"
+    if not filename.startswith(owner_marker):
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu báo giá.")
+
+    output_root = Path(doc_generator.OUTPUT_DIR).resolve()
+    output_path = (output_root / os.path.basename(filename)).resolve()
+    if output_path.parent != output_root or not output_path.is_file():
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu báo giá.")
+
+    return FileResponse(
+        output_path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=output_path.name,
+    )

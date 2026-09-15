@@ -14,7 +14,7 @@ name: bachkhoa-erp
 
 services:
   redis-contracts:
-    image: redis:7.4.9-alpine
+    image: redis:7.4.9-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     restart: unless-stopped
     command:
       - redis-server
@@ -33,7 +33,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     restart: unless-stopped
     environment:
@@ -49,7 +49,7 @@ services:
 
   backend:
     # ⬇️ Pull từ GHCR thay vì build local
-    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:latest
+    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:${IMAGE_TAG:?Thiếu IMAGE_TAG để dùng image bất biến}
     restart: unless-stopped
     env_file:
       - ./dev/backend/.env
@@ -84,7 +84,7 @@ services:
 
   frontend:
     # ⬇️ Pull từ GHCR thay vì build local
-    image: ghcr.io/ryhtruly/bachkhoa-erp-frontend:latest
+    image: ghcr.io/ryhtruly/bachkhoa-erp-frontend:${IMAGE_TAG:?Thiếu IMAGE_TAG để dùng image bất biến}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:80"

@@ -89,14 +89,14 @@ def test_finance_clerk_rbac_and_audit_propagation(client, finance_clerk_user, db
 
     # AuditLog actor_id verification on write
     payload = {
-        "type": "Chi",
+        "type": "EXPENSE",
         "amount": 500000.0,
         "category": "Chi test audit",
         "payer_payee": "Nhà cung cấp Audit Pytest",
-        "payment_method": "Chuyển khoản",
+        "payment_method": "BANK_TRANSFER",
         "transaction_date": "2026-07-28",
         "description": "Test audit log propagation in pytest",
-        "scope": "Công ty"
+        "scope": "COMPANY"
     }
 
     res_create = client.post("/api/finance/cashflow/create", json=payload, headers=headers)
