@@ -394,11 +394,12 @@ function App() {
     { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
     { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'cashflow-all', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
-    { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
+    { key: 'wiki', Component: HumanResources, permission: 'hr', accountantHidden: true, props: { user: profile, isDirector } },
   ];
 
   const allowedTabs = TABS.filter(tab => (
     (!tab.permission || permissions[tab.permission])
+    && (!tab.accountantHidden || String(profile?.role_name || '').trim().toLowerCase() !== 'accountant')
     && (!tab.directorOnly || isDirector)
   ));
 
@@ -480,6 +481,7 @@ function App() {
             setActiveTab={handleTabChange}
             mode={workspace}
             permissions={permissions}
+            roleName={profile?.role_name}
             isDirector={isDirector}
             collapsed={sidebarCollapsed}
             overlayOpen={sidebarOverlayOpen}

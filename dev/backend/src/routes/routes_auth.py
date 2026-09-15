@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import case
 from sqlalchemy.orm import Session
@@ -10,6 +10,8 @@ from src.core.auth import (
     check_user_permission,
     create_access_token,
     get_current_user,
+    revoke_access_token,
+    revoke_all_user_tokens,
     seed_default_admin,
     verify_password,
 )
@@ -194,11 +196,20 @@ def login(
     response: Response,
     db: Session = Depends(get_db),
 ):
+    client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"bachkhoa:auth:login:{client_ip}:{body.username.strip().lower()}"
+    allowed, _ = consume_rate_limit(rate_key, limit=10, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Quá nhiều lần thử đăng nhập thất bại. Vui lòng thử lại sau 5 phút.",
+        )
+
     user = db.query(User).filter(User.username == body.username).first()
-    if not user or not verify_password(body.password, user.password_hash):
+    if not user or not user.is_active or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Tài khoản đã bị vô hiệu hoá")
+
+    invalidate_cache(rate_key)
     user_agent, ip_address = _request_metadata(request)
     refresh_token, _ = issue_refresh_session(
         db,
@@ -253,6 +264,7 @@ def logout(
     request: Request,
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=settings.AUTH_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ):
     # Do not let an unrelated site revoke a user's browser session by sending a
@@ -261,6 +273,9 @@ def logout(
     _assert_allowed_origin(request)
     revoke_refresh_session(db, refresh_token)
     _clear_refresh_cookie(response)
+    if authorization and authorization.lower().startswith("bearer "):
+        token_str = authorization.split(" ", 1)[1].strip()
+        revoke_access_token(token_str)
     return {"ok": True}
 
 @router.get("/me", summary="Get Current User Profile", description="Retrieve profile details for the authenticated user.")
@@ -395,6 +410,7 @@ def reset_password_route(
     user_info = reset_password_with_otp(db, body.identifier, body.otp, body.new_password)
     user = db.query(User).filter(User.id == user_info["id"]).first()
     revoke_user_sessions(db, user.id)
+    revoke_all_user_tokens(user.id)
     user_agent, ip_address = _request_metadata(request)
     refresh_token, _ = issue_refresh_session(
         db,
@@ -423,5 +439,6 @@ def change_password_route(
 ):
     result = change_user_password(db, current_user, body.current_password, body.new_password)
     revoke_user_sessions(db, current_user.id)
+    revoke_all_user_tokens(current_user.id)
     return result
 

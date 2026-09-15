@@ -50,6 +50,7 @@ export default function Sidebar({
   setActiveTab,
   mode = 'management',
   permissions = {},
+  roleName = '',
   isDirector = false,
   collapsed = false,
   overlayOpen = false,
@@ -89,6 +90,7 @@ export default function Sidebar({
   const visibleMenuItems = (mode === 'employee' ? employeeMenuItems : menuItems)
     .filter(item => (
       (!item.permission || permissions[item.permission])
+      && !(item.id === 'wiki' && String(roleName).trim().toLowerCase() === 'accountant')
       && (!item.directorOnly || isDirector)
     ));
 

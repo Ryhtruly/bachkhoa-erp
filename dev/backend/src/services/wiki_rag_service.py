@@ -71,10 +71,11 @@ def _embed_text(text: str, api_key: Optional[str] = None) -> List[float]:
         api_key = _get_gemini_api_key()
     if not api_key:
         raise ValueError("Gemini API key is not configured")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={api_key}"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
     payload = {"model": "models/gemini-embedding-001", "content": {"parts": [{"text": text}]}}
+    headers = {"x-goog-api-key": api_key}
     with httpx.Client(timeout=30.0) as client:
-        resp = client.post(url, json=payload)
+        resp = client.post(url, json=payload, headers=headers)
         if resp.status_code != 200:
             raise RuntimeError(f"Embedding API error: {resp.status_code} {resp.text}")
         return resp.json()["embedding"]["values"]
@@ -86,10 +87,11 @@ async def aembed_text(text: str, api_key: Optional[str] = None) -> List[float]:
         api_key = _get_gemini_api_key()
     if not api_key:
         raise ValueError("Gemini API key is not configured")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={api_key}"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent"
     payload = {"model": "models/gemini-embedding-001", "content": {"parts": [{"text": text}]}}
+    headers = {"x-goog-api-key": api_key}
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(url, json=payload)
+        resp = await client.post(url, json=payload, headers=headers)
         if resp.status_code != 200:
             raise RuntimeError(f"Embedding API error: {resp.status_code} {resp.text}")
         return resp.json()["embedding"]["values"]

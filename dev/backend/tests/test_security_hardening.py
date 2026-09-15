@@ -150,3 +150,200 @@ def test_chat_request_limits_history_and_message_size():
 
     request = ChatRequest(history=[{"role": "user", "content": "ok"}])
     assert isinstance(request.history[0], ChatMessage)
+
+
+def test_generated_contracts_are_not_public_static_files(client):
+    assert client.get("/static/generated_contracts/confidential_contract.docx").status_code == 404
+
+
+def test_webhook_freshness_and_nonce_replay(monkeypatch):
+    import hmac
+    import hashlib
+    import time
+    from src.routes.routes_webhook import _verify_webhook_signature
+
+    secret = "a" * 32
+    monkeypatch.setattr("src.routes.routes_webhook.settings.WEBHOOK_SHARED_SECRET", secret)
+    body = b'{"event":"payment_received","amount":1000000}'
+
+    # Missing timestamp should fail
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    with pytest.raises(HTTPException) as exc:
+        _verify_webhook_signature(body, sig, timestamp=None, nonce="nonce-1")
+    assert exc.value.status_code == 401
+    assert "timestamp" in exc.value.detail.lower()
+
+    # Expired timestamp should fail
+    old_timestamp = str(int(time.time()) - 400)
+    valid_sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    with pytest.raises(HTTPException) as exc:
+        _verify_webhook_signature(body, valid_sig, timestamp=old_timestamp, nonce="nonce-2")
+    assert exc.value.status_code == 401
+    assert "timestamp" in exc.value.detail.lower() or "quá hạn" in exc.value.detail.lower()
+
+    # Fresh timestamp with valid signature and nonce succeeds
+    import uuid
+    unique_nonce = f"nonce-{uuid.uuid4()}"
+    now_timestamp = str(int(time.time()))
+    fresh_sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    assert _verify_webhook_signature(body, fresh_sig, timestamp=now_timestamp, nonce=unique_nonce) is True
+
+    # Replaying same nonce fails (raises 409 Conflict)
+    with pytest.raises(HTTPException) as exc:
+        _verify_webhook_signature(body, fresh_sig, timestamp=now_timestamp, nonce=unique_nonce)
+    assert exc.value.status_code in (401, 409)
+    assert "nonce" in exc.value.detail.lower() or "replay" in exc.value.detail.lower()
+
+
+def test_token_revocation_lifecycle():
+    from src.core.auth import (
+        create_access_token,
+        decode_token,
+        revoke_access_token,
+        revoke_all_user_tokens,
+        is_token_revoked,
+    )
+
+    token = create_access_token(user_id="test-user-revoke")
+    payload = decode_token(token)
+    assert payload is not None
+    assert "jti" in payload
+    jti = payload["jti"]
+
+    assert is_token_revoked(payload) is False
+
+    # Revoke single token
+    revoke_access_token(jti, ttl_seconds=3600)
+    assert is_token_revoked(payload) is True
+    with pytest.raises(HTTPException) as exc:
+        decode_token(token)
+    assert exc.value.status_code == 401
+
+    # Revoke all user tokens
+    token2 = create_access_token(user_id="test-user-revoke-all")
+    payload2 = decode_token(token2)
+    assert payload2 is not None
+
+    revoke_all_user_tokens("test-user-revoke-all")
+    assert is_token_revoked(payload2) is True
+    with pytest.raises(HTTPException) as exc2:
+        decode_token(token2)
+    assert exc2.value.status_code == 401
+
+
+def test_login_account_enumeration_protection(monkeypatch):
+    from src.routes.routes_auth import LoginSchema, login
+    from unittest.mock import MagicMock
+
+    req = Request({"type": "http", "client": ("127.0.0.1", 1234)})
+    db = MagicMock()
+
+    # Non-existent user
+    db.query().filter().first.return_value = None
+    with pytest.raises(HTTPException) as exc1:
+        login(LoginSchema(username="nonexistent", password="pwd"), MagicMock(), req, db)
+    assert exc1.value.status_code == 401
+    assert exc1.value.detail == "Sai tên đăng nhập hoặc mật khẩu"
+
+    # Inactive user
+    inactive_user = MagicMock()
+    inactive_user.is_active = False
+    db.query().filter().first.return_value = inactive_user
+    with pytest.raises(HTTPException) as exc2:
+        login(LoginSchema(username="inactive_user", password="pwd"), MagicMock(), req, db)
+    assert exc2.value.status_code == 401
+    assert exc2.value.detail == "Sai tên đăng nhập hoặc mật khẩu"
+
+
+def test_advance_settlement_rejects_non_advance_transaction(monkeypatch):
+    from unittest.mock import MagicMock
+    from src.finance.services import FinanceService
+    from src.db.models import CashflowTransaction
+
+    db = MagicMock()
+    non_advance_tx = MagicMock(spec=CashflowTransaction)
+    non_advance_tx.transaction_type = "EXPENSE"
+    non_advance_tx.status = "APPROVED"
+
+    db.query().filter().first.return_value = non_advance_tx
+    payload = MagicMock()
+    payload.advance_id = "tx-non-advance"
+    payload.actual_spent = 500000
+    payload.note = "Quyết toán thử"
+
+    with pytest.raises(HTTPException) as exc:
+        FinanceService.clear_advance(
+            db=db,
+            payload=payload,
+            actor_id="director-1",
+        )
+    assert exc.value.status_code == 400
+    assert "ADVANCE" in exc.value.detail
+    assert exc.value.status_code == 400
+    assert "ADVANCE" in exc.value.detail
+
+
+def test_config_endpoint_requires_authentication(client):
+    res = client.get("/api/config")
+    assert res.status_code == 401
+
+
+def test_redact_redis_url():
+    from src.core.redis_utils import _redact_redis_url
+
+    assert _redact_redis_url("redis://:supersecret@127.0.0.1:6379/0") == "redis://:***@127.0.0.1:6379/0"
+    assert _redact_redis_url("redis://admin:supersecret@redis.internal:6379/1") == "redis://admin:***@redis.internal:6379/1"
+    assert _redact_redis_url("redis://127.0.0.1:6379/0") == "redis://127.0.0.1:6379/0"
+    assert _redact_redis_url("") == ""
+
+
+def test_production_credential_fallbacks(monkeypatch):
+    from src.services.storage_service import get_object_storage_config
+
+    # Weak PG_PASSWORD rejected in production
+    monkeypatch.setattr(Settings, "ENV", "production")
+    monkeypatch.setattr(Settings, "PG_PASSWORD", "123")
+    with pytest.raises(RuntimeError):
+        Settings().DATABASE_URL
+
+    # Weak object storage credentials rejected in production
+    with pytest.raises(RuntimeError):
+        get_object_storage_config({
+            "ENV": "production",
+            "OBJECT_STORAGE_ACCESS_KEY": "minioadmin",
+            "OBJECT_STORAGE_SECRET_KEY": "minioadmin",
+        })
+
+
+def test_contract_documents_access_guard_rejects_unauthorized_user(monkeypatch):
+    from unittest.mock import MagicMock
+    from src.routes.routes_document_register import _assert_can_access_contract_documents
+
+    monkeypatch.setattr("src.routes.routes_document_register.user_has_all_contract_read_access", lambda db, user: False)
+    monkeypatch.setattr("src.routes.routes_document_register._can_work_on_contract", lambda db, user, cid: False)
+    monkeypatch.setattr("src.routes.routes_document_register.assert_contract_read_access", lambda db, user, cid: (_ for _ in ()).throw(HTTPException(403, detail="Không có quyền truy cập")))
+
+    db = MagicMock()
+    user = MagicMock()
+    user.id = "unauthorized-user"
+    user.role = "staff"
+
+    # User has contract.read, but is not director and not assigned to contract
+    with pytest.raises(HTTPException) as exc:
+        _assert_can_access_contract_documents(db, user, "CT-SECRET-999")
+    assert exc.value.status_code == 403
+    assert "quyền" in exc.value.detail.lower()
+
+
+def test_debt_reminders_requires_finance_update_permission():
+    import inspect
+    from src.routes.routes_webhook import trigger_debt_reminders
+
+    sig = inspect.signature(trigger_debt_reminders)
+    user_param = sig.parameters["user"]
+    dep_func = user_param.default.dependency
+    closure_vars = {c.cell_contents for c in dep_func.__closure__ if hasattr(c, "cell_contents")}
+    assert "finance" in closure_vars
+    assert "update" in closure_vars
+
+

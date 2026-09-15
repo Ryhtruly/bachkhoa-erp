@@ -42,4 +42,22 @@ describe('FinancePrintReport', () => {
     expect(methodTh.style.whiteSpace).toBe('normal');
     expect(fixedTh.style.whiteSpace).toBe('nowrap');
   });
+
+  it('renders additional report sections such as department allocation', () => {
+    render(
+      <FinancePrintReport
+        title="Báo cáo dòng tiền"
+        columns={[{ key: 'name', label: 'Danh mục' }]}
+        rows={[{ name: 'Chi phí vận hành' }]}
+        additionalSections={[{
+          title: 'III. PHÂN BỔ THEO PHÒNG BAN',
+          columns: [{ key: 'name', label: 'Phòng ban' }],
+          rows: [{ name: 'Phòng Kế toán' }],
+        }]}
+      />
+    );
+
+    expect(screen.getByText('III. PHÂN BỔ THEO PHÒNG BAN')).toBeInTheDocument();
+    expect(screen.getByText('Phòng Kế toán')).toBeInTheDocument();
+  });
 });

@@ -9,6 +9,7 @@ import { printElement } from '../print/printDocument';
 import voucherPrintStyles from './PrintVoucherScreen.print.css?inline';
 import './PrintVoucherScreen.css';
 import { getVoucherSignatureRoles } from './voucherSignatureUtils';
+import { getVoucherPrintStatus } from './cashflowPrintUtils';
 import { useDocumentSigners } from '../print/documentSigners';
 import {
   Printer,
@@ -48,13 +49,14 @@ const formatDisplayDate = (d) => {
 export function VoucherTemplate({
   title, voucherId, date, personName, labelPerson, description, amount, amountWords,
   category, paymentMethod, department, contractId, projectId, _accounting, creatorName = '', signerSnapshot = null,
-  documentRef, paperSize = 'a4'
+  documentRef, paperSize = 'a4', status
 }) {
   const isReceiptVoucher = title.includes('THU');
   const isAdvancePayment = title.includes('TẠM ỨNG');
   const isAdvanceReimbursement = title.includes('HOÀN ỨNG');
   const documentSigners = useDocumentSigners();
   const effectiveDocumentSigners = signerSnapshot || documentSigners;
+  const printStatus = getVoucherPrintStatus(status);
 
   const isBankTransfer = paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'Chuyển khoản';
   const paymentMethodLabel = isBankTransfer ? 'Chuyển khoản' : (paymentMethod === 'CASH' || paymentMethod === 'Tiền mặt' ? 'Tiền mặt' : (paymentMethod || 'Tiền mặt'));
@@ -120,6 +122,29 @@ export function VoucherTemplate({
           <span>Có: <strong>{creditAccount}</strong></span>
         </div>
       </div>
+
+      {printStatus && (
+        <div
+          className="voucher-print-status-stamp"
+          role="note"
+          style={{
+            border: `2px solid ${printStatus.key === 'REJECTED' ? '#dc2626' : printStatus.key === 'PENDING' ? '#d97706' : '#64748b'}`,
+            color: printStatus.key === 'REJECTED' ? '#b91c1c' : printStatus.key === 'PENDING' ? '#92400e' : '#475569',
+            background: printStatus.key === 'REJECTED' ? '#fef2f2' : printStatus.key === 'PENDING' ? '#fffbeb' : '#f1f5f9',
+            textAlign: 'center',
+            padding: '9px 12px',
+            margin: '0 auto 18px',
+            maxWidth: 620,
+            fontWeight: 800,
+            letterSpacing: '0.04em',
+          }}
+        >
+          <div>{printStatus.title}</div>
+          <div style={{ fontSize: '0.82rem', fontWeight: 600, letterSpacing: 0, marginTop: 3 }}>
+            {printStatus.message}
+          </div>
+        </div>
+      )}
 
       {/* Nội Dung Chi Tiết Chứng Từ */}
       <div className="voucher-print-details" style={{ fontSize: '1rem', lineHeight: 1.9, marginBottom: 24 }}>
@@ -289,11 +314,13 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const { addToast } = useToast();
 
   const loadAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(null);
     try {
       const [rTx, rAdv, rAdvReq, rC, rP, rDept] = await Promise.allSettled([
         apiFetch(`${API}/api/finance/cashflow`),
@@ -303,7 +330,13 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
         apiFetch(`${API}/api/finance/projects`),
         apiFetch(`${API}/api/finance/departments`)
       ]);
-      if (rTx.status === 'fulfilled' && Array.isArray(rTx.value)) setTransactions(rTx.value);
+      if (rTx.status === 'fulfilled' && Array.isArray(rTx.value)) {
+        setTransactions(rTx.value);
+      } else if (rTx.status === 'rejected') {
+        setTransactions([]);
+        setLoadError('Không thể tải danh sách chứng từ. Vui lòng thử lại.');
+        addToast('Không thể tải danh sách chứng từ để in', 'error');
+      }
       if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) setActiveAdvances(rAdv.value);
       if (rAdvReq.status === 'fulfilled' && Array.isArray(rAdvReq.value)) {
         setApprovedAdvanceRequests(rAdvReq.value.filter(request => request.status === 'DIRECTOR_APPROVED'));
@@ -405,6 +438,8 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
       })
       .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
   }, [transactions, printSearch, month]);
+
+  const selectedPrintStatus = getVoucherPrintStatus(form.status);
 
   const departmentOptions = useMemo(() => {
     const names = [
@@ -689,7 +724,7 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
             onClick={handlePrint}
             className="print-screen-btn-primary"
           >
-            <Printer size={16} /> In chứng từ (Print/PDF)
+            <Printer size={16} /> {selectedPrintStatus?.key === 'PENDING' ? 'In bản dự thảo' : selectedPrintStatus ? 'In bản lưu' : 'In chứng từ (Print/PDF)'}
           </button>
         </div>
       </div>
@@ -714,24 +749,46 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
               onChange={e => setPrintSearch(e.target.value)}
               className="print-screen-search-input"
             />
+            {loadError && (
+              <div role="alert" style={{ color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                {loadError}
+              </div>
+            )}
             <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {printList.map(t => (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedId(t.id)}
-                  className={`print-screen-list-item ${selectedId === t.id ? 'is-selected' : ''}`}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                    <span style={{ fontFamily: 'monospace' }}>{t.id}</span>
-                    <span style={{ color: (t.type === 'INCOME' || t.type === 'Thu') ? 'var(--green-500, #10b981)' : 'var(--red-500, #ef4444)' }}>
-                      {(t.type === 'INCOME' || t.type === 'Thu') ? '+' : '-'}{fmtShort(t.amount)}
-                    </span>
+              {printList.map(t => {
+                const itemPrintStatus = getVoucherPrintStatus(t.status || t.status_label);
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedId(t.id)}
+                    className={`print-screen-list-item ${selectedId === t.id ? 'is-selected' : ''}`}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontWeight: 700 }}>
+                      <span style={{ fontFamily: 'monospace' }}>{t.id}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        {itemPrintStatus && (
+                          <span style={{
+                            borderRadius: 999,
+                            padding: '2px 7px',
+                            fontSize: '0.68rem',
+                            color: itemPrintStatus.key === 'REJECTED' ? '#b91c1c' : itemPrintStatus.key === 'PENDING' ? '#92400e' : '#475569',
+                            background: itemPrintStatus.key === 'REJECTED' ? '#fee2e2' : itemPrintStatus.key === 'PENDING' ? '#fef3c7' : '#e2e8f0',
+                            letterSpacing: '0.02em',
+                          }}>
+                            {itemPrintStatus.label}
+                          </span>
+                        )}
+                        <span style={{ color: (t.type === 'INCOME' || t.type === 'Thu') ? 'var(--green-500, #10b981)' : 'var(--red-500, #ef4444)' }}>
+                          {(t.type === 'INCOME' || t.type === 'Thu') ? '+' : '-'}{fmtShort(t.amount)}
+                        </span>
+                      </span>
+                    </div>
+                    <div style={{ color: 'var(--text-tertiary, #64748b)', fontSize: '0.78rem', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t.partner || t.payer_payee || '—'} · {t.category || 'Khác'}
+                    </div>
                   </div>
-                  <div style={{ color: 'var(--text-tertiary, #64748b)', fontSize: '0.78rem', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {t.partner || t.payer_payee || '—'} · {t.category || 'Khác'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -1218,7 +1275,7 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
                 className="no-print print-screen-btn-secondary"
                 style={{ height: 32, padding: '0 12px' }}
               >
-                <Printer size={15} /> In nhanh
+                <Printer size={15} /> {selectedPrintStatus?.key === 'PENDING' ? 'In bản dự thảo' : selectedPrintStatus ? 'In bản lưu' : 'In nhanh'}
               </button>
             </div>
 
@@ -1243,6 +1300,7 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
                 projectId={projects.find(project => project.id === form.project_id)?.label || (form.project_id ? 'Hồ sơ đã liên kết' : '')}
                 accounting={form.accounting}
                 signerSnapshot={form.signer_snapshot}
+                status={form.status}
                 documentRef={voucherDocumentRef}
               />
             </div>

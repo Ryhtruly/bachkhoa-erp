@@ -235,6 +235,35 @@ class FinanceRepository:
         return f"{prefix}-{month_str}/{year_str}-{max_num + 1:03d}"
 
     @staticmethod
+    def get_period_fund_balance_summary(db: Session, payment_method: str, month: str) -> dict:
+        """Return opening/closing balances for a selected cash/bank month.
+
+        This is intentionally separate from ``get_running_balance`` because the
+        latter is a high fan-out operational primitive used by write validation.
+        The print/report context can therefore evolve without changing posting
+        or balance-check behavior elsewhere.
+        """
+        try:
+            year, month_number = (int(value) for value in month.split("-"))
+            period_start = date(year, month_number, 1)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Tháng không hợp lệ. Format phải là YYYY-MM")
+
+        import calendar
+
+        period_end = date(year, month_number, calendar.monthrange(year, month_number)[1])
+        tz_vietnam = timezone(timedelta(hours=7))
+        opening_moment = datetime.combine(period_start - timedelta(days=1), datetime.max.time(), tzinfo=tz_vietnam)
+        closing_moment = datetime.combine(period_end, datetime.max.time(), tzinfo=tz_vietnam)
+
+        return {
+            "opening_balance": FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=opening_moment),
+            "closing_balance": FinanceRepository.get_running_balance(db, payment_method, up_to_datetime=closing_moment),
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+        }
+
+    @staticmethod
     def list_cashflow_transactions(
         db: Session,
         month: Optional[str] = None,
@@ -960,10 +989,17 @@ class FinanceRepository:
 
         approved_cond = CashflowTransaction.status.in_(APPROVED_STATUS_DB_VALUES)
 
+        # Match the ledger month rule: use the entered transaction date, with
+        # created_at as a fallback for legacy rows that predate that field.
+        report_date = func.coalesce(
+            CashflowTransaction.transaction_date,
+            func.date(CashflowTransaction.created_at),
+        )
+
         # Filter transactions in this month
         txs = db.query(CashflowTransaction).filter(
-            extract("year", CashflowTransaction.transaction_date) == year,
-            extract("month", CashflowTransaction.transaction_date) == m_num,
+            extract("year", report_date) == year,
+            extract("month", report_date) == m_num,
             CashflowTransaction.scope.in_(COMPANY_SCOPE_DB_VALUES),
             approved_cond
         ).all()

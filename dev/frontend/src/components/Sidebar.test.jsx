@@ -60,4 +60,10 @@ describe('Sidebar responsive navigation', () => {
     expect(props.onRequestClose).toHaveBeenCalledOnce()
     expect(props.setActiveTab).not.toHaveBeenCalled()
   })
+
+  it('hides the Human Resources tab from accountants even when HR permission is present', () => {
+    renderSidebar({ roleName: 'accountant', isDirector: false })
+
+    expect(screen.queryByRole('button', { name: 'Nhân Sự & Đào Tạo' })).not.toBeInTheDocument()
+  })
 })

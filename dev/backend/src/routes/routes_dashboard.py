@@ -110,7 +110,10 @@ def get_dashboard(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/config")
-def get_config(db: Session = Depends(get_db)):
+def get_config(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_authenticated_user)
+):
     # `services` nay đọc từ DB (task_types) thay cho mảng ghi cứng cũ — mảng đó
     # chỉ có 9 mục, sai chính tả ("Tách Thửa"), và mất cả gói Xây dựng.
     # Giữ khoá `services` là danh sách phẳng để màn cũ không gãy; ô chọn 2 tầng

@@ -7,8 +7,14 @@ import {
   ChevronLeft,
   CheckCircle2,
   Clock,
+  Printer,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, downloadFile } from '../../lib/api';
+import FinancePrintReport from '../../components/finance/print/FinancePrintReport';
+import { printElement } from '../../components/finance/print/printDocument';
+import financeReportPrintStyles from '../../components/finance/print/financeReport.print.css?inline';
 import './myPayroll.css';
 
 const formatVND = (value) =>
@@ -52,6 +58,8 @@ export default function MyPayroll({ isModal = false }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const printDocumentRef = React.useRef(null);
 
   const fetchPayroll = async (month) => {
     setLoading(true);
@@ -159,6 +167,36 @@ export default function MyPayroll({ isModal = false }) {
       new Date(payroll.month).getFullYear() === new Date().getFullYear());
   const payrollStatus = getPayrollStatusMeta(payroll);
   const StatusIcon = payrollStatus.icon;
+  const payrollMonth = (payroll?.month || selectedMonth || '').slice(0, 7);
+  const [payrollYear = '', payrollMonthNumber = ''] = payrollMonth.split('-');
+
+  const handlePrintPayroll = () => {
+    printElement({
+      element: printDocumentRef.current,
+      title: `Lương của tôi - ${formatMonth(payroll?.month)}`,
+      styles: financeReportPrintStyles,
+      onError: message => setError(message),
+    });
+  };
+
+  const handleExportPayroll = async () => {
+    if (!employee?.id || !payrollYear || !payrollMonthNumber) {
+      setError('Chưa xác định được nhân sự hoặc kỳ lương để xuất file');
+      return;
+    }
+    setExporting(true);
+    setError('');
+    try {
+      await downloadFile(
+        `/api/payroll/export/employee-ledger-excel?employee_id=${encodeURIComponent(employee.id)}&year=${payrollYear}&month=${Number(payrollMonthNumber)}`,
+        `Luong_Cua_Toi_${payrollMonth}.xlsx`,
+      );
+    } catch (err) {
+      setError(err.message || 'Xuất phiếu lương thất bại');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <section className={`my-payroll ${isModal ? 'my-payroll--modal' : 'my-payroll--screen card card--workspace my-payroll-workspace'}`}>
@@ -178,6 +216,13 @@ export default function MyPayroll({ isModal = false }) {
             <span className={`my-payroll__pill ${payrollStatus.className}`}>
               {isCurrentMonth && payrollStatus.label === 'Tạm tính' ? 'Kỳ này (Tạm tính)' : payrollStatus.label}
             </span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handlePrintPayroll}>
+              <Printer size={14} /> In phiếu lương
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleExportPayroll} disabled={exporting}>
+              {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} color="#10b981" />}
+              {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+            </button>
           </div>
         </header>
       ) : (
@@ -414,6 +459,32 @@ export default function MyPayroll({ isModal = false }) {
           </aside>
         </div>
       )}
+
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
+        <FinancePrintReport
+          documentRef={printDocumentRef}
+          title="PHIẾU LƯƠNG CỦA TÔI"
+          subtitle={`Nhân sự: ${employee.full_name || 'Nhân viên'} · Kỳ: ${formatMonth(payroll?.month)} · Trạng thái: ${payrollStatus.label}`}
+          summary={[
+            { label: 'Lương cơ bản', value: formatVND(payroll?.base_salary) },
+            { label: 'Lương khoán', value: formatVND(payroll?.piece_amount) },
+            { label: 'Điều chỉnh', value: formatVND(payroll?.adjustment_amount) },
+            { label: 'Tổng lương', value: formatVND(payroll?.total_salary) },
+          ]}
+          columns={[
+            { key: 'label', label: 'Khoản mục' },
+            { key: 'amount', label: 'Số tiền (VNĐ)', align: 'right', nowrap: true },
+            { key: 'note', label: 'Ghi chú' },
+          ]}
+          rows={[
+            { label: 'Lương cơ bản', amount: formatVND(payroll?.base_salary), note: 'Theo hợp đồng lao động' },
+            { label: 'Lương khoán', amount: formatVND(payroll?.piece_amount), note: `${payroll?.tasks_completed || 0} việc nghiệm thu` },
+            { label: 'Thưởng / khấu trừ', amount: formatVND(payroll?.adjustment_amount), note: 'Điều chỉnh trong kỳ' },
+            { label: 'TỔNG LƯƠNG', amount: formatVND(payroll?.total_salary), note: payrollStatus.label },
+          ]}
+          signers={[{ role: 'Nhân sự', name: employee.full_name || '', note: '(Xác nhận)' }]}
+        />
+      </div>
     </section>
   );
 }

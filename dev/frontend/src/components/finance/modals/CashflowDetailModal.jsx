@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { API } from '../financeConstants';
 import ReceiptLinks from '../ReceiptLinks';
 import { VoucherTemplate } from '../screens/PrintVoucherScreen';
+import { getVoucherPrintStatus } from '../screens/cashflowPrintUtils';
 import { printElement } from '../print/printDocument';
 import voucherPrintStyles from '../screens/PrintVoucherScreen.print.css?inline';
 
@@ -49,6 +50,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
 
   const isPending = detail?.status === 'PENDING' || detail?.status === 'Chờ duyệt' || detail?.status === 'pending';
   const isReadOnly = detail?.status === 'COMPLETED' || detail?.status === 'Hoàn thành' || detail?.status === 'Đã duyệt' || detail?.status === 'Đã quyết toán' || detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy' || detail?.status === 'REJECTED' || detail?.status === 'Từ chối';
+  const printStatus = getVoucherPrintStatus(detail?.status_label || detail?.status);
 
   useEffect(() => {
     if (open && transactionId) {
@@ -457,8 +459,9 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                   className="btn btn-secondary"
                   onClick={handlePrintVoucher}
                   style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                  title={printStatus ? `${printStatus.title}. ${printStatus.message}` : 'In chứng từ'}
                 >
-                  <Printer size={15} /> In phiếu
+                  <Printer size={15} /> {printStatus?.key === 'PENDING' ? 'In bản dự thảo' : printStatus ? 'In bản lưu' : 'In phiếu'}
                 </button>
                 {(detail?.status === 'COMPLETED' || detail?.status === 'Hoàn thành') && !isReversal && isDirector && (
                   <button
@@ -535,6 +538,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
             contractId={form.contract_id}
             projectId={detail.project_id}
             accounting={detail.accounting || detail.accounting_name}
+            status={detail.status_label || detail.status}
             documentRef={printDocumentRef}
           />
         </div>

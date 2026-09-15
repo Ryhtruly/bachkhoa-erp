@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Lock, CheckCircle2, Printer } from 'lucide-react';
+import { Users, Lock, CheckCircle2, Printer, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { Badge, DataTable, DatePicker, SensitiveActionModal } from '../../ui';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
 import { useToast } from '../../../contexts/ToastContext';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, downloadFile } from '../../../lib/api';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
@@ -17,6 +17,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [sensitiveModal, setSensitiveModal] = useState(null); // null | 'lock' | 'pay'
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { addToast } = useToast();
 
   const load = useCallback(async () => {
@@ -115,6 +116,21 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
     });
   };
 
+  const handleExportPayroll = async () => {
+    setExporting(true);
+    try {
+      const filename = await downloadFile(
+        `${API}/api/finance/export/office-payroll-excel?month=${encodeURIComponent(month)}`,
+        `Bang_Luong_Van_Phong_${month}.xlsx`,
+      );
+      if (filename) addToast(`Đã xuất ${filename} thành công`, 'success');
+    } catch (err) {
+      addToast(err.message || 'Xuất bảng lương văn phòng thất bại', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const cols = [
     { key: 'full_name', label: 'Nhân sự', width: 180, render: (v, row) => (
       <div>
@@ -164,6 +180,15 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
             disabled={loading || data.length === 0}
           >
             <Printer size={15} /> In bảng lương
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleExportPayroll}
+            disabled={exporting || loading || data.length === 0}
+          >
+            {exporting ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} color="#10b981" />}
+            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
           </button>
 
           {isDirector && isLocked && !isPaid && (
@@ -277,6 +302,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
             <span className="payroll-print-title">
               <span className="payroll-print-title__main">Bảng lương văn phòng</span>
               <span className="payroll-print-title__secondary">Và hoa hồng Sales</span>
+              <span className="payroll-print-title__status">{payrollStatusLabel}</span>
             </span>
           )}
           subtitle={`Kỳ trả lương: ${payrollMonthLabel} · Trạng thái: ${payrollStatusLabel}`}

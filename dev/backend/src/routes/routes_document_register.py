@@ -65,6 +65,16 @@ def _require_can_work(db: Session, user: User, contract_id: Optional[str]) -> No
         )
 
 
+def _assert_can_access_contract_documents(db: Session, user: User, contract_id: Optional[str]) -> None:
+    if not contract_id:
+        return
+    if user_has_all_contract_read_access(db, user):
+        return
+    if _can_work_on_contract(db, user, contract_id):
+        return
+    assert_contract_read_access(db, user, contract_id)
+
+
 def _actor_department(db: Session, user_id: str) -> Optional[str]:
     return db.execute(
         text("""
@@ -535,6 +545,7 @@ async def upload_source_document(
     # Đây là thao tác tiếp nhận ngay trong form Hợp đồng, trước khi K01 được
     # phân công. Sale hoặc Giám đốc đều dùng được khi có quyền tạo Hợp đồng;
     # không hard-code tên vai trò.
+    _assert_can_access_contract_documents(db, user, contract_id)
     data = await file.read(MAX_SCAN_BYTES + 1)
     try:
         result = register.upload_source_document(
@@ -560,6 +571,7 @@ def list_source_documents(
     user: User = Depends(require_permission("contract", "read")),
 ):
     """Kho nguồn của Hợp đồng — K01 mở ra để đọc và phân loại."""
+    _assert_can_access_contract_documents(db, user, contract_id)
     rows = db.execute(
         text("""
             select d.id, d.file_name, d.content_type, d.size_bytes, d.uploaded_at,
@@ -671,6 +683,7 @@ def download_slot_scan(
 ):
     """Bucket là private nên đọc qua máy chủ, không phát link trực tiếp."""
     row, body = register.read_scan(db, document_id)
+    _assert_can_access_contract_documents(db, user, row.get("contract_id"))
     return Response(
         content=body,
         media_type=row["content_type"] or "application/octet-stream",

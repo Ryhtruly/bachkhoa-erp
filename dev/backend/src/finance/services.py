@@ -701,6 +701,12 @@ class FinanceService:
             if not advance:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu tạm ứng")
 
+            if advance.transaction_type != TransactionType.ADVANCE.value:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Chỉ có thể quyết toán giao dịch loại Tạm ứng (ADVANCE).",
+                )
+
             if (
                 normalize_status(advance.status) == TransactionStatus.SETTLED.value
                 or advance.transaction_type == TransactionType.REIMBURSEMENT.value

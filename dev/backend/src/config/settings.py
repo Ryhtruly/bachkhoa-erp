@@ -18,13 +18,16 @@ class Settings:
 
     # Database Config
     PG_USER = os.getenv("PG_USER", "postgres")
-    PG_PASSWORD = os.getenv("PG_PASSWORD", "123")
+    PG_PASSWORD = os.getenv("PG_PASSWORD", "" if os.getenv("ENV", "development").lower() in ("production", "prod", "staging") else "123")
     PG_HOST = os.getenv("PG_HOST", "localhost")
     PG_PORT = os.getenv("PG_PORT", "5432")
     PG_DATABASE = os.getenv("PG_DATABASE", "bachkhoa_erp")
 
     @property
     def DATABASE_URL(self) -> str:
+        if self.ENV.lower() in ("production", "prod", "staging"):
+            if not self.PG_PASSWORD or self.PG_PASSWORD in ("123", "postgres", "admin", "password"):
+                raise RuntimeError("PG_PASSWORD phải được cấu hình an toàn trong production.")
         return f"postgresql://{self.PG_USER}:{self.PG_PASSWORD}@{self.PG_HOST}:{self.PG_PORT}/{self.PG_DATABASE}"
     
     # Secrets & API Keys. Production must fail closed instead of signing JWTs

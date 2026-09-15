@@ -7,7 +7,7 @@ from src.db.models import SystemSetting
 from src.core import ai_vision_engine
 from src.core.chatbot_engine import ask_chatbot
 from src.services.wiki_rag_service import search_chunks as wiki_search
-from src.core.auth import require_authenticated_user, User
+from src.core.auth import require_authenticated_user, check_user_permission, User
 from src.core.redis_utils import consume_rate_limit
 
 router = APIRouter(prefix="/api/ai", tags=["10. AI Assistant"])
@@ -77,7 +77,7 @@ async def chat_with_bot(
             (m["content"] for m in reversed(history) if m["role"] == "user"),
             None
         )
-        if last_user_msg:
+        if last_user_msg and check_user_permission(db, user, "wiki", "read"):
             try:
                 wiki_context = await wiki_search(last_user_msg, db)
             except Exception as wiki_err:
@@ -98,5 +98,3 @@ async def chat_with_bot(
         return {"status": "success", "reply": reply_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-

@@ -26,7 +26,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const printDocumentRef = useRef(null);
   const { addToast } = useToast();
   const [data, setData] = useState([]);
-  const [balance, setBalance] = useState({ cash_balance: 0, bank_balance: 0, balance: 0, total_income: 0, total_expenditure: 0 });
+  const [balance, setBalance] = useState({ cash_balance: 0, bank_balance: 0, balance: 0, opening_balance: null, closing_balance: null, total_income: 0, total_expenditure: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
@@ -64,7 +64,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setBalance({ cash_balance: 0, bank_balance: 0, balance: 0, total_income: 0, total_expenditure: 0 });
+    setBalance({ cash_balance: 0, bank_balance: 0, balance: 0, opening_balance: null, closing_balance: null, total_income: 0, total_expenditure: 0 });
     setData([]);
     try {
       const p = new URLSearchParams();
@@ -75,6 +75,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         setData(Array.isArray(json) ? json : (json.transactions || []));
         setBalance({
           balance: json.balance || 0,
+          opening_balance: json.opening_balance,
+          closing_balance: json.closing_balance,
           total_income: json.total_income || 0,
           total_expenditure: json.total_expenditure || 0
         });
@@ -83,6 +85,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         setData(Array.isArray(json) ? json : (json.transactions || []));
         setBalance({
           balance: json.balance || 0,
+          opening_balance: json.opening_balance,
+          closing_balance: json.closing_balance,
           total_income: json.total_income || 0,
           total_expenditure: json.total_expenditure || 0
         });
@@ -198,6 +202,14 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     { key: 'Hình thức', label: 'Hình thức', width: '85px', align: 'center', nowrap: true, render: (_, row) => row.payment_method_label || row['Hình thức'] || (row.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản') },
     ...(isDirector ? [{ key: 'income', label: 'Thu (VNĐ)', width: '110px', align: 'right', nowrap: true, render: (_, row) => isIncome(row) ? fmt(row.amount) : '—' }] : []),
     { key: 'expense', label: 'Chi (VNĐ)', width: '110px', align: 'right', nowrap: true, render: (_, row) => isExpense(row) ? fmt(row.amount) : '—' },
+    ...(mode === 'cash' || mode === 'bank' ? [{
+      key: 'running_balance',
+      label: 'Số dư sau giao dịch (VNĐ)',
+      width: '135px',
+      align: 'right',
+      nowrap: true,
+      render: (_, row) => fmt(mode === 'cash' ? row.cash_balance_after : row.bank_balance_after),
+    }] : []),
   ];
 
   const footerRow = {
@@ -210,7 +222,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     'Đối tác': '',
     'Hình thức': '',
     ...(isDirector ? { income: fmt(printIncome) } : {}),
-    expense: fmt(printExpense)
+    expense: fmt(printExpense),
+    ...(mode === 'cash' || mode === 'bank' ? { running_balance: '' } : {}),
   };
 
   const handlePrintReport = () => {
@@ -336,11 +349,13 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         <FinancePrintReport
           documentRef={printDocumentRef}
           title={reportTitle}
-          subtitle={`Kỳ báo cáo: ${month ? `Tháng ${month.split('-')[1]}/${month.split('-')[0]}` : 'Toàn bộ'} · Phân loại: ${filters.type === 'All' ? 'Tất cả' : filters.type} · Hình thức: ${filters.payment_method === 'All' ? 'Tất cả' : filters.payment_method}`}
+          subtitle={`Kỳ báo cáo: ${month ? `Tháng ${month.split('-')[1]}/${month.split('-')[0]}` : 'Toàn bộ'} · Phân loại: ${filters.type === 'All' ? 'Tất cả' : filters.type} · Hình thức: ${filters.payment_method === 'All' ? 'Tất cả' : filters.payment_method} · Chỉ phiếu đã ghi sổ (Hoàn thành/Đã quyết toán)`}
           summary={[
             { label: 'Số giao dịch', value: printRows.length.toLocaleString('vi-VN') },
+            ...(mode === 'cash' || mode === 'bank') && balance.opening_balance != null ? [{ label: 'Số dư đầu kỳ', value: fmt(balance.opening_balance) }] : [],
             ...(isDirector ? [{ label: 'Tổng thu', value: fmt(printIncome) }] : []),
             { label: 'Tổng chi', value: fmt(printExpense) },
+            ...(mode === 'cash' || mode === 'bank') ? [{ label: 'Số dư cuối kỳ', value: fmt(balance.closing_balance ?? balance.balance) }] : [],
             ...(isDirector ? [{ label: 'Chênh lệch', value: fmt(printNet) }] : []),
           ]}
           columns={reportColumns}

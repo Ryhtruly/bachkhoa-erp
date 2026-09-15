@@ -99,7 +99,8 @@
 
 .finance-print-document .payroll-print-title,
 .finance-print-document .payroll-print-title__main,
-.finance-print-document .payroll-print-title__secondary {
+.finance-print-document .payroll-print-title__secondary,
+.finance-print-document .payroll-print-title__status {
   display: block;
 }
 
@@ -116,10 +117,30 @@
   letter-spacing: 1.6px;
 }
 
+.finance-print-document .payroll-print-title__status {
+  margin-top: 2mm;
+  font-size: 10pt;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
 .finance-print-document .finance-print-subtitle {
   font-style: italic;
   font-size: 9pt;
   color: var(--print-text-muted);
+}
+
+.finance-print-document .finance-print-additional-section {
+  margin-top: 6mm;
+  break-inside: avoid;
+}
+
+.finance-print-document .finance-print-additional-section h2 {
+  margin: 0 0 2.5mm;
+  font-size: 10pt;
+  font-weight: 800;
+  color: var(--print-text);
 }
 
 /* Khối tổng hợp tóm tắt (Summary) */

@@ -203,6 +203,7 @@ class PublicStaticFiles(StaticFiles):
 
     _private_prefixes = (
         "contracts/",
+        "generated_contracts/",
         "generated_docs/",
         "generated_quotes/",
     )

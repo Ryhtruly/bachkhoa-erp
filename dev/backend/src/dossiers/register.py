@@ -2193,7 +2193,7 @@ def read_scan(db: Session, document_id: str) -> tuple[dict, bytes]:
 
     row = db.execute(
         text("""
-            select id, object_key, file_name, content_type
+            select id, contract_id, object_key, file_name, content_type
             from dossier_documents where id = :id
         """),
         {"id": document_id},

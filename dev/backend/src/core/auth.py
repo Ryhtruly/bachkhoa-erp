@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 import jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
@@ -41,19 +42,60 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(user_id: str, expires_delta: timedelta | None = None) -> str:
     lifetime = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
-        "exp": datetime.now(timezone.utc) + lifetime,
+        "iat": int(now.timestamp()),
+        "jti": str(uuid.uuid4()),
+        "exp": now + lifetime,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
+
+def revoke_access_token(token_str_or_jti: str, ttl_seconds: int = 3600) -> None:
+    from src.core.redis_utils import set_cached_json
+    jti = token_str_or_jti
+    if "." in token_str_or_jti:
+        try:
+            payload = jwt.decode(token_str_or_jti, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+            jti = payload.get("jti") or token_str_or_jti
+        except Exception:
+            pass
+    if jti:
+        set_cached_json(f"bachkhoa:revoked_token:{jti}", True, ttl_seconds=ttl_seconds)
+
+
+def revoke_all_user_tokens(user_id: str, ttl_seconds: int = 3600) -> None:
+    from src.core.redis_utils import set_cached_json
+    cutoff = int(datetime.now(timezone.utc).timestamp())
+    set_cached_json(f"bachkhoa:user_token_cutoff:{user_id}", cutoff, ttl_seconds=ttl_seconds)
+
+
+def is_token_revoked(payload: dict) -> bool:
+    from src.core.redis_utils import get_cached_json
+    jti = payload.get("jti")
+    if jti and get_cached_json(f"bachkhoa:revoked_token:{jti}"):
+        return True
+    user_id = payload.get("sub")
+    iat = payload.get("iat")
+    if user_id and iat:
+        cutoff = get_cached_json(f"bachkhoa:user_token_cutoff:{user_id}")
+        if cutoff and iat <= cutoff:
+            return True
+    return False
+
+
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token hết hạn")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token không hợp lệ")
+
+    if is_token_revoked(payload):
+        raise HTTPException(status_code=401, detail="Token đã bị thu hồi hoặc phiên đăng nhập đã hết hiệu lực")
+    return payload
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),

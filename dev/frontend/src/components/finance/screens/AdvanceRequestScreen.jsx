@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Modal, FormRow, FormGrid, FilterBar, Dropdown } from '../../ui';
 import { fmtAmt, parseAmt, spellVietnameseCurrency } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
-import { PlusCircle, HandCoins } from 'lucide-react';
+import { PlusCircle, HandCoins, Printer } from 'lucide-react';
 import CashflowDetailModal from '../modals/CashflowDetailModal';
 import { apiFetch } from '../../../lib/api';
+import FinancePrintReport from '../print/FinancePrintReport';
+import { printElement } from '../print/printDocument';
+import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
 const getTodayIso = () => {
   const today = new Date();
@@ -64,6 +67,7 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   const month = propMonth !== undefined ? propMonth : localMonth;
   const setMonth = propSetMonth !== undefined ? propSetMonth : setLocalMonth;
   const [sort, setSort] = useState('desc');
+  const printDocumentRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -257,6 +261,28 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
     return sort === 'desc' ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
   });
 
+  const advancePrintColumns = [
+    { key: 'id', label: 'Mã phiếu', width: '110px', align: 'center', nowrap: true },
+    { key: 'payer_payee', label: 'Người nhận', render: (value, row) => value || row.partner || '—' },
+    { key: 'department_code', label: 'Phòng ban', render: value => value || '—' },
+    { key: 'amount', label: 'Số tiền tạm ứng (VNĐ)', width: '125px', align: 'right', nowrap: true, render: value => `−${fmtAmt(String(value || 0))}` },
+    { key: 'status_label', label: 'Trạng thái', width: '105px', align: 'center', render: (value, row) => value || row.status || '—' },
+    { key: 'description', label: 'Diễn giải', render: (value, row) => value || row.note || '—' },
+  ];
+  const advancePrintFooter = {
+    id: '', payer_payee: 'TỔNG CỘNG', department_code: '',
+    amount: `−${fmtAmt(String(sortedFiltered.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)))}`,
+    status_label: '', description: '',
+  };
+  const handlePrintAdvances = () => {
+    printElement({
+      element: printDocumentRef.current,
+      title: 'Danh sách đề xuất tạm ứng',
+      styles: financeReportPrintStyles,
+      onError: message => addToast(message, 'error'),
+    });
+  };
+
   return (
     <div className="card card--workspace advance-request-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <FinanceScreenHeader
@@ -264,17 +290,22 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         subtitle="Ứng tiền cho kỹ sư/chỉ huy trưởng/pháp lý trước khi đi công trường hoặc thực hiện nhiệm vụ"
         onRefresh={load}
         actions={
-          !isDirector ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleOpenModal}
-              style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
-              title="Gửi đề xuất xin tạm ứng kinh phí"
-            >
-              <PlusCircle size={16} /> Gửi đề xuất tạm ứng
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-secondary" onClick={handlePrintAdvances} disabled={loading || sortedFiltered.length === 0} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Printer size={15} /> In danh sách
             </button>
-          ) : null
+            {!isDirector ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleOpenModal}
+                style={{ background: '#f59e0b', borderColor: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}
+                title="Gửi đề xuất xin tạm ứng kinh phí"
+              >
+                <PlusCircle size={16} /> Gửi đề xuất tạm ứng
+              </button>
+            ) : null}
+          </div>
         }
       />
 
@@ -334,6 +365,19 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
         pageSize={10}
         onRowClick={row => setDetailId(row.id)}
       />
+
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
+        <FinancePrintReport
+          documentRef={printDocumentRef}
+          title="DANH SÁCH ĐỀ XUẤT TẠM ỨNG"
+          subtitle="Các đề xuất theo bộ lọc hiện tại"
+          summary={[{ label: 'Số đề xuất', value: `${sortedFiltered.length} phiếu` }]}
+          columns={advancePrintColumns}
+          rows={sortedFiltered}
+          footerRow={advancePrintFooter}
+          emptyText="Không có đề xuất tạm ứng phù hợp"
+        />
+      </div>
 
       <Modal open={modal} onClose={() => setModal(false)} size="lg" title="Gửi đề xuất tạm ứng">
         <form onSubmit={handleSubmit}>

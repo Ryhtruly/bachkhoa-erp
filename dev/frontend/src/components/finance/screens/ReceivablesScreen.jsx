@@ -4,8 +4,8 @@ import { DataTable, StatusBadge, SensitiveActionModal, FilterBar } from '../../u
 import { fmt } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
-import { DollarSign, Printer, AlertTriangle, FileText, CheckCircle2, RotateCcw } from 'lucide-react';
-import { apiFetch } from '../../../lib/api';
+import { DollarSign, Printer, FileSpreadsheet, Loader2, AlertTriangle, FileText, CheckCircle2, RotateCcw } from 'lucide-react';
+import { apiFetch, downloadFile } from '../../../lib/api';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
@@ -31,6 +31,7 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
   });
   const [month, setMonth] = useState('');
   const [sort, setSort] = useState('due_asc');
+  const [exporting, setExporting] = useState(false);
   const { addToast } = useToast();
 
   const load = useCallback(async () => {
@@ -176,6 +177,10 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
   const totalExcess = data.reduce((s, r) => s + (r.excess_amount || 0), 0);
   const totalValueSum = data.reduce((s, r) => s + (r.total_value || 0), 0);
   const totalPaidSum = data.reduce((s, r) => s + (r.paid_amount || 0), 0);
+  const printTotalRemaining = filteredData.reduce((s, r) => s + (r.remaining_amount || 0), 0);
+  const printTotalExcess = filteredData.reduce((s, r) => s + (r.excess_amount || 0), 0);
+  const printTotalValueSum = filteredData.reduce((s, r) => s + (r.total_value || 0), 0);
+  const printTotalPaidSum = filteredData.reduce((s, r) => s + (r.paid_amount || 0), 0);
 
   const printColumns = [
     { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
@@ -200,10 +205,10 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
     index: '',
     contract_id: '',
     customer_name: 'Tổng cộng',
-    total_value: fmt(totalValueSum),
-    paid_amount: fmt(totalPaidSum),
-    remaining_amount: fmt(totalRemaining),
-    excess_amount: totalExcess > 0 ? fmt(totalExcess) : '—',
+    total_value: fmt(printTotalValueSum),
+    paid_amount: fmt(printTotalPaidSum),
+    remaining_amount: fmt(printTotalRemaining),
+    excess_amount: printTotalExcess > 0 ? fmt(printTotalExcess) : '—',
     due_date: '',
     status: ''
   };
@@ -215,6 +220,29 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
       styles: financeReportPrintStyles,
       onError: message => addToast(message, 'error'),
     });
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        search,
+        status: filters.status,
+        aging: filters.aging,
+        amount_range: filters.amount_range,
+        month,
+        sort,
+      });
+      const filename = await downloadFile(
+        `${API}/api/finance/export/receivables-excel?${params.toString()}`,
+        `So_Cong_No_Phai_Thu_${month || 'Tat_Ca'}.xlsx`,
+      );
+      if (filename) addToast(`Đã xuất ${filename} thành công`, 'success');
+    } catch (err) {
+      addToast(err.message || 'Xuất sổ công nợ thất bại', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const cols = [
@@ -310,9 +338,15 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
         title="Công nợ phải thu & dư nợ khách hàng"
         onRefresh={load}
         actions={
-          <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Printer size={15} /> In sổ công nợ
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Printer size={15} /> In sổ công nợ
+            </button>
+            <button className="btn btn-secondary no-print" onClick={handleExport} disabled={exporting || loading} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {exporting ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} color="#10b981" />}
+              {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+            </button>
+          </div>
         }
         subtitle="Quản lý chi tiết dư nợ theo từng hợp đồng, theo dõi tuổi nợ và xử lý khoản nộp thừa"
       />
@@ -463,13 +497,13 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
           title="Sổ Công Nợ Phải Thu"
           subtitle="Tổng hợp công nợ theo hợp đồng khách hàng"
           summary={[
-            { label: 'Số hợp đồng', value: data.length.toLocaleString('vi-VN') },
-            { label: 'Còn phải thu', value: fmt(totalRemaining) },
-            { label: 'Nợ quá hạn', value: overdueCount.toLocaleString('vi-VN') },
-            { label: 'Khách nộp thừa', value: fmt(totalExcess) },
+            { label: 'Số hợp đồng', value: filteredData.length.toLocaleString('vi-VN') },
+            { label: 'Còn phải thu', value: fmt(printTotalRemaining) },
+            { label: 'Nợ quá hạn', value: filteredData.filter(r => r.overdue).length.toLocaleString('vi-VN') },
+            { label: 'Khách nộp thừa', value: fmt(printTotalExcess) },
           ]}
           columns={printColumns}
-          rows={data}
+          rows={filteredData}
           footerRow={footerRow}
           signers={[
             { role: 'Người lập biểu', name: user?.full_name || user?.username || '', note: '(Ký, họ tên)' },

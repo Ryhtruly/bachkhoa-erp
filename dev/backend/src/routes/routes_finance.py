@@ -141,6 +141,7 @@ def cashflow_cash(
         return cached
 
     balance = FinanceRepository.get_running_balance(db, "CASH")
+    period_balance = FinanceRepository.get_period_fund_balance_summary(db, "CASH", month) if month else {}
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
     initial_expense = FinanceRepository.get_setting_value(db, "initial_total_expenditure")
     
@@ -157,6 +158,8 @@ def cashflow_cash(
 
     result = {
         "balance": balance,
+        "opening_balance": period_balance.get("opening_balance"),
+        "closing_balance": period_balance.get("closing_balance", balance),
         "total_expenditure": initial_expense + filtered_expenditure,
         "transactions": serialize_cashflow_bulk(rows, db)
     }
@@ -185,6 +188,7 @@ def cashflow_bank(
         return cached
 
     balance = FinanceRepository.get_running_balance(db, "BANK_TRANSFER")
+    period_balance = FinanceRepository.get_period_fund_balance_summary(db, "BANK_TRANSFER", month) if month else {}
     initial_income = FinanceRepository.get_setting_value(db, "initial_total_income")
     initial_expense = FinanceRepository.get_setting_value(db, "initial_total_expenditure")
     
@@ -201,6 +205,8 @@ def cashflow_bank(
 
     result = {
         "balance": balance,
+        "opening_balance": period_balance.get("opening_balance"),
+        "closing_balance": period_balance.get("closing_balance", balance),
         "total_expenditure": initial_expense + filtered_expenditure,
         "transactions": serialize_cashflow_bulk(rows, db)
     }

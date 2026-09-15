@@ -110,6 +110,31 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
     expenditure: cat.expenditure || cat.expense || 0
   })).filter(row => row.income > 0 || row.expenditure > 0);
 
+  const departmentPrintColumns = [
+    { key: 'name', label: 'Phòng ban', align: 'left' },
+    { key: 'income', label: 'Tổng thu', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'expenditure', label: 'Tổng chi', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'net', label: 'Chênh lệch', align: 'right', format: (_, row) => fmt((row.income || 0) - (row.expenditure || 0)) },
+  ];
+
+  const departmentPrintRows = (d.departments || []).map((department) => ({
+    name: department.name,
+    income: department.income || 0,
+    expenditure: department.expenditure || department.expense || 0,
+  })).filter(row => row.income > 0 || row.expenditure > 0);
+
+  const departmentPrintTotal = (d.departments || []).reduce((totals, department) => ({
+    income: totals.income + (department.income || 0),
+    expenditure: totals.expenditure + (department.expenditure || department.expense || 0),
+  }), { income: 0, expenditure: 0 });
+
+  const departmentPrintFooterRow = {
+    name: 'Tổng cộng',
+    income: fmt(departmentPrintTotal.income),
+    expenditure: fmt(departmentPrintTotal.expenditure),
+    net: fmt(departmentPrintTotal.income - departmentPrintTotal.expenditure),
+  };
+
   const printFooterRow = (
     <tr className="finance-print-footer-row">
       <td style={{ fontWeight: 700 }}>Tổng cộng</td>
@@ -198,7 +223,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
       }}>
         <Info size={16} color="var(--orange-500)" style={{ flexShrink: 0 }} />
         <span>
-          Số liệu báo cáo được tổng hợp tự động từ các <strong>Phiếu Thu / Phiếu Chi đã hoàn thành</strong> trong tháng {month.split('-')[1]}/{month.split('-')[0]}.
+          Số liệu báo cáo được tổng hợp tự động từ các <strong>Phiếu Thu / Phiếu Chi đã ghi sổ (Hoàn thành/Đã quyết toán)</strong> trong tháng {month.split('-')[1]}/{month.split('-')[0]}.
         </span>
       </div>
 
@@ -460,7 +485,7 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
           <FinancePrintReport
             documentRef={printDocumentRef}
             title="BÁO CÁO DÒNG TIỀN VÀ KẾT QUẢ THU CHI"
-            subtitle={`Thời gian: Tháng ${month.split('-')[1]}/${month.split('-')[0]} · Sổ quỹ toàn hệ thống`}
+            subtitle={`Thời gian: Tháng ${month.split('-')[1]}/${month.split('-')[0]} · Sổ quỹ toàn hệ thống · Chỉ phiếu đã ghi sổ (Hoàn thành/Đã quyết toán)`}
             summary={[
               { label: 'Tổng thu thực tế', value: fmt(totalIncome) },
               { label: 'Tổng chi phí', value: fmt(totalExpenditure) },
@@ -469,6 +494,13 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
             columns={printColumns}
             rows={printRows}
             footerRow={printFooterRow}
+            additionalSections={[{
+              title: 'III. PHÂN BỔ THEO PHÒNG BAN',
+              columns: departmentPrintColumns,
+              rows: departmentPrintRows,
+              footerRow: departmentPrintRows.length > 0 ? departmentPrintFooterRow : null,
+              emptyText: 'Không có dữ liệu phát sinh theo phòng ban trong tháng',
+            }]}
             signers={[
               { role: 'Người lập biểu', name: user?.full_name || user?.username || '', note: '(Ký, họ tên)' },
               { role: 'Kế toán trưởng', note: '(Ký, họ tên)' },

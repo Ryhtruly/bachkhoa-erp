@@ -29,8 +29,14 @@ def get_object_storage_config(environ: dict[str, str] | None = None) -> ObjectSt
     using_managed_settings = bool(values.get("OBJECT_STORAGE_ENDPOINT", "").strip())
     access_key = values.get("OBJECT_STORAGE_ACCESS_KEY") or values.get("MINIO_ACCESS_KEY", "")
     secret_key = values.get("OBJECT_STORAGE_SECRET_KEY") or values.get("MINIO_SECRET_KEY", "")
-    if environment in {"production", "prod", "staging"} and (not access_key or not secret_key):
-        raise RuntimeError("Object storage credentials phải được cấu hình trong production.")
+    if environment in {"production", "prod", "staging"}:
+        if (
+            not access_key
+            or not secret_key
+            or access_key in {"minioadmin", "admin"}
+            or secret_key in {"minioadmin", "password", "12345678"}
+        ):
+            raise RuntimeError("Object storage credentials phải được cấu hình an toàn trong production.")
     create_buckets = (
         not using_managed_settings
         and values.get("OBJECT_STORAGE_CREATE_BUCKETS", "true").strip().lower() in _TRUE_VALUES

@@ -1,6 +1,11 @@
 import pytest
 from unittest.mock import patch
-from src.db.models import Employee, Department
+from datetime import date, datetime, timezone
+import uuid
+
+from src.db.models import CashflowTransaction, Employee, Department
+from src.finance.repository import FinanceRepository
+from src.finance.enums import TransactionStatus, TransactionType, PaymentMethod, TransactionScope
 
 
 def test_export_monthly_dashboard_excel(client, admin_headers):
@@ -9,6 +14,41 @@ def test_export_monthly_dashboard_excel(client, admin_headers):
     assert res.status_code == 200
     assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers.get("content-type", "")
     assert len(res.content) > 1000
+
+
+def test_monthly_dashboard_uses_created_at_when_transaction_date_is_missing(db):
+    transaction = CashflowTransaction(
+        id=f"TEST-EXPORT-{uuid.uuid4().hex[:10]}",
+        transaction_date=None,
+        created_at=datetime(2026, 8, 15, 10, 0, tzinfo=timezone.utc),
+        transaction_type=TransactionType.EXPENSE.value,
+        amount=123456,
+        category_code="Chi phí kiểm thử báo cáo",
+        payment_method=PaymentMethod.CASH.value,
+        scope=TransactionScope.COMPANY.value,
+        status=TransactionStatus.COMPLETED.value,
+    )
+    db.add(transaction)
+    db.flush()
+
+    result = FinanceRepository.get_monthly_dashboard(db, "2026-08")
+
+    assert result["total_expenditure"] >= 123456
+
+    db.delete(transaction)
+    db.flush()
+
+
+def test_cashflow_cash_returns_period_balance_context(client, admin_headers):
+    response = client.get(
+        "/api/finance/cashflow/cash?month=2026-08",
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "opening_balance" in body
+    assert "closing_balance" in body
 
 
 def test_export_employee_ledger_excel(client, finance_clerk_user, db):

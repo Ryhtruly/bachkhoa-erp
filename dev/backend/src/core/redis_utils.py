@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import time
+import urllib.parse
 from contextlib import contextmanager
 from typing import Any, Optional
 
@@ -16,6 +17,20 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 _client: Optional[redis.Redis] = None
+
+
+def _redact_redis_url(url: str) -> str:
+    """Mask password or credentials inside Redis URL before logging."""
+    if not url:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.password:
+            netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+            return urllib.parse.urlunsplit(parsed._replace(netloc=netloc))
+    except Exception:
+        pass
+    return url
 
 
 def get_redis_client() -> Optional[redis.Redis]:
@@ -33,7 +48,15 @@ def get_redis_client() -> Optional[redis.Redis]:
             # Ping nhẹ để kiểm tra liveness
             _client.ping()
         except Exception as exc:
-            logger.warning("Không kết nối được tới Redis (%s): %s", REDIS_URL, exc)
+            redacted_url = _redact_redis_url(REDIS_URL)
+            err_msg = str(exc)
+            try:
+                parsed = urllib.parse.urlsplit(REDIS_URL)
+                if parsed.password:
+                    err_msg = err_msg.replace(parsed.password, "***")
+            except Exception:
+                pass
+            logger.warning("Không kết nối được tới Redis (%s): %s", redacted_url, err_msg)
             _client = None
     return _client
 
