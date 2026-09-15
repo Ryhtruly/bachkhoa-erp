@@ -86,14 +86,14 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
   const payrollStatusLabel = isPaid ? 'Đã xác nhận chi trả ngoài sổ' : isLocked ? 'Đã chốt' : 'Đang mở';
 
   const printColumns = [
-    { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
-    { key: 'full_name', label: 'Họ và tên nhân sự', width: '160px', align: 'left', render: value => value || 'Chưa cập nhật' },
-    { key: 'department', label: 'Phòng ban', width: '120px', align: 'left', render: value => value || 'Công ty' },
-    { key: 'job_title', label: 'Chức danh / Vị trí', width: '130px', align: 'left', render: value => value || 'Nhân viên' },
-    { key: 'base_salary', label: 'Lương CB (VNĐ)', width: '105px', align: 'right', nowrap: true, render: value => fmt(value || 0) },
-    { key: 'bonus', label: 'KPI & Thưởng (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => fmt(value || 0) },
-    { key: 'sales_commission', label: 'Hoa hồng BĐS (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => fmt(value || 0) },
-    { key: 'total_salary', label: 'Thực nhận (VNĐ)', width: '115px', align: 'right', nowrap: true, render: value => <strong>{fmt(value || 0)}</strong> },
+    { key: 'index', label: 'STT', width: '4%', align: 'center', nowrap: true, headerNowrap: true, render: (_, __, index) => index + 1 },
+    { key: 'full_name', label: 'Họ và tên nhân sự', width: '18%', align: 'left', render: value => value || 'Chưa cập nhật' },
+    { key: 'department', label: 'Phòng ban', width: '13%', align: 'left', render: value => value || 'Công ty' },
+    { key: 'job_title', label: 'Chức danh / Vị trí', width: '14%', align: 'left', render: value => value || 'Nhân viên' },
+    { key: 'base_salary', label: 'Lương CB (VNĐ)', width: '12%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value || 0) },
+    { key: 'bonus', label: 'KPI & Thưởng (VNĐ)', width: '12%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value || 0) },
+    { key: 'sales_commission', label: 'Hoa hồng BĐS (VNĐ)', width: '13%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value || 0) },
+    { key: 'total_salary', label: 'Thực nhận (VNĐ)', width: '14%', align: 'right', nowrap: true, headerNowrap: true, render: value => <strong>{fmt(value || 0)}</strong> },
   ];
 
   const printFooterRow = {

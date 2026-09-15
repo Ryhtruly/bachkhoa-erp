@@ -8,7 +8,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
-from src.core.auth import require_permission, require_any_permission, User
+from src.core.auth import (
+    require_permission,
+    require_any_permission,
+    get_current_user,
+    assert_payroll_employee_access,
+    User,
+)
 from src.db.models import Employee, Department, PayrollPeriod
 from src.finance.repository import FinanceRepository
 from src.finance.access import assert_director
@@ -206,9 +212,14 @@ def export_employee_ledger_excel(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_any_permission(("payroll", "read"), ("finance", "read")))
+    user: User = Depends(get_current_user)
 ):
-    """Xuất Phiếu Lương Khoán Nhiệm Vụ của cá nhân ra file Excel (.xlsx)."""
+    """Xuất Phiếu Lương Khoán Nhiệm Vụ của cá nhân ra file Excel (.xlsx).
+
+    Nhân viên thông thường được xuất phiếu lương của chính mình.
+    Người có quyền quản lý lương (Kế toán / Giám đốc) được xuất cho bất kỳ nhân viên nào.
+    """
+    assert_payroll_employee_access(db, user, employee_id)
     curr_year = datetime.now().year
     curr_month = datetime.now().month
     year_val = year if isinstance(year, int) else curr_year
@@ -239,6 +250,8 @@ def export_employee_ledger_excel(
                 "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Lỗi khi xuất phiếu lương Excel cá nhân:")
         raise HTTPException(status_code=500, detail=f"Không thể xuất phiếu lương Excel: {str(e)}")
@@ -315,6 +328,8 @@ def export_department_summary_excel(
                 "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Lỗi khi xuất bảng tổng hợp lương:")
         raise HTTPException(status_code=500, detail=f"Không thể xuất bảng tổng hợp lương: {str(e)}")
