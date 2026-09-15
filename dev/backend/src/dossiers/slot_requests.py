@@ -62,18 +62,9 @@ _DEFAULT_SOURCE_BY_UPPER_NODE = {
 
 def default_source_for_node(db: Session, task_node_id: str) -> str:
     """Nguồn nghiệp vụ suy từ bước. Tra capability_code hoặc node_code, bước lạ rơi về công ty soạn."""
-    node_row = db.execute(
     res = db.execute(
         text("select node_code, capability_code from public.task_nodes where id = :id"),
         {"id": task_node_id},
-    ).mappings().first()
-    if not node_row:
-        return "CONG_TY"
-    cap = str(node_row.get("capability_code") or "").strip().upper()
-    if cap in _DEFAULT_SOURCE_BY_UPPER_NODE:
-        return _DEFAULT_SOURCE_BY_UPPER_NODE[cap]
-    code = str(node_row.get("node_code") or "").strip().upper()
-    return _DEFAULT_SOURCE_BY_UPPER_NODE.get(code, "CONG_TY")
     )
     if hasattr(res, "mappings"):
         try:
