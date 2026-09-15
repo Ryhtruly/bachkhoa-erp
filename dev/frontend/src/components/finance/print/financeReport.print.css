@@ -190,27 +190,32 @@
 .finance-print-document .finance-print-table th {
   background: var(--print-th-bg) !important;
   color: var(--print-th-text) !important;
-  font-weight: 800 !important;
-  font-size: 8.5pt !important;
+  font-weight: 700 !important;
+  font-size: 8pt !important;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
   white-space: normal !important;
-  word-break: normal !important;
-  overflow-wrap: break-word !important;
+  word-break: keep-all;
+  overflow-wrap: normal;
   line-height: 1.25 !important;
   text-align: center;
-  padding: 2.2mm 2mm !important;
+  padding: 2mm 1.5mm !important;
   border: 1px solid var(--print-border) !important;
   vertical-align: middle !important;
 }
 
+.finance-print-document .finance-print-table th.is-nowrap,
+.finance-print-document .finance-print-table td.is-nowrap {
+  white-space: nowrap !important;
+}
+
 .finance-print-document .finance-print-table td {
-  padding: 2.5mm 3mm !important;
+  padding: 2mm 2mm !important;
   border: 1px solid var(--print-border) !important;
   vertical-align: middle !important;
   color: var(--print-text) !important;
   background: transparent !important;
-  font-size: 9pt !important;
+  font-size: 8.5pt !important;
   overflow-wrap: anywhere;
 }
 
@@ -235,17 +240,14 @@
 
 .finance-print-document .finance-print-table th.is-right {
   text-align: right !important;
-  white-space: normal !important;
 }
 
 .finance-print-document .finance-print-table th.is-center {
   text-align: center !important;
-  white-space: normal !important;
 }
 
 .finance-print-document .finance-print-table th.is-left {
   text-align: left !important;
-  white-space: normal !important;
 }
 
 /* TỔNG CỘNG là tổng của toàn báo cáo, không phải tổng từng trang. */

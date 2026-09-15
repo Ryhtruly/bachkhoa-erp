@@ -60,4 +60,26 @@ describe('FinancePrintReport', () => {
     expect(screen.getByText('III. PHÂN BỔ THEO PHÒNG BAN')).toBeInTheDocument();
     expect(screen.getByText('Phòng Kế toán')).toBeInTheDocument();
   });
+
+  it('renders colgroup with column widths and applies is-nowrap class', () => {
+    const { container } = render(
+      <FinancePrintReport
+        title="Sổ Quỹ Tiền Mặt"
+        columns={[
+          { key: 'index', label: 'STT', width: '3.5%', nowrap: true, headerNowrap: true },
+          { key: 'note', label: 'Nội dung diễn giải', width: '20%' },
+        ]}
+      />
+    );
+
+    const cols = container.querySelectorAll('col');
+    expect(cols).toHaveLength(2);
+    expect(cols[0].style.width).toBe('3.5%');
+    expect(cols[1].style.width).toBe('20%');
+
+    const sttTh = screen.getByText('STT').closest('th');
+    expect(sttTh).toHaveClass('is-nowrap');
+    expect(sttTh.style.whiteSpace).toBe('nowrap');
+    expect(sttTh.style.wordBreak).toBe('keep-all');
+  });
 });

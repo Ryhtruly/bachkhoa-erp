@@ -183,15 +183,15 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
   const printTotalPaidSum = filteredData.reduce((s, r) => s + (r.paid_amount || 0), 0);
 
   const printColumns = [
-    { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
-    { key: 'contract_id', label: 'Mã hợp đồng', width: '120px', align: 'center', nowrap: true, render: v => <strong>{v}</strong> },
-    { key: 'customer_name', label: 'Khách hàng / Đối tác', align: 'left', render: (value, row) => value || row.customer || '—' },
-    { key: 'total_value', label: 'Giá trị HĐ (VNĐ)', width: '115px', align: 'right', nowrap: true, render: value => fmt(value) },
-    { key: 'paid_amount', label: 'Đã thu (VNĐ)', width: '115px', align: 'right', nowrap: true, render: value => fmt(value) },
-    { key: 'remaining_amount', label: 'Còn phải thu (VNĐ)', width: '120px', align: 'right', nowrap: true, render: (value, row) => row.is_overpaid ? '0₫' : fmt(value) },
-    { key: 'excess_amount', label: 'Nộp thừa (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => value > 0 ? fmt(value) : '—' },
-    { key: 'due_date', label: 'Hạn thu', width: '85px', align: 'center', nowrap: true },
-    { key: 'status', label: 'Trạng thái', width: '105px', align: 'center', nowrap: true, render: (_, row) => (
+    { key: 'index', label: 'STT', width: '4%', align: 'center', nowrap: true, headerNowrap: true, render: (_, __, index) => index + 1 },
+    { key: 'contract_id', label: 'Mã hợp đồng', width: '11%', align: 'center', nowrap: true, headerNowrap: true, render: v => <strong>{v}</strong> },
+    { key: 'customer_name', label: 'Khách hàng / Đối tác', width: '23%', align: 'left', render: (value, row) => value || row.customer || '—' },
+    { key: 'total_value', label: 'Giá trị HĐ (VNĐ)', width: '11%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value) },
+    { key: 'paid_amount', label: 'Đã thu (VNĐ)', width: '10%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value) },
+    { key: 'remaining_amount', label: 'Còn phải thu (VNĐ)', width: '11%', align: 'right', nowrap: true, headerNowrap: true, render: (value, row) => row.is_overpaid ? '0₫' : fmt(value) },
+    { key: 'excess_amount', label: 'Nộp thừa (VNĐ)', width: '10%', align: 'right', nowrap: true, headerNowrap: true, render: value => value > 0 ? fmt(value) : '—' },
+    { key: 'due_date', label: 'Hạn thu', width: '9%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'status', label: 'Trạng thái', width: '11%', align: 'center', nowrap: true, headerNowrap: true, render: (_, row) => (
       row.is_overpaid ? 'Nộp thừa' :
       row.status === 'written_off' ? 'Đã miễn giảm/xóa' :
       row.status === 'refunded' ? 'Đã hoàn tiền' :

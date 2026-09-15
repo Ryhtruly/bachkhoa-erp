@@ -191,23 +191,25 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const printNet = printIncome - printExpense;
 
   const reportTitle = mode === 'all' ? 'Sổ Nhật Ký Thu Chi' : mode === 'cash' ? 'Sổ Quỹ Tiền Mặt' : 'Sổ Quỹ Ngân Hàng';
+  const hasRunningBalance = mode === 'cash' || mode === 'bank';
   const reportColumns = [
-    { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
-    { key: 'Ngày', label: 'Ngày', width: '80px', align: 'center', nowrap: true },
-    { key: 'id', label: 'Số chứng từ', width: '120px', align: 'center', nowrap: true, render: v => <strong>{v}</strong> },
-    { key: 'type', label: 'Loại', width: '55px', align: 'center', nowrap: true, render: (_, row) => isIncome(row) ? 'Thu' : 'Chi' },
-    { key: 'Hạng mục', label: 'Hạng mục thu/chi', width: '145px', align: 'left' },
-    { key: 'Diễn giải', label: 'Nội dung diễn giải', align: 'left' },
-    { key: 'Đối tác', label: 'Đối tác / Người giao dịch', width: '135px', align: 'left' },
-    { key: 'Hình thức', label: 'Hình thức', width: '85px', align: 'center', nowrap: true, render: (_, row) => row.payment_method_label || row['Hình thức'] || (row.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản') },
-    ...(isDirector ? [{ key: 'income', label: 'Thu (VNĐ)', width: '110px', align: 'right', nowrap: true, render: (_, row) => isIncome(row) ? fmt(row.amount) : '—' }] : []),
-    { key: 'expense', label: 'Chi (VNĐ)', width: '110px', align: 'right', nowrap: true, render: (_, row) => isExpense(row) ? fmt(row.amount) : '—' },
-    ...(mode === 'cash' || mode === 'bank' ? [{
+    { key: 'index', label: 'STT', width: '3.5%', align: 'center', nowrap: true, headerNowrap: true, render: (_, __, index) => index + 1 },
+    { key: 'Ngày', label: 'Ngày', width: '7%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'id', label: 'Số chứng từ', width: '9%', align: 'center', nowrap: true, headerNowrap: true, render: v => <strong>{v}</strong> },
+    { key: 'type', label: 'Loại', width: '4.5%', align: 'center', nowrap: true, headerNowrap: true, render: (_, row) => isIncome(row) ? 'Thu' : 'Chi' },
+    { key: 'Hạng mục', label: 'Hạng mục thu/chi', width: isDirector ? (hasRunningBalance ? '12%' : '14%') : (hasRunningBalance ? '14%' : '16%'), align: 'left' },
+    { key: 'Diễn giải', label: 'Nội dung diễn giải', width: isDirector ? (hasRunningBalance ? '20%' : '24%') : (hasRunningBalance ? '24%' : '28%'), align: 'left' },
+    { key: 'Đối tác', label: 'Đối tác / Người giao dịch', width: isDirector ? (hasRunningBalance ? '13%' : '15%') : (hasRunningBalance ? '15%' : '17%'), align: 'left' },
+    { key: 'Hình thức', label: 'Hình thức', width: '7%', align: 'center', nowrap: true, headerNowrap: true, render: (_, row) => row.payment_method_label || row['Hình thức'] || (row.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản') },
+    ...(isDirector ? [{ key: 'income', label: 'Thu (VNĐ)', width: '8%', align: 'right', nowrap: true, headerNowrap: true, render: (_, row) => isIncome(row) ? fmt(row.amount) : '—' }] : []),
+    { key: 'expense', label: 'Chi (VNĐ)', width: '8%', align: 'right', nowrap: true, headerNowrap: true, render: (_, row) => isExpense(row) ? fmt(row.amount) : '—' },
+    ...(hasRunningBalance ? [{
       key: 'running_balance',
       label: 'Số dư sau giao dịch (VNĐ)',
-      width: '135px',
+      width: '8%',
       align: 'right',
       nowrap: true,
+      headerNowrap: false,
       render: (_, row) => fmt(mode === 'cash' ? row.cash_balance_after : row.bank_balance_after),
     }] : []),
   ];

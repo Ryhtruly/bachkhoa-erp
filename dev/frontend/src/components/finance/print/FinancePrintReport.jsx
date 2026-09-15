@@ -89,24 +89,40 @@ export default function FinancePrintReport({
 function PrintTable({ columns, rows, footerRow, emptyText }) {
   return (
     <table className="finance-print-table">
+      <colgroup>
+        {columns.map((column, idx) => (
+          <col
+            key={column.key || idx}
+            style={column.width ? { width: column.width } : undefined}
+          />
+        ))}
+      </colgroup>
       <thead>
         <tr>
-          {columns.map(column => (
-            <th
-              key={column.key}
-              className={column.align ? `is-${column.align}` : ''}
-              style={{
-                width: column.width || 'auto',
-                textAlign: column.headerAlign || column.align || 'center',
-                whiteSpace: column.headerNowrap ? 'nowrap' : 'normal',
-                wordBreak: 'normal',
-                overflowWrap: 'break-word',
-                lineHeight: 1.25,
-              }}
-            >
-              {column.label}
-            </th>
-          ))}
+          {columns.map(column => {
+            const isNowrap = Boolean(column.headerNowrap || (column.nowrap && column.headerNowrap !== false));
+            return (
+              <th
+                key={column.key}
+                className={[
+                  column.align ? `is-${column.align}` : '',
+                  isNowrap ? 'is-nowrap' : '',
+                  column.headerClassName || '',
+                ].filter(Boolean).join(' ')}
+                style={{
+                  width: column.width || 'auto',
+                  textAlign: column.headerAlign || column.align || 'center',
+                  whiteSpace: isNowrap ? 'nowrap' : 'normal',
+                  wordBreak: 'keep-all',
+                  overflowWrap: column.overflowWrap || 'break-word',
+                  lineHeight: 1.25,
+                  ...column.headerStyle,
+                }}
+              >
+                {column.label}
+              </th>
+            );
+          })}
         </tr>
       </thead>
       <tbody>
@@ -117,23 +133,31 @@ function PrintTable({ columns, rows, footerRow, emptyText }) {
         ) : (
           rows.map((row, index) => (
             <tr key={row.id || row.contract_id || `${index}`}>
-              {columns.map(column => (
-                <td
-                  key={column.key}
-                  className={column.align ? `is-${column.align}` : ''}
-                  style={{
-                    width: column.width || 'auto',
-                    textAlign: column.align || 'left',
-                    whiteSpace: column.nowrap ? 'nowrap' : 'normal'
-                  }}
-                >
-                  {column.render
-                    ? column.render(row[column.key], row, index)
-                    : (column.format
-                        ? column.format(row[column.key], row, index)
-                        : (row[column.key] ?? '—'))}
-                </td>
-              ))}
+              {columns.map(column => {
+                const isNowrap = Boolean(column.nowrap);
+                return (
+                  <td
+                    key={column.key}
+                    className={[
+                      column.align ? `is-${column.align}` : '',
+                      isNowrap ? 'is-nowrap' : '',
+                      column.className || '',
+                    ].filter(Boolean).join(' ')}
+                    style={{
+                      width: column.width || 'auto',
+                      textAlign: column.align || 'left',
+                      whiteSpace: isNowrap ? 'nowrap' : 'normal',
+                      ...column.cellStyle,
+                    }}
+                  >
+                    {column.render
+                      ? column.render(row[column.key], row, index)
+                      : (column.format
+                          ? column.format(row[column.key], row, index)
+                          : (row[column.key] ?? '—'))}
+                  </td>
+                );
+              })}
             </tr>
           ))
         )}
@@ -149,10 +173,14 @@ function PrintTable({ columns, rows, footerRow, emptyText }) {
                 return (
                   <td
                     key={column.key || idx}
-                    className={column.align ? `is-${column.align}` : ''}
+                    className={[
+                      column.align ? `is-${column.align}` : '',
+                      column.nowrap ? 'is-nowrap' : '',
+                    ].filter(Boolean).join(' ')}
                     style={{
                       textAlign: column.align || 'left',
-                      fontWeight: 700
+                      fontWeight: 700,
+                      whiteSpace: column.nowrap ? 'nowrap' : 'normal',
                     }}
                   >
                     {cellVal !== undefined ? cellVal : ''}

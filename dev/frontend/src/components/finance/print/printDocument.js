@@ -143,6 +143,10 @@ html, body {
   border: 1px solid #334155 !important;
   vertical-align: middle !important;
 }
+.finance-print-table th.is-nowrap,
+.finance-print-table td.is-nowrap {
+  white-space: nowrap !important;
+}
 .finance-print-table td {
   padding: 2.5mm 3mm !important;
   border: 1px solid #334155 !important;

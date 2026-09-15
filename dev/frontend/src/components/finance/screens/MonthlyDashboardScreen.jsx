@@ -98,10 +98,10 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
 
   // Cấu hình bảng in A4
   const printColumns = [
-    { key: 'name', label: 'Hạng mục / Phòng ban', align: 'left' },
-    { key: 'income', label: 'Tổng thu', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
-    { key: 'expenditure', label: 'Tổng chi', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
-    { key: 'net', label: 'Chênh lệch', align: 'right', format: (_, row) => fmt((row.income || 0) - (row.expenditure || row.expense || 0)) },
+    { key: 'name', label: 'Hạng mục / Phòng ban', width: '40%', align: 'left' },
+    { key: 'income', label: 'Tổng thu (VNĐ)', width: '20%', align: 'right', nowrap: true, headerNowrap: true, format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'expenditure', label: 'Tổng chi (VNĐ)', width: '20%', align: 'right', nowrap: true, headerNowrap: true, format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'net', label: 'Chênh lệch (VNĐ)', width: '20%', align: 'right', nowrap: true, headerNowrap: true, format: (_, row) => fmt((row.income || 0) - (row.expenditure || row.expense || 0)) },
   ];
 
   const printRows = (d.categories || []).map((cat) => ({
@@ -111,10 +111,10 @@ export default function MonthlyDashboardScreen({ month: propMonth, setMonth: pro
   })).filter(row => row.income > 0 || row.expenditure > 0);
 
   const departmentPrintColumns = [
-    { key: 'name', label: 'Phòng ban', align: 'left' },
-    { key: 'income', label: 'Tổng thu', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
-    { key: 'expenditure', label: 'Tổng chi', align: 'right', format: (val) => val > 0 ? fmt(val) : '0' },
-    { key: 'net', label: 'Chênh lệch', align: 'right', format: (_, row) => fmt((row.income || 0) - (row.expenditure || 0)) },
+    { key: 'name', label: 'Phòng ban', width: '40%', align: 'left' },
+    { key: 'income', label: 'Tổng thu (VNĐ)', width: '20%', align: 'right', nowrap: true, headerNowrap: true, format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'expenditure', label: 'Tổng chi (VNĐ)', width: '20%', align: 'right', nowrap: true, headerNowrap: true, format: (val) => val > 0 ? fmt(val) : '0' },
+    { key: 'net', label: 'Chênh lệch (VNĐ)', width: '20%', align: 'right', nowrap: true, headerNowrap: true, format: (_, row) => fmt((row.income || 0) - (row.expenditure || 0)) },
   ];
 
   const departmentPrintRows = (d.departments || []).map((department) => ({

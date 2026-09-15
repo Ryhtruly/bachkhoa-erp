@@ -262,12 +262,12 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   });
 
   const advancePrintColumns = [
-    { key: 'id', label: 'Mã phiếu', width: '110px', align: 'center', nowrap: true },
-    { key: 'payer_payee', label: 'Người nhận', render: (value, row) => value || row.partner || '—' },
-    { key: 'department_code', label: 'Phòng ban', render: value => value || '—' },
-    { key: 'amount', label: 'Số tiền tạm ứng (VNĐ)', width: '125px', align: 'right', nowrap: true, render: value => `−${fmtAmt(String(value || 0))}` },
-    { key: 'status_label', label: 'Trạng thái', width: '105px', align: 'center', render: (value, row) => value || row.status || '—' },
-    { key: 'description', label: 'Diễn giải', render: (value, row) => value || row.note || '—' },
+    { key: 'id', label: 'Mã phiếu', width: '13%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'payer_payee', label: 'Người nhận', width: '18%', render: (value, row) => value || row.partner || '—' },
+    { key: 'department_code', label: 'Phòng ban', width: '13%', render: value => value || '—' },
+    { key: 'amount', label: 'Số tiền tạm ứng (VNĐ)', width: '16%', align: 'right', nowrap: true, headerNowrap: true, render: value => `−${fmtAmt(String(value || 0))}` },
+    { key: 'status_label', label: 'Trạng thái', width: '12%', align: 'center', nowrap: true, headerNowrap: true, render: (value, row) => value || row.status || '—' },
+    { key: 'description', label: 'Diễn giải', width: '28%', render: (value, row) => value || row.note || '—' },
   ];
   const advancePrintFooter = {
     id: '', payer_payee: 'TỔNG CỘNG', department_code: '',

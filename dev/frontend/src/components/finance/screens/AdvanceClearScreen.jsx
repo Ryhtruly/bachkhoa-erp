@@ -162,12 +162,12 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   ];
 
   const settlementPrintColumns = [
-    { key: 'id', label: 'Mã phiếu', width: '115px', align: 'center', nowrap: true },
-    { key: 'partner', label: 'Người nhận', render: (value, row) => value || row.payer_payee || '—' },
-    { key: 'department_code', label: 'Phòng ban', render: value => value || '—' },
-    { key: 'amount', label: 'Tạm ứng (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => `−${fmt(value || 0)}` },
-    { key: 'status_label', label: 'Trạng thái', width: '105px', align: 'center', render: (value, row) => value || row.status || '—' },
-    { key: 'description', label: 'Diễn giải', render: (value, row) => value || row.note || '—' },
+    { key: 'id', label: 'Mã phiếu', width: '13%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'partner', label: 'Người nhận', width: '18%', render: (value, row) => value || row.payer_payee || '—' },
+    { key: 'department_code', label: 'Phòng ban', width: '13%', render: value => value || '—' },
+    { key: 'amount', label: 'Tạm ứng (VNĐ)', width: '16%', align: 'right', nowrap: true, headerNowrap: true, render: value => `−${fmt(value || 0)}` },
+    { key: 'status_label', label: 'Trạng thái', width: '12%', align: 'center', nowrap: true, headerNowrap: true, render: (value, row) => value || row.status || '—' },
+    { key: 'description', label: 'Diễn giải', width: '28%', render: (value, row) => value || row.note || '—' },
   ];
   const settlementPrintFooter = {
     id: '', partner: 'TỔNG CỘNG', department_code: '',
