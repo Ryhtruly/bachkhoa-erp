@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm@sha256:528257d48c1da0dcecc2e725d1ae34498d60c965f1241e39cd6a85a8859bdf84
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,11 +16,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-compile -r requirements.txt
 
 # Run the API without root privileges. The generated-document directories are
-# prepared before switching users because /app/static/contracts is a named
-# volume in the production compose file.
+# prepared before switching users because the API writes private generated
+# documents and /app/static/contracts is a named volume in production compose.
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app --no-create-home app \
-    && mkdir -p /app/static/contracts /app/static/generated_docs /app/static/generated_quotes \
+    && mkdir -p /app/static/contracts /app/static/generated_docs /app/static/generated_quotes /app/private/generated_docs \
     && chown -R app:app /app
 
 COPY --chown=app:app src ./src

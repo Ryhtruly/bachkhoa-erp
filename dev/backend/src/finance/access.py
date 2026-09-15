@@ -24,14 +24,11 @@ def can_view_employee_payroll(
     return bool(can_view_all or (actor_employee_id and actor_employee_id == target_employee_id))
 
 
-INCOME_TRANSACTION_TYPES = frozenset({TransactionType.INCOME.value, "Thu"})
+INCOME_TRANSACTION_TYPES = frozenset({TransactionType.INCOME.value})
 EXPENSE_TRANSACTION_TYPES = frozenset({
     TransactionType.EXPENSE.value,
     TransactionType.ADVANCE.value,
     TransactionType.REIMBURSEMENT.value,
-    "Chi",
-    "Tạm ứng",
-    "Hoàn ứng",
 })
 
 

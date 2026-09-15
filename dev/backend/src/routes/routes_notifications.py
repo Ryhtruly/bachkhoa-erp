@@ -10,6 +10,7 @@ from src.db.models import Employee, User
 from src.services.timeline_realtime import notification_event_stream
 from src.core.redis_utils import get_cached_json, invalidate_cache, set_cached_json
 from src.contracts.workflow_runtime import flush_stale_review_batches
+from src.finance.enums import PENDING_STATUS_DB_VALUES, INCOME_TYPE_DB_VALUES
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
@@ -18,6 +19,8 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
     "Connection": "keep-alive",
 }
+
+_PENDING_CASHFLOW_SQL = "','".join(PENDING_STATUS_DB_VALUES)
 
 # Số phiếu xin bỏ giấy đang chờ của chính Hạng mục đó. Không đưa con số này lên
 # chuông thì Giám đốc mở lượt nghiệm thu ra mà không biết mình sắp cho qua một
@@ -120,7 +123,7 @@ _MANAGER_DEBT_REVIEW_QUERY = text(
 # thì kế toán bấm gửi xong là tiền rơi vào im lặng: giám đốc không biết có gì để
 # duyệt, kế toán không biết phiếu của mình đã đi tới đâu.
 _MANAGER_CASHFLOW_APPROVAL_QUERY = text(
-    """
+    f"""
     select t.id as voucher_id, t.transaction_type, t.amount,
            t.payer_payee_name, t.contract_id,
            coalesce(t.created_at, t.transaction_date::timestamptz) as created_at,
@@ -142,7 +145,7 @@ _MANAGER_CASHFLOW_APPROVAL_QUERY = text(
         order by n.created_at desc
         limit 1
     ) bg on true
-    where t.status in ('Chờ duyệt', 'PENDING', 'pending')
+    where t.status in ('{_PENDING_CASHFLOW_SQL}')
     order by coalesce(t.created_at, t.transaction_date::timestamptz) asc
     limit 50
     """
@@ -432,7 +435,7 @@ def get_notifications_summary(
     # ở chuông của người duyệt, không để nằm chờ vô hạn trong sổ quỹ.
     if check_user_permission(db, user, "finance", "approve"):
         for row in db.execute(_MANAGER_CASHFLOW_APPROVAL_QUERY).mappings().all():
-            is_receipt = row["transaction_type"] in ("Thu", "INCOME")
+            is_receipt = row["transaction_type"] in INCOME_TYPE_DB_VALUES
             voucher_label = "Phiếu thu" if is_receipt else "Phiếu chi"
             partner_name = row["payer_payee_name"] or "khách"
             items.append({

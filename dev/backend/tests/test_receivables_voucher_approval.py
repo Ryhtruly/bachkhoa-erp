@@ -32,38 +32,35 @@ from src.finance.services import (
 @pytest.mark.parametrize("status", sorted(PENDING_TX_STATUSES))
 def test_tc01_pending_vouchers_do_not_affect_receivables(status):
     """TC-01 — Phiếu Thu đang chờ duyệt tuyệt đối không được đụng vào công nợ."""
-    assert counts_toward_receivable(status, "Thu") is False
     assert counts_toward_receivable(status, "INCOME") is False
 
 
 @pytest.mark.parametrize("status", sorted(APPROVED_TX_STATUSES))
 def test_tc02_approved_vouchers_count_toward_receivables(status):
     """TC-02 — Chỉ phiếu đã duyệt mới được trừ công nợ."""
-    assert counts_toward_receivable(status, "Thu") is True
     assert counts_toward_receivable(status, "INCOME") is True
 
 
 def test_tc03_rejected_vouchers_do_not_count():
     """TC-03 — Phiếu bị từ chối không bao giờ được tính."""
-    assert counts_toward_receivable("Từ chối", "Thu") is False
+    assert counts_toward_receivable("REJECTED", "INCOME") is False
 
 
 def test_tc04_voided_vouchers_do_not_count():
     """TC-04 — Phiếu đã huỷ không được tính."""
-    assert counts_toward_receivable("Đã hủy", "Thu") is False
+    assert counts_toward_receivable("CANCELLED", "INCOME") is False
 
 
 def test_expense_vouchers_never_affect_receivables():
     """Công nợ là tiền khách nợ mình — phiếu Chi không liên quan."""
     for status in APPROVED_TX_STATUSES | PENDING_TX_STATUSES:
-        assert counts_toward_receivable(status, "Chi") is False
         assert counts_toward_receivable(status, "EXPENSE") is False
 
 
 def test_invalid_status_does_not_count():
     """Trạng thái lạ / rỗng thì mặc định là KHÔNG tính — an toàn về phía tiền."""
     for status in (None, "", "Nháp", "UNKNOWN"):
-        assert counts_toward_receivable(status, "Thu") is False
+        assert counts_toward_receivable(status, "INCOME") is False
 
 
 # ══════════════════════════════════════════════════════════════════

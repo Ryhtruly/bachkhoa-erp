@@ -9,6 +9,7 @@ import os
 import re
 import io
 import logging
+import tempfile
 from docxtpl import DocxTemplate
 
 from src.db.database import get_db
@@ -192,9 +193,6 @@ def update_lead_status(
         safe_id = contract_id.replace("/", "_").replace("\\", "_")
         safe_cust = re.sub(r'[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]', '_', customer.full_name if customer else 'KhachHang')
         output_filename = f"HopDong_{safe_id}_{safe_cust}.docx"
-        static_contracts_dir = os.path.join(os.path.dirname(__file__), "..", "..", "static", "contracts")
-        os.makedirs(static_contracts_dir, exist_ok=True)
-        output_path = os.path.join(static_contracts_dir, output_filename)
 
         formatted_price = f"{int(numeric_total_value):,}".replace(",", ".") + " VNĐ" if numeric_total_value > 0 else "Chưa báo giá"
         price_text = "Chưa báo giá"
@@ -225,10 +223,20 @@ def update_lead_status(
             try:
                 doc = DocxTemplate(template_path)
                 doc.render(context)
-                doc.save(output_path)
-                file_link = f"/static/contracts/{output_filename}"
-                with open(output_path, "rb") as f:
-                    doc_bytes = f.read()
+                with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as temporary:
+                    output_path = temporary.name
+                try:
+                    doc.save(output_path)
+                    with open(output_path, "rb") as f:
+                        doc_bytes = f.read()
+                finally:
+                    try:
+                        os.unlink(output_path)
+                    except FileNotFoundError:
+                        pass
+                # The document is stored in the private object store below;
+                # the browser must use the authorized contract endpoint.
+                file_link = f"/api/contracts/{contract_id}/document"
             except Exception as doc_err:
                 logger.warning("Không render được file docx: %s", doc_err)
 

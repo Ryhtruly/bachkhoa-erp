@@ -10,7 +10,13 @@ import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
-export default function ReceivablesScreen({ user }) {
+export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) {
+  const isDirector = isDirectorProp ?? (
+    user?.role === 'director' ||
+    user?.role === 'admin' ||
+    user?.role === 'system_admin' ||
+    user?.role === 'giam_doc'
+  );
   const printDocumentRef = useRef(null);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,8 +107,21 @@ export default function ReceivablesScreen({ user }) {
 
       return true;
     }).sort((a, b) => {
+      if (sort === 'payment_desc') {
+        const pDiff = (b.last_payment_date || '').localeCompare(a.last_payment_date || '');
+        if (pDiff !== 0) return pDiff;
+        return (b.contract_id || '').localeCompare(a.contract_id || '');
+      }
       if (sort === 'due_asc') {
-        return (a.due_date || '9999').localeCompare(b.due_date || '9999');
+        const aActive = (a.remaining_amount > 0 || a.is_overpaid) ? 1 : 0;
+        const bActive = (b.remaining_amount > 0 || b.is_overpaid) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive;
+
+        const cmp = (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31');
+        if (cmp !== 0) return cmp;
+        const pDiff = (b.last_payment_date || '').localeCompare(a.last_payment_date || '');
+        if (pDiff !== 0) return pDiff;
+        return (b.contract_id || '').localeCompare(a.contract_id || '');
       }
       if (sort === 'due_desc') {
         return (b.due_date || '').localeCompare(a.due_date || '');
@@ -135,7 +154,13 @@ export default function ReceivablesScreen({ user }) {
           reason: reason || `Chi hoàn trả tiền nộp thừa cho HĐ ${refundModal.contract_id}`
         })
       });
-      addToast(res.message || `Đã tạo phiếu chi hoàn tiền thừa ${fmt(refundModal.excess_amount)} (Chờ Giám đốc duyệt)`, 'success');
+      addToast(
+        res.message ||
+          (isDirector
+            ? `Đã duyệt và hoàn tiền thừa ${fmt(refundModal.excess_amount)} thành công`
+            : `Đã tạo phiếu chi hoàn tiền thừa ${fmt(refundModal.excess_amount)} (Chờ Giám đốc duyệt)`),
+        'success'
+      );
       setRefundModal(null);
       await load();
     } catch (err) {
@@ -196,11 +221,16 @@ export default function ReceivablesScreen({ user }) {
     { key: 'contract_id', label: 'Mã HĐ', width: 130, render: v => <strong style={{ fontFamily: 'var(--font-mono)' }}>{v}</strong> },
     { key: 'customer_name', label: 'Khách hàng', width: 160, render: (v, row) => <span>{v || row.customer || '—'}</span> },
     { key: 'total_value', label: 'Giá trị HĐ', width: 130, align: 'right', render: v => <span style={{ fontFamily: 'var(--font-mono)' }}>{fmt(v)}</span> },
-    { key: 'paid_amount', label: 'Đã thu', width: 130, align: 'right', render: (v, row) => (
+    { key: 'paid_amount', label: 'Đã thu', width: 135, align: 'right', render: (v, row) => (
       <div>
         <span style={{ fontFamily: 'var(--font-mono)', color: '#10b981', fontWeight: 600 }}>+{fmt(v)}</span>
         {row.excess_amount > 0 && (
           <div style={{ fontSize: '0.72rem', color: '#9333ea', fontWeight: 700 }}>Thừa +{fmt(row.excess_amount)}</div>
+        )}
+        {row.last_payment_date && (
+          <div style={{ fontSize: '0.70rem', color: 'var(--text-tertiary, #94a3b8)', marginTop: 1 }} title={`Thời gian thu gần nhất: ${row.last_payment_date}`}>
+            Mới thu: {row.last_payment_date.slice(0, 10).split('-').reverse().join('/')}
+          </div>
         )}
       </div>
     )},
@@ -403,7 +433,8 @@ export default function ReceivablesScreen({ user }) {
         sort={sort}
         onSortChange={setSort}
         sortOptions={[
-          { value: 'due_asc', label: 'Hạn thu gần nhất' },
+          { value: 'due_asc', label: 'Hạn thu gần nhất (Sắp đến hạn)' },
+          { value: 'payment_desc', label: 'Khoản thu gần nhất (Mới thu)' },
           { value: 'due_desc', label: 'Hạn thu xa nhất' },
           { value: 'debt_desc', label: 'Còn nợ nhiều nhất' },
           { value: 'debt_asc', label: 'Còn nợ ít nhất' },
@@ -454,14 +485,22 @@ export default function ReceivablesScreen({ user }) {
         isOpen={Boolean(refundModal)}
         onClose={() => setRefundModal(null)}
         onConfirm={handleRefundExcess}
-        title={`Lập phiếu hoàn tiền thừa cho HĐ ${refundModal?.contract_id}`}
+        title={
+          isDirector
+            ? `Hoàn tiền nộp thừa cho HĐ ${refundModal?.contract_id}`
+            : `Lập phiếu hoàn tiền thừa cho HĐ ${refundModal?.contract_id}`
+        }
         description={
           <div>
             Khách hàng đã nộp thừa <strong style={{ color: '#9333ea' }}>{fmt(refundModal?.excess_amount)}</strong> so với giá trị hợp đồng ({fmt(refundModal?.total_value)}).
-            Hệ thống sẽ tạo <strong>Phiếu Chi (PC)</strong> ở trạng thái <em>Chờ duyệt</em> để trình Giám đốc phê duyệt xuất quỹ.
+            {isDirector ? (
+              <> Khoản chi hoàn trả này sẽ được <strong>duyệt và trừ trực tiếp vào công nợ ngay lập tức</strong>.</>
+            ) : (
+              <> Hệ thống sẽ tạo <strong>Phiếu Chi (PC)</strong> ở trạng thái <em>Chờ duyệt</em> để trình Giám đốc phê duyệt xuất quỹ.</>
+            )}
           </div>
         }
-        actionLabel="Lập Phiếu Chi Hoàn Tiền"
+        actionLabel={isDirector ? "Duyệt & Hoàn Tiền" : "Lập Phiếu Chi Hoàn Tiền"}
         actionVariant="purple"
         requireReason={true}
         placeholderReason="Nhập ghi chú / số tài khoản nhận tiền hoàn của khách..."

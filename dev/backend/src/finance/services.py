@@ -28,6 +28,8 @@ from src.core.redis_utils import invalidate_money_caches
 from src.contracts.read_model import sync_contract_read_model_after_write
 from src.finance.enums import (
     TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
+    APPROVED_STATUS_SET, PENDING_STATUS_SET, APPROVED_STATUS_DB_VALUES,
+    INCOME_TYPE_DB_VALUES,
     normalize_transaction_type, normalize_status, normalize_payment_method, normalize_scope,
     get_transaction_type_label, get_status_label, get_payment_method_label
 )
@@ -37,10 +39,10 @@ from src.config.company_identity import COMPANY_REPRESENTATIVE
 # Chỉ phiếu đã duyệt mới được tính vào công nợ. Phiếu đang chờ duyệt không
 # đụng tới sổ nợ — nếu không, nhân viên gõ một phiếu khống là công nợ tự biến mất
 # mà chưa ai phê duyệt.
-APPROVED_TX_STATUSES = {TransactionStatus.COMPLETED.value, "Hoàn thành", "Đã duyệt", "COMPLETED", "approved", "Đã quyết toán"}
-PENDING_TX_STATUSES = {TransactionStatus.PENDING.value, "Chờ duyệt", "PENDING", "pending"}
+APPROVED_TX_STATUSES = APPROVED_STATUS_SET
+PENDING_TX_STATUSES = PENDING_STATUS_SET
 # Bộ giá trị chấp nhận cho loại phiếu Thu
-INCOME_TX_TYPES = {TransactionType.INCOME.value, "Thu", "INCOME"}
+INCOME_TX_TYPES = set(INCOME_TYPE_DB_VALUES)
 
 
 def _resolve_user_snapshot(db: Session, user_id: Optional[str]) -> dict | None:
@@ -90,7 +92,7 @@ def counts_toward_receivable(status: Optional[str], tx_type: Optional[str]) -> b
         return False
     c_type = normalize_transaction_type(tx_type)
     c_status = normalize_status(status)
-    return (c_type == TransactionType.INCOME.value) and (c_status == TransactionStatus.COMPLETED.value)
+    return (c_type == TransactionType.INCOME.value) and (c_status in APPROVED_TX_STATUSES)
 
 
 class FinanceService:
@@ -141,7 +143,7 @@ class FinanceService:
         request = db.query(AdvanceRequest).filter(AdvanceRequest.id == request_id).first()
         if not request:
             raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu tạm ứng.")
-        if request.status != "PENDING":
+        if normalize_status(request.status) != TransactionStatus.PENDING.value:
             raise HTTPException(status_code=400, detail=f"Yêu cầu đang ở trạng thái {request.status}, không thể duyệt lại.")
         if not approved and not (reason or "").strip():
             raise HTTPException(status_code=400, detail="Từ chối yêu cầu phải ghi rõ lý do.")
@@ -205,19 +207,87 @@ class FinanceService:
 
             contract_id = payload.contract_id.strip() if payload.contract_id and payload.contract_id.strip() else None
             project_id = payload.project_id.strip() if payload.project_id and payload.project_id.strip() else None
+
+            # Liên kết với khách hàng là tùy chọn đối với các khoản thu/chi
+            # ngoài hợp đồng. Khi người dùng đã chọn liên kết, backend vẫn
+            # phải kiểm tra toàn bộ chuỗi khách hàng -> hợp đồng -> hạng mục,
+            # không được tin các ID do client gửi lên một cách độc lập.
+            selected_customer_id = (
+                payload.customer_id.strip()
+                if getattr(payload, "customer_id", None) and payload.customer_id.strip()
+                else None
+            )
+            selected_customer = None
+            if selected_customer_id:
+                selected_customer = (
+                    db.query(Customer)
+                    .filter(Customer.id == selected_customer_id)
+                    .first()
+                )
+                if not selected_customer:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Khách hàng '{selected_customer_id}' không tồn tại.",
+                    )
+
+            counterparty_customer = selected_customer
+            if not counterparty_customer and payload.payer_payee:
+                counterparty_customer = (
+                    db.query(Customer)
+                    .filter(Customer.full_name == payload.payer_payee)
+                    .first()
+                )
+
             if contract_id:
                 validate_contract(db, contract_id)
             if project_id:
                 validate_project(db, project_id)
-            if not contract_id and payload.payer_payee:
-                cust = db.query(Customer).filter(Customer.full_name == payload.payer_payee).first()
-                if cust:
-                    c = db.query(Contract).filter(Contract.customer_id == cust.id).order_by(Contract.created_at.desc()).first()
-                    if c:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Phát hiện đối tác '{payload.payer_payee}' có Hợp đồng. Vui lòng chọn rõ Hợp đồng, không để trống."
-                        )
+
+            linked_contract = (
+                db.query(Contract).filter(Contract.id == contract_id).first()
+                if contract_id
+                else None
+            )
+            linked_project = (
+                db.query(ServiceLine).filter(ServiceLine.id == project_id).first()
+                if project_id
+                else None
+            )
+
+            if counterparty_customer and linked_contract:
+                if linked_contract.customer_id != counterparty_customer.id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Hợp đồng không thuộc khách hàng đã chọn.",
+                    )
+
+            if linked_contract and linked_project:
+                if linked_project.contract_id and linked_project.contract_id != linked_contract.id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Hạng mục không khớp với hợp đồng đã chọn.",
+                    )
+
+            # Một hạng mục luôn thuộc về một hợp đồng. Nếu người dùng chọn
+            # hạng mục mà không chọn lại hợp đồng, giữ liên kết đó thay vì
+            # biến hạng mục thành một ID rời rạc.
+            if linked_project and linked_project.contract_id and not contract_id:
+                contract_id = linked_project.contract_id
+                linked_contract = (
+                    db.query(Contract).filter(Contract.id == contract_id).first()
+                )
+                if counterparty_customer and linked_contract and linked_contract.customer_id != counterparty_customer.id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Hợp đồng không thuộc khách hàng đã chọn.",
+                    )
+
+            category_lower = category.lower()
+            if "chi hoàn trả khách hàng" in category_lower and not (contract_id or project_id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Chi hoàn trả khách hàng bắt buộc phải liên kết Hợp đồng hoặc Hạng mục.",
+                )
 
             # 5. Thu tiền hợp đồng phải đi đường có bill.
             # Màn Thu công nợ bắt buộc đính ảnh bill/biên lai; phiếu thu ở Sổ quỹ
@@ -254,12 +324,14 @@ class FinanceService:
                     if p:
                         project_id = p.id
 
-            # 7. Approval Workflow Status.  Creation and approval are separate
-            # actions even for the director, so a body/request cannot create a
-            # posted voucher without an explicit approve call.
-            tx_status = TransactionStatus.PENDING.value
+            # 7. Approval Workflow Status.
+            # Giám đốc/Admin tạo phiếu -> tự động hoàn thành (COMPLETED), không chờ duyệt
+            # Kế toán tạo phiếu chi -> chờ duyệt (PENDING)
+            is_director = check_is_director(db, actor.id) if actor else False
+            tx_status = TransactionStatus.COMPLETED.value if is_director else TransactionStatus.PENDING.value
             creator = actor_id or getattr(payload, 'created_by', None) or COMPANY_REPRESENTATIVE
-            approver = None
+            approver = actor_id if is_director else None
+            approved_at = datetime.now(timezone.utc) if is_director else None
 
             canon_type = normalize_transaction_type(payload.type)
             canon_pm = normalize_payment_method(payload.payment_method)
@@ -295,12 +367,13 @@ class FinanceService:
                 bank_balance_after=bal_ck,
                 created_by_user_id=creator,
                 approved_by_user_id=approver,
+                approved_at=approved_at,
                 status=tx_status,
                 scope=canon_scope,
                 signer_snapshot=(
                     capture_document_signer_snapshot(
                         db,
-                        creator,
+                        approver or creator,
                         counterparty={"name": payload.payer_payee},
                     )
                     if tx_status == TransactionStatus.COMPLETED.value else None
@@ -332,8 +405,17 @@ class FinanceService:
             # giám đốc bấm duyệt thì mới ghi nhận (xem approve_cashflow).
             if counts_toward_receivable(tx_status, payload.type) and contract_id:
                 FinanceService._sync_receivables(db, contract_id, payload.amount)
+                db.flush()
+                from src.contracts.workflow_runtime import auto_finalize_contract_handover_nodes
+                auto_finalize_contract_handover_nodes(
+                    db,
+                    contract_id=contract_id,
+                    actor_id=actor_id,
+                )
+                FinanceService._finalize_contract_after_full_payment(db, contract_id)
 
             db.commit()
+            invalidate_money_caches()
             return {"status": "success", "id": tc.id, "type": payload.type}
         except HTTPException:
             raise
@@ -370,7 +452,7 @@ class FinanceService:
             if clean_contract_id:
                 validate_contract(db, clean_contract_id)
 
-            if t.status in APPROVED_TX_STATUSES:
+            if normalize_status(t.status) in APPROVED_TX_STATUSES:
                 if hasattr(payload, 'contract_id') and payload.contract_id is not None:
                     if t.contract_id != clean_contract_id:
                         if t.transaction_type in INCOME_TX_TYPES:
@@ -454,7 +536,7 @@ class FinanceService:
             if not t:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
             
-            if t.status in (TransactionStatus.CANCELLED.value, "Đã hủy", "CANCELLED"):
+            if normalize_status(t.status) == TransactionStatus.CANCELLED.value:
                 raise HTTPException(status_code=400, detail="Phiếu này đã bị hủy trước đó.")
             
             cat_lower = (t.category_code or "").lower()
@@ -476,7 +558,7 @@ class FinanceService:
             # Huỷ một phiếu còn "Chờ duyệt" mà vẫn cộng ngược sẽ thổi phồng công nợ.
             if t.contract_id:
                 cat_desc = f"{t.category_code or ''} {t.description or ''}".lower()
-                is_approved_refund = (old_status in APPROVED_TX_STATUSES) and (t.transaction_type in {"Chi", "EXPENSE"}) and any(k in cat_desc for k in ["hoàn", "refund", "trả lại"])
+                is_approved_refund = (normalize_status(old_status) in APPROVED_TX_STATUSES) and (normalize_transaction_type(t.transaction_type) == TransactionType.EXPENSE.value) and any(k in cat_desc for k in ["hoàn", "refund", "trả lại"])
                 if was_counted:
                     FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
                 elif is_approved_refund:
@@ -553,9 +635,11 @@ class FinanceService:
                 if p: contract_id = p.contract_id
 
             creator = actor_id or COMPANY_REPRESENTATIVE
-            # A director-approved request is the approval; the accountant's
-            # issuance is the official, posted voucher.
-            tx_status = TransactionStatus.COMPLETED.value if request else TransactionStatus.PENDING.value
+            is_director = check_is_director(db, actor_id) if actor_id else False
+            # A director-approved request is the approval; director direct issuance is also approved.
+            tx_status = TransactionStatus.COMPLETED.value if (request or is_director) else TransactionStatus.PENDING.value
+            approved_by = request.reviewed_by_user_id if request else (actor_id if is_director else None)
+            approved_at = request.reviewed_at if request else (datetime.now(timezone.utc) if is_director else None)
 
             tc = CashflowTransaction(
                 id=new_id,
@@ -574,8 +658,8 @@ class FinanceService:
                 cash_balance_after=bal_tm,
                 bank_balance_after=bal_ck,
                 created_by_user_id=creator,
-                approved_by_user_id=request.reviewed_by_user_id if request else None,
-                approved_at=request.reviewed_at if request else None,
+                approved_by_user_id=approved_by,
+                approved_at=approved_at,
                 status=tx_status,
                 signer_snapshot=(
                     capture_document_signer_snapshot(
@@ -618,12 +702,13 @@ class FinanceService:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu tạm ứng")
 
             if (
-                advance.transaction_type == TransactionType.REIMBURSEMENT.value
+                normalize_status(advance.status) == TransactionStatus.SETTLED.value
+                or advance.transaction_type == TransactionType.REIMBURSEMENT.value
                 or "Quyết toán ngày" in (advance.description or "")
             ):
                 raise HTTPException(status_code=400, detail="Phiếu tạm ứng này đã được quyết toán.")
 
-            if advance.status not in APPROVED_TX_STATUSES and advance.status != "Hoàn thành" and advance.status != TransactionStatus.COMPLETED.value:
+            if normalize_status(advance.status) not in APPROVED_TX_STATUSES:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Không thể quyết toán phiếu tạm ứng đang ở trạng thái '{advance.status}'. Phiếu phải được duyệt chi (Hoàn thành) trước khi quyết toán."
@@ -635,7 +720,7 @@ class FinanceService:
             auto_vouchers = []
 
             # 1. Mark original advance as resolved and append settlement note
-            advance.status = TransactionStatus.COMPLETED.value
+            advance.status = TransactionStatus.SETTLED.value
             if not advance.signer_snapshot:
                 advance.signer_snapshot = capture_document_signer_snapshot(
                     db,
@@ -653,6 +738,10 @@ class FinanceService:
 
             # 2. Only create cashflow vouchers if there is a real cash difference (Hoàn ứng thừa hoặc Chi bù thiếu)
             if abs(diff) > 0:
+                is_director = check_is_director(db, actor_id) if actor_id else False
+                status_val = TransactionStatus.COMPLETED.value if is_director else TransactionStatus.PENDING.value
+                approved_by = actor_id if is_director else None
+                approved_at = datetime.now(timezone.utc) if is_director else None
                 vtype = TransactionType.INCOME.value if diff > 0 else TransactionType.EXPENSE.value
                 cat_code = "Thu hoàn tiền tạm ứng thừa" if diff > 0 else "Chi bù tiền tạm ứng thiếu"
                 note_prefix = "Thu hoàn ứng thừa" if diff > 0 else "Chi bù tạm ứng thiếu"
@@ -677,8 +766,16 @@ class FinanceService:
                     cash_balance_after=bal_tm,
                     bank_balance_after=bal_ck,
                     created_by_user_id=creator,
-                    status=TransactionStatus.PENDING.value,
-                    signer_snapshot=None,
+                    approved_by_user_id=approved_by,
+                    approved_at=approved_at,
+                    status=status_val,
+                    signer_snapshot=(
+                        capture_document_signer_snapshot(
+                            db,
+                            actor_id,
+                            counterparty={"name": advance.payer_payee_name},
+                        ) if is_director else None
+                    ),
                 )
                 db.add(tc)
                 auto_vouchers.append({"id": tc.id, "type": vtype, "amount": abs(diff), "purpose": note_prefix})
@@ -698,6 +795,7 @@ class FinanceService:
             )
 
             db.commit()
+            invalidate_money_caches()
             return {
                 "status": "success", "advance_amount": adv_amt,
                 "actual_amount": actual, "difference": diff,
@@ -948,12 +1046,13 @@ class FinanceService:
         Nghiệm thu chuyên môn có thể xảy ra trước nếu Giám đốc duyệt ngoại lệ,
         nhưng workflow/hợp đồng chỉ được đánh dấu hoàn thành khi không còn nợ.
         """
+        approved_status_sql = "'" + "','".join(APPROVED_STATUS_DB_VALUES) + "'"
         balance = db.execute(
-            text("""
+            text(f"""
                 select coalesce(c.total_value, 0) as total_value,
                        coalesce(sum(t.amount) filter (
-                           where t.transaction_type in ('Thu', 'INCOME')
-                             and t.status in ('Hoàn thành', 'Đã duyệt', 'COMPLETED', 'approved')
+                           where t.transaction_type in ({','.join(repr(v) for v in INCOME_TYPE_DB_VALUES)})
+                             and t.status in ({approved_status_sql})
                        ), 0) as paid
                 from public.contracts c
                 left join public.cashflow_transactions t on t.contract_id = c.id
@@ -1012,9 +1111,10 @@ class FinanceService:
             t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
             if not t:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
-            if t.status in APPROVED_TX_STATUSES:
+            current_status = normalize_status(t.status)
+            if current_status in APPROVED_TX_STATUSES:
                 raise HTTPException(status_code=400, detail="Phiếu này đã được duyệt rồi")
-            if t.status not in PENDING_TX_STATUSES:
+            if current_status not in PENDING_TX_STATUSES:
                 raise HTTPException(status_code=400, detail=f"Phiếu đang ở trạng thái '{t.status}', không duyệt được")
 
             check_closed_period(db, t.transaction_date or date.today())
@@ -1078,7 +1178,7 @@ class FinanceService:
             t = db.query(CashflowTransaction).filter(CashflowTransaction.id == transaction_id).first()
             if not t:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu")
-            if t.status not in PENDING_TX_STATUSES:
+            if normalize_status(t.status) not in PENDING_TX_STATUSES:
                 raise HTTPException(status_code=400, detail=f"Chỉ từ chối được phiếu đang chờ duyệt (hiện: '{t.status}')")
 
             t.status = TransactionStatus.REJECTED.value

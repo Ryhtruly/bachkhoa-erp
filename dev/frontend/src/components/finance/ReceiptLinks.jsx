@@ -1,6 +1,8 @@
 import { FileText, Paperclip, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { getAccessToken } from '../../lib/api'
+import './receipts.css'
 
 const normalizedAttachments = (attachments, legacyUrl) => {
   if (Array.isArray(attachments) && attachments.length > 0) return attachments
@@ -13,6 +15,20 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
   const items = normalizedAttachments(attachments, legacyUrl)
 
   useEffect(() => () => { if (previewReceipt?.objectUrl) URL.revokeObjectURL(previewReceipt.objectUrl) }, [previewReceipt])
+
+  useEffect(() => {
+    if (!previewReceipt) return undefined
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') handleClosePreview()
+    }
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [previewReceipt])
 
   const openProtected = async (item) => {
     setOpeningId(item.id)
@@ -66,7 +82,7 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
         })}
       </span>
 
-      {previewReceipt && (
+      {previewReceipt && typeof document !== 'undefined' && createPortal(
         <div className="bill-viewer" role="dialog" aria-modal="true" aria-label={previewReceipt.filename}
           onClick={handleClosePreview}>
           <div className="bill-viewer__box" onClick={(event) => event.stopPropagation()}>
@@ -79,7 +95,8 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
               ? <iframe title={previewReceipt.filename} src={previewReceipt.objectUrl} />
               : <img src={previewReceipt.objectUrl} alt={previewReceipt.filename} />}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )

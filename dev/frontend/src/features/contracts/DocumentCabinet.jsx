@@ -7,7 +7,7 @@ import useChecklistCabinet from '../document-cabinet/useChecklistCabinet'
 import { getAccessToken } from '../../lib/api'
 import './documentCabinet.css'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
 /** Tủ hồ sơ read-only của một Hạng mục; không phải Sổ/Mẫu giấy tờ. */
 export default function DocumentCabinet({ contractId, serviceLines = [], addToast, title = 'TỦ HỒ SƠ' }) {

@@ -102,4 +102,11 @@ describe('printElement', () => {
     expect(financeReportStyles).toMatch(/\.finance-print-table\s*\{[^}]*table-layout:\s*fixed;/s);
     expect(DEFAULT_PRINT_STYLES).toMatch(/\.finance-print-table\s*\{[^}]*table-layout:\s*fixed !important;/s);
   });
+
+  it('ensures table headers wrap cleanly without overflowing into adjacent columns', () => {
+    expect(financeReportStyles).toMatch(/\.finance-print-document \.finance-print-table th\s*\{[^}]*white-space:\s*normal !important;/s);
+    expect(DEFAULT_PRINT_STYLES).toMatch(/\.finance-print-table th\s*\{[^}]*white-space:\s*normal !important;/s);
+    expect(financeReportStyles).toMatch(/\.finance-print-document \.finance-print-table td\.is-right\s*\{[^}]*white-space:\s*nowrap !important;/s);
+    expect(DEFAULT_PRINT_STYLES).toMatch(/\.finance-print-table td\.is-right\s*\{[^}]*white-space:\s*nowrap !important;/s);
+  });
 });

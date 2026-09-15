@@ -6,7 +6,7 @@ No authentication required — publicly accessible for prospects and external fo
 import uuid
 import datetime
 from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -15,24 +15,25 @@ from src.db.database import get_db
 from src.db.models.crm import Customer, CustomerIntakeSubmission, LeadPipeline
 from src.db.models.auth import Notification, User, Role, UserRole
 from src.services import telegram_service
+from src.core.redis_utils import consume_rate_limit
 
 router = APIRouter(prefix="/api/intake", tags=["12. Public Customer Intake"])
 
 
 class LeadIntakeSchema(BaseModel):
-    customer_name: str = Field(..., min_length=2, description="Họ và tên khách hàng hoặc tên công ty")
-    phone: str = Field(..., min_length=8, description="Số điện thoại liên hệ")
-    address: Optional[str] = Field(None, description="Địa chỉ liên hệ / thường trú của khách")
-    service_package_id: Optional[str] = Field(None, description="Mã gói dịch vụ (sp_001, sp_002, sp_003)")
-    service_type: Optional[str] = Field("Tư vấn chung", description="Tên hạng mục dịch vụ cụ thể")
-    scale_info: Optional[str] = Field(None, description="Quy mô / Diện tích / Số mốc / Số thửa")
-    target_property_address: Optional[str] = Field(None, description="Địa chỉ thửa đất hoặc công trình")
-    tax_id: Optional[str] = Field(None, description="Mã số thuế hoặc CCCD")
-    email: Optional[str] = Field(None, description="Email nhận file mềm / hợp đồng")
-    notes: Optional[str] = Field(None, description="Ghi chú thêm của khách hàng")
-    source: Optional[str] = Field("Web Form (Zalo)", description="Nguồn gửi (Web Form, Google Form, Zalo OA...)")
-    google_form_id: Optional[str] = None
-    google_response_id: Optional[str] = None
+    customer_name: str = Field(..., min_length=2, max_length=200, description="Họ và tên khách hàng hoặc tên công ty")
+    phone: str = Field(..., min_length=8, max_length=30, description="Số điện thoại liên hệ")
+    address: Optional[str] = Field(None, max_length=500, description="Địa chỉ liên hệ / thường trú của khách")
+    service_package_id: Optional[str] = Field(None, max_length=100, description="Mã gói dịch vụ (sp_001, sp_002, sp_003)")
+    service_type: Optional[str] = Field("Tư vấn chung", max_length=200, description="Tên hạng mục dịch vụ cụ thể")
+    scale_info: Optional[str] = Field(None, max_length=500, description="Quy mô / Diện tích / Số mốc / Số thửa")
+    target_property_address: Optional[str] = Field(None, max_length=500, description="Địa chỉ thửa đất hoặc công trình")
+    tax_id: Optional[str] = Field(None, max_length=50, description="Mã số thuế hoặc CCCD")
+    email: Optional[str] = Field(None, max_length=320, description="Email nhận file mềm / hợp đồng")
+    notes: Optional[str] = Field(None, max_length=2000, description="Ghi chú thêm của khách hàng")
+    source: Optional[str] = Field("Web Form (Zalo)", max_length=100, description="Nguồn gửi (Web Form, Google Form, Zalo OA...)")
+    google_form_id: Optional[str] = Field(None, max_length=200)
+    google_response_id: Optional[str] = Field(None, max_length=200)
 
 
 def _normalize_phone(raw_phone: str) -> str:
@@ -120,6 +121,7 @@ def get_intake_service_options(db: Session = Depends(get_db)):
 @router.post("/lead")
 def submit_lead_intake(
     data: LeadIntakeSchema,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Tiếp nhận thông tin khách hàng từ Web Form / Zalo / Google Form.
@@ -129,6 +131,15 @@ def submit_lead_intake(
     3. Tạo bản ghi Lead mới trong LeadPipeline (trạng thái: Tiếp cận).
     4. Bắn thông báo Telegram (nếu có cấu hình) và chuông thông báo nội bộ ERP.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:public-intake:{client_ip}",
+        limit=5,
+        window_seconds=60,
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Bạn gửi yêu cầu quá nhanh. Vui lòng thử lại sau.")
+
     phone = _normalize_phone(data.phone)
     if len(phone) < 8:
         raise HTTPException(status_code=400, detail="Số điện thoại không hợp lệ. Vui lòng kiểm tra lại.")

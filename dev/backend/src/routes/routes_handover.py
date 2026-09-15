@@ -33,6 +33,8 @@ from src.core.redis_utils import (
     redis_distributed_lock, get_cached_json, set_cached_json,
     invalidate_cache, invalidate_money_caches,
 )
+
+MAX_HANDOVER_PACKAGE_BYTES = 100 * 1024 * 1024
 from src.services.storage_service import (
     BUCKET as MINIO_BUCKET,
     ENDPOINT as MINIO_ENDPOINT,
@@ -355,6 +357,7 @@ def download_handover_package(
 
     buffer = io.BytesIO()
     external_links: list[str] = []
+    package_bytes = 0
     static_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "static"))
 
     def _fetch_file_content(url: str):
@@ -392,6 +395,12 @@ def download_handover_package(
                 logger.warning("Không lấy được tệp cho gói bàn giao: %s", url)
                 content = None
             if content:
+                package_bytes += len(content)
+                if package_bytes > MAX_HANDOVER_PACKAGE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Gói tài liệu bàn giao vượt quá giới hạn 100MB.",
+                    )
                 filename = os.path.basename(item["ten"]) or f"tai_lieu_{i}"
                 zf.writestr(f"{item['nhom']}/{i:02d}_{filename}", content)
             else:

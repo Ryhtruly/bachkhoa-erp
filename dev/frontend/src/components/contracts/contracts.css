@@ -2667,7 +2667,22 @@
 
 .workflow-review-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #fde68a; border-radius: 12px; background: #fffbeb; }
 [data-theme='dark'] .workflow-review-card { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.3); }
-.workflow-review-card__hint { color: var(--text-tertiary); font-weight: 500; text-transform: none; letter-spacing: 0; }
+.workflow-review-card__hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-left: 6px;
+  padding: 1px 8px;
+  background: rgba(100, 116, 139, 0.08);
+  border: 1px solid var(--border-subtle, rgba(226, 232, 240, 0.7));
+  border-radius: 999px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
 .workflow-review-card__title { display: flex; align-items: center; gap: 6px; color: #b45309; font-size: 13px; font-weight: 700; }
 .workflow-review-card label { display: grid; gap: 4px; margin: 0; font-size: 12px; font-weight: 650; }
 .workflow-review-card__actions { display: flex; gap: 8px; }

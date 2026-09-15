@@ -22,7 +22,7 @@ const STATUS_OPTIONS = [
   { value: 'Đã hủy', label: 'Đã hủy' }
 ];
 
-export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser, focusVoucher = null }) {
+export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser, focusVoucher = null, onFocusVoucherConsumed }) {
   const printDocumentRef = useRef(null);
   const { addToast } = useToast();
   const [data, setData] = useState([]);
@@ -48,8 +48,10 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   // Bấm thông báo "phiếu chờ duyệt" thì mở thẳng phiếu đó. Modal tự tải theo mã
   // phiếu nên không phụ thuộc bộ lọc tháng / hình thức thanh toán đang chọn.
   useEffect(() => {
-    if (focusVoucher?.id) setDetailId(focusVoucher.id);
-  }, [focusVoucher?.id, focusVoucher?.nonce]);
+    if (!focusVoucher?.id) return;
+    setDetailId(focusVoucher.id);
+    onFocusVoucherConsumed?.(focusVoucher.id);
+  }, [focusVoucher?.id, focusVoucher?.nonce, onFocusVoucherConsumed]);
 
   const isDirector = propIsDirector !== undefined
     ? propIsDirector

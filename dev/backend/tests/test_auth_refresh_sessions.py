@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from src.config.settings import settings
+from src.config.settings import Settings, settings
 from src.core.auth import hash_password
 from src.core import refresh_sessions as refresh_session_service
 from src.core.refresh_sessions import (
@@ -28,6 +28,22 @@ def _create_user(db):
     db.commit()
     db.refresh(user)
     return user
+
+
+def test_development_cors_accepts_both_loopback_frontend_origins(monkeypatch):
+    monkeypatch.setattr(Settings, "ENV", "development")
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173/")
+
+    origins = Settings().cors_origins
+
+    assert "http://localhost:3000" in origins
+    assert "http://localhost:5173" in origins
+    assert "http://127.0.0.1:3000" in origins
+    assert "http://127.0.0.1:5173" in origins
+    assert all(not origin.endswith("/") for origin in origins if origin != "*")
+
+    monkeypatch.setattr(Settings, "ENV", "production")
+    assert "http://127.0.0.1:3000" not in Settings().cors_origins
 
 
 def test_issue_refresh_session_stores_only_a_hash(db):
@@ -199,6 +215,25 @@ def test_logout_revokes_the_refresh_session(client, db):
     assert logout_response.status_code == 200
     assert logout_response.json() == {"ok": True}
     assert client.post("/api/auth/refresh").status_code == 401
+    client.cookies.clear()
+
+
+def test_refresh_accepts_loopback_browser_origin_in_development(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "ENV", "development")
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3000")
+    client.cookies.clear()
+    user = _create_user(db)
+    assert client.post(
+        "/api/auth/login",
+        json={"username": user.username, "password": "password123"},
+    ).status_code == 200
+
+    response = client.post(
+        "/api/auth/refresh",
+        headers={"Origin": "http://127.0.0.1:3000"},
+    )
+
+    assert response.status_code == 200
     client.cookies.clear()
 
 

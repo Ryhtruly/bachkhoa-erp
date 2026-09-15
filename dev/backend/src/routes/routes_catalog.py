@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.core.auth import require_authenticated_user, check_user_permission, User
+from src.core.auth import require_authenticated_user, check_user_permission, require_permission, User
 from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
 from src.db.database import get_db
 
@@ -140,8 +140,6 @@ def create_service_package(
     pkg_id = f"sp_{uuid.uuid4().hex[:8]}"
     db.execute(
         text("""
-            insert into public.service_packages (id, name, description, display_order, is_active, category_type)
-            values (:id, :name, :description, :display_order, true, :category_type)
             insert into public.service_packages (id, name, description, display_order, is_active, category_type, color)
             values (:id, :name, :description, :display_order, true, :category_type, :color)
         """),
@@ -156,7 +154,6 @@ def create_service_package(
     )
     db.commit()
     invalidate_catalog_cache()
-    return {"data": {"id": pkg_id, "name": payload.name.strip()}}
     return {"data": {"id": pkg_id, "name": payload.name.strip(), "color": payload.color or "#3b82f6"}}
 
 
@@ -236,8 +233,6 @@ def create_task_type(
     cat_type = (payload.category_type or pkg["category_type"] or "GENERAL").strip().upper()
     db.execute(
         text("""
-            insert into public.task_types (id, service_package_id, name, code, category_type, display_order, is_active)
-            values (:id, :service_package_id, :name, :code, :category_type, :display_order, true)
             insert into public.task_types (id, service_package_id, name, code, category_type, display_order, color, is_active)
             values (:id, :service_package_id, :name, :code, :category_type, :display_order, :color, true)
         """),
@@ -253,7 +248,6 @@ def create_task_type(
     )
     db.commit()
     invalidate_catalog_cache()
-    return {"data": {"id": task_type_id, "name": payload.name.strip(), "code": code}}
     return {"data": {"id": task_type_id, "name": payload.name.strip(), "code": code, "color": payload.color or "#10b981"}}
 
 
@@ -317,7 +311,7 @@ def delete_task_type(
 @router.get("/work-items")
 def list_work_items(
     db: Session = Depends(get_db),
-    _: User = Depends(require_authenticated_user),
+    _: User = Depends(require_permission("finance", "read")),
 ):
     """Danh mục công việc khoán (work_items) kèm định mức lương khoán đã ban hành."""
     rows = db.execute(
