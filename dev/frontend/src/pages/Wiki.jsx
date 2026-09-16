@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow } from '../components/ui';
-import { getAccessToken } from '../lib/api';
+import { apiFetch, getAccessToken } from '../lib/api';
 import { fetchProtectedDocumentBlob } from '../lib/fileSave';
 
 export default function Wiki() {
@@ -31,22 +31,23 @@ export default function Wiki() {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        page,
-        page_size: 10
+        page: String(page),
+        page_size: '10',
       });
       if (searchQuery) params.append('search', searchQuery);
       if (categoryFilter && categoryFilter !== 'Tất cả') params.append('category', categoryFilter);
 
-      const res = await fetch(`/api/wiki/?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDocuments(data.data || []);
-        if (data.meta) {
-          setTotalPages(data.meta.total_pages);
-        }
+      const data = await apiFetch(`/api/wiki/?${params.toString()}`);
+      setDocuments(data.data || []);
+      setTotalPages(data.meta?.total_pages || 1);
+    } catch (error) {
+      if (error?.status === 403) {
+        showMessage('Bạn không có quyền xem tài liệu Wiki.', 'error');
+      } else if (error?.status === 401) {
+        showMessage('Phiên đăng nhập đã hết hạn.', 'error');
+      } else {
+        showMessage('Không thể tải dữ liệu Wiki.', 'error');
       }
-    } catch {
-      showMessage('Lỗi tải danh sách tài liệu', 'error');
     } finally {
       setLoading(false);
     }
@@ -79,22 +80,23 @@ export default function Wiki() {
       data.append('category', formData.category);
       data.append('file', selectedFile);
 
-      const res = await fetch('/api/wiki/upload', {
+      await apiFetch('/api/wiki/upload', {
         method: 'POST',
-        body: data
+        body: data,
       });
-      if (res.ok) {
-        showMessage('Đăng tài liệu thành công!', 'success');
-        setIsModalOpen(false);
-        setFormData({ id: '', title: '', category: 'Quy trình ISO' });
-        setSelectedFile(null);
-        fetchWiki();
+      showMessage('Đăng tài liệu thành công!', 'success');
+      setIsModalOpen(false);
+      setFormData({ id: '', title: '', category: 'Quy trình ISO' });
+      setSelectedFile(null);
+      fetchWiki();
+    } catch (error) {
+      if (error?.status === 403) {
+        showMessage('Bạn không có quyền thêm tài liệu Wiki.', 'error');
+      } else if (error?.status === 401) {
+        showMessage('Phiên đăng nhập đã hết hạn.', 'error');
       } else {
-        const err = await res.json();
-        showMessage('Lỗi: ' + (err.detail || 'Không thể lưu tài liệu'), 'error');
+        showMessage(error?.message || 'Không thể lưu tài liệu', 'error');
       }
-    } catch {
-      showMessage('Lỗi kết nối máy chủ', 'error');
     } finally {
       setSubmitting(false);
     }

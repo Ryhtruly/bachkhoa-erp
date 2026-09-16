@@ -51,3 +51,10 @@ dev/backend/scripts/
 # Backup binaries and sample business documents
 backups/*.xlsx
 backups/backup_v1/static/generated_contracts/*.docx
+backups/backup_v1/static/*.pdf
+backups/backup_v1/static/*.png
+backups/backup_v1/templates/*.docx
+
+# Migration and operational data dumps
+dev/backend/backups/
+**/backup_pre_migration_*.json

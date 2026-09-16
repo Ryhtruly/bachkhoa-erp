@@ -25,13 +25,14 @@ describe('Wiki private documents', () => {
       if (String(url).startsWith('/api/wiki/?')) {
         return {
           ok: true,
+          status: 200,
           json: async () => ({
             data: [{ id: 'BK-HS001', title: 'Sổ tay nội bộ', category: 'Sổ tay nhân sự' }],
             meta: { total_pages: 1 },
           }),
         }
       }
-      return { ok: true, blob: async () => documentBlob }
+      return { ok: true, status: 200, blob: async () => documentBlob }
     })
     setAccessToken('wiki-access-token')
     const viewer = { location: { href: '' }, close: vi.fn() }
@@ -52,5 +53,43 @@ describe('Wiki private documents', () => {
       )
     })
     expect(viewer.location.href).toBe('blob:private-wiki')
+  })
+
+  it('shows permission error toast when fetching wiki returns 403', async () => {
+    global.fetch = vi.fn(async (url) => {
+      if (String(url).startsWith('/api/wiki/?')) {
+        return {
+          ok: false,
+          status: 403,
+          json: async () => ({ detail: "Không có quyền 'read' trên tài nguyên 'wiki'" }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+
+    render(<Wiki />)
+
+    await waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith('Bạn không có quyền xem tài liệu Wiki.', 'error')
+    })
+  })
+
+  it('shows session expired error toast when fetching wiki returns 401', async () => {
+    global.fetch = vi.fn(async (url) => {
+      if (String(url).startsWith('/api/wiki/?') || String(url).startsWith('/api/auth/refresh')) {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ detail: 'Phiên đăng nhập hết hạn' }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+
+    render(<Wiki />)
+
+    await waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith('Phiên đăng nhập đã hết hạn.', 'error')
+    })
   })
 })

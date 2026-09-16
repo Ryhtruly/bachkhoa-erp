@@ -61,9 +61,21 @@ describe('Sidebar responsive navigation', () => {
     expect(props.setActiveTab).not.toHaveBeenCalled()
   })
 
-  it('hides the Human Resources tab from accountants even when HR permission is present', () => {
-    renderSidebar({ roleName: 'accountant', isDirector: false })
+  it('allows accountants to see the tab when wiki permission is present', () => {
+    renderSidebar({ roleName: 'accountant', isDirector: false, permissions: { wiki: true } })
+
+    expect(screen.getByRole('button', { name: 'Nhân Sự & Đào Tạo' })).toBeInTheDocument()
+  })
+
+  it('hides the tab when neither HR nor wiki permission is present', () => {
+    renderSidebar({ roleName: 'accountant', isDirector: false, permissions: { finance: true } })
 
     expect(screen.queryByRole('button', { name: 'Nhân Sự & Đào Tạo' })).not.toBeInTheDocument()
+  })
+
+  it('renders Đào Tạo & ISO in employee mode when wiki permission is present', () => {
+    renderSidebar({ mode: 'employee', permissions: { wiki: true } })
+
+    expect(screen.getByRole('button', { name: 'Đào Tạo & ISO' })).toBeInTheDocument()
   })
 })

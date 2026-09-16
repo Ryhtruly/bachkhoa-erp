@@ -13,14 +13,9 @@ KB_CACHE = {
 CACHE_TTL = 300  # 5 minutes
 MAX_KB_CHARS = 8000
 
-def _redact_sensitive_content(text: str) -> str:
-    """Loại bỏ mật khẩu, token, thông tin nhạy cảm trước khi đưa vào prompt LLM ngoại vi."""
-    import re
-    # Mask credit card numbers
-    text = re.sub(r'\b(?:\d[ -]*?){13,16}\b', '[REDACTED_CARD]', text)
-    # Mask password / token patterns
-    text = re.sub(r'(?i)(password|matkhau|mật khẩu|token|api[_-]?key)\s*[:=]\s*[^\s,;]+', r'\1: [REDACTED]', text)
-    return text
+from src.core.dlp import redact_sensitive_content
+
+_redact_sensitive_content = redact_sensitive_content
 
 def get_knowledge_base(sheet_id: str, service_account_json: str) -> str:
     """Reads Knowledge Base from Google Sheets and caches it."""
@@ -83,7 +78,7 @@ async def ask_chatbot(
     knowledge_parts = []
     if wiki_context:
         wiki_section = "\n\n".join(
-            f"[{c['category']}] {c['doc_title']}:\n{c['content']}"
+            f"[{c.get('category', 'Wiki')}] {c.get('doc_title', 'Tài liệu')}:\n{redact_sensitive_content(c.get('content', ''))}"
             for c in wiki_context
         )
         knowledge_parts.append(f"TÀI LIỆU NỘI BỘ (Wiki):\n{wiki_section}")
@@ -105,7 +100,14 @@ NHIỆM VỤ CỦA BẠN:
 4. NẾU người dùng dùng từ ngữ thô tục, xúc phạm hoặc yêu cầu "gặp nhân viên thật", BẮT BUỘC trả về "[UNSAFE_TRANSFER]".
 5. Chỉ trả về CÂU TRẢ LỜI CỦA BẠN (không kèm theo giải thích thừa)."""
     
-    messages = [{"role": "system", "content": system_prompt}] + history
+    safe_history = [
+        {
+            "role": m.get("role", "user"),
+            "content": redact_sensitive_content(m.get("content", ""))
+        }
+        for m in history
+    ]
+    messages = [{"role": "system", "content": system_prompt}] + safe_history
     
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:

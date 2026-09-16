@@ -26,10 +26,37 @@ không dùng `*` khi dùng cookie credentials. Ví dụ:
 CORS_ORIGINS=https://erp.example.com,https://bachkhoa-erp.netlify.app
 ```
 
-Nếu trình duyệt gọi trực tiếp `https://bendbk.wiai.vn` từ một frontend khác
-site, đổi `AUTH_COOKIE_SAMESITE=none` và giữ `AUTH_COOKIE_SECURE=true`. Nếu
-frontend gọi `/api/*` qua reverse proxy Netlify cùng origin, `lax` là lựa chọn
-phù hợp hơn.
+### Kiến trúc triển khai & Xử lý Safari / macOS
+
+Trình duyệt Safari trên macOS/iOS có cơ chế bảo vệ ITP (Intelligent Tracking Prevention) tự động chặn hoặc cô lập cookie cross-site (`SameSite=None`). Do đó, nếu Frontend nằm ở domain khác Backend (ví dụ frontend trên Netlify và backend trên server riêng), Safari có thể không gửi refresh cookie khi access token hết hạn, dẫn đến phiên đăng nhập bị ngắt bất ngờ và user bị đẩy về màn hình đăng nhập (mặc dù token và refresh session trên server vẫn hợp lệ).
+
+Để khắc phục triệt để, có 2 phương án cấu hình:
+
+#### Phương án 1: Same-Origin / Reverse Proxy (Khuyến nghị cao nhất)
+Chuyển Frontend và Backend về chung origin, hoặc dùng Reverse Proxy (Nginx, Netlify Proxy) để map đường dẫn `/api/*` về backend:
+- Trong Netlify `_redirects`:
+  ```text
+  /api/*  https://api.yourdomain.com/api/:splat  200
+  /*      /index.html                            200
+  ```
+- Hoặc cấu hình Nginx reverse proxy cùng domain `https://erp.yourdomain.com`.
+- Khi đó, trình duyệt coi cookie là **First-Party** (`SameSite=Lax`), hoàn toàn không bị Safari ITP chặn:
+  ```dotenv
+  AUTH_COOKIE_SECURE=true
+  AUTH_COOKIE_SAMESITE=lax
+  AUTH_COOKIE_DOMAIN=
+  ```
+
+#### Phương án 2: Cross-Site (Frontend Netlify riêng, Backend riêng biệt)
+Nếu tạm thời chưa gom domain và gọi trực tiếp `https://bendbk.wiai.vn`:
+- Bắt buộc phải cấu hình:
+  ```dotenv
+  CORS_ORIGINS=https://bachkhoa-erp.netlify.app
+  AUTH_COOKIE_SECURE=true
+  AUTH_COOKIE_SAMESITE=none
+  AUTH_COOKIE_DOMAIN=
+  ```
+- *Lưu ý*: Với thiết lập này, người dùng Safari cần bảo đảm không bật chế độ chặn toàn bộ third-party cookie trong cài đặt trình duyệt, và nên sớm chuyển sang Phương án 1.
 
 ## Migration và rollout
 

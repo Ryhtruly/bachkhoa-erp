@@ -30,6 +30,7 @@ const Contracts = lazy(() => import('./pages/Contracts'));
 const Cashflow = lazy(() => import('./pages/Cashflow'));
 const KPI = lazy(() => import('./pages/KPI'));
 const HumanResources = lazy(() => import('./pages/HumanResources'));
+const Wiki = lazy(() => import('./pages/Wiki'));
 const ContractTimeline = lazy(() => import('./pages/ContractTimeline'));
 const EmployeePortalDashboard = lazy(() => import('./features/employee-portal/EmployeePortalDashboard'));
 const MyPayroll = lazy(() => import('./features/employee-portal/MyPayroll'));
@@ -394,25 +395,27 @@ function App() {
     { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
     { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'cashflow-all', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
-    { key: 'wiki', Component: HumanResources, permission: 'hr', accountantHidden: true, props: { user: profile, isDirector } },
+    { key: 'wiki', Component: HumanResources, anyPermissions: ['hr', 'wiki'], props: { user: profile, isDirector } },
   ];
 
-  const allowedTabs = TABS.filter(tab => (
+  const tabFilter = tab => (
     (!tab.permission || permissions[tab.permission])
+    && (!tab.anyPermissions || tab.anyPermissions.some(p => permissions[p]))
     && (!tab.accountantHidden || String(profile?.role_name || '').trim().toLowerCase() !== 'accountant')
     && (!tab.directorOnly || isDirector)
-  ));
+  );
 
-  // Nhân viên dùng bộ tab riêng: lịch trình, hồ sơ của phòng mình, lương cá nhân.
+  const allowedTabs = TABS.filter(tabFilter);
+
+  // Nhân viên dùng bộ tab riêng: lịch trình, hồ sơ của phòng mình, tài liệu đào tạo/ISO và lương cá nhân.
   const EMPLOYEE_TABS = [
     { key: 'employee-dashboard', Component: EmployeePortalDashboard },
     { key: 'tasks', Component: Tasks, permission: 'survey_record' },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
+    { key: 'wiki', Component: Wiki, permission: 'wiki' },
     { key: 'payroll', Component: MyPayroll },
   ];
-  const allowedEmployeeTabs = EMPLOYEE_TABS.filter(
-    tab => !tab.permission || permissions[tab.permission]
-  );
+  const allowedEmployeeTabs = EMPLOYEE_TABS.filter(tabFilter);
 
   const currentAllowedTabs = employeeMode ? allowedEmployeeTabs : allowedTabs;
   const effectiveTab = currentAllowedTabs.some(tab => tab.key === activeTab)

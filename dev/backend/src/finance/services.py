@@ -448,30 +448,90 @@ class FinanceService:
             if parsed_date and parsed_date != t.transaction_date:
                 check_closed_period(db, parsed_date)
             
-            clean_contract_id = payload.contract_id.strip() if hasattr(payload, 'contract_id') and payload.contract_id and payload.contract_id.strip() else None
-            if clean_contract_id:
-                validate_contract(db, clean_contract_id)
+            # Determine effective contract and project after payload update
+            if hasattr(payload, 'model_fields_set'):
+                contract_specified = 'contract_id' in payload.model_fields_set
+                project_specified = 'project_id' in payload.model_fields_set
+            else:
+                contract_specified = hasattr(payload, 'contract_id')
+                project_specified = hasattr(payload, 'project_id')
+
+            if contract_specified:
+                raw_c = getattr(payload, 'contract_id', None)
+                effective_contract_id = raw_c.strip() if raw_c and isinstance(raw_c, str) and raw_c.strip() else None
+            else:
+                effective_contract_id = t.contract_id
+
+            if project_specified:
+                raw_p = getattr(payload, 'project_id', None)
+                effective_project_id = raw_p.strip() if raw_p and isinstance(raw_p, str) and raw_p.strip() else None
+            else:
+                effective_project_id = t.project_id
+
+            # 1. Validate contract existence and retrieve customer
+            contract_customer_id = None
+            if effective_contract_id:
+                validate_contract(db, effective_contract_id)
                 try:
-                    linked_contract = db.query(Contract).filter(Contract.id == clean_contract_id).first()
+                    linked_contract = db.query(Contract).filter(Contract.id == effective_contract_id).first()
+                    contract_customer_id = getattr(linked_contract, 'customer_id', None) if linked_contract else None
                 except Exception:
                     linked_contract = None
-                cust_id = getattr(payload, 'customer_id', None) or getattr(t, 'customer_id', None)
-                if cust_id and linked_contract and getattr(linked_contract, 'customer_id', None) and linked_contract.customer_id != cust_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Hợp đồng '{clean_contract_id}' không thuộc về khách hàng '{cust_id}'.",
-                    )
+
+            # 2. Validate project existence and contract-project relationship
+            if effective_project_id:
+                validate_project(db, effective_project_id)
+                try:
+                    linked_line = db.query(ServiceLine).filter(ServiceLine.id == effective_project_id).first()
+                    line_contract_id = getattr(linked_line, 'contract_id', None) if linked_line else None
+                except Exception:
+                    line_contract_id = None
+
+                if line_contract_id:
+                    if not effective_contract_id:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Hạng mục '{effective_project_id}' thuộc hợp đồng '{line_contract_id}', giao dịch phải được liên kết với hợp đồng này.",
+                        )
+                    elif effective_contract_id != line_contract_id:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Hạng mục '{effective_project_id}' thuộc hợp đồng '{line_contract_id}', không khớp với hợp đồng '{effective_contract_id}'.",
+                        )
+
+            # 3. Validate customer -> contract relationship
+            expected_customer_id = getattr(payload, 'customer_id', None)
+            if not expected_customer_id and getattr(t, 'contract_id', None):
+                try:
+                    existing_c = db.query(Contract).filter(Contract.id == t.contract_id).first()
+                    expected_customer_id = getattr(existing_c, 'customer_id', None) if existing_c else None
+                except Exception:
+                    expected_customer_id = None
+
+            if expected_customer_id and contract_customer_id and contract_customer_id != expected_customer_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Hợp đồng '{effective_contract_id}' không thuộc về khách hàng '{expected_customer_id}'.",
+                )
 
             if normalize_status(t.status) in APPROVED_TX_STATUSES:
-                if hasattr(payload, 'contract_id') and payload.contract_id is not None:
-                    if t.contract_id != clean_contract_id:
+                contract_modified = contract_specified and t.contract_id != effective_contract_id
+                project_modified = project_specified and t.project_id != effective_project_id
+
+                if contract_specified or project_specified:
+                    if contract_modified:
                         if t.transaction_type in INCOME_TX_TYPES:
                             if t.contract_id: FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
-                            if clean_contract_id: FinanceService._sync_receivables(db, clean_contract_id, float(t.amount))
-                        t.contract_id = clean_contract_id
+                            if effective_contract_id: FinanceService._sync_receivables(db, effective_contract_id, float(t.amount))
+                        t.contract_id = effective_contract_id
+
+                    if project_modified:
+                        t.project_id = effective_project_id
+
+                    if contract_modified or project_modified:
                         db.commit()
                         invalidate_money_caches()
-                        return {"status": "success", "message": "Đã cập nhật hợp đồng"}
+                        return {"status": "success", "message": "Đã cập nhật liên kết hợp đồng/hạng mục"}
                     return {"status": "success", "message": "Không thay đổi gì"}
                 raise HTTPException(status_code=400, detail="Phiếu đã hoàn thành, không thể sửa số tiền/thông tin khác")
 
@@ -505,7 +565,8 @@ class FinanceService:
             t.payment_method = canon_pm
             t.amount = new_amount
             t.description = payload.description
-            t.contract_id = clean_contract_id
+            t.contract_id = effective_contract_id
+            t.project_id = effective_project_id
             if payload.scope:
                 t.scope = normalize_scope(payload.scope)
             t.transaction_date = parsed_date

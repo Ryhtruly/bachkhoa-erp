@@ -80,6 +80,8 @@ class CashflowUpdateIn(BaseModel):
     description: Optional[str] = ""
     notes: Optional[str] = ""
     contract_id: Optional[str] = None
+    project_id: Optional[str] = None
+    customer_id: Optional[str] = None
     scope: Optional[str] = "COMPANY"
 
     @field_validator("payment_method", mode="before")

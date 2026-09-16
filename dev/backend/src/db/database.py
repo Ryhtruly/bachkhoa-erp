@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from src.config.settings import settings
+from src.config.settings import settings, validate_database_credentials
 
 env = getattr(settings, "ENV", "development").lower()
 if not os.getenv("TESTING") and env in ("production", "prod", "staging"):
@@ -13,15 +13,12 @@ if not os.getenv("TESTING") and env in ("production", "prod", "staging"):
     if not db_env_url:
         try:
             db_env_url = settings.DATABASE_URL
-        except Exception:
-            db_env_url = None
-    if not db_env_url:
-        raise RuntimeError("DATABASE_URL phải được cấu hình an toàn trong môi trường production/staging.")
-    if "postgres:123" in db_env_url or "password=123" in db_env_url:
-        raise RuntimeError("Mật khẩu cơ sở dữ liệu mặc định (123) không được phép sử dụng trong production/staging.")
+        except Exception as exc:
+            raise RuntimeError("DATABASE_URL phải được cấu hình an toàn trong môi trường production/staging.") from exc
+    validate_database_credentials(db_env_url, env)
 
 if os.getenv("TESTING") or os.getenv("PYTEST_CURRENT_TEST"):
-    DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or settings.DATABASE_URL
+    DATABASE_URL = os.getenv("TEST_DATABASE_URL") or "sqlite:///:memory:"
 else:
     DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 

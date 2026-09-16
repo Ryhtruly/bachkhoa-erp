@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -9,9 +9,16 @@ import re
 import io
 from src.db.database import get_db
 from src.db.models import WikiDocument, AuditLog
-from src.services.storage_service import upload_file, ensure_bucket, get_file
-from src.services.wiki_rag_service import index_document, delete_document_chunks
+from src.services.storage_service import upload_file, ensure_bucket, get_file, delete_file
+from src.services.wiki_rag_service import (
+    index_document,
+    delete_document_chunks,
+    enqueue_indexing_job,
+    can_enqueue_indexing_job,
+    cancel_indexing_job,
+)
 from src.core.auth import require_permission, User
+from src.core.redis_utils import consume_rate_limit
 
 router = APIRouter(prefix="/api/wiki", tags=["09. Knowledge Base & Wiki"])
 MAX_WIKI_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -23,9 +30,8 @@ def _stream_storage_body(body):
         while chunk := body.read(WIKI_DOWNLOAD_CHUNK_BYTES):
             yield chunk
     finally:
-        close = getattr(body, "close", None)
-        if close:
-            close()
+        if hasattr(body, "close"):
+            body.close()
 
 class DocumentSchema(BaseModel):
     id: str
@@ -102,6 +108,21 @@ async def upload_document(
     user: User = Depends(require_permission("wiki", "create"))
 ):
     try:
+        # Rate limit per user: max 5 wiki uploads per 10 minutes to prevent cost amplification and worker starvation
+        allowed, _ = consume_rate_limit(f"bachkhoa:rate_limit:wiki_upload:{user.id}", limit=5, window_seconds=600)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail="Bạn đã tải lên quá nhiều tài liệu. Vui lòng thử lại sau vài phút."
+            )
+
+        # Pre-check queue capacity to fail fast before MinIO upload and DB changes
+        if not can_enqueue_indexing_job():
+            raise HTTPException(
+                status_code=429,
+                detail="Hàng đợi xử lý tài liệu đang bận. Vui lòng thử lại sau khi hệ thống xử lý xong các tài liệu trước.",
+            )
+
         existing = db.query(WikiDocument).filter(WikiDocument.id == id).first()
         if existing:
             raise HTTPException(status_code=400, detail="Mã tài liệu đã tồn tại.")
@@ -110,39 +131,51 @@ async def upload_document(
         if len(file_bytes) > MAX_WIKI_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="File Wiki không được vượt quá 25MB.")
 
-        # Upload file to MinIO
-        ensure_bucket()
         # Sanitize filename: remove special characters, keep only alphanumeric, dash, underscore, dot
         safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.filename or "document")
         safe_name = re.sub(r'_+', '_', safe_name).strip('_')
         object_name = f"wiki/{id}/{safe_name}"
-        upload_file(io.BytesIO(file_bytes), object_name)
 
-        new_doc = WikiDocument(
-            id=id,
-            title=title,
-            category=category,
-            link=object_name,
-            description=description,
-            version=version
-        )
-        db.add(new_doc)
-        db.flush()  # Persist document first so wiki_chunks can reference it
-
-        db.add(AuditLog(
-            actor_id=user.id,
-            action="CREATE",
-            object_type="WikiDocument",
-            payload_json={"id": id, "title": title}
-        ))
-
+        # Upload file to MinIO and persist DB record FIRST before enqueuing to eliminate worker FK race condition
+        uploaded = False
         try:
-            index_document(file_bytes, file.filename, id, db)
-        except Exception as rag_err:
-            print(f"[wiki_rag] Index error (non-fatal): {rag_err}")
+            ensure_bucket()
+            upload_file(io.BytesIO(file_bytes), object_name)
+            uploaded = True
 
-        db.commit()
-        
+            new_doc = WikiDocument(
+                id=id,
+                title=title,
+                category=category,
+                link=object_name,
+                description=description,
+                version=version
+            )
+            db.add(new_doc)
+            db.add(AuditLog(
+                actor_id=user.id,
+                action="CREATE",
+                object_type="WikiDocument",
+                payload_json={"id": id, "title": title}
+            ))
+            db.commit()
+        except Exception:
+            db.rollback()
+            if uploaded:
+                try:
+                    delete_file(object_name)
+                except Exception:
+                    pass
+            raise
+
+        # Enqueue indexing job now that WikiDocument record is committed in DB
+        enqueued = enqueue_indexing_job(file_bytes, file.filename or safe_name, id, object_name=object_name)
+        if not enqueued:
+            return {
+                "status": "success",
+                "message": "Đã lưu tài liệu thành công. Quá trình bóc tách nội dung đã được xếp vào hàng đợi chờ tự động.",
+            }
+
         return {"status": "success", "message": "Đã lưu tài liệu thành công"}
     except HTTPException:
         raise
