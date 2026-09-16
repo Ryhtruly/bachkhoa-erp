@@ -11,6 +11,16 @@ KB_CACHE = {
     "timestamp": 0
 }
 CACHE_TTL = 300  # 5 minutes
+MAX_KB_CHARS = 8000
+
+def _redact_sensitive_content(text: str) -> str:
+    """Loại bỏ mật khẩu, token, thông tin nhạy cảm trước khi đưa vào prompt LLM ngoại vi."""
+    import re
+    # Mask credit card numbers
+    text = re.sub(r'\b(?:\d[ -]*?){13,16}\b', '[REDACTED_CARD]', text)
+    # Mask password / token patterns
+    text = re.sub(r'(?i)(password|matkhau|mật khẩu|token|api[_-]?key)\s*[:=]\s*[^\s,;]+', r'\1: [REDACTED]', text)
+    return text
 
 def get_knowledge_base(sheet_id: str, service_account_json: str) -> str:
     """Reads Knowledge Base from Google Sheets and caches it."""
@@ -37,7 +47,10 @@ def get_knowledge_base(sheet_id: str, service_account_json: str) -> str:
             kb_lines.append(" | ".join([str(cell).strip() for cell in row if str(cell).strip()]))
             
         kb_text = "\n".join(kb_lines)
-        
+        kb_text = _redact_sensitive_content(kb_text)
+        if len(kb_text) > MAX_KB_CHARS:
+            kb_text = kb_text[:MAX_KB_CHARS] + "\n...[Dữ liệu tri thức đã được rút gọn để đảm bảo an toàn & chi phí]..."
+
         KB_CACHE["text"] = kb_text
         KB_CACHE["timestamp"] = now
         return kb_text

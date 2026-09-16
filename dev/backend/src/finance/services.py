@@ -451,6 +451,16 @@ class FinanceService:
             clean_contract_id = payload.contract_id.strip() if hasattr(payload, 'contract_id') and payload.contract_id and payload.contract_id.strip() else None
             if clean_contract_id:
                 validate_contract(db, clean_contract_id)
+                try:
+                    linked_contract = db.query(Contract).filter(Contract.id == clean_contract_id).first()
+                except Exception:
+                    linked_contract = None
+                cust_id = getattr(payload, 'customer_id', None) or getattr(t, 'customer_id', None)
+                if cust_id and linked_contract and getattr(linked_contract, 'customer_id', None) and linked_contract.customer_id != cust_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Hợp đồng '{clean_contract_id}' không thuộc về khách hàng '{cust_id}'.",
+                    )
 
             if normalize_status(t.status) in APPROVED_TX_STATUSES:
                 if hasattr(payload, 'contract_id') and payload.contract_id is not None:
@@ -526,7 +536,8 @@ class FinanceService:
         except HTTPException:
             raise
         except Exception as e:
-            db.rollback()
+            if hasattr(db, "rollback"):
+                db.rollback()
             raise HTTPException(status_code=500, detail=str(e))
 
     @staticmethod
@@ -695,9 +706,12 @@ class FinanceService:
     @staticmethod
     def clear_advance(db: Session, payload, actor_id: Optional[str] = None) -> dict:
         try:
-            advance = db.query(CashflowTransaction).filter(
+            query = db.query(CashflowTransaction).filter(
                 CashflowTransaction.id == payload.advance_id
-            ).first()
+            )
+            if db.bind and getattr(db.bind.dialect, "name", "") == "postgresql":
+                query = query.with_for_update()
+            advance = query.first()
             if not advance:
                 raise HTTPException(status_code=404, detail="Không tìm thấy phiếu tạm ứng")
 
@@ -713,6 +727,14 @@ class FinanceService:
                 or "Quyết toán ngày" in (advance.description or "")
             ):
                 raise HTTPException(status_code=400, detail="Phiếu tạm ứng này đã được quyết toán.")
+
+            existing_settlement = db.query(CashflowTransaction.id).filter(
+                CashflowTransaction.description.ilike(f"%{payload.advance_id}%"),
+                CashflowTransaction.transaction_type.in_([TransactionType.INCOME.value, TransactionType.EXPENSE.value]),
+                CashflowTransaction.category_code.in_(["Thu hoàn ứng tạm ứng", "Chi bổ sung tạm ứng", "Chi hoàn ứng"])
+            ).first()
+            if existing_settlement:
+                raise HTTPException(status_code=409, detail="Phiếu tạm ứng này đã phát sinh giao dịch quyết toán trước đó.")
 
             if normalize_status(advance.status) not in APPROVED_TX_STATUSES:
                 raise HTTPException(
@@ -1397,10 +1419,26 @@ class FinanceService:
         if not contract:
             raise HTTPException(status_code=404, detail=f"Không tìm thấy hợp đồng {contract_id}")
 
-        rec = db.query(Receivable).filter(Receivable.contract_id == contract_id).first()
+        query = db.query(Receivable).filter(Receivable.contract_id == contract_id)
+        if db.bind and getattr(db.bind.dialect, "name", "") == "postgresql":
+            query = query.with_for_update()
+        rec = query.first()
         paid = float(rec.paid_amount or 0) if rec else 0.0
         total = float(contract.total_value or 0)
         excess = max(0.0, paid - total)
+
+        # Kiểm tra nếu đã có yêu cầu hoàn tiền đang chờ duyệt cho hợp đồng này
+        pending_refund = db.query(CashflowTransaction.id).filter(
+            CashflowTransaction.contract_id == contract_id,
+            CashflowTransaction.transaction_type == TransactionType.EXPENSE.value,
+            CashflowTransaction.status == TransactionStatus.PENDING.value,
+            CashflowTransaction.category_code == "Chi hoàn trả khách hàng do nộp thừa",
+        ).first()
+        if pending_refund:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Hợp đồng {contract_id} đang có phiếu hoàn tiền chờ duyệt ({pending_refund[0]}). Vui lòng xử lý phiếu hiện tại trước khi tạo mới."
+            )
 
         refund_amount = amount if (amount and amount > 0) else excess
         if refund_amount <= 0:

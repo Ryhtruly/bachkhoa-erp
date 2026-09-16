@@ -17,21 +17,44 @@ EMBED_MODEL_NATIVE = "models/gemini-embedding-001"
 SEARCH_LIMIT = 5
 SIMILARITY_THRESHOLD = 0.5
 
-# ─── Text extraction ───────────────────────────────────────────
+# ─── Text extraction & Budgets ──────────────────────────────────
+
+MAX_PAGES = 100
+MAX_EXTRACTED_CHARS = 500_000
+MAX_CHUNKS = 200
 
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
     if ext == "pdf":
         import fitz
         doc = fitz.open(stream=file_bytes, filetype="pdf")
-        return "\n".join(page.get_text() for page in doc)
+        pages_text = []
+        total_chars = 0
+        for i, page in enumerate(doc):
+            if i >= MAX_PAGES:
+                break
+            text = page.get_text()
+            pages_text.append(text)
+            total_chars += len(text)
+            if total_chars >= MAX_EXTRACTED_CHARS:
+                break
+        return "\n".join(pages_text)[:MAX_EXTRACTED_CHARS]
     elif ext == "docx":
         from docx import Document
         doc = Document(io.BytesIO(file_bytes))
-        return "\n".join(p.text for p in doc.paragraphs)
+        paragraphs_text = []
+        total_chars = 0
+        for p in doc.paragraphs:
+            text = p.text
+            paragraphs_text.append(text)
+            total_chars += len(text)
+            if total_chars >= MAX_EXTRACTED_CHARS:
+                break
+        return "\n".join(paragraphs_text)[:MAX_EXTRACTED_CHARS]
     elif ext in ("txt", "py", "md", "csv", "json", "xml"):
-        return file_bytes.decode("utf-8", errors="replace")
+        return file_bytes[:MAX_EXTRACTED_CHARS].decode("utf-8", errors="replace")
     return ""
+
 
 # ─── Chunking ──────────────────────────────────────────────────
 
@@ -105,6 +128,7 @@ def index_document(file_bytes: bytes, filename: str, document_id: str, db: Sessi
     chunks = chunk_text(text_content)
     if not chunks:
         return
+    chunks = chunks[:MAX_CHUNKS]
     api_key = _get_gemini_api_key()
     if not api_key:
         print("[wiki_rag] No Gemini API key, skipping embedding")

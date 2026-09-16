@@ -54,6 +54,7 @@ from src.core.redis_utils import (
 from src.services.storage_service import get_contract_template, get_contract_document_file
 from src.contracts.access import (
     assert_contract_read_access,
+    assert_contract_write_access,
     filter_contract_rows_for_user,
     user_has_all_contract_read_access,
 )
@@ -2538,6 +2539,7 @@ async def upload_contract_file(
     object. Sau đó chỉ cập nhật thêm contracts.file_link để màn hợp đồng trỏ vào
     bản mới. Bản cũ KHÔNG bị xoá — vẫn nằm trong kho nguồn để đối chiếu.
     """
+    assert_contract_write_access(db, user, contract_id)
     from src.dossiers import register as _register
 
     ten = file.filename or "hop-dong.docx"
@@ -2912,6 +2914,7 @@ def cancel_contract_endpoint(
 ):
     """Hủy hợp đồng: Đóng băng hợp đồng, hủy quy trình liên quan, bảo lưu dữ liệu kiểm toán."""
     _require_director_or_contract_admin(user, db)
+    assert_contract_write_access(db, user, contract_id)
 
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if not contract:
@@ -2974,6 +2977,7 @@ def delete_contract_endpoint(
 ):
     """Xoá hợp đồng tạo nhầm/nháp: Chỉ cho phép khi chưa thu tiền và chưa chạy quy trình."""
     _require_director_or_contract_admin(user, db)
+    assert_contract_write_access(db, user, contract_id)
 
     contract = db.query(Contract).filter(Contract.id == contract_id).first()
     if not contract:

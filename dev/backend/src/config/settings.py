@@ -15,6 +15,7 @@ def _load_secret(name: str, *, development_default: str, environment: str) -> st
 class Settings:
     # App Settings
     ENV = os.getenv("ENV", "development")
+    ENVIRONMENT = ENV
 
     # Database Config
     PG_USER = os.getenv("PG_USER", "postgres")
@@ -126,6 +127,13 @@ class Settings:
         if configured:
             return configured in ("true", "1", "yes", "on")
         return self.ENV.lower() in ("production", "prod", "staging")
+
+    @property
+    def enable_api_docs(self) -> bool:
+        flag = os.getenv("ENABLE_API_DOCS", "").strip().lower()
+        if flag:
+            return flag in ("true", "1", "yes")
+        return self.ENV.lower() not in ("production", "prod", "staging")
 
 settings = Settings()
 

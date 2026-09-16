@@ -1,8 +1,22 @@
 import io
 from datetime import datetime
 from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+def _safe_cell_value(val):
+    """Trung hòa ký tự công thức trong ô text chống Formula Injection (CWE-1236)."""
+    if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
+        return f"'{val}"
+    return val
+
+_orig_worksheet_cell = Worksheet.cell
+
+def _secure_worksheet_cell(self, row, column, value=None):
+    return _orig_worksheet_cell(self, row, column, value=_safe_cell_value(value))
+
+Worksheet.cell = _secure_worksheet_cell
 
 from src.config.company_identity import (
     COMPANY_LEGAL_NAME,

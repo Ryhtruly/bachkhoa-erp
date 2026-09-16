@@ -296,10 +296,11 @@ def request_password_reset_otp(db: Session, identifier: str) -> dict:
 
 def verify_password_reset_otp(db: Session, identifier: str, otp: str) -> dict:
     user = _find_user_by_identifier(db, identifier)
-    if not user:
-        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Tài khoản đã bị vô hiệu hoá.")
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa có yêu cầu đặt lại mật khẩu hoặc mã OTP đã hết hiệu lực. Vui lòng yêu cầu mã mới."
+        )
 
     clean_otp = (otp or "").strip()
     clean_hash = _hash_token(clean_otp)

@@ -47,6 +47,32 @@ def assert_contract_read_access(db: Session, user: User, contract_id: str) -> No
         raise HTTPException(status_code=403, detail="Bạn chỉ được xem hợp đồng liên quan đến mình.")
 
 
+def assert_contract_write_access(db: Session, user: User, contract_id: str) -> None:
+    """Enforce all-contract or related-contract write/mutation access at the API boundary."""
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Chưa xác thực người dùng.")
+    if user_has_all_contract_read_access(db, user):
+        return
+
+    related = (
+        db.query(Contract.id)
+        .outerjoin(LeadPipeline, LeadPipeline.id == Contract.lead_id)
+        .filter(
+            Contract.id == contract_id,
+            or_(
+                Contract.sale_id == user.id,
+                LeadPipeline.assigned_to == user.id,
+            ),
+        )
+        .first()
+    )
+    if not related:
+        raise HTTPException(
+            status_code=403,
+            detail="Bạn không có quyền thao tác trên hợp đồng này.",
+        )
+
+
 def filter_contract_rows_for_user(
     rows: list[dict], user_id: str, has_all_access: bool
 ) -> list[dict]:

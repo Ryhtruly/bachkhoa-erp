@@ -37,6 +37,17 @@ def get_object_storage_config(environ: dict[str, str] | None = None) -> ObjectSt
             or secret_key in {"minioadmin", "password", "12345678"}
         ):
             raise RuntimeError("Object storage credentials phải được cấu hình an toàn trong production.")
+        endpoint_candidate = values.get("OBJECT_STORAGE_ENDPOINT") or values.get("MINIO_ENDPOINT", "")
+        if endpoint_candidate:
+            from urllib.parse import urlparse
+            parsed = urlparse(endpoint_candidate)
+            host = (parsed.hostname or "").lower()
+            is_internal = host in {"localhost", "127.0.0.1", "minio"} or host.endswith(".local") or host.endswith(".internal")
+            if not is_internal and parsed.scheme != "https":
+                raise RuntimeError(
+                    f"Object storage endpoint ngoại vi ({endpoint_candidate}) bắt buộc phải sử dụng HTTPS trong production/staging."
+                )
+
     create_buckets = (
         not using_managed_settings
         and values.get("OBJECT_STORAGE_CREATE_BUCKETS", "true").strip().lower() in _TRUE_VALUES

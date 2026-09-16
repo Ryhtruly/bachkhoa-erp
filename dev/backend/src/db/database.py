@@ -5,18 +5,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-PG_USER = os.getenv("PG_USER", "postgres")
-PG_PASSWORD = os.getenv("PG_PASSWORD", "123")
-PG_HOST = os.getenv("PG_HOST", "localhost")
-PG_PORT = os.getenv("PG_PORT", "5432")
-PG_DATABASE = os.getenv("PG_DATABASE", "bachkhoa_erp")
+from src.config.settings import settings
+
+env = getattr(settings, "ENV", "development").lower()
+if not os.getenv("TESTING") and env in ("production", "prod", "staging"):
+    db_env_url = os.getenv("DATABASE_URL")
+    if not db_env_url:
+        try:
+            db_env_url = settings.DATABASE_URL
+        except Exception:
+            db_env_url = None
+    if not db_env_url:
+        raise RuntimeError("DATABASE_URL phải được cấu hình an toàn trong môi trường production/staging.")
+    if "postgres:123" in db_env_url or "password=123" in db_env_url:
+        raise RuntimeError("Mật khẩu cơ sở dữ liệu mặc định (123) không được phép sử dụng trong production/staging.")
 
 if os.getenv("TESTING") or os.getenv("PYTEST_CURRENT_TEST"):
-    DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    DATABASE_URL = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL") or settings.DATABASE_URL
 else:
-    DATABASE_URL = os.getenv("DATABASE_URL")
+    DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
+    PG_USER = os.getenv("PG_USER", "postgres")
+    PG_PASSWORD = os.getenv("PG_PASSWORD", "123")
+    PG_HOST = os.getenv("PG_HOST", "localhost")
+    PG_PORT = os.getenv("PG_PORT", "5432")
+    PG_DATABASE = os.getenv("PG_DATABASE", "bachkhoa_erp")
     DATABASE_URL = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{PG_DATABASE}"
 
 if "supabase" in DATABASE_URL and "sslmode" not in DATABASE_URL:

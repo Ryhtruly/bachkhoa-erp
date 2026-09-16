@@ -11,6 +11,7 @@ from src.db.database import get_db
 from src.core.auth import (
     require_permission,
     require_any_permission,
+    require_payroll_all,
     get_current_user,
     assert_payroll_employee_access,
     User,
@@ -157,7 +158,7 @@ def export_receivables_excel(
 def export_office_payroll_excel(
     month: str = Query(..., description="Format: YYYY-MM"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_any_permission(("payroll", "read"), ("finance", "read"))),
+    user: User = Depends(require_payroll_all),
 ):
     """Xuất bảng lương văn phòng và hoa hồng Sales theo tháng."""
     try:
@@ -263,7 +264,7 @@ def export_department_summary_excel(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_any_permission(("payroll", "read"), ("finance", "read")))
+    user: User = Depends(require_payroll_all),
 ):
     """Xuất Bảng Lương Khoán Tổng Hợp Phòng Ban ra file Excel (.xlsx)."""
     curr_year = datetime.now().year
