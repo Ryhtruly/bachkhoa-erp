@@ -207,43 +207,11 @@ export default function CustomerIntakePage() {
       {/* Official Bách Khoa Brand Header */}
       <header className="intake-header">
         <div className="intake-brand-badge">
-          <svg
-            className="intake-brand-logo-svg"
-            viewBox="0 0 100 100"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <defs>
-              <linearGradient id="intakeBkPillarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ffbe0b" />
-                <stop offset="35%" stopColor="#fb5607" />
-                <stop offset="100%" stopColor="#eb4a23" />
-              </linearGradient>
-              <linearGradient id="intakeBkMonogramGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ff5400" />
-                <stop offset="100%" stopColor="#c1121f" />
-              </linearGradient>
-            </defs>
-            <path d="M20 32 L38 12 V86 H20 Z" fill="url(#intakeBkPillarGrad)" />
-            <path
-              d="M44 26 L62 44 L84 66 C91 73 89 86 76 86 H44 V26 Z M58 60 L72 74 H58 V60 Z"
-              fill="url(#intakeBkMonogramGrad)"
-            />
-          </svg>
-          <div className="intake-brand-text">
-            <div className="intake-brand-name">
-              <span>BÁCH KH</span>
-              <svg className="intake-brand-crosshair" viewBox="0 0 24 24" width="14" height="14">
-                <circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" strokeWidth="2.2" />
-                <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" />
-                <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="1.6" />
-                <line x1="1" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="1.6" />
-              </svg>
-              <span>A</span>
-            </div>
-            <div className="intake-brand-line" />
-            <div className="intake-brand-sub">ĐO ĐẠC - KIẾN TRÚC - XÂY DỰNG</div>
-          </div>
+          <img
+            src="/logo-full.svg"
+            className="intake-brand-logo-full"
+            alt="Bách Khoa - Đo đạc - Kiến trúc - Xây dựng"
+          />
         </div>
 
         <div className="intake-hero">
@@ -543,7 +511,7 @@ export default function CustomerIntakePage() {
       {/* Footer */}
       <footer className="intake-footer">
         <p>
-          <strong>CÔNG TY CỔ PHẦN ĐO ĐẠC KIẾN TRÚC XÂY DỰNG BÁCH KHOA</strong>
+          <strong>CÔNG TY TNHH KIẾN TRÚC XÂY DỰNG VÀ ĐO ĐẠC BẢN ĐỒ BÁCH KHOA</strong>
         </p>
         <p>Hệ thống tự động tiếp nhận thông tin khách hàng & tạo hợp đồng dịch vụ</p>
       </footer>

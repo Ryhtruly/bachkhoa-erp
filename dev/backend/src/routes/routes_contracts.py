@@ -2958,6 +2958,9 @@ def cancel_contract_endpoint(
     db.commit()
     invalidate_cache("bachkhoa:contract_workspace:*")
     invalidate_cache("bachkhoa:contracts:*")
+    invalidate_cache("bachkhoa:finance:*")
+    invalidate_cache("bachkhoa:dashboard:*")
+    invalidate_cache("bachkhoa:handover:*")
 
     return {
         "status": "success",

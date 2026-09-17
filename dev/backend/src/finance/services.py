@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from datetime import datetime, date, timezone, timedelta
 from fastapi import HTTPException
@@ -13,7 +14,8 @@ logger = logging.getLogger(__name__)
 from src.db.models import (
     CashflowTransaction, AdvanceRequest, Contract, Customer, Receivable,
     ServiceLine, Employee, AuditLog, User, Role, UserRole, FinanceSetting, FundOpeningBalance, PayrollPeriod,
-    SystemSetting,
+    SystemSetting, Notification, RefreshSession, UserPermissionOverride,
+    Attendance, LeaveRecord,
 )
 from src.dossiers.actor_guard import is_director as check_is_director
 from src.finance.repository import FinanceRepository
@@ -23,8 +25,8 @@ from src.finance.domain_rules import (
 )
 from src.finance.serializers import serialize_employee
 from src.core.audit import log_action
-from src.core.auth import is_accountant_user
-from src.core.redis_utils import invalidate_money_caches
+from src.core.auth import is_accountant_user, revoke_all_user_tokens
+from src.core.redis_utils import invalidate_money_caches, invalidate_cache
 from src.contracts.read_model import sync_contract_read_model_after_write
 from src.finance.enums import (
     TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
@@ -930,7 +932,7 @@ class FinanceService:
             ) from exc
 
     @staticmethod
-    def update_employee(db: Session, employee_id: str, payload) -> dict:
+    def update_employee(db: Session, employee_id: str, payload, actor_id: Optional[str] = None) -> dict:
         employee = db.query(Employee).filter(Employee.id == employee_id).first()
         if not employee:
             raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
@@ -945,6 +947,13 @@ class FinanceService:
             for field, value in payload.model_dump(exclude_unset=True).items()
             if field in allowed_fields
         }
+
+        if actor_id and employee.user_id == actor_id and updates.get("is_active") is False:
+            raise HTTPException(
+                status_code=400,
+                detail="Không thể tự vô hiệu hoá tài khoản nhân sự của chính mình.",
+            )
+
         validation_payload = SimpleNamespace(
             join_date=updates.get("join_date", employee.join_date),
             probation_end_date=updates.get("probation_end_date", employee.probation_end_date),
@@ -959,9 +968,45 @@ class FinanceService:
             employee.department = department.name if department else None
         employee.updated_at = datetime.now(timezone.utc)
 
+        synced_user = None
+        should_revoke_user = False
+        if "is_active" in updates and employee.user_id:
+            try:
+                synced_user = db.query(User).filter(User.id == employee.user_id).first()
+                if synced_user:
+                    synced_user.is_active = bool(updates["is_active"])
+                    synced_user.updated_at = datetime.now(timezone.utc)
+                    if not synced_user.is_active:
+                        should_revoke_user = True
+            except Exception as exc:
+                logger.warning("Không thể đồng bộ trạng thái tài khoản cho user %s: %s", employee.user_id, exc)
+
         try:
             db.commit()
             db.refresh(employee)
+
+            if should_revoke_user and synced_user:
+                try:
+                    revoke_all_user_tokens(synced_user.id)
+                except Exception as exc:
+                    logger.warning("Không thể thu hồi token khi ngừng hoạt động nhân sự %s: %s", synced_user.id, exc)
+                try:
+                    invalidate_cache(f"bachkhoa:user_profile:{synced_user.id}")
+                except Exception as exc:
+                    logger.warning("Không thể xóa cache profile user %s: %s", synced_user.id, exc)
+
+            account = synced_user
+            if account is None and "is_active" in updates and employee.user_id:
+                try:
+                    account = db.query(User).filter(User.id == employee.user_id).first()
+                except Exception:
+                    account = None
+
+            if account is not None:
+                try:
+                    return serialize_employee(employee, department.name if department else None, account=account)
+                except TypeError:
+                    return serialize_employee(employee, department.name if department else None)
             return serialize_employee(employee, department.name if department else None)
         except IntegrityError as exc:
             db.rollback()
@@ -971,15 +1016,93 @@ class FinanceService:
             ) from exc
 
     @staticmethod
-    def delete_employee(db: Session, employee_id: str) -> dict:
-        employee = db.query(Employee).filter(Employee.id == employee_id).first()
-        if not employee:
+    def delete_employee(db: Session, employee_id: str, actor_id: Optional[str] = None) -> dict:
+        row = (
+            db.query(Employee, User)
+            .outerjoin(User, User.id == Employee.user_id)
+            .filter(Employee.id == employee_id)
+            .first()
+        )
+        if not row:
             raise HTTPException(status_code=404, detail="Không tìm thấy nhân sự.")
 
+        employee, user = row
+
+        if actor_id and employee.user_id == actor_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Không thể tự xóa tài khoản nhân sự của chính mình.",
+            )
+
+        # Kiểm tra trước các ràng buộc dữ liệu nghiệp vụ (chấm công, tạm ứng, nghỉ phép)
+        # gom thành 1 query duy nhất để tối ưu độ trễ mạng tới Supabase
+        has_deps = bool(db.execute(text("""
+            SELECT
+                EXISTS(SELECT 1 FROM attendance WHERE employee_id = :eid)
+                OR EXISTS(SELECT 1 FROM advance_requests WHERE employee_id = :eid)
+                OR EXISTS(SELECT 1 FROM leave_records WHERE employee_id = :eid)
+        """), {"eid": employee_id}).scalar())
+
+        if has_deps:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Nhân sự đã phát sinh chấm công hoặc bảng lương nên không thể xóa. "
+                    "Hãy chuyển trạng thái sang Ngừng hoạt động."
+                ),
+            )
+
+        user_id_to_revoke = user.id if user else None
+        if user:
+            # Dọn dẹp các bảng phụ thuộc trực tiếp của user mà không mang ý nghĩa lịch sử nghiệp vụ
+            # Dùng multi-statement query trên PostgreSQL để giảm RTT mạng từ 4 round-trips xuống 1
+            dialect_name = ""
+            try:
+                bind = db.get_bind() if hasattr(db, "get_bind") else getattr(db, "bind", None)
+                dialect_name = getattr(bind.dialect, "name", "") if bind else ""
+            except Exception:
+                pass
+
+            if dialect_name == "postgresql":
+                db.execute(text("""
+                    DELETE FROM user_roles WHERE user_id = :uid;
+                    DELETE FROM auth_refresh_sessions WHERE user_id = :uid;
+                    DELETE FROM user_permission_overrides WHERE user_id = :uid;
+                    DELETE FROM notifications WHERE user_id = :uid;
+                """), {"uid": user.id})
+            else:
+                db.query(UserRole).filter(UserRole.user_id == user.id).delete(synchronize_session=False)
+                db.query(RefreshSession).filter(RefreshSession.user_id == user.id).delete(synchronize_session=False)
+                db.query(UserPermissionOverride).filter(UserPermissionOverride.user_id == user.id).delete(synchronize_session=False)
+                db.query(Notification).filter(Notification.user_id == user.id).delete(synchronize_session=False)
+
+        # Xóa nhân sự trước
+        db.delete(employee)
+
+        if user:
+            # Thử xóa hoàn toàn user qua savepoint.
+            # Nếu user đã tham gia vào audit trail (hợp đồng, nghiệm thu, duyệt tiền...),
+            # IntegrityError sẽ kích hoạt fallback lưu trữ tombstone mà không văng lỗi 500.
+            sp = db.begin_nested()
+            try:
+                db.delete(user)
+                db.flush()
+            except IntegrityError:
+                sp.rollback()
+                now_ts = int(time.time())
+                rand_suffix = uuid.uuid4().hex[:6]
+                user.is_active = False
+                user.password_hash = None
+                user.invite_token_hash = None
+                user.invite_token_expires_at = None
+                if user.email:
+                    user.email = f"{user.email[:150]}__del_{now_ts}_{rand_suffix}"
+                if user.username:
+                    user.username = f"del_{now_ts}_{rand_suffix}_{user.username}"[:80]
+                db.flush()
+
         try:
-            db.delete(employee)
             db.commit()
-            return {"status": "success", "id": employee_id}
         except IntegrityError as exc:
             db.rollback()
             raise HTTPException(
@@ -989,6 +1112,19 @@ class FinanceService:
                     "Hãy chuyển trạng thái sang Ngừng hoạt động."
                 ),
             ) from exc
+
+        # Hậu commit: thu hồi toàn bộ token đăng nhập và xóa cache hồ sơ người dùng
+        if user_id_to_revoke:
+            try:
+                revoke_all_user_tokens(user_id_to_revoke)
+            except Exception as e:
+                logger.warning("Không thể thu hồi token của user %s: %s", user_id_to_revoke, e)
+            try:
+                invalidate_cache(f"bachkhoa:user_profile:{user_id_to_revoke}")
+            except Exception as e:
+                logger.warning("Không thể xóa cache hồ sơ user %s: %s", user_id_to_revoke, e)
+
+        return {"status": "success", "id": employee_id}
 
     @staticmethod
     def set_employee_avatar(db: Session, employee_id: str, avatar_url: str) -> dict:

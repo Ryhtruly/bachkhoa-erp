@@ -42,6 +42,7 @@ const TAB_PREFETCH_HANDLERS = {
   },
   wiki: () => {
     import('../pages/HumanResources').catch(() => {});
+    import('../pages/Wiki').catch(() => {});
   },
 };
 
@@ -57,6 +58,9 @@ export default function Sidebar({
   onToggleCollapsed = () => {},
   onRequestClose = () => {},
 }) {
+  const isAccountant = String(roleName || '').trim().toLowerCase() === 'accountant';
+  const canManageHr = Boolean(permissions.hr) && !isAccountant;
+
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
   // Đây chỉ là dọn giao diện cho gọn; chặn thật nằm ở từng endpoint phía server.
   const menuItems = [
@@ -75,7 +79,12 @@ export default function Sidebar({
     { id: 'doc-templates', label: 'Quy Trình & Mẫu Giấy', icon: Workflow, directorOnly: true },
     { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet, permission: 'finance' },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr', directorOnly: true },
-    { id: 'wiki', label: 'Nhân Sự & Đào Tạo', icon: BookOpen, anyPermissions: ['hr', 'wiki'] },
+    {
+      id: 'wiki',
+      label: canManageHr ? 'Nhân Sự & Đào Tạo' : 'Đào Tạo & ISO',
+      icon: BookOpen,
+      anyPermissions: ['hr', 'wiki'],
+    },
   ];
 
   // Nhân viên chỉ thấy đúng phần việc của mình: lịch trình, hồ sơ của PHÒNG mình

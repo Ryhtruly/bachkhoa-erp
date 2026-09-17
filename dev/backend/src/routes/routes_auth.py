@@ -86,28 +86,12 @@ def _build_user_profile(user: User, db: Session) -> dict:
     sorted_roles = sorted(user_roles, key=lambda r: (0 if r.role_name == "admin" else 1, r.id))
     role_row = sorted_roles[0] if sorted_roles else None
 
-    # Lấy toàn bộ permissions của các roles này trong 1 query duy nhất (nếu không phải superadmin)
-    role_ids = [r.id for r in user_roles]
-    role_perms = (
-        db.query(RolePermission)
-        .filter(RolePermission.role_id.in_(role_ids))
-        .all()
-    ) if role_ids and not is_admin else []
-
     def check_perm(resource: str, action: str) -> bool:
         if is_admin:
             return True
-        col = f"can_{action}"
-        valid_res = RESOURCE_ALIASES.get(resource, [resource])
-        has_legacy = any(
-            p.resource in valid_res and bool(getattr(p, col, False))
-            for p in role_perms
-        )
-        if has_legacy:
-            return True
         return check_user_permission(db, user, resource, action)
 
-    is_management_user = check_perm("hr", "read") or is_admin
+    is_management_user = check_perm("hr", "read") or check_perm("finance", "read") or is_admin
     default_workspace = "management" if is_management_user else "employee"
 
     permissions = {

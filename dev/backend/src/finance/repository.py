@@ -440,7 +440,10 @@ class FinanceRepository:
     def list_contracts_with_payments(db: Session) -> list:
         rows = db.query(Contract, Customer.id, Customer.full_name, Customer.phone).outerjoin(
             Customer, Contract.customer_id == Customer.id
-        ).filter(Contract.total_value > 0).order_by(Contract.created_at.desc()).all()
+        ).filter(
+            Contract.total_value > 0,
+            func.coalesce(Contract.status, '').notin_(['cancelled', 'Đã huỷ', 'Đã hủy'])
+        ).order_by(Contract.created_at.desc()).all()
         
         # Batch pre-aggregate payments by contract in 1 single query
         paid_map = dict(
@@ -477,7 +480,10 @@ class FinanceRepository:
         today = date.today()
         contracts_q = db.query(Contract, Customer.full_name, Customer.representative_name).outerjoin(
             Customer, Contract.customer_id == Customer.id
-        ).filter(Contract.total_value > 0).all()
+        ).filter(
+            Contract.total_value > 0,
+            func.coalesce(Contract.status, '').notin_(['cancelled', 'Đã huỷ', 'Đã hủy'])
+        ).all()
         contracts_map = {}
         contracts_customer_map = {}
         contracts_signed_map = {}

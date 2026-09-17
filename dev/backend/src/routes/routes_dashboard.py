@@ -49,14 +49,15 @@ def get_dashboard(
         # null. Normalize both aggregates before arithmetic. Positive contract
         # values and approved income are deliberately selected here so a legacy
         # invalid contract cannot distort the executive figures.
+        not_cancelled_cond = func.coalesce(Contract.status, '').notin_(['cancelled', 'Đã huỷ', 'Đã hủy'])
         total_val = float(
             db.query(func.sum(case(
-                (Contract.total_value > 0, Contract.total_value),
+                (and_(Contract.total_value > 0, not_cancelled_cond), Contract.total_value),
                 else_=0,
             )))
             .scalar() or 0
         )
-        valid_contract_ids = select(Contract.id).where(Contract.total_value > 0)
+        valid_contract_ids = select(Contract.id).where(Contract.total_value > 0, not_cancelled_cond)
         total_collected = float(
             db.query(func.sum(case(
                 (

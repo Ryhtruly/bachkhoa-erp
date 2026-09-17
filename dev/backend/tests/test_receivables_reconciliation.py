@@ -86,3 +86,16 @@ def test_receivables_paid_amount_comes_only_from_approved_income(db):
     assert row["paid_amount"] == 2_000_000
     assert row["remaining_amount"] == 8_000_000
     assert row["status"] == "partial"
+
+
+def test_receivables_exclude_cancelled_contracts(db):
+    active_contract = _seed_contract(db, "TEST-ACTIVE-01", 10_000_000, with_projection=True)
+    cancelled_contract = _seed_contract(db, "TEST-CANCELLED-01", 10_000_000, with_projection=True)
+    cancelled_contract.status = "cancelled"
+    db.commit()
+
+    rows = FinanceRepository.list_receivables_formatted(db)
+    contract_ids = [r["contract_id"] for r in rows]
+
+    assert "TEST-ACTIVE-01" in contract_ids
+    assert "TEST-CANCELLED-01" not in contract_ids
