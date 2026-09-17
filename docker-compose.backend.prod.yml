@@ -63,5 +63,18 @@ services:
       retries: 12
       start_period: 20s
 
+  frontend:
+    build:
+      context: ./dev/frontend
+      dockerfile: Dockerfile
+    image: ghcr.io/ryhtruly/bachkhoa-erp-frontend:${FRONTEND_IMAGE_TAG:?Thiếu FRONTEND_IMAGE_TAG để dùng image bất biến}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   contract-files:
+
