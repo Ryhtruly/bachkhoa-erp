@@ -67,6 +67,7 @@ class Contract(Base):
     __tablename__ = "contracts"
     id = Column(String, primary_key=True) # e.g. 128/BK-2026
     customer_id = Column(String, ForeignKey("customers.id"))
+    customer = relationship("Customer")
     lead_id = Column(String, ForeignKey("leads_pipeline.id"), nullable=True)
     contract_template_id = Column(
         String,

@@ -20,6 +20,7 @@ def _seed_contract(db, contract_id, total_value, *, with_projection=True):
         status="Chờ thực hiện",
     )
     db.add(customer)
+    db.flush()
     db.add(contract)
     if with_projection:
         db.add(Receivable(
