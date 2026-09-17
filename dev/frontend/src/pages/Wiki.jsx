@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { Modal, FormRow } from '../components/ui';
+import { Modal, FormRow, CustomSelect } from '../components/ui';
 import { apiFetch, getAccessToken } from '../lib/api';
 import { fetchProtectedDocumentBlob } from '../lib/fileSave';
 
@@ -133,7 +133,7 @@ export default function Wiki() {
         </button>
       </div>
 
-      <div className="filters card" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="filters card" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 10 }}>
         <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
           <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input 
@@ -144,19 +144,19 @@ export default function Wiki() {
             style={{ width: '100%', padding: '8px 12px 8px 36px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)' }}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Filter size={16} color="var(--text-tertiary)" />
-          <select 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '220px', position: 'relative', zIndex: 11 }}>
+          <Filter size={16} color="var(--text-tertiary)" style={{ flexShrink: 0 }} />
+          <CustomSelect 
             value={categoryFilter}
-            onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-            style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)' }}
-          >
-            {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-          </select>
+            onChange={(val) => { setCategoryFilter(val); setPage(1); }}
+            options={categories}
+            placeholder="Tất cả"
+            aria-label="Lọc theo phân loại tài liệu"
+          />
         </div>
       </div>
       
-      <div className="table-wrap card" style={{ padding: 0 }}>
+      <div className="table-wrap card" style={{ padding: 0, position: 'relative', zIndex: 1 }}>
         <table>
           <thead>
             <tr>
@@ -268,16 +268,13 @@ export default function Wiki() {
           </FormRow>
 
           <FormRow label="PHÂN LOẠI TÀI LIỆU" required>
-            <select
-              className="form-control form-select"
-              required
+            <CustomSelect
               value={formData.category}
-              onChange={e => setFormData({ ...formData, category: e.target.value })}
-            >
-              {categories.filter(c => c !== 'Tất cả').map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+              onChange={val => setFormData({ ...formData, category: val })}
+              options={categories.filter(c => c !== 'Tất cả')}
+              placeholder="Chọn phân loại"
+              aria-label="Phân loại tài liệu"
+            />
           </FormRow>
 
           <FormRow label="FILE ĐÍNH KÈM" required>
