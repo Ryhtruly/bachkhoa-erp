@@ -171,6 +171,9 @@ _EMPLOYEE_NODE_TODO_QUERY = text(
     """
 )
 
+_EMPLOYEE_NODE_START_QUERY = _EMPLOYEE_NODE_TODO_QUERY
+
+
 _EMPLOYEE_CHECKLIST_RESUBMIT_QUERY = text(
     """
     select distinct r.id as ref_id, n.id as task_node_id, n.node_key,
@@ -458,7 +461,7 @@ def get_notifications_summary(
         .first()
     )
     if employee:
-        for row in db.execute(_EMPLOYEE_NODE_START_QUERY, {"employee_id": employee.id}).mappings().all():
+        for row in db.execute(_EMPLOYEE_NODE_TODO_QUERY, {"employee_id": employee.id}).mappings().all():
             action = "cần bắt đầu" if row["status"] == "ready" else "bị yêu cầu làm lại"
             items.append({
                 "type": "node_start",

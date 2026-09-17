@@ -77,9 +77,19 @@ function Field({ label, wide, mono, editing, value, empty = 'Chưa có', childre
   );
 }
 
-const driveLink = (url, label) => url
+const isSafeUrl = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+};
+
+const driveLink = (url, label) => (url && isSafeUrl(url))
   ? <a className="legal-field__link" href={url} target="_blank" rel="noreferrer"><ExternalLink size={13} /> {label}</a>
-  : '';
+  : (url ? <span className="legal-field__value--muted">{label} (Liên kết không an toàn)</span> : '');
 
 const formatDate = (val) => {
   if (!val) return '—';

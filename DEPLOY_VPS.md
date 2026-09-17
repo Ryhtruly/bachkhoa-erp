@@ -148,10 +148,13 @@ MinIO hiện tại thường có:
 19001 -> MinIO Console
 ```
 
-Backend dùng API port 19000, không dùng Console port 19001:
+Backend dùng API port (ví dụ 19000 hoặc qua reverse proxy), không dùng Console port 19001:
 
 ```env
-MINIO_ENDPOINT=http://14.224.238.212:19000
+# Nếu chạy cùng VPS qua mạng nội bộ Docker:
+MINIO_ENDPOINT=http://minio:9000
+# Nếu kết nối MinIO ngoại vi qua Internet công cộng, BẮT BUỘC dùng HTTPS qua Reverse Proxy/TLS:
+# MINIO_ENDPOINT=https://minio.yourdomain.com
 ```
 
 Trong MinIO Console tạo bucket riêng:

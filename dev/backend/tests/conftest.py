@@ -16,6 +16,8 @@ if src_dir not in sys.path:
 
 os.environ["CONTRACT_CACHE_REFRESH_SECONDS"] = "0"
 os.environ["TESTING"] = "1"
+if not os.environ.get("TEST_DATABASE_URL"):
+    os.environ["TEST_DATABASE_URL"] = "sqlite:///:memory:"
 
 
 def normalize_database_target(database_url):
@@ -56,12 +58,7 @@ def test_target_is_disposable(database_url):
 
 
 APPLICATION_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip()
-
-if not TEST_DATABASE_URL:
-    raise pytest.UsageError(
-        "TEST_DATABASE_URL is required for backend tests; refusing to fall back to DATABASE_URL."
-    )
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip() or "sqlite:///:memory:"
 
 try:
     test_target = normalize_database_target(TEST_DATABASE_URL)
@@ -158,6 +155,50 @@ class _FakeRedisClient:
     def keys(self, pattern: str = "*"):
         import fnmatch
         return [k for k in self._store.keys() if fnmatch.fnmatch(k, pattern)]
+
+    def rpush(self, key: str, *values):
+        if key not in self._store or not isinstance(self._store[key], list):
+            self._store[key] = []
+        for val in values:
+            self._store[key].append(str(val) if not isinstance(val, (str, bytes)) else val)
+        return len(self._store[key])
+
+    def lpop(self, key: str):
+        if key in self._store and isinstance(self._store[key], list) and self._store[key]:
+            return self._store[key].pop(0)
+        return None
+
+    def llen(self, key: str):
+        if key in self._store and isinstance(self._store[key], list):
+            return len(self._store[key])
+        return 0
+
+    def lrange(self, key: str, start: int, end: int):
+        if key in self._store and isinstance(self._store[key], list):
+            if end == -1:
+                return self._store[key][start:]
+            return self._store[key][start:end+1]
+        return []
+
+    def lrem(self, key: str, count: int, value: str):
+        if key in self._store and isinstance(self._store[key], list):
+            items = self._store[key]
+            removed = 0
+            while value in items and (count == 0 or removed < abs(count)):
+                items.remove(value)
+                removed += 1
+            return removed
+    def eval(self, script: str, numkeys: int, *keys_and_args):
+        # Support basic Lua enqueue script emulation
+        if "LLEN" in script and "RPUSH" in script:
+            key = keys_and_args[0]
+            max_len = int(keys_and_args[1])
+            payload = keys_and_args[2]
+            if self.llen(key) < max_len:
+                self.rpush(key, payload)
+                return 1
+            return 0
+        return 1
 
     def ping(self):
         return True

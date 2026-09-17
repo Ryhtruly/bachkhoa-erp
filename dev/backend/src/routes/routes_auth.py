@@ -99,10 +99,13 @@ def _build_user_profile(user: User, db: Session) -> dict:
             return True
         col = f"can_{action}"
         valid_res = RESOURCE_ALIASES.get(resource, [resource])
-        return any(
+        has_legacy = any(
             p.resource in valid_res and bool(getattr(p, col, False))
             for p in role_perms
         )
+        if has_legacy:
+            return True
+        return check_user_permission(db, user, resource, action)
 
     is_management_user = check_perm("hr", "read") or is_admin
     default_workspace = "management" if is_management_user else "employee"
@@ -111,7 +114,7 @@ def _build_user_profile(user: User, db: Session) -> dict:
         resource: check_perm(resource, "read")
         for resource in (
             "survey_record", "legal_submission",
-            "finance", "crm", "contract", "hr", "settings", "customer",
+            "finance", "crm", "contract", "hr", "settings", "customer", "wiki",
         )
     }
 

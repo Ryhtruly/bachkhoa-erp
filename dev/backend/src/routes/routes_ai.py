@@ -12,6 +12,10 @@ from src.core.redis_utils import consume_rate_limit
 
 router = APIRouter(prefix="/api/ai", tags=["10. AI Assistant"])
 
+MAX_PLANNING_FILE_BYTES = 15 * 1024 * 1024
+ALLOWED_PLANNING_EXTS = {".pdf", ".png", ".jpg", ".jpeg"}
+ALLOWED_PLANNING_MIMES = {"application/pdf", "image/png", "image/jpeg"}
+
 @router.post("/analyze-planning")
 async def analyze_planning(
     file: UploadFile = File(...),
@@ -20,12 +24,23 @@ async def analyze_planning(
     """
     Upload a planning document (PDF/Image) for AI analysis (VN2000 extraction).
     """
+    import os
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_PLANNING_EXTS:
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận tệp quy hoạch định dạng PDF hoặc hình ảnh (PNG, JPG).")
+    if file.content_type and file.content_type.lower() not in ALLOWED_PLANNING_MIMES:
+        raise HTTPException(status_code=400, detail="MIME type của tệp không hợp lệ.")
+
+    file_bytes = await file.read(MAX_PLANNING_FILE_BYTES + 1)
+    if len(file_bytes) > MAX_PLANNING_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="Tệp quy hoạch không được vượt quá 15MB.")
+
     try:
-        # In reality, save the file to a temp folder and pass to AI
         result = ai_vision_engine.analyze_planning_document(file.filename)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 class ChatMessage(BaseModel):
     # System instructions are server-owned and must never be supplied by the

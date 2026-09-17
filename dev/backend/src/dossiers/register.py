@@ -2188,9 +2188,7 @@ def attach_scan(
     return result
 
 
-def read_scan(db: Session, document_id: str) -> tuple[dict, bytes]:
-    from src.services.storage_service import get_file
-
+def get_scan_metadata(db: Session, document_id: str) -> dict:
     row = db.execute(
         text("""
             select id, contract_id, object_key, file_name, content_type
@@ -2200,7 +2198,14 @@ def read_scan(db: Session, document_id: str) -> tuple[dict, bytes]:
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy tệp.")
-    return dict(row), get_file(row["object_key"])["Body"].read()
+    return dict(row)
+
+
+def read_scan(db: Session, document_id: str) -> tuple[dict, bytes]:
+    from src.services.storage_service import get_file
+
+    meta = get_scan_metadata(db, document_id)
+    return meta, get_file(meta["object_key"])["Body"].read()
 
 
 # ── Ô giấy phát sinh ngoài mẫu ────────────────────────────────────────────────

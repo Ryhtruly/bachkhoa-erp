@@ -12,9 +12,36 @@ def _load_secret(name: str, *, development_default: str, environment: str) -> st
     return value or development_default
 
 
+WEAK_DATABASE_PASSWORDS = {
+    "123", "123456", "12345678", "postgres", "admin", "password", "root", "toor", "qwerty"
+}
+
+
+def validate_database_credentials(url: str, environment: str) -> None:
+    """Validate that the database connection string and credentials are secure for production/staging."""
+    if not url:
+        if environment.lower() in ("production", "prod", "staging"):
+            raise RuntimeError("DATABASE_URL phải được cấu hình trong môi trường production/staging.")
+        return
+
+    if environment.lower() not in ("production", "prod", "staging"):
+        return
+
+    from urllib.parse import urlsplit, unquote
+    parsed = urlsplit(url)
+    driver = parsed.scheme.lower().split("+", 1)[0]
+    if driver in ("postgresql", "postgres"):
+        password = unquote(parsed.password or "")
+        if not password:
+            raise RuntimeError("Mật khẩu database không được để trống trong production/staging.")
+        if password.lower() in WEAK_DATABASE_PASSWORDS or len(password) < 8:
+            raise RuntimeError("Mật khẩu database quá yếu hoặc ngắn hơn 8 ký tự trong production/staging.")
+
+
 class Settings:
     # App Settings
     ENV = os.getenv("ENV", "development")
+    ENVIRONMENT = ENV
 
     # Database Config
     PG_USER = os.getenv("PG_USER", "postgres")
@@ -25,10 +52,9 @@ class Settings:
 
     @property
     def DATABASE_URL(self) -> str:
-        if self.ENV.lower() in ("production", "prod", "staging"):
-            if not self.PG_PASSWORD or self.PG_PASSWORD in ("123", "postgres", "admin", "password"):
-                raise RuntimeError("PG_PASSWORD phải được cấu hình an toàn trong production.")
-        return f"postgresql://{self.PG_USER}:{self.PG_PASSWORD}@{self.PG_HOST}:{self.PG_PORT}/{self.PG_DATABASE}"
+        url = f"postgresql://{self.PG_USER}:{self.PG_PASSWORD}@{self.PG_HOST}:{self.PG_PORT}/{self.PG_DATABASE}"
+        validate_database_credentials(url, self.ENV)
+        return url
     
     # Secrets & API Keys. Production must fail closed instead of signing JWTs
     # with a value embedded in the source tree.
@@ -126,6 +152,13 @@ class Settings:
         if configured:
             return configured in ("true", "1", "yes", "on")
         return self.ENV.lower() in ("production", "prod", "staging")
+
+    @property
+    def enable_api_docs(self) -> bool:
+        flag = os.getenv("ENABLE_API_DOCS", "").strip().lower()
+        if flag:
+            return flag in ("true", "1", "yes")
+        return self.ENV.lower() not in ("production", "prod", "staging")
 
 settings = Settings()
 

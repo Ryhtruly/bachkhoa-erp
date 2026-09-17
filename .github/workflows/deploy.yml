@@ -162,8 +162,8 @@ jobs:
             # Login vào GHCR để pull private images
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Chọn image backend vừa push lên GHCR.
-            export BACKEND_IMAGE_TAG=latest
+            # Chọn image backend bất biến theo commit SHA vừa push lên GHCR.
+            export BACKEND_IMAGE_TAG=${{ github.sha }}
 
             # Pull backend image mới và các service phụ thuộc của backend.
             docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml pull

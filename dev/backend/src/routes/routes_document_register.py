@@ -682,8 +682,10 @@ def download_slot_scan(
     user: User = Depends(require_permission("contract", "read")),
 ):
     """Bucket là private nên đọc qua máy chủ, không phát link trực tiếp."""
-    row, body = register.read_scan(db, document_id)
+    row = register.get_scan_metadata(db, document_id)
     _assert_can_access_contract_documents(db, user, row.get("contract_id"))
+    from src.services.storage_service import get_file
+    body = get_file(row["object_key"])["Body"].read()
     return Response(
         content=body,
         media_type=row["content_type"] or "application/octet-stream",

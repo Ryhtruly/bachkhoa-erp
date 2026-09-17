@@ -68,19 +68,20 @@ def create_transaction(
                 status_code=400,
                 detail="Tạm ứng và quyết toán phải đi qua quy trình phiếu chuyên biệt.",
             )
-        new_item = CashflowTransaction(
-            id=f"PTC-{uuid.uuid4().hex[:8].upper()}",
-            transaction_type=canon_type,
+        from src.finance.schemas import CashflowIn
+        from src.finance.services import FinanceService
+
+        default_cat = "Thu ngoài hợp đồng" if canon_type == TransactionType.INCOME.value else "Chi hoạt động"
+        cashflow_in = CashflowIn(
+            type=canon_type,
             amount=payload.amount,
-            description=payload.description,
-            payer_payee_name=payload.payer_payee_name,
+            category=payload.category or default_cat,
+            payer_payee=payload.payer_payee_name or "Khách hàng/Đối tác",
             payment_method=canon_pm,
-            created_at=datetime.now(timezone.utc)
+            description=payload.description,
         )
-        db.add(new_item)
-        db.commit()
-        db.refresh(new_item)
-        return {"message": "Transaction created successfully", "data": {"id": new_item.id}}
+        res = FinanceService.create_transaction(db, cashflow_in, actor_id=user.id)
+        return {"message": "Transaction created successfully", "data": {"id": res.get("id") or res.get("transaction_id")}}
     except HTTPException:
         raise
     except Exception as e:
