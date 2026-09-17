@@ -278,6 +278,7 @@ def _ensure_runtime_tables_and_columns(connection):
     bool_false = "FALSE" if is_pg else "0"
     ts_type = "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" if is_pg else "DATETIME DEFAULT CURRENT_TIMESTAMP"
     json_type = "JSONB DEFAULT '{}'::jsonb" if is_pg else "TEXT DEFAULT '{}'"
+    id_default = "DEFAULT gen_random_uuid()::text" if is_pg else ""
 
     table_statements = [
         f"""
@@ -289,18 +290,20 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}document_template_applicabilities (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             template_id VARCHAR,
             applicability_type VARCHAR,
             service_package_id VARCHAR,
             task_type_id VARCHAR,
             node_code VARCHAR,
-            is_default BOOLEAN DEFAULT {bool_true}
+            is_default BOOLEAN DEFAULT {bool_true},
+            created_by VARCHAR,
+            created_at {ts_type}
         );
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}document_checklist_templates (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             task_type_id VARCHAR,
             name VARCHAR NOT NULL,
             source VARCHAR NOT NULL,
@@ -317,7 +320,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}dossier_document_slots (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             scope VARCHAR DEFAULT 'SERVICE_LINE',
             contract_id VARCHAR,
             service_line_id VARCHAR,
@@ -338,7 +341,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}dossier_documents (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             contract_id VARCHAR,
             file_name VARCHAR,
             file_path VARCHAR,
@@ -348,7 +351,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}dossier_document_links (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             slot_id VARCHAR,
             document_id VARCHAR,
             link_status VARCHAR DEFAULT 'DANG_DUNG',
@@ -357,7 +360,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}document_slot_change_requests (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             slot_id VARCHAR,
             service_line_id VARCHAR,
             change_type VARCHAR,
@@ -368,7 +371,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}document_slot_creation_requests (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             contract_id VARCHAR,
             service_line_id VARCHAR,
             name VARCHAR,
@@ -387,7 +390,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}workflow_templates (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             name VARCHAR,
             is_active BOOLEAN DEFAULT {bool_true},
             created_at {ts_type}
@@ -395,7 +398,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}workflow_instances (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             service_line_id VARCHAR,
             source_workflow_version_id VARCHAR,
             active_revision_id VARCHAR,
@@ -409,7 +412,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}workflow_instance_revisions (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             workflow_instance_id VARCHAR,
             revision_no INTEGER DEFAULT 1,
             source_workflow_version_id VARCHAR,
@@ -425,7 +428,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}task_nodes (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             workflow_instance_id VARCHAR,
             defined_by_revision_id VARCHAR,
             node_key TEXT,
@@ -449,7 +452,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}task_node_assignments (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             task_node_id VARCHAR,
             employee_id VARCHAR,
             role_code VARCHAR,
@@ -462,7 +465,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}task_node_checklist_results (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             task_node_id VARCHAR,
             contract_id VARCHAR,
             item_key VARCHAR,
@@ -474,7 +477,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}survey_records (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             task_node_id VARCHAR,
             service_line_id VARCHAR,
             contract_id VARCHAR,
@@ -489,7 +492,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}legal_submissions (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             task_node_id VARCHAR,
             service_line_id VARCHAR,
             contract_id VARCHAR,
@@ -516,7 +519,7 @@ def _ensure_runtime_tables_and_columns(connection):
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}legal_dossiers (
-            id VARCHAR PRIMARY KEY,
+            id VARCHAR PRIMARY KEY {id_default},
             contract_id VARCHAR,
             service_line_id VARCHAR,
             task_node_id VARCHAR,
@@ -533,7 +536,11 @@ def _ensure_runtime_tables_and_columns(connection):
         try:
             connection.execute(text(stmt))
         except Exception:
-            pass
+            if is_pg:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
 
     alter_statements = [
         f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS document_register_version INTEGER DEFAULT 2" if is_pg else "ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2",
@@ -553,13 +560,37 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS capability_code VARCHAR(50)" if is_pg else "ALTER TABLE task_nodes ADD COLUMN capability_code VARCHAR(50)",
     ]
     if is_pg:
-        alter_statements.append(f"ALTER TABLE {p}task_nodes DROP CONSTRAINT IF EXISTS task_nodes_node_code_fkey")
+        alter_statements.extend([
+            f"ALTER TABLE {p}task_nodes DROP CONSTRAINT IF EXISTS task_nodes_node_code_fkey",
+            f"ALTER TABLE {p}document_template_applicabilities ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}document_checklist_templates ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}dossier_document_slots ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}dossier_documents ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}dossier_document_links ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}document_slot_change_requests ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}document_slot_creation_requests ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}workflow_templates ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}workflow_instances ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}workflow_instance_revisions ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}task_node_assignments ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}task_node_checklist_results ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}survey_records ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}legal_submissions ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}legal_dossiers ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}users ALTER COLUMN is_active SET DEFAULT true",
+            f"ALTER TABLE {p}users ALTER COLUMN email_verified SET DEFAULT false",
+        ])
 
     for ddl in alter_statements:
         try:
             connection.execute(text(ddl))
         except Exception:
-            pass
+            if is_pg:
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
 
     try:
         connection.execute(text(f"""
@@ -647,23 +678,10 @@ def db():
         pass
     connection = engine.connect()
     Base.metadata.create_all(bind=connection)
-    if connection.dialect.name == "sqlite":
-        try:
-            with connection.begin():
-                try:
-                    connection.execute(text("ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2"))
-                except Exception:
-                    pass
-                try:
-                    connection.execute(text("ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR"))
-                except Exception:
-                    pass
-                try:
-                    connection.execute(text("ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'"))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    try:
+        _ensure_runtime_tables_and_columns(connection)
+    except Exception:
+        pass
     if connection.in_transaction():
         connection.commit()
     transaction = connection.begin()

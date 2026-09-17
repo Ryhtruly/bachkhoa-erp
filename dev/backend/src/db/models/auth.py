@@ -21,9 +21,11 @@ class User(Base):
     password_hash = Column(String)
     email = Column(String, unique=True, index=True, nullable=True)
     is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True, server_default=text("true"))
     invite_token_hash = Column(String, nullable=True)
     invite_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     email_verified = Column(Boolean, nullable=False, default=False)
+    email_verified = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
@@ -35,6 +37,8 @@ class Role(Base):
     description = Column(Text, nullable=True)
     is_system = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    is_system = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
