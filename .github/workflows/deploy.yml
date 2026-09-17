@@ -146,7 +146,6 @@ jobs:
     name: 🚀 Deploy to VPS
     runs-on: ubuntu-latest
     needs: build-and-push       # Chỉ chạy khi build xong
-    if: github.ref == 'refs/heads/main'
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
@@ -154,7 +153,6 @@ jobs:
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.VPS_HOST }}
-          port: 2025
           port: ${{ secrets.VPS_PORT || 2025 }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
@@ -164,16 +162,13 @@ jobs:
             # Login vào GHCR để pull private images
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Chọn image backend bất biến theo commit SHA vừa push lên GHCR.
             # Chọn image backend và frontend bất biến theo commit SHA vừa push lên GHCR.
             export BACKEND_IMAGE_TAG=${{ github.sha }}
             export FRONTEND_IMAGE_TAG=${{ github.sha }}
 
-            # Pull backend image mới và các service phụ thuộc của backend.
             # Pull images mới của cả backend và frontend.
             docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml pull
 
-            # Chạy backend cùng Redis; MinIO dùng instance có sẵn trên VPS.
             # Khởi chạy backend và frontend cùng Redis; MinIO dùng instance có sẵn trên VPS.
             docker compose --env-file dev/backend/.env -f docker-compose.backend.prod.yml up -d --no-build --remove-orphans
 
