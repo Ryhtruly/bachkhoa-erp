@@ -757,7 +757,9 @@ def test_update_cashflow_real_orm_integration(db):
         contract_id=c1.id,
         project_id=None,
     )
-    db.add_all([cust1, cust2, c1, c2, line1, line2, tx])
+    db.add_all([cust1, cust2])
+    db.flush()
+    db.add_all([c1, c2, line1, line2, tx])
     db.commit()
 
     # 1. Update with matching project_id only -> succeeds

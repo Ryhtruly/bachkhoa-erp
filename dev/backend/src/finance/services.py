@@ -462,13 +462,13 @@ class FinanceService:
                 raw_c = getattr(payload, 'contract_id', None)
                 effective_contract_id = raw_c.strip() if raw_c and isinstance(raw_c, str) and raw_c.strip() else None
             else:
-                effective_contract_id = t.contract_id
+                effective_contract_id = getattr(t, 'contract_id', None)
 
             if project_specified:
                 raw_p = getattr(payload, 'project_id', None)
                 effective_project_id = raw_p.strip() if raw_p and isinstance(raw_p, str) and raw_p.strip() else None
             else:
-                effective_project_id = t.project_id
+                effective_project_id = getattr(t, 'project_id', None)
 
             # 1. Validate contract existence and retrieve customer
             contract_customer_id = None
@@ -517,13 +517,13 @@ class FinanceService:
                 )
 
             if normalize_status(t.status) in APPROVED_TX_STATUSES:
-                contract_modified = contract_specified and t.contract_id != effective_contract_id
-                project_modified = project_specified and t.project_id != effective_project_id
+                contract_modified = contract_specified and getattr(t, 'contract_id', None) != effective_contract_id
+                project_modified = project_specified and getattr(t, 'project_id', None) != effective_project_id
 
                 if contract_specified or project_specified:
                     if contract_modified:
                         if t.transaction_type in INCOME_TX_TYPES:
-                            if t.contract_id: FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
+                            if getattr(t, 'contract_id', None): FinanceService._sync_receivables(db, t.contract_id, -float(t.amount))
                             if effective_contract_id: FinanceService._sync_receivables(db, effective_contract_id, float(t.amount))
                         t.contract_id = effective_contract_id
 
@@ -533,13 +533,14 @@ class FinanceService:
                     if contract_modified or project_modified:
                         db.commit()
                         invalidate_money_caches()
-                        return {"status": "success", "message": "Đã cập nhật liên kết hợp đồng/hạng mục"}
+                        message = "Đã cập nhật hợp đồng" if contract_modified and not project_modified else "Đã cập nhật liên kết hợp đồng/hạng mục"
+                        return {"status": "success", "message": message}
                     return {"status": "success", "message": "Không thay đổi gì"}
                 raise HTTPException(status_code=400, detail="Phiếu đã hoàn thành, không thể sửa số tiền/thông tin khác")
 
             # 1. Validate sensitive category
             if "thụ lý bản vẽ" in payload.category.lower():
-                if not payload.contract_id and not t.project_id:
+                if not payload.contract_id and not getattr(t, 'project_id', None):
                     raise HTTPException(
                         status_code=400,
                         detail="Hạng mục Chi thụ lý bản vẽ bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án."

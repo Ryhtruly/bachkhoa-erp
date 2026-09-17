@@ -287,6 +287,106 @@ def _ensure_task_nodes_columns(connection):
     """))
 
 
+def _ensure_document_and_helper_tables(connection):
+    from sqlalchemy import text
+    is_pg = connection.dialect.name == "postgresql"
+    bool_true = "TRUE" if is_pg else "1"
+    bool_false = "FALSE" if is_pg else "0"
+    ts_type = "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" if is_pg else "DATETIME DEFAULT CURRENT_TIMESTAMP"
+
+    connection.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS wards (
+            code VARCHAR PRIMARY KEY,
+            name VARCHAR,
+            district_code VARCHAR
+        );
+    """))
+    connection.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS document_template_applicabilities (
+            id VARCHAR PRIMARY KEY,
+            template_id VARCHAR,
+            applicability_type VARCHAR,
+            service_package_id VARCHAR,
+            task_type_id VARCHAR,
+            node_code VARCHAR,
+            is_default BOOLEAN DEFAULT {bool_true}
+        );
+    """))
+    connection.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS document_checklist_templates (
+            id VARCHAR PRIMARY KEY,
+            task_type_id VARCHAR,
+            name VARCHAR NOT NULL,
+            source VARCHAR NOT NULL,
+            is_required BOOLEAN DEFAULT {bool_true},
+            needs_original BOOLEAN DEFAULT {bool_false},
+            default_quantity INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0,
+            note TEXT,
+            is_active BOOLEAN DEFAULT {bool_true},
+            is_identity_owner BOOLEAN DEFAULT {bool_true},
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+    """))
+    try:
+        connection.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS document_checklist_templates_unique
+            ON document_checklist_templates (coalesce(task_type_id, '~chung~'), name);
+        """))
+    except Exception:
+        pass
+    connection.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS dossier_document_slots (
+            id VARCHAR PRIMARY KEY,
+            scope VARCHAR DEFAULT 'SERVICE_LINE',
+            contract_id VARCHAR,
+            service_line_id VARCHAR,
+            template_id VARCHAR,
+            name VARCHAR,
+            source VARCHAR,
+            is_required BOOLEAN DEFAULT {bool_false},
+            needs_original BOOLEAN DEFAULT {bool_false},
+            min_count INTEGER DEFAULT 1,
+            quantity INTEGER DEFAULT 1,
+            copy_type VARCHAR,
+            storage_place VARCHAR,
+            status VARCHAR DEFAULT 'CHUA_CO',
+            sort_order INTEGER DEFAULT 0,
+            note TEXT,
+            created_at {ts_type}
+        );
+    """))
+    connection.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS dossier_documents (
+            id VARCHAR PRIMARY KEY,
+            contract_id VARCHAR,
+            file_name VARCHAR,
+            file_path VARCHAR,
+            doc_status VARCHAR DEFAULT 'DANG_DUNG',
+            created_at {ts_type}
+        );
+    """))
+    connection.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS dossier_document_links (
+            id VARCHAR PRIMARY KEY,
+            slot_id VARCHAR,
+            document_id VARCHAR,
+            link_status VARCHAR DEFAULT 'DANG_DUNG',
+            created_at {ts_type}
+        );
+    """))
+    for ddl in [
+        "ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2",
+        "ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR",
+        "ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'",
+    ]:
+        try:
+            connection.execute(text(ddl))
+        except Exception:
+            pass
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_test_db():
     import src.db.models
@@ -311,79 +411,7 @@ def init_test_db():
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         _ensure_task_nodes_columns(conn)
-    if engine.dialect.name == "sqlite":
-        with engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS document_template_applicabilities (
-                    id VARCHAR PRIMARY KEY,
-                    template_id VARCHAR,
-                    applicability_type VARCHAR,
-                    service_package_id VARCHAR,
-                    task_type_id VARCHAR,
-                    node_code VARCHAR,
-                    is_default BOOLEAN DEFAULT 1
-                );
-            """))
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS document_checklist_templates (
-                    id VARCHAR PRIMARY KEY,
-                    name VARCHAR,
-                    source VARCHAR,
-                    is_required BOOLEAN DEFAULT 0,
-                    needs_original BOOLEAN DEFAULT 0,
-                    default_quantity INTEGER DEFAULT 1,
-                    sort_order INTEGER DEFAULT 0,
-                    note TEXT,
-                    is_active BOOLEAN DEFAULT 1
-                );
-            """))
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS dossier_document_slots (
-                    id VARCHAR PRIMARY KEY,
-                    contract_id VARCHAR,
-                    service_line_id VARCHAR,
-                    template_id VARCHAR,
-                    name VARCHAR,
-                    source VARCHAR,
-                    is_required BOOLEAN DEFAULT 0,
-                    needs_original BOOLEAN DEFAULT 0,
-                    min_count INTEGER DEFAULT 1,
-                    sort_order INTEGER DEFAULT 0,
-                    note TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                );
-            """))
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS dossier_documents (
-                    id VARCHAR PRIMARY KEY,
-                    contract_id VARCHAR,
-                    file_name VARCHAR,
-                    file_path VARCHAR,
-                    doc_status VARCHAR DEFAULT 'DANG_DUNG',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                );
-            """))
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS dossier_document_links (
-                    id VARCHAR PRIMARY KEY,
-                    slot_id VARCHAR,
-                    document_id VARCHAR,
-                    link_status VARCHAR DEFAULT 'DANG_DUNG',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                );
-            """))
-            try:
-                conn.execute(text("ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2"))
-            except Exception:
-                pass
-            try:
-                conn.execute(text("ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR"))
-            except Exception:
-                pass
-            try:
-                conn.execute(text("ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'"))
-            except Exception:
-                pass
+        _ensure_document_and_helper_tables(conn)
     yield
 
     # Chỉ dọn khi conftest dựng một database trống. A pg-test dump is a
@@ -586,3 +614,14 @@ def db_session():
     finally:
         session.rollback()
         session.close()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_db_session_per_test(request):
+    yield
+    if "db_session" in request.fixturenames:
+        try:
+            session = request.getfixturevalue("db_session")
+            session.rollback()
+        except Exception:
+            pass

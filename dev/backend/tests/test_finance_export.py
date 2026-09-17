@@ -3,7 +3,8 @@ from unittest.mock import patch
 from datetime import date, datetime, timezone
 import uuid
 
-from src.db.models import CashflowTransaction, Employee, Department
+from src.db.models import CashflowTransaction, Employee, Department, User
+from src.core.auth import hash_password
 from src.finance.repository import FinanceRepository
 from src.finance.enums import TransactionStatus, TransactionType, PaymentMethod, TransactionScope
 
@@ -120,22 +121,41 @@ def test_unprivileged_employee_can_export_own_ledger_excel(client, unprivileged_
             "adjustments": []
         }
     }
-    with patch("src.routes.routes_finance_export.get_employee_ledger", return_value=mock_ledger):
-        res = client.get(f"/api/payroll/export/employee-ledger-excel?employee_id={emp_id}&year=2026&month=8", headers=headers)
-        assert res.status_code == 200
-        assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers.get("content-type", "")
-        assert len(res.content) > 500
+    try:
+        with patch("src.routes.routes_finance_export.get_employee_ledger", return_value=mock_ledger):
+            res = client.get(f"/api/payroll/export/employee-ledger-excel?employee_id={emp_id}&year=2026&month=8", headers=headers)
+            assert res.status_code == 200
+            assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in res.headers.get("content-type", "")
+            assert len(res.content) > 500
+    finally:
+        db.delete(emp)
+        db.commit()
 
 
 def test_unprivileged_employee_cannot_export_other_employee_ledger_excel(client, unprivileged_user, db):
     user, headers = unprivileged_user
-    other_emp = Employee(id=f"emp-other-{uuid.uuid4().hex[:6]}", user_id="other-user-id", full_name="Nhan Vien Khac", is_active=True)
+    other_uid = str(uuid.uuid4())
+    other_u = User(
+        id=other_uid,
+        username=f"other_{uuid.uuid4().hex[:6]}",
+        password_hash=hash_password("password123"),
+        email=f"other_{uuid.uuid4().hex[:6]}@test.local",
+        is_active=True,
+    )
+    db.add(other_u)
+    db.flush()
+    other_emp = Employee(id=f"emp-other-{uuid.uuid4().hex[:6]}", user_id=other_uid, full_name="Nhan Vien Khac", is_active=True)
     db.add(other_emp)
     db.commit()
 
-    res = client.get(f"/api/payroll/export/employee-ledger-excel?employee_id={other_emp.id}&year=2026&month=8", headers=headers)
-    assert res.status_code == 403
-    assert "Bạn chỉ được xem bảng lương của chính mình." in res.json()["detail"]
+    try:
+        res = client.get(f"/api/payroll/export/employee-ledger-excel?employee_id={other_emp.id}&year=2026&month=8", headers=headers)
+        assert res.status_code == 403
+        assert "Bạn chỉ được xem bảng lương của chính mình." in res.json()["detail"]
+    finally:
+        db.delete(other_emp)
+        db.delete(other_u)
+        db.commit()
 
 
 def test_export_employee_ledger_excel_returns_404_for_nonexistent_employee(client, finance_clerk_user, db):
