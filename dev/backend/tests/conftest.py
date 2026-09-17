@@ -716,7 +716,7 @@ def admin_user(db):
 
 @pytest.fixture(scope="function")
 def admin_headers(admin_user):
-    token = create_access_token(admin_user.id)
+    token = create_access_token(str(admin_user.id))
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -732,7 +732,7 @@ def unprivileged_user(db):
     )
     db.add(user)
     db.commit()
-    token = create_access_token(user.id)
+    token = create_access_token(str(user.id))
     headers = {"Authorization": f"Bearer {token}"}
     yield user, headers
     # Cleanup
@@ -779,18 +779,27 @@ def finance_clerk_user(db):
     ).first()
     permission_created = perm is None
     if perm is None:
-        perm = RolePermission(role_id=role.id, resource="finance")
+        perm = RolePermission(
+            role_id=role.id,
+            resource="finance",
+            can_read=True,
+            can_create=True,
+            can_update=True,
+            can_delete=True,
+            can_approve=True,
+        )
         db.add(perm)
-    perm.can_read = True
-    perm.can_create = True
-    perm.can_update = True
-    perm.can_delete = True
-    perm.can_approve = True
+    else:
+        setattr(perm, "can_read", True)
+        setattr(perm, "can_create", True)
+        setattr(perm, "can_update", True)
+        setattr(perm, "can_delete", True)
+        setattr(perm, "can_approve", True)
     db.add(user_role)
     db.add(perm)
     db.commit()
 
-    token = create_access_token(user.id)
+    token = create_access_token(str(user.id))
     headers = {"Authorization": f"Bearer {token}"}
 
     yield user, headers

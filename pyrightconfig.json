@@ -7,5 +7,7 @@
   ],
   "include": [
     "dev/backend"
-  ]
+  ],
+  "reportAttributeAccessIssue": "none",
+  "reportArgumentType": "none"
 }

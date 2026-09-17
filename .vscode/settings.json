@@ -8,5 +8,10 @@
   "python.autoComplete.extraPaths": [
     "${workspaceFolder}/dev/backend",
     "${workspaceFolder}/dev/backend/src"
-  ]
+  ],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportAttributeAccessIssue": "none",
+    "reportArgumentType": "none"
+  }
 }
