@@ -153,9 +153,16 @@ def test_unprivileged_employee_cannot_export_other_employee_ledger_excel(client,
         assert res.status_code == 403
         assert "Bạn chỉ được xem bảng lương của chính mình." in res.json()["detail"]
     finally:
-        db.delete(other_emp)
-        db.delete(other_u)
-        db.commit()
+        try:
+            db.delete(other_emp)
+            db.commit()
+        except Exception:
+            db.rollback()
+        try:
+            db.delete(other_u)
+            db.commit()
+        except Exception:
+            db.rollback()
 
 
 def test_export_employee_ledger_excel_returns_404_for_nonexistent_employee(client, finance_clerk_user, db):

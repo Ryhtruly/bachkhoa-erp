@@ -537,6 +537,8 @@ def _ensure_runtime_tables_and_columns(connection):
 
     alter_statements = [
         f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS document_register_version INTEGER DEFAULT 2" if is_pg else "ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2",
+        f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS priority VARCHAR NOT NULL DEFAULT 'NORMAL'" if is_pg else "ALTER TABLE service_lines ADD COLUMN priority VARCHAR NOT NULL DEFAULT 'NORMAL'",
+        f"ALTER TABLE {p}service_lines ALTER COLUMN priority SET DEFAULT 'NORMAL'" if is_pg else "",
         f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS service_line_id VARCHAR" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR",
         f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS kind VARCHAR DEFAULT 'OUTPUT'" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'",
         f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override BOOLEAN NOT NULL DEFAULT 0",
@@ -716,10 +718,17 @@ def unprivileged_user(db):
     headers = {"Authorization": f"Bearer {token}"}
     yield user, headers
     # Cleanup
-    db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
-    db.query(Employee).filter(Employee.user_id == user.id).delete()
-    db.delete(user)
-    db.commit()
+    try:
+        db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete(synchronize_session=False)
+        db.query(Employee).filter(Employee.user_id == user.id).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+    try:
+        db.delete(user)
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 @pytest.fixture(scope="function")
