@@ -310,7 +310,7 @@ function WorkflowNode({ id, data, selected }) {
           <UserRoundCog size={13} />
           {assignmentsForDisplay.length
             ? `${assignmentsForDisplay.length} người`
-            : (data.poolDepartmentLabel || 'Chưa cấu hình')}
+            : (poolDepartmentLabel(data.poolDepartmentCode) || poolDepartmentLabel(data.poolDepartmentLabel) || 'Chưa cấu hình')}
         </span>
       </div>
       {data.capability && data.capability !== 'STANDARD' && (
@@ -477,7 +477,12 @@ const DEFAULT_POOL_BY_NODE_CODE = {
 };
 
 const poolDefaults = code => DEFAULT_POOL_BY_NODE_CODE[code] || { department: '', roles: [] };
-const poolDepartmentLabel = code => POOL_DEPARTMENTS.find(item => item[0] === code)?.[1] || code;
+
+const poolDepartmentLabel = code => {
+  const upper = String(code || '').trim().toUpperCase();
+  if (upper === 'SALES' || upper === 'KINH DOANH') return 'Phòng Sale/CSKH';
+  return POOL_DEPARTMENTS.find(item => item[0] === upper)?.[1] || code;
+};
 
 const APPROVER_ROLES = [
   ['admin', 'Giám đốc'],
@@ -1615,7 +1620,7 @@ export default function ContractWorkflowDesigner({
         ],
         role: '',
         poolDepartmentCode: 'SALES',
-        poolDepartmentLabel: 'Kinh doanh',
+        poolDepartmentLabel: poolDepartmentLabel('SALES'),
         claimRoles: ['MAIN'],
         requiresGovSubmission: false,
         createsSurveyRecord: false,

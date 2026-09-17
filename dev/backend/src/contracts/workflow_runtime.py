@@ -61,6 +61,7 @@ TASK_POOL_DEPARTMENTS_BY_NODE_CODE: dict[str, tuple[str, ...]] = {
     "K05a": ("SURVEY",),
     "K05b": ("LEGAL",),
     "K06": ("LEGAL",),
+    "K06": ("LEGAL", "SURVEY"),
     "K07": ("LEGAL",),
     # Chuẩn hoá theo 6 Năng Lực (Capabilities):
     "STANDARD": ("SALES", "LEGAL", "SURVEY"),
@@ -69,6 +70,7 @@ TASK_POOL_DEPARTMENTS_BY_NODE_CODE: dict[str, tuple[str, ...]] = {
     "LEGAL_PREP": ("LEGAL",),
     "GOV_SUBMISSION": ("LEGAL",),
     "HANDOVER": ("LEGAL",),
+    "HANDOVER": ("LEGAL", "SURVEY"),
 }
 TASK_POOL_DEPARTMENT_BY_NODE_CODE = {
     code: departments[0]
@@ -5680,9 +5682,14 @@ def auto_finalize_contract_handover_nodes(
             left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
             where sl.contract_id = :contract_id
               and n.status = 'in_progress'
-              and coalesce(
-                    (coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover')::boolean,
-                    false
+              and (
+                    coalesce(
+                        (coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover')::boolean,
+                        false
+                    )
+                    or upper(coalesce(n.capability_code, '')) = 'HANDOVER'
+                    or upper(coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'capability'), '')) = 'HANDOVER'
+                    or upper(coalesce(n.node_code, '')) = 'K06'
                   )
             order by n.created_at, n.id
             """

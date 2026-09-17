@@ -124,6 +124,12 @@ export default function EmployeeItemWorkspace({
     () => new Set(nodes.filter(node => node.mine && tasks.some(row => row.id === node.id))
       .map(node => node.id)),
     [nodes, tasks],
+    () => new Set(
+      isDirector
+        ? nodes.map(node => node.id)
+        : nodes.filter(node => node.mine && tasks.some(row => row.id === node.id)).map(node => node.id)
+    ),
+    [nodes, tasks, isDirector],
   )
 
   const checklist = useMemo(() => task?.checklist || [], [task?.checklist])

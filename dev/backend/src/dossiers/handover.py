@@ -49,7 +49,7 @@ _EXCLUDED_INSTALLMENT_SQL = "'" + "','".join(sorted(EXCLUDED_INSTALLMENT_STATUSE
 def _node_or_404(db: Session, task_node_id: str) -> dict:
     row = db.execute(
         text("""
-            select n.id, n.node_key, n.node_code, n.status, n.started_at, n.execution_data,
+            select n.id, n.node_key, n.node_code, n.capability_code, n.status, n.started_at, n.execution_data,
                    n.workflow_instance_id, n.defined_by_revision_id,
                    wi.service_line_id, sl.contract_id, sl.service_type,
                    c.total_value, cu.full_name as customer_name,
@@ -82,12 +82,19 @@ def _node_or_404(db: Session, task_node_id: str) -> dict:
 
 
 def is_handover_node(node: dict) -> bool:
-    """Nhận diện bằng CỜ, không bao giờ bằng mã node."""
-    return bool((node.get("node_def") or {}).get("is_handover"))
     """Nhận diện bằng CỜ hoặc Năng lực HANDOVER."""
     node_def = node.get("node_def") or {}
-    cap = str(node_def.get("capability") or node_def.get("capability_code") or node.get("capability_code") or "").upper()
-    return bool(node_def.get("is_handover") or cap == "HANDOVER" or str(node.get("node_code") or "").upper() == "K06")
+    cap = str(
+        node_def.get("capability")
+        or node_def.get("capability_code")
+        or node.get("capability_code")
+        or ""
+    ).strip().upper()
+    return bool(
+        node_def.get("is_handover")
+        or cap == "HANDOVER"
+        or str(node.get("node_code") or "").strip().upper() == "K06"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -465,13 +472,20 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
 
     is_assigned = False
     can_collect_payment = False
+    is_director_actor = False
     if user_id:
         employee_record = employee_of(db, user_id)
         is_assigned = bool(employee_record) and is_assigned_to_node(
             db, task_node_id=task_node_id, employee_id=employee_record["id"]
         )
         u = db.query(User).filter(User.id == user_id).first()
-        can_collect_payment = bool(u) and check_user_permission(db, u, "finance", "create")
+        from src.finance.access import is_director_user
+        is_director_actor = bool(u and is_director_user(db, u))
+        can_collect_payment = bool(
+            is_director_actor
+            or (u and check_user_permission(db, u, "finance", "create"))
+            or (is_assigned and node["status"] in ("in_progress", "rework_required", "ready"))
+        )
 
     dossier_actors, finance_actors = _split_handover_roles(db, task_node_id)
     payment_collector_name = finance_actors[0]["full_name"] if finance_actors else None
@@ -480,7 +494,7 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
     dossier_deliverer_name = dossier_actors[0]["full_name"] if dossier_actors else None
     dossier_deliverer_user_ids = {r["user_id"] for r in dossier_actors if r["user_id"]}
 
-    is_dossier_actor = bool(user_id and user_id in dossier_deliverer_user_ids)
+    is_dossier_actor = bool(user_id and (user_id in dossier_deliverer_user_ids or is_assigned))
     can_edit_checklist = bool(
         is_dossier_actor
         and node["status"] in ("in_progress", "rework_required")
@@ -542,7 +556,8 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
             "desc": "Tự đánh dấu khi khách trả đủ — không ai tick tay được",
             # Không ràng vào trạng thái node: nợ thuộc về hợp đồng, nên bước bàn
             # giao đã đóng mà khách còn khất thì kế toán vẫn ghi nhận được.
-            "can_record_payment": can_collect_payment and not debt["is_settled"],
+            "can_record_payment": bool(can_collect_payment and not debt["is_settled"]),
+            "is_director": is_director_actor,
             "actor": payment_collector_name,
         },
         # Node chỉ đóng được khi CẢ HAI làn xong.
@@ -1196,6 +1211,22 @@ def _record_payment_transaction(
         )
         FinanceService._finalize_contract_after_full_payment(db, contract_id)
         invalidate_money_caches()
+    else:
+        # Khi nhân viên nộp bill -> gửi thông báo tới Giám đốc để duyệt 1-chạm
+        payer_desc = f" từ {payer_name}" if payer_name else ""
+        db.execute(
+            text("""
+                insert into public.notifications (id, user_id, title, content, is_read, created_at)
+                select gen_random_uuid()::text, u.id, 'Đợt thanh toán mới chờ duyệt', :content, false, now()
+                from public.users u
+                join public.user_roles ur on ur.user_id = u.id
+                join public.roles r on r.id = ur.role_id
+                where lower(r.role_name) in ('admin', 'director', 'giam_doc', 'giám đốc')
+            """),
+            {
+                "content": f"Hợp đồng {contract_id}: Nhân viên đã nộp bill thanh toán {float(amount):,.0f}₫{payer_desc}, chờ Giám đốc duyệt.",
+            },
+        )
 
     return {
         "voucher_id": new_id,

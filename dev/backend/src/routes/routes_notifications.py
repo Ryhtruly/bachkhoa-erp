@@ -139,9 +139,14 @@ _MANAGER_CASHFLOW_APPROVAL_QUERY = text(
         left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
         where sl.contract_id = t.contract_id
           and n.status <> 'cancelled'
-          and coalesce((
+          and (
+              coalesce((
                 coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover'
               )::boolean, false)
+              or upper(coalesce(n.capability_code, '')) = 'HANDOVER'
+              or upper(coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'capability'), '')) = 'HANDOVER'
+              or upper(coalesce(n.node_code, '')) = 'K06'
+          )
         order by n.created_at desc
         limit 1
     ) bg on true

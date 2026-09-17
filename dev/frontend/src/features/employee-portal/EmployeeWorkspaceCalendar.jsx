@@ -417,6 +417,34 @@ export function NodeActionBar({
   const [thieu, setThieu] = useState(null)
   const [optimisticSubmitted, setOptimisticSubmitted] = useState(false)
 
+  const isHandoverNode = Boolean(
+    task?.is_handover
+    || task?.capability_code === 'HANDOVER'
+    || task?.capability === 'HANDOVER'
+    || task?.node_code === 'K06'
+  )
+
+  const [liveHandoverState, setLiveHandoverState] = useState(handoverState)
+
+  useEffect(() => {
+    setLiveHandoverState(handoverState)
+  }, [handoverState])
+
+  useEffect(() => {
+    if (!isHandoverNode || !task?.id || handoverState) return undefined
+    let cancelled = false
+    apiFetch(`/api/handover/${task.id}`)
+      .then((payload) => {
+        if (!cancelled) setLiveHandoverState(payload?.data || null)
+      })
+      .catch(() => {
+        if (!cancelled) setLiveHandoverState(null)
+      })
+    return () => { cancelled = true }
+  }, [isHandoverNode, task?.id, handoverState, onChanged])
+
+  const effectiveHandoverState = handoverState || liveHandoverState
+
   useEffect(() => {
     setOptimisticSubmitted(false)
   }, [task?.id, task?.status])
@@ -498,9 +526,9 @@ export function NodeActionBar({
     // đốc", KHÔNG phải chưa điền — nên không rơi vào chuaDien ở trên.
     const chanCung = hardBlockerFrom(gate, task.status)
     const lyDoNo = isHandover
-      ? (!handoverState
+      ? (!effectiveHandoverState
           ? 'Đang kiểm tra công nợ…'
-          : (!handoverState.debt?.gate_open
+          : (!effectiveHandoverState.debt?.gate_open
               ? 'Hợp đồng còn công nợ — cần thu đủ tiền hoặc được Giám đốc duyệt nợ.'
               : ''))
       : ''
