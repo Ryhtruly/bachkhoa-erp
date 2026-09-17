@@ -1,5 +1,5 @@
 import React from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { apiFetchMock, downloadFileMock, addToastMock } = vi.hoisted(() => ({
@@ -65,11 +65,14 @@ describe('PayrollOfficeScreen sensitive actions', () => {
     render(<PayrollOfficeScreen />)
 
     const exportButton = await screen.findByRole('button', { name: /Xuất Excel/i })
+    await waitFor(() => expect(exportButton).not.toBeDisabled())
     fireEvent.click(exportButton)
 
-    expect(downloadFileMock).toHaveBeenCalledWith(
-      expect.stringContaining('/api/finance/export/office-payroll-excel?month='),
-      expect.stringContaining('.xlsx'),
-    )
+    await waitFor(() => {
+      expect(downloadFileMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/finance/export/office-payroll-excel?month='),
+        expect.stringContaining('.xlsx'),
+      )
+    })
   })
 })
