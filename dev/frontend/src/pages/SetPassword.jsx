@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './login.css';
-import loginLogo from '../assets/title-banner.png';
+const loginLogo = '/logo-full.svg';
 import { applyTheme, getInitialTheme } from '../lib/theme';
 
 export default function SetPassword({ onDone }) {

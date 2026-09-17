@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -42,6 +42,7 @@ class CreateAccountIn(BaseModel):
 def create_account_for_employee(
     employee_id: str,
     payload: CreateAccountIn,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("user_admin", "create")),
 ):
@@ -51,16 +52,18 @@ def create_account_for_employee(
         payload.username,
         payload.email,
         role_name=payload.role_name,
+        background_tasks=background_tasks,
     )
 
 
 @router.post("/employees/{employee_id}/resend-invite")
 def resend_account_invite(
     employee_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("user_admin", "create")),
 ):
-    return resend_invite(db, employee_id)
+    return resend_invite(db, employee_id, background_tasks=background_tasks)
 
 
 @router.post("/users/{user_id}/activate")
