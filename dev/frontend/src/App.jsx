@@ -402,7 +402,7 @@ function App() {
       key: 'wiki',
       Component: canManageHr ? HumanResources : Wiki,
       anyPermissions: ['hr', 'wiki'],
-      props: canManageHr ? { user: profile, isDirector } : {},
+      props: { user: profile, isDirector },
     },
   ];
 
@@ -420,7 +420,7 @@ function App() {
     { key: 'employee-dashboard', Component: EmployeePortalDashboard },
     { key: 'tasks', Component: Tasks, permission: 'survey_record' },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
-    { key: 'wiki', Component: Wiki, permission: 'wiki' },
+    { key: 'wiki', Component: Wiki, permission: 'wiki', props: { user: profile, isDirector } },
     { key: 'payroll', Component: MyPayroll },
   ];
   const allowedEmployeeTabs = EMPLOYEE_TABS.filter(tabFilter);

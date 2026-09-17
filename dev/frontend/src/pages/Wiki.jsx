@@ -1,11 +1,33 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
-import { Modal, FormRow, CustomSelect } from '../components/ui';
+import { Modal, FormRow, CustomSelect, FilePreviewModal } from '../components/ui';
 import { apiFetch, getAccessToken } from '../lib/api';
 import { fetchProtectedDocumentBlob } from '../lib/fileSave';
 
-export default function Wiki() {
+export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
+  const [currentUser, setCurrentUser] = useState(propUser || null);
+
+  useEffect(() => {
+    if (propUser) {
+      setCurrentUser(propUser);
+    } else {
+      apiFetch('/api/auth/me')
+        .then(u => setCurrentUser(u))
+        .catch(() => {});
+    }
+  }, [propUser]);
+
+  const canUpload = propIsDirector ?? Boolean(
+    currentUser?.is_director ||
+    currentUser?.username === 'admin' ||
+    currentUser?.role_name === 'admin' ||
+    currentUser?.role === 'director' ||
+    currentUser?.role_name === 'director' ||
+    currentUser?.role === 'tong_giam_doc' ||
+    currentUser?.role === 'pho_tong_giam_doc'
+  );
+
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -102,20 +124,51 @@ export default function Wiki() {
     }
   };
 
-  const handleOpenDocument = async (docId) => {
-    const viewer = window.open('', '_blank', 'noopener,noreferrer');
+  const [preview, setPreview] = useState(null);
+  const objectUrlRef = useRef(null);
+
+  const closePreview = () => {
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    objectUrlRef.current = null;
+    setPreview(null);
+  };
+
+  const handleOpenDocument = async (docId, docTitle) => {
+    let viewer = null;
+    try {
+      // Mở cửa sổ đồng bộ để tránh bị browser popup blocker chặn.
+      // Không truyền 'noopener' vì noopener làm window.open trả về null và không điều hướng được.
+      viewer = window.open('', '_blank');
+      if (viewer && !viewer.closed) {
+        viewer.document?.write?.('<p style="font-family:sans-serif;padding:24px;color:#64748b;">Đang tải tài liệu...</p>');
+      }
+    } catch {
+      viewer = null;
+    }
+
     try {
       const blob = await fetchProtectedDocumentBlob(
         `/api/wiki/download/${encodeURIComponent(docId)}`,
         getAccessToken(),
       );
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const objectUrl = URL.createObjectURL(blob);
-      if (viewer) viewer.location.href = objectUrl;
-      else window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      objectUrlRef.current = objectUrl;
+
+      if (viewer && !viewer.closed) {
+        viewer.location.href = objectUrl;
+      } else {
+        setPreview({
+          fileName: docTitle || docId,
+          mimeType: blob.type,
+          url: objectUrl,
+          blob,
+        });
+      }
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch {
+    } catch (err) {
       viewer?.close();
-      showMessage('Không thể mở tài liệu Wiki', 'error');
+      showMessage(err?.message || 'Không thể mở tài liệu Wiki', 'error');
     }
   };
 
@@ -128,9 +181,11 @@ export default function Wiki() {
           </h3>
           <p className="sub" style={{ marginTop: '4px', fontSize: '0.9rem' }}>Kho lưu trữ tài liệu, quy trình ISO, sổ tay nội bộ và HDSD trên Google Drive.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <UploadCloud size={16} /> Thêm Tài Liệu Mới
-        </button>
+        {canUpload && (
+          <button className="btn btn-primary" onClick={() => setIsModalOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <UploadCloud size={16} /> Thêm Tài Liệu Mới
+          </button>
+        )}
       </div>
 
       <div className="filters card" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap', position: 'relative', zIndex: 10 }}>
@@ -191,7 +246,7 @@ export default function Wiki() {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button type="button" onClick={() => handleOpenDocument(doc.id)} className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <button type="button" onClick={() => handleOpenDocument(doc.id, doc.title)} className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <FileText size={14} /> Mở file
                     </button>
                   </td>
@@ -222,12 +277,13 @@ export default function Wiki() {
         )}
       </div>
 
-      <Modal
-        open={isModalOpen}
-        onClose={() => { if (!submitting) setIsModalOpen(false); }}
-        title="Thêm Tài Liệu Mới"
-        size="md"
-      >
+      {canUpload && (
+        <Modal
+          open={isModalOpen}
+          onClose={() => { if (!submitting) setIsModalOpen(false); }}
+          title="Thêm Tài Liệu Mới"
+          size="md"
+        >
         <form onSubmit={handleUploadWiki} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <div style={{
             background: 'rgba(59, 130, 246, 0.08)',
@@ -348,6 +404,16 @@ export default function Wiki() {
           </div>
         </form>
       </Modal>
+      )}
+
+      <FilePreviewModal
+        open={Boolean(preview)}
+        fileName={preview?.fileName || ''}
+        mimeType={preview?.mimeType || ''}
+        url={preview?.url || ''}
+        blob={preview?.blob || null}
+        onClose={closePreview}
+      />
     </section>
   );
 }

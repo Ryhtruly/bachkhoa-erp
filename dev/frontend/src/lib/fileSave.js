@@ -8,6 +8,8 @@
  * Trình duyệt không hỗ trợ sẽ báo kết quả để UI hướng dẫn dùng Chrome hoặc Edge.
  */
 
+import { getAccessToken, refreshAccessToken } from './api';
+
 const DOCX_FILE_TYPES = [
   {
     description: 'Tài liệu Word (*.docx)',
@@ -42,12 +44,23 @@ export async function writeBlobToFileHandle(handle, blob) {
 }
 
 export async function fetchProtectedDocumentBlob(documentUrl, accessToken) {
-  const response = await fetch(documentUrl, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  let token = accessToken || getAccessToken();
+  let response = await fetch(documentUrl, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
+  if (response.status === 401) {
+    try {
+      token = await refreshAccessToken();
+      response = await fetch(documentUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch {
+      // Refresh thất bại, chuyển tiếp xử lý lỗi HTTP
+    }
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.detail || 'Không thể tải tài liệu hợp đồng');
+    throw new Error(payload.detail || 'Không thể tải tài liệu');
   }
   return response.blob();
 }
