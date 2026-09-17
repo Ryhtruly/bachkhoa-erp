@@ -1,6 +1,6 @@
 import uuid
 import pytest
-from src.db.models import User, Role, UserRole, RolePermission, Employee
+from src.db.models import User, Role, UserRole, RolePermission, Employee, Permission, RolePermissionGrant
 from src.routes.routes_auth import _build_user_profile
 from src.core.auth import check_user_permission, create_access_token
 
@@ -22,7 +22,7 @@ def test_build_user_profile_includes_wiki_permission(db):
     db.flush()
 
     user_role = UserRole(user_id=user.id, role_id=role_staff.id)
-    # Grant wiki read permission
+    # Grant wiki read permission in legacy RolePermission
     perm = RolePermission(
         role_id=role_staff.id,
         resource="wiki",
@@ -30,6 +30,16 @@ def test_build_user_profile_includes_wiki_permission(db):
         can_create=False,
     )
     db.add_all([user_role, perm])
+
+    # Also grant normalized RBAC if table is populated
+    wiki_perms = db.query(Permission).filter(
+        Permission.resource_code == "wiki",
+        Permission.action_code == "read",
+        Permission.is_active.is_(True),
+    ).all()
+    for wp in wiki_perms:
+        db.add(RolePermissionGrant(role_id=role_staff.id, permission_code=wp.code))
+
     db.commit()
 
     try:
@@ -58,6 +68,7 @@ def test_build_user_profile_includes_wiki_permission(db):
         assert profile_no_wiki["permissions"]["wiki"] is False, "User without wiki read must have permissions.wiki = False"
 
     finally:
+        db.query(RolePermissionGrant).filter(RolePermissionGrant.role_id == role_staff.id).delete()
         db.query(RolePermission).filter(RolePermission.role_id == role_staff.id).delete()
         db.query(UserRole).filter(UserRole.user_id.in_([user.id, user_no_wiki.id])).delete()
         db.query(User).filter(User.id.in_([user.id, user_no_wiki.id])).delete()
@@ -74,21 +85,55 @@ def test_wiki_endpoint_permissions_enforcement(client, db):
         password_hash="hashed",
         is_active=True,
     )
-    staff_role = Role(
-        role_name="accountant",
-        display_name="Ke Toan",
-        is_active=True,
-    )
-    db.add_all([staff_user, staff_role])
+    staff_role = db.query(Role).filter(Role.role_name == "accountant").first()
+    created_role = False
+    if not staff_role:
+        staff_role = Role(
+            role_name="accountant",
+            display_name="Ke Toan",
+            is_active=True,
+        )
+        db.add(staff_role)
+        created_role = True
+    db.add(staff_user)
     db.flush()
     db.add(UserRole(user_id=staff_user.id, role_id=staff_role.id))
-    # Grant wiki read only
-    db.add(RolePermission(
-        role_id=staff_role.id,
-        resource="wiki",
-        can_read=True,
-        can_create=False,
-    ))
+
+    # Grant wiki read only in RolePermission
+    perm = db.query(RolePermission).filter(
+        RolePermission.role_id == staff_role.id,
+        RolePermission.resource == "wiki",
+    ).first()
+    created_perm = False
+    if not perm:
+        perm = RolePermission(
+            role_id=staff_role.id,
+            resource="wiki",
+            can_read=True,
+            can_create=False,
+        )
+        db.add(perm)
+        created_perm = True
+    else:
+        perm.can_read = True
+        perm.can_create = False
+
+    # Also grant normalized RBAC if table is populated
+    wiki_perms = db.query(Permission).filter(
+        Permission.resource_code == "wiki",
+        Permission.action_code == "read",
+        Permission.is_active.is_(True),
+    ).all()
+    created_grants = []
+    for wp in wiki_perms:
+        has_grant = db.query(RolePermissionGrant).filter(
+            RolePermissionGrant.role_id == staff_role.id,
+            RolePermissionGrant.permission_code == wp.code,
+        ).first()
+        if not has_grant:
+            db.add(RolePermissionGrant(role_id=staff_role.id, permission_code=wp.code))
+            created_grants.append(wp.code)
+
     db.commit()
 
     try:
@@ -109,8 +154,18 @@ def test_wiki_endpoint_permissions_enforcement(client, db):
         assert "Không có quyền" in res_upload.json().get("detail", "")
 
     finally:
-        db.query(RolePermission).filter(RolePermission.role_id == staff_role.id).delete()
+        if created_grants:
+            db.query(RolePermissionGrant).filter(
+                RolePermissionGrant.role_id == staff_role.id,
+                RolePermissionGrant.permission_code.in_(created_grants),
+            ).delete(synchronize_session=False)
+        if created_perm:
+            db.query(RolePermission).filter(
+                RolePermission.role_id == staff_role.id,
+                RolePermission.resource == "wiki",
+            ).delete()
         db.query(UserRole).filter(UserRole.user_id == staff_user.id).delete()
         db.query(User).filter(User.id == staff_user.id).delete()
-        db.query(Role).filter(Role.id == staff_role.id).delete()
+        if created_role:
+            db.query(Role).filter(Role.id == staff_role.id).delete()
         db.commit()

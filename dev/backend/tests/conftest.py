@@ -391,7 +391,15 @@ def _ensure_runtime_tables_and_columns(connection):
         f"""
         CREATE TABLE IF NOT EXISTS {p}workflow_templates (
             id VARCHAR PRIMARY KEY {id_default},
+            code VARCHAR,
+            version INTEGER DEFAULT 1,
             name VARCHAR,
+            description TEXT,
+            status VARCHAR DEFAULT 'draft',
+            service_package_id VARCHAR,
+            task_type_id VARCHAR,
+            is_default BOOLEAN DEFAULT {bool_false},
+            graph {json_type},
             is_active BOOLEAN DEFAULT {bool_true},
             created_at {ts_type}
         );
@@ -558,6 +566,14 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}task_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE" if is_pg else "ALTER TABLE task_types ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
         f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS name TEXT" if is_pg else "ALTER TABLE task_nodes ADD COLUMN name TEXT",
         f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS capability_code VARCHAR(50)" if is_pg else "ALTER TABLE task_nodes ADD COLUMN capability_code VARCHAR(50)",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS code VARCHAR" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN code VARCHAR",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN version INTEGER DEFAULT 1",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS description TEXT" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN description TEXT",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'draft'" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN status VARCHAR DEFAULT 'draft'",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS service_package_id VARCHAR" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN service_package_id VARCHAR",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS task_type_id VARCHAR" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN task_type_id VARCHAR",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN is_default BOOLEAN DEFAULT 0",
+        f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS graph {json_type}" if is_pg else f"ALTER TABLE workflow_templates ADD COLUMN graph {json_type}",
     ]
     if is_pg:
         alter_statements.extend([
@@ -799,12 +815,42 @@ def finance_clerk_user(db):
     db.add(perm)
     db.commit()
 
+    # Also grant normalized RBAC permissions if Permission rows exist for finance
+    granted_perm_codes = []
+    try:
+        from src.db.models import Permission, RolePermissionGrant
+        fin_perms = db.query(Permission).filter(
+            Permission.resource_code == "finance",
+            Permission.is_active.is_(True),
+        ).all()
+        for fp in fin_perms:
+            has_grant = db.query(RolePermissionGrant).filter(
+                RolePermissionGrant.role_id == role.id,
+                RolePermissionGrant.permission_code == fp.code,
+            ).first()
+            if not has_grant:
+                db.add(RolePermissionGrant(role_id=role.id, permission_code=fp.code))
+                granted_perm_codes.append(fp.code)
+        db.commit()
+    except Exception:
+        db.rollback()
+
     token = create_access_token(str(user.id))
     headers = {"Authorization": f"Bearer {token}"}
 
     yield user, headers
 
     # Cleanup
+    if granted_perm_codes:
+        try:
+            from src.db.models import RolePermissionGrant
+            db.query(RolePermissionGrant).filter(
+                RolePermissionGrant.role_id == role.id,
+                RolePermissionGrant.permission_code.in_(granted_perm_codes),
+            ).delete(synchronize_session=False)
+            db.commit()
+        except Exception:
+            db.rollback()
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
     if permission_created:

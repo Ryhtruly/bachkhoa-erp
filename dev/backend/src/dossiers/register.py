@@ -90,7 +90,7 @@ _APPLICABLE_TEMPLATES_QUERY = text("""
       or (a.applicability_type = 'COMBO'
           and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id)
           and a.task_type_id = tt.id
-          and (:node_code is null or a.node_code is null or a.node_code = :node_code))
+          and (a.node_code is null or a.node_code = :node_code))
     join document_checklist_templates t
       on t.id = a.template_id and coalesce(t.is_active, true)
     where sl.id = :service_line_id

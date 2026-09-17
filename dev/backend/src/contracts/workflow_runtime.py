@@ -4426,15 +4426,16 @@ def submit_task_node_for_acceptance(
     ).mappings().all()
     for cr in paperless_pending:
         item_note = (checklist_notes or {}).get(cr["id"]) or (note.strip() if note else None) or cr["note"]
-        db.execute(
-            text("""
-                update public.task_node_checklist_results
-                set status = 'pending_approval', submitted_by = :actor_id,
-                    submitted_at = now(), note = :note, updated_at = now()
-                where id = :id and status in ('pending', 'failed')
-            """),
-            {"id": cr["id"], "actor_id": actor_id, "note": item_note},
-        )
+        if item_note:
+            db.execute(
+                text("""
+                    update public.task_node_checklist_results
+                    set status = 'pending_approval', submitted_by = :actor_id,
+                        submitted_at = now(), note = :note, updated_at = now()
+                    where id = :id and status in ('pending', 'failed')
+                """),
+                {"id": cr["id"], "actor_id": actor_id, "note": item_note},
+            )
 
     allow_missing = bool(note and note.strip())
     submitted_types = submit_types_for_node(
@@ -5128,6 +5129,32 @@ def review_task_node_acceptance(
     is_handover = bool(handover_context and handover_context["is_handover"])
 
     if decision == "accepted":
+        # Một quyết định nghiệm thu duyệt đồng thời mọi minh chứng đã nộp của bước.
+        # Giữ đúng trạng thái trễ hạn để báo cáo, đồng thời tạo đầu vào chuẩn cho cơ
+        # chế sinh khoán phía dưới.
+        db.execute(
+            text("""
+                update public.task_node_checklist_results
+                set status = case
+                        when status = 'late_pending_approval' then 'late_approved'
+                        when status = 'pending_approval' then 'approved'
+                        else status
+                    end,
+                    completed_by = case
+                        when status in ('pending_approval', 'late_pending_approval') then :actor_id
+                        else completed_by
+                    end,
+                    completed_at = case
+                        when status in ('pending_approval', 'late_pending_approval') then now()
+                        else completed_at
+                    end,
+                    updated_at = now()
+                where task_node_id = :task_node_id
+                  and status in ('pending_approval', 'late_pending_approval')
+            """),
+            {"task_node_id": task_node_id, "actor_id": actor_id},
+        )
+
         # Đồng bộ các checklist có loại giấy runtime đã đạt 100% về 'approved' (hoặc 'late_approved')
         # để không bị kẹt ở 'pending' gây lỗi chặn nghiệm thu.
         db.execute(
@@ -5174,8 +5201,7 @@ def review_task_node_acceptance(
                 select checklist_name
                 from public.task_node_checklist_results
                 where task_node_id = :task_node_id
-                  and status not in ('pending_approval', 'late_pending_approval',
-                                     'approved', 'late_approved', 'not_applicable')
+                  and status not in ('approved', 'late_approved', 'not_applicable')
                 order by checklist_name
             """),
             {"task_node_id": task_node_id},
@@ -5186,14 +5212,16 @@ def review_task_node_acceptance(
                 f"Không thể nghiệm thu Node vì còn checklist chưa được nộp đủ: {names}"
             )
 
-        runtime_types = node_type_review_summary(db, task_node_id)
-        if not runtime_types["is_complete"]:
+        runtime_types = node_type_review_summary(db, task_node_id) or {}
+        doc_types_complete = runtime_types.get("doc_types_complete", runtime_types.get("approved") == runtime_types.get("total"))
+        total_types = runtime_types.get("total", 0)
+        if not shortage_accepted and total_types > 0 and not doc_types_complete:
             raise WorkflowValidationError(
                 "Không thể nghiệm thu Node vì các loại giấy chưa đạt 100% "
-                f"({runtime_types['approved']}/{runtime_types['total']} đã duyệt; "
-                f"{runtime_types['pending_review']} chờ duyệt; "
-                f"{runtime_types['rejected']} bị trả; "
-                f"{runtime_types['missing_files']} chưa có tệp)."
+                f"({runtime_types.get('approved', 0)}/{total_types} đã duyệt; "
+                f"{runtime_types.get('pending_review', 0)} chờ duyệt; "
+                f"{runtime_types.get('rejected', 0)} bị trả; "
+                f"{runtime_types.get('missing_files', 0)} chưa có tệp)."
             )
 
         # Cổng GIẤY TỜ, tách khỏi cổng checklist ngay trên. Mục checklist đủ
