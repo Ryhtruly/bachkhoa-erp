@@ -1,4 +1,10 @@
 const ACCESS_TOKEN_KEY = 'bachkhoa_access_token';
+const AUTH_SESSION_HINT_KEY = 'bachkhoa_auth_session_hint';
+
+// Access tokens live only in memory. The durable session is an HttpOnly
+// refresh cookie, so JavaScript cannot read or exfiltrate it.
+let accessToken = null;
+let refreshInFlight = null;
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -9,13 +15,27 @@ export class ApiError extends Error {
 }
 
 export function clearAccessToken() {
+  accessToken = null;
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(AUTH_SESSION_HINT_KEY);
   // Đổi phiên thì mọi bản đọc đã nhớ đều thuộc về người cũ.
   clearApiCache();
 }
 
+export function setAccessToken(token) {
+  accessToken = typeof token === 'string' && token ? token : null;
+}
+
 export function getAccessToken() {
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  return accessToken;
+}
+
+export function hasRefreshSessionHint() {
+  return window.localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
+}
+
+export function markRefreshSessionActive() {
+  window.localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
 }
 
 /* ── Gộp lượt gọi trùng + nhớ bản đọc trong thời gian ngắn ───────────────────
@@ -58,7 +78,11 @@ export function getCacheTTL(path) {
     cleanPath.startsWith('/api/contracts/workspace') ||
     cleanPath.startsWith('/api/document-register/templates') ||
     cleanPath.startsWith('/api/document-register/register') ||
-    cleanPath.startsWith('/api/contracts/workflow/templates')
+    cleanPath.startsWith('/api/contracts/workflow/templates') ||
+    cleanPath.startsWith('/api/employee-portal/me') ||
+    cleanPath.startsWith('/api/employee-portal/task-pool') ||
+    cleanPath.startsWith('/api/employee-portal/daily-summary') ||
+    cleanPath.startsWith('/api/employee-portal/completed-items')
   ) {
     return DATA_CACHE_TTL_MS;
   }
@@ -91,7 +115,11 @@ function setL2Cache(path, raw, ttlMs) {
   const isPersistable = cleanPath.startsWith('/api/catalog/')
     || cleanPath.startsWith('/api/config')
     || cleanPath.startsWith('/api/document-register/')
-    || cleanPath.startsWith('/api/contracts/workflow/templates');
+    || cleanPath.startsWith('/api/contracts/workflow/templates')
+    || cleanPath === '/api/employee-portal/me'
+    || cleanPath === '/api/employee-portal/task-pool'
+    || cleanPath === '/api/employee-portal/daily-summary'
+    || cleanPath === '/api/employee-portal/completed-items';
   if (!isPersistable) return;
 
   try {
@@ -164,6 +192,45 @@ export function clearApiCache(scope) {
   removeL2Cache(prefix);
 }
 
+export async function refreshAccessToken() {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new ApiError(
+          response.status,
+          body?.detail || body?.message || response.statusText || 'Không thể gia hạn phiên đăng nhập',
+        );
+      }
+      if (!body?.token) {
+        throw new ApiError(502, 'Máy chủ không trả về access token mới');
+      }
+      setAccessToken(body.token);
+      return body.token;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+export async function logoutSession() {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+  } finally {
+    clearAccessToken();
+  }
+}
+
 /** Nạp trước API vào RAM cache ngầm (dùng cho hover/focus) không gây nghẽn UI */
 export function prefetchApi(path, options = {}) {
   if (!path) return;
@@ -189,11 +256,28 @@ function invalidateOnMutation(path) {
   } else if (clean.startsWith('/api/document-register/')) {
     clearApiCache('/api/document-register/');
   } else if (clean.startsWith('/api/employee-portal/')) {
-    clearApiCache('/api/employee-portal/');
+    // Phân tách: Nếu chỉ là thao tác trên loại giấy / file của một checklist,
+    // CHỈ xóa cache shortage liên quan, KHÔNG xóa sạch toàn bộ me/task-pool/daily-summary
+    if (clean.includes('/document-types') || clean.includes('/files') || clean.includes('/output-documents')) {
+      clearApiCache('/shortage');
+      clearApiCache('/api/employee-portal/me');
+    } else {
+      clearApiCache('/api/employee-portal/');
+    }
   } else {
     // Với các mutation chung (như test /api/z), xóa sạch
     clearApiCache();
   }
+}
+
+let lastLocalMutationAt = 0;
+
+export function markLocalMutation() {
+  lastLocalMutationAt = Date.now();
+}
+
+export function getLastLocalMutationTime() {
+  return lastLocalMutationAt;
 }
 
 export async function apiFetch(path, options = {}) {
@@ -202,7 +286,10 @@ export async function apiFetch(path, options = {}) {
   // Chỉ gộp/nhớ lượt ĐỌC, và bỏ qua khi bên gọi tự mang signal: chia chung một
   // promise thì một bên huỷ là bên kia gãy theo.
   if (method !== 'GET' || options.signal) {
-    if (method !== 'GET') invalidateOnMutation(path);
+    if (method !== 'GET') {
+      markLocalMutation();
+      invalidateOnMutation(path);
+    }
     return requestOnce(path, options);
   }
 
@@ -250,11 +337,17 @@ export async function apiFetch(path, options = {}) {
 }
 
 async function requestOnce(path, options = {}) {
-  const { headers: callerHeaders, timeout = 10000, signal: callerSignal, ...fetchOptions } = options;
+  const {
+    headers: callerHeaders,
+    timeout = 10000,
+    signal: callerSignal,
+    _skipAuthRefresh = false,
+    ...fetchOptions
+  } = options;
   const headers = { ...(callerHeaders || {}) };
-  const token = window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  const token = getAccessToken();
 
-  if (token) {
+  if (token && !headers.Authorization) {
     headers.Authorization = `Bearer ${token}`;
   }
 
@@ -267,20 +360,47 @@ async function requestOnce(path, options = {}) {
   const signal = callerSignal || controller.signal;
 
   try {
-    const response = await fetch(path, { ...fetchOptions, headers, signal });
+    const response = await fetch(path, {
+      credentials: 'include',
+      ...fetchOptions,
+      __skipGlobalAuthRefresh: true,
+      headers,
+      signal,
+    });
     clearTimeout(timeoutId);
     const body = await response.json().catch(() => null);
 
     if (!response.ok) {
+      const requestError = new ApiError(
+        response.status,
+        body?.detail || body?.message || response.statusText || 'Yêu cầu thất bại',
+      );
+
+      if (
+        response.status === 401
+        && !_skipAuthRefresh
+        && path !== '/api/auth/refresh'
+        && path !== '/api/auth/login'
+      ) {
+        try {
+          await refreshAccessToken();
+          return requestOnce(path, { ...options, _skipAuthRefresh: true });
+        } catch (refreshError) {
+          if (refreshError?.status === 401) {
+            clearAccessToken();
+            window.dispatchEvent(new Event('bachkhoa:unauthorized'));
+            throw requestError;
+          }
+          throw refreshError;
+        }
+      }
+
       if (response.status === 401) {
         clearAccessToken();
         window.dispatchEvent(new Event('bachkhoa:unauthorized'));
       }
 
-      throw new ApiError(
-        response.status,
-        body?.detail || body?.message || response.statusText || 'Yêu cầu thất bại',
-      );
+      throw requestError;
     }
 
     return body;
@@ -294,13 +414,13 @@ async function requestOnce(path, options = {}) {
 }
 
 export async function downloadFile(path, defaultFilename = 'download.xlsx') {
-  const token = window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  const token = getAccessToken();
   const headers = {};
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(path, { headers });
+  const response = await fetch(path, { credentials: 'include', headers });
   if (!response.ok) {
     const errorBody = await response.json().catch(() => null);
     throw new ApiError(

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import smtplib
@@ -29,6 +30,11 @@ def send_email(to: str, subject: str, html: str) -> None:
         raise EmailSendError(f"EMAIL_PROVIDER không được hỗ trợ: {EMAIL_PROVIDER}")
 
 
+async def send_email_async(to: str, subject: str, html: str) -> None:
+    """Asynchronously sends an email by offloading the blocking network I/O to a worker thread."""
+    await asyncio.to_thread(send_email, to, subject, html)
+
+
 def _send_via_mailgun(to: str, subject: str, html: str) -> None:
     if not MAILGUN_API_KEY or not MAILGUN_DOMAIN:
         raise EmailSendError("MAILGUN_API_KEY hoặc MAILGUN_DOMAIN chưa được cấu hình.")
@@ -47,7 +53,9 @@ def _send_via_mailgun(to: str, subject: str, html: str) -> None:
 
 
 def _send_via_gmail_smtp(to: str, subject: str, html: str) -> None:
-    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+    # Tự động loại bỏ khoảng cách thừa khi copy mật khẩu ứng dụng Google (dạng xxxx xxxx xxxx xxxx)
+    clean_password = (GMAIL_APP_PASSWORD or "").strip().replace(" ", "")
+    if not GMAIL_ADDRESS or not clean_password:
         raise EmailSendError("GMAIL_ADDRESS hoặc GMAIL_APP_PASSWORD chưa được cấu hình.")
 
     message = MIMEMultipart("alternative")
@@ -58,7 +66,7 @@ def _send_via_gmail_smtp(to: str, subject: str, html: str) -> None:
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.login(GMAIL_ADDRESS, clean_password)
             server.sendmail(GMAIL_ADDRESS, [to], message.as_string())
     except smtplib.SMTPException as exc:
         logger.warning("Gmail SMTP send failed for %s: %s", to, exc)

@@ -27,6 +27,7 @@ vi.mock('../components/ui', () => ({
   DataTable: ({ columns, data }) => <div>{data.map((row) => <div key={row.id}>{columns.find((column) => column.key === 'file_link').render(row.file_link)}</div>)}</div>,
   FilterBar: () => null,
   StatusBadge: () => null,
+  Modal: ({ open, children }) => open ? <div>{children}</div> : null,
 }));
 vi.mock('../features/contracts/ContractComposer', () => ({
   default: ({ open, onSubmit }) => open && (

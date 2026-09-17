@@ -49,3 +49,36 @@ it('does not close an in-flight modal through the overlay', () => {
   fireEvent.click(screen.getByRole('dialog'))
   expect(onClose).not.toHaveBeenCalled()
 })
+
+it('restores body scroll when a nested modal closes together with its parent', async () => {
+  function Harness() {
+    const [parentOpen, setParentOpen] = useState(false)
+    const [childOpen, setChildOpen] = useState(false)
+
+    return (
+      <>
+        <button type="button" onClick={() => setParentOpen(true)}>Mở modal cha</button>
+        <Modal open={parentOpen} onClose={() => setParentOpen(false)} title="Modal cha">
+          <button type="button" onClick={() => setChildOpen(true)}>Mở modal con</button>
+          <Modal open={childOpen} onClose={() => setChildOpen(false)} title="Modal con">
+            <button
+              type="button"
+              onClick={() => {
+                setChildOpen(false)
+                setParentOpen(false)
+              }}
+            >Hoàn tất</button>
+          </Modal>
+        </Modal>
+      </>
+    )
+  }
+
+  render(<Harness />)
+  fireEvent.click(screen.getByRole('button', { name: 'Mở modal cha' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Mở modal con' }))
+  expect(document.body.style.overflow).toBe('hidden')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Hoàn tất' }))
+  await waitFor(() => expect(document.body.style.overflow).toBe(''))
+})

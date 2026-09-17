@@ -8,13 +8,23 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
-from src.core.auth import require_any_permission, User
-from src.db.models import Employee, Department
+from src.core.auth import (
+    require_permission,
+    require_any_permission,
+    require_payroll_all,
+    get_current_user,
+    assert_payroll_employee_access,
+    User,
+)
+from src.db.models import Employee, Department, PayrollPeriod
 from src.finance.repository import FinanceRepository
+from src.finance.access import assert_director
 from src.finance.excel_exporter import (
     generate_monthly_dashboard_excel,
     generate_employee_payroll_excel,
-    generate_department_payroll_summary_excel
+    generate_department_payroll_summary_excel,
+    generate_receivables_excel,
+    generate_office_payroll_excel,
 )
 from src.routes.routes_payroll import get_employee_ledger
 
@@ -43,6 +53,134 @@ def _safe_filename(name: str, ext: str = ".xlsx") -> str:
     return f"{clean_name}{ext}"
 
 
+def _receivable_status_label(row: dict) -> str:
+    if row.get("is_overpaid"):
+        return "Nộp thừa"
+    labels = {
+        "written_off": "Đã miễn giảm/xóa",
+        "refunded": "Đã hoàn tiền",
+        "settled": "Đã thanh toán",
+        "overdue": "Quá hạn",
+        "partial": "Thu một phần",
+        "not_started": "Chưa thu",
+    }
+    return labels.get(row.get("status"), row.get("status") or "—")
+
+
+def _filter_receivables(rows: list, search: str, status: str, aging: str, amount_range: str, month: str, sort: str) -> list:
+    from datetime import date
+
+    today = date.today()
+    q = (search or "").strip().lower()
+    filtered = []
+    for row in rows:
+        if q and q not in str(row.get("contract_id") or "").lower() and q not in str(row.get("customer_name") or row.get("customer") or "").lower():
+            continue
+        label = _receivable_status_label(row)
+        if status and status != "All" and label != status:
+            continue
+        remaining = float(row.get("remaining_amount") or 0)
+        if aging and aging != "All":
+            due_raw = row.get("due_date") or ""
+            due = None
+            try:
+                due = date.fromisoformat(due_raw[:10]) if due_raw else None
+            except ValueError:
+                due = None
+            if remaining <= 0:
+                row_aging = "settled"
+            elif not due:
+                row_aging = "in_term"
+            else:
+                diff = (today - due).days
+                row_aging = "in_term" if diff <= 0 else "overdue_30" if diff <= 30 else "overdue_60" if diff <= 60 else "overdue_90" if diff <= 90 else "overdue_plus"
+            if row_aging != aging:
+                continue
+        if amount_range and amount_range != "All":
+            if amount_range == "under_10m" and remaining >= 10_000_000:
+                continue
+            if amount_range == "10m_50m" and not (10_000_000 <= remaining <= 50_000_000):
+                continue
+            if amount_range == "50m_100m" and not (50_000_000 <= remaining <= 100_000_000):
+                continue
+            if amount_range == "over_100m" and remaining <= 100_000_000:
+                continue
+        if month and not str(row.get("due_date") or "").startswith(month):
+            continue
+        filtered.append({**row, "status_label": label})
+
+    if sort == "payment_desc":
+        filtered.sort(key=lambda row: (row.get("last_payment_date") or "", row.get("contract_id") or ""), reverse=True)
+    elif sort == "due_desc":
+        filtered.sort(key=lambda row: row.get("due_date") or "", reverse=True)
+    elif sort == "debt_desc":
+        filtered.sort(key=lambda row: float(row.get("remaining_amount") or 0), reverse=True)
+    elif sort == "debt_asc":
+        filtered.sort(key=lambda row: float(row.get("remaining_amount") or 0))
+    elif sort == "value_desc":
+        filtered.sort(key=lambda row: float(row.get("total_value") or 0), reverse=True)
+    elif sort == "contract_asc":
+        filtered.sort(key=lambda row: row.get("contract_id") or "")
+    else:
+        filtered.sort(key=lambda row: (0 if (row.get("remaining_amount", 0) > 0 or row.get("is_overpaid")) else 1, row.get("due_date") or "9999-12-31", row.get("contract_id") or ""))
+    return filtered
+
+
+@router.get("/api/finance/export/receivables-excel")
+def export_receivables_excel(
+    search: str = Query(""),
+    status: str = Query("All"),
+    aging: str = Query("All"),
+    amount_range: str = Query("All"),
+    month: str = Query(""),
+    sort: str = Query("due_asc"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("finance", "read")),
+):
+    """Xuất sổ công nợ phải thu theo đúng bộ lọc hiện tại của Giám đốc."""
+    assert_director(db, user, "Chỉ Giám đốc được xuất công nợ phải thu.")
+    try:
+        rows = FinanceRepository.list_receivables_formatted(db)
+        filtered = _filter_receivables(rows, search, status, aging, amount_range, month, sort)
+        excel_stream = generate_receivables_excel(filtered, f"Bộ lọc: {len(filtered)} hợp đồng")
+        filename = _safe_filename(f"So_Cong_No_Phai_Thu_{month or 'Tat_Ca'}")
+        return StreamingResponse(
+            excel_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"', "Access-Control-Expose-Headers": "Content-Disposition"},
+        )
+    except Exception as e:
+        logger.exception("Lỗi khi xuất sổ công nợ phải thu:")
+        raise HTTPException(status_code=500, detail=f"Không thể xuất sổ công nợ: {str(e)}")
+
+
+@router.get("/api/finance/export/office-payroll-excel")
+def export_office_payroll_excel(
+    month: str = Query(..., description="Format: YYYY-MM"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_payroll_all),
+):
+    """Xuất bảng lương văn phòng và hoa hồng Sales theo tháng."""
+    try:
+        year_val, month_val = (int(part) for part in month.split("-", 1))
+        rows = FinanceRepository.list_payroll_formatted(db, month)
+        period = db.query(PayrollPeriod).filter(PayrollPeriod.period_month == f"{month}-01").first()
+        status = (period.status if period else "open") or "open"
+        status_label = {"open": "Đang mở", "locked": "Đã chốt", "paid": "Đã xác nhận chi trả"}.get(status.lower(), status)
+        excel_stream = generate_office_payroll_excel(f"Tháng {month_val}/{year_val}", status_label, rows)
+        filename = _safe_filename(f"Bang_Luong_Van_Phong_{month}")
+        return StreamingResponse(
+            excel_stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"', "Access-Control-Expose-Headers": "Content-Disposition"},
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Tháng không hợp lệ, định dạng yêu cầu YYYY-MM")
+    except Exception as e:
+        logger.exception("Lỗi khi xuất bảng lương văn phòng:")
+        raise HTTPException(status_code=500, detail=f"Không thể xuất bảng lương văn phòng: {str(e)}")
+
+
 @router.get("/api/finance/export/monthly-dashboard-excel")
 def export_monthly_dashboard_excel(
     month: str = Query(..., description="Format: YYYY-MM"),
@@ -50,6 +188,7 @@ def export_monthly_dashboard_excel(
     user: User = Depends(require_any_permission(("finance", "read"), ("payroll", "read")))
 ):
     """Xuất Báo Cáo Dòng Tiền và Thu Chi Tháng ra file Excel (.xlsx)."""
+    assert_director(db, user, "Chỉ Giám đốc được xuất báo cáo có dữ liệu thu.")
     try:
         data = FinanceRepository.get_monthly_dashboard(db, month)
         excel_stream = generate_monthly_dashboard_excel(data, month)
@@ -74,9 +213,14 @@ def export_employee_ledger_excel(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_any_permission(("payroll", "read"), ("finance", "read")))
+    user: User = Depends(get_current_user)
 ):
-    """Xuất Phiếu Lương Khoán Nhiệm Vụ của cá nhân ra file Excel (.xlsx)."""
+    """Xuất Phiếu Lương Khoán Nhiệm Vụ của cá nhân ra file Excel (.xlsx).
+
+    Nhân viên thông thường được xuất phiếu lương của chính mình.
+    Người có quyền quản lý lương (Kế toán / Giám đốc) được xuất cho bất kỳ nhân viên nào.
+    """
+    assert_payroll_employee_access(db, user, employee_id)
     curr_year = datetime.now().year
     curr_month = datetime.now().month
     year_val = year if isinstance(year, int) else curr_year
@@ -107,6 +251,8 @@ def export_employee_ledger_excel(
                 "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Lỗi khi xuất phiếu lương Excel cá nhân:")
         raise HTTPException(status_code=500, detail=f"Không thể xuất phiếu lương Excel: {str(e)}")
@@ -118,7 +264,7 @@ def export_department_summary_excel(
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user: User = Depends(require_any_permission(("payroll", "read"), ("finance", "read")))
+    user: User = Depends(require_payroll_all),
 ):
     """Xuất Bảng Lương Khoán Tổng Hợp Phòng Ban ra file Excel (.xlsx)."""
     curr_year = datetime.now().year
@@ -183,6 +329,8 @@ def export_department_summary_excel(
                 "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Lỗi khi xuất bảng tổng hợp lương:")
         raise HTTPException(status_code=500, detail=f"Không thể xuất bảng tổng hợp lương: {str(e)}")

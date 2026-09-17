@@ -3,15 +3,16 @@ import os
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import logging
 
-from src.core.auth import hash_password, verify_password
-from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+from src.core.auth import hash_password, verify_password, revoke_all_user_tokens
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
 from src.core.roles import validate_assignable_role_name
 from src.db.models import Employee, Role, User, UserRole
 from src.services.email_service import EmailSendError, send_email
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 INVITE_TOKEN_TTL_HOURS = 48
 OTP_TTL_MINUTES = 10
 MAX_OTP_ATTEMPTS = 5
+OTP_REQUEST_COOLDOWN_SECONDS = 60
 
 
 def _hash_token(token: str) -> str:
@@ -28,7 +30,7 @@ def _hash_token(token: str) -> str:
 
 
 def _frontend_base_url() -> str:
-    return os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+    return os.getenv("FRONTEND_URL", os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")).rstrip("/")
 
 
 def _mask_email(email: str) -> str:
@@ -59,18 +61,30 @@ def _find_user_by_identifier(db: Session, identifier: str) -> User | None:
     ).first()
 
 
+def _send_invite_email_task(user_email: str, username: str, employee_full_name: str, raw_token: str) -> None:
+    """Tác vụ chạy nền (Background Task) gửi email kích hoạt tài khoản độc lập với SQLAlchemy Session."""
+    try:
+        link = f"{_frontend_base_url()}/set-password?token={raw_token}"
+        html = f"""
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
+            <h2 style="color: #E86832; margin-top: 0;">Kích hoạt tài khoản Bách Khoa ERP</h2>
+            <p>Xin chào <strong>{employee_full_name}</strong>,</p>
+            <p>Bạn đã được cấp tài khoản trên hệ thống <strong>Bách Khoa ERP</strong>.</p>
+            <p>Tên đăng nhập: <strong>{username}</strong></p>
+            <p>Bấm vào liên kết dưới đây để đặt mật khẩu và kích hoạt tài khoản
+            (liên kết hết hạn sau {INVITE_TOKEN_TTL_HOURS} giờ):</p>
+            <p style="margin: 20px 0;"><a href="{link}" style="background-color: #E86832; color: #ffffff; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">Đặt mật khẩu và kích hoạt</a></p>
+            <p style="color: #64748b; font-size: 13px;">Hoặc sao chép liên kết sau vào trình duyệt:<br/><a href="{link}" style="color: #E86832;">{link}</a></p>
+            <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">Nếu bạn không yêu cầu tài khoản này, vui lòng bỏ qua email này.</p>
+        </div>
+        """
+        send_email(to=user_email, subject="Kích hoạt tài khoản Bách Khoa ERP", html=html)
+    except Exception as exc:
+        logger.warning("Không thể gửi email kích hoạt tài khoản cho %s (%s): %s", user_email, username, exc)
+
+
 def _send_invite_email(user: User, employee_full_name: str, raw_token: str) -> None:
-    link = f"{_frontend_base_url()}/set-password?token={raw_token}"
-    html = f"""
-    <p>Xin chào {employee_full_name},</p>
-    <p>Bạn đã được cấp tài khoản trên hệ thống <strong>Bách Khoa ERP</strong>.</p>
-    <p>Tên đăng nhập: <strong>{user.username}</strong></p>
-    <p>Bấm vào liên kết dưới đây để đặt mật khẩu và kích hoạt tài khoản
-    (liên kết hết hạn sau {INVITE_TOKEN_TTL_HOURS} giờ):</p>
-    <p><a href="{link}">{link}</a></p>
-    <p>Nếu bạn không yêu cầu tài khoản này, vui lòng bỏ qua email này.</p>
-    """
-    send_email(to=user.email, subject="Kích hoạt tài khoản Bách Khoa ERP", html=html)
+    _send_invite_email_task(user.email, user.username, employee_full_name, raw_token)
 
 
 def create_employee_account(
@@ -79,6 +93,7 @@ def create_employee_account(
     username: str,
     email: str,
     role_name: str,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> dict:
     try:
         role_name = validate_assignable_role_name(role_name)
@@ -134,10 +149,14 @@ def create_employee_account(
     db.refresh(user)
 
     email_sent = True
-    try:
-        _send_invite_email(user, employee.full_name or username, raw_token)
-    except EmailSendError:
-        email_sent = False
+    full_name = employee.full_name or username
+    if background_tasks is not None:
+        background_tasks.add_task(_send_invite_email_task, user.email, user.username, full_name, raw_token)
+    else:
+        try:
+            _send_invite_email(user, full_name, raw_token)
+        except EmailSendError:
+            email_sent = False
 
     return {
         "user_id": user.id,
@@ -149,7 +168,11 @@ def create_employee_account(
     }
 
 
-def resend_invite(db: Session, employee_id: str) -> dict:
+def resend_invite(
+    db: Session,
+    employee_id: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> dict:
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee or not employee.user_id:
         raise HTTPException(status_code=404, detail="Nhân sự chưa có tài khoản để gửi lại lời mời.")
@@ -167,10 +190,14 @@ def resend_invite(db: Session, employee_id: str) -> dict:
     db.commit()
 
     email_sent = True
-    try:
-        _send_invite_email(user, employee.full_name or user.username, raw_token)
-    except EmailSendError:
-        email_sent = False
+    full_name = employee.full_name or user.username
+    if background_tasks is not None:
+        background_tasks.add_task(_send_invite_email_task, user.email, user.username, full_name, raw_token)
+    else:
+        try:
+            _send_invite_email(user, full_name, raw_token)
+        except EmailSendError:
+            email_sent = False
 
     return {"user_id": user.id, "invite_email_sent": email_sent}
 
@@ -210,6 +237,15 @@ def set_user_active_status(db: Session, user_id: str, is_active: bool) -> dict:
     user.is_active = is_active
     db.commit()
     db.refresh(user)
+    if not is_active:
+        try:
+            revoke_all_user_tokens(user_id)
+        except Exception as exc:
+            logger.warning("Không thể thu hồi token khi vô hiệu hoá tài khoản %s: %s", user_id, exc)
+        try:
+            invalidate_cache(f"bachkhoa:user_profile:{user_id}")
+        except Exception as exc:
+            logger.warning("Không thể xóa cache profile khi vô hiệu hoá tài khoản %s: %s", user_id, exc)
     return {"user_id": user.id, "username": user.username, "is_active": user.is_active}
 
 
@@ -249,6 +285,13 @@ def prepare_password_reset_otp(db: Session, identifier: str) -> tuple[dict, User
             detail="Tài khoản chưa được liên kết email. Vui lòng liên hệ Quản trị viên để đặt lại mật khẩu."
         )
 
+    cooldown_key = f"bachkhoa:auth:otp-cooldown:{user.id}"
+    if get_cached_json(cooldown_key):
+        raise HTTPException(
+            status_code=429,
+            detail="Bạn vừa yêu cầu mã OTP. Vui lòng thử lại sau ít phút.",
+        )
+
     otp = f"{secrets.randbelow(900000) + 100000}"
     otp_hash = _hash_token(otp)
     ttl_seconds = OTP_TTL_MINUTES * 60
@@ -264,6 +307,8 @@ def prepare_password_reset_otp(db: Session, identifier: str) -> tuple[dict, User
         },
         ttl_seconds=ttl_seconds,
     )
+    invalidate_cache(f"bachkhoa:auth:otp-attempts:{user.id}")
+    set_cached_json(cooldown_key, True, ttl_seconds=OTP_REQUEST_COOLDOWN_SECONDS)
 
     response_data = {
         "success": True,
@@ -275,21 +320,29 @@ def prepare_password_reset_otp(db: Session, identifier: str) -> tuple[dict, User
     return response_data, user, otp
 
 
-def request_password_reset_otp(db: Session, identifier: str) -> dict:
+def request_password_reset_otp(
+    db: Session,
+    identifier: str,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> dict:
     response_data, user, otp = prepare_password_reset_otp(db, identifier)
-    try:
-        _send_reset_otp_email(user, otp)
-    except EmailSendError:
-        response_data["email_sent"] = False
+    if background_tasks is not None:
+        background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp)
+    else:
+        try:
+            _send_reset_otp_email(user, otp)
+        except EmailSendError:
+            response_data["email_sent"] = False
     return response_data
 
 
 def verify_password_reset_otp(db: Session, identifier: str, otp: str) -> dict:
     user = _find_user_by_identifier(db, identifier)
-    if not user:
-        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản.")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Tài khoản đã bị vô hiệu hoá.")
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa có yêu cầu đặt lại mật khẩu hoặc mã OTP đã hết hiệu lực. Vui lòng yêu cầu mã mới."
+        )
 
     clean_otp = (otp or "").strip()
     clean_hash = _hash_token(clean_otp)
@@ -304,15 +357,22 @@ def verify_password_reset_otp(db: Session, identifier: str, otp: str) -> dict:
             detail="Chưa có yêu cầu đặt lại mật khẩu hoặc mã OTP đã hết hiệu lực (quá 10 phút). Vui lòng yêu cầu mã mới."
         )
 
-    attempts = cached_otp_data.get("attempts", 0)
-    if attempts >= MAX_OTP_ATTEMPTS:
+    # Keep OTPs issued before the atomic counter rollout fail-closed. New
+    # attempts are counted by Redis INCR below; this legacy field is only a
+    # compatibility guard for an already locked code.
+    if int(cached_otp_data.get("attempts", 0) or 0) >= MAX_OTP_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Mã OTP đã bị khóa do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.")
+
+    allowed, attempts = consume_rate_limit(
+        f"bachkhoa:auth:otp-attempts:{user.id}",
+        limit=MAX_OTP_ATTEMPTS,
+        window_seconds=OTP_TTL_MINUTES * 60,
+    )
+    if not allowed:
         raise HTTPException(status_code=429, detail="Mã OTP đã bị khóa do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.")
 
     target_hash = cached_otp_data.get("otp_hash")
     if clean_hash != target_hash:
-        attempts += 1
-        cached_otp_data["attempts"] = attempts
-        set_cached_json(redis_key, cached_otp_data, ttl_seconds=OTP_TTL_MINUTES * 60)
         remaining = MAX_OTP_ATTEMPTS - attempts
         if remaining <= 0:
             raise HTTPException(status_code=429, detail="Mã OTP đã bị khóa do nhập sai quá 5 lần. Vui lòng yêu cầu mã mới.")

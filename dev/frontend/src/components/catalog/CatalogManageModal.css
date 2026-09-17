@@ -1,0 +1,26 @@
+/* ==========================================================================
+   CatalogManageModal — Modal Quản trị Gói Dịch Vụ & Hạng Mục
+   Giữ cố định UI, không sinh thanh cuộn, dropdown xổ xuống đè mượt mà lên footer
+   ========================================================================== */
+
+.modal.catalog-modal {
+  overflow: visible !important;
+}
+
+.modal.catalog-modal .modal-header {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.modal.catalog-modal .modal-body {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+.modal.catalog-modal .modal-footer {
+  position: relative;
+  z-index: 10;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+

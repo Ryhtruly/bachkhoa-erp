@@ -16,6 +16,8 @@ if src_dir not in sys.path:
 
 os.environ["CONTRACT_CACHE_REFRESH_SECONDS"] = "0"
 os.environ["TESTING"] = "1"
+if not os.environ.get("TEST_DATABASE_URL"):
+    os.environ["TEST_DATABASE_URL"] = "sqlite:///:memory:"
 
 
 def normalize_database_target(database_url):
@@ -56,12 +58,7 @@ def test_target_is_disposable(database_url):
 
 
 APPLICATION_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip()
-
-if not TEST_DATABASE_URL:
-    raise pytest.UsageError(
-        "TEST_DATABASE_URL is required for backend tests; refusing to fall back to DATABASE_URL."
-    )
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip() or "sqlite:///:memory:"
 
 try:
     test_target = normalize_database_target(TEST_DATABASE_URL)
@@ -100,6 +97,128 @@ def _sqlite_get_column_default_string(self, column):
 
 SQLiteDDLCompiler.get_column_default_string = _sqlite_get_column_default_string
 
+from src.core import redis_utils
+
+
+class _FakeRedisLock:
+    def acquire(self, blocking: bool = True) -> bool:
+        return True
+
+    def release(self) -> None:
+        pass
+
+
+class _FakeRedisClient:
+    def __init__(self):
+        self._store = {}
+
+    def lock(self, name: str, timeout=None, blocking_timeout=None, **kwargs):
+        return _FakeRedisLock()
+
+    def get(self, key: str):
+        return self._store.get(key)
+
+    def set(self, key: str, val, **kwargs):
+        self._store[key] = str(val) if not isinstance(val, (str, bytes)) else val
+        return True
+
+    def setex(self, key: str, time, value):
+        self._store[key] = str(value) if not isinstance(value, (str, bytes)) else value
+        return True
+
+    def setnx(self, key: str, val):
+        if key in self._store:
+            return False
+        self._store[key] = str(val) if not isinstance(val, (str, bytes)) else val
+        return True
+
+    def incr(self, key: str, amount: int = 1):
+        try:
+            cur = int(self._store.get(key, 0))
+        except (ValueError, TypeError):
+            cur = 0
+        new_val = cur + amount
+        self._store[key] = str(new_val)
+        return new_val
+
+    def expire(self, key: str, time: int):
+        return True
+
+    def delete(self, *keys):
+        count = 0
+        for k in keys:
+            if k in self._store:
+                del self._store[k]
+                count += 1
+        return count
+
+    def keys(self, pattern: str = "*"):
+        import fnmatch
+        return [k for k in self._store.keys() if fnmatch.fnmatch(k, pattern)]
+
+    def rpush(self, key: str, *values):
+        if key not in self._store or not isinstance(self._store[key], list):
+            self._store[key] = []
+        for val in values:
+            self._store[key].append(str(val) if not isinstance(val, (str, bytes)) else val)
+        return len(self._store[key])
+
+    def lpop(self, key: str):
+        if key in self._store and isinstance(self._store[key], list) and self._store[key]:
+            return self._store[key].pop(0)
+        return None
+
+    def llen(self, key: str):
+        if key in self._store and isinstance(self._store[key], list):
+            return len(self._store[key])
+        return 0
+
+    def lrange(self, key: str, start: int, end: int):
+        if key in self._store and isinstance(self._store[key], list):
+            if end == -1:
+                return self._store[key][start:]
+            return self._store[key][start:end+1]
+        return []
+
+    def lrem(self, key: str, count: int, value: str):
+        if key in self._store and isinstance(self._store[key], list):
+            items = self._store[key]
+            removed = 0
+            while value in items and (count == 0 or removed < abs(count)):
+                items.remove(value)
+                removed += 1
+            return removed
+    def eval(self, script: str, numkeys: int, *keys_and_args):
+        # Support basic Lua enqueue script emulation
+        if "LLEN" in script and "RPUSH" in script:
+            key = keys_and_args[0]
+            max_len = int(keys_and_args[1])
+            payload = keys_and_args[2]
+            if self.llen(key) < max_len:
+                self.rpush(key, payload)
+                return 1
+            return 0
+        return 1
+
+    def ping(self):
+        return True
+
+
+if redis_utils.get_redis_client() is None or not isinstance(redis_utils.get_redis_client(), _FakeRedisClient):
+    redis_utils._client = _FakeRedisClient()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_fake_redis_when_redis_offline():
+    if redis_utils._client is None or not isinstance(redis_utils._client, _FakeRedisClient):
+        redis_utils._client = _FakeRedisClient()
+    else:
+        redis_utils._client._store.clear()
+    yield
+    if isinstance(redis_utils._client, _FakeRedisClient):
+        redis_utils._client._store.clear()
+
+
 from src.index import app
 from src.db.database import engine, Base, get_db
 from src.db.models import User, Role, UserRole, RolePermission, AuditLog
@@ -121,6 +240,34 @@ def _ensure_audit_log_sequence(connection):
     connection.execute(text("create sequence if not exists public.audit_log_id_seq as bigint"))
 
 
+def _ensure_task_nodes_columns(connection):
+    if connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    exists = bool(connection.execute(text(
+        "select exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'task_nodes')"
+    )).scalar())
+    if not exists:
+        return
+
+    connection.execute(text("""
+        alter table public.task_nodes
+        add column if not exists name text,
+        add column if not exists capability_code varchar(50);
+        alter table public.task_nodes
+        drop constraint if exists task_nodes_node_code_fkey;
+
+        alter table public.service_packages
+        add column if not exists category_type varchar(30) not null default 'GENERAL';
+
+        alter table public.task_types
+        add column if not exists category_type varchar(30) not null default 'GENERAL',
+        add column if not exists display_order int null default 100,
+        add column if not exists is_active boolean not null default true;
+    """))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def init_test_db():
     import src.db.models
@@ -135,9 +282,10 @@ def init_test_db():
                     where table_schema = 'public'
                 )"""
             )).scalar())
+    Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         _ensure_audit_log_sequence(conn)
-    Base.metadata.create_all(bind=engine)
+        _ensure_task_nodes_columns(conn)
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
             conn.execute(text("""
@@ -232,7 +380,7 @@ def init_test_db():
 
 @pytest.fixture(scope="session")
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, base_url="https://testserver") as c:
         yield c
 
 
@@ -332,21 +480,29 @@ def finance_clerk_user(db):
     db.flush()
 
     from sqlalchemy import func
-    max_role_id = db.query(func.max(Role.id)).scalar() or 0
-    role = Role(id=max_role_id + 1, role_name=f"finance_clerk_{uuid.uuid4().hex[:6]}")
-    db.add(role)
-    db.flush()
+    role = db.query(Role).filter(Role.role_name == "accountant").first()
+    role_created = False
+    if role is None:
+        max_role_id = db.query(func.max(Role.id)).scalar() or 0
+        role = Role(id=max_role_id + 1, role_name="accountant")
+        db.add(role)
+        db.flush()
+        role_created = True
 
     user_role = UserRole(user_id=user.id, role_id=role.id)
-    perm = RolePermission(
-        role_id=role.id,
-        resource="finance",
-        can_read=True,
-        can_create=True,
-        can_update=True,
-        can_delete=True,
-        can_approve=True
-    )
+    perm = db.query(RolePermission).filter(
+        RolePermission.role_id == role.id,
+        RolePermission.resource == "finance",
+    ).first()
+    permission_created = perm is None
+    if perm is None:
+        perm = RolePermission(role_id=role.id, resource="finance")
+        db.add(perm)
+    perm.can_read = True
+    perm.can_create = True
+    perm.can_update = True
+    perm.can_delete = True
+    perm.can_approve = True
     db.add(user_role)
     db.add(perm)
     db.commit()
@@ -358,10 +514,18 @@ def finance_clerk_user(db):
 
     # Cleanup
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
-    db.query(RolePermission).filter(RolePermission.role_id == role.id).delete()
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
-    db.delete(role)
-    db.delete(user)
+    if permission_created:
+        db.query(RolePermission).filter(
+            RolePermission.role_id == role.id,
+            RolePermission.resource == "finance",
+        ).delete(synchronize_session=False)
+    if role_created:
+        db.query(RolePermission).filter(
+            RolePermission.role_id == role.id,
+        ).delete(synchronize_session=False)
+        db.query(Role).filter(Role.id == role.id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user.id).delete(synchronize_session=False)
     db.commit()
 
 

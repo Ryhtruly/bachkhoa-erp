@@ -12,7 +12,12 @@ import AvatarImage from '../../components/AvatarImage';
 import { printElement } from '../../components/finance/print/printDocument';
 import EmployeePrintProfile from './EmployeePrintProfile';
 import employeeProfilePrintStyles from './employeeProfile.print.css?inline';
-import { ACCOUNT_ROLE_OPTIONS, defaultAccountRoleForDepartment } from './accountRoles';
+import {
+  ACCOUNT_ROLE_OPTIONS,
+  defaultAccountRoleForDepartment,
+  getAccountRoleLabel,
+  isRoleMismatchedWithDepartment,
+} from './accountRoles';
 import './humanResources.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -67,17 +72,33 @@ function Field({ label, value }) {
   );
 }
 
-function CreateAccountModal({ employee, onClose, onCreated }) {
+function CreateAccountModal({ employee, departments = [], onClose, onCreated }) {
   const { addToast } = useToast();
+  const defaultRole = defaultAccountRoleForDepartment(employee?.department_id);
   const [form, setForm] = useState({
     username: '',
     email: employee?.email || '',
-    role_name: defaultAccountRoleForDepartment(employee?.department_id),
+    role_name: defaultRole,
   });
   const [saving, setSaving] = useState(false);
+  const [overrideConfirmed, setOverrideConfirmed] = useState(false);
+
+  const isMismatched = isRoleMismatchedWithDepartment(form.role_name, employee?.department_id);
+  const departmentName =
+    departments?.find((d) => d.id === employee?.department_id)?.name ||
+    employee?.department ||
+    'phòng ban hiện tại';
+  const selectedRoleLabel = getAccountRoleLabel(form.role_name);
+  const defaultRoleLabel = getAccountRoleLabel(defaultRole);
+
+  const canSubmit = !saving && (!isMismatched || overrideConfirmed);
 
   const submit = async (event) => {
     event.preventDefault();
+    if (isMismatched && !overrideConfirmed) {
+      addToast('Vui lòng xác nhận cấp quyền ngoại lệ khác phòng ban trước khi tạo tài khoản', 'warning');
+      return;
+    }
     setSaving(true);
     try {
       const result = await apiFetch(`/api/user-admin/employees/${employee.id}/account`, {
@@ -142,14 +163,17 @@ function CreateAccountModal({ employee, onClose, onCreated }) {
           <FormRow
             label="Vai trò hệ thống"
             required
-            hint="Role được tự chọn theo phòng ban; kiểm tra lại trước khi tạo tài khoản"
+            hint="Mặc định chọn theo phòng ban; nếu đổi vai trò khác cần xác nhận ngoại lệ"
             align="left"
           >
             <select
               className="form-control"
               required
               value={form.role_name}
-              onChange={(event) => setForm({ ...form, role_name: event.target.value })}
+              onChange={(event) => {
+                setForm({ ...form, role_name: event.target.value });
+                setOverrideConfirmed(false);
+              }}
             >
               <option value="">Chọn vai trò</option>
               {ACCOUNT_ROLE_OPTIONS.map((option) => (
@@ -158,11 +182,63 @@ function CreateAccountModal({ employee, onClose, onCreated }) {
             </select>
           </FormRow>
         </FormGrid>
+
+        {isMismatched && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: '14px 16px',
+              borderRadius: 8,
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <AlertTriangle size={20} style={{ color: '#d97706', flexShrink: 0, marginTop: 2 }} />
+              <div style={{ fontSize: 13, lineHeight: 1.5, color: '#92400e' }}>
+                <strong>Cảnh báo phân quyền:</strong> Nhân sự này thuộc{' '}
+                <strong>{departmentName}</strong> (vai trò chuẩn:{' '}
+                <em>{defaultRoleLabel || 'chưa gán'}</em>), nhưng đang được chỉ định vai trò{' '}
+                <strong>{selectedRoleLabel}</strong>. Việc này sẽ cấp quyền truy cập vào các chức năng và dữ liệu ngoài phạm vi chuyên môn của phòng ban.
+              </div>
+            </div>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#78350f',
+                cursor: 'pointer',
+                paddingTop: 8,
+                borderTop: '1px dashed rgba(245, 158, 11, 0.4)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={overrideConfirmed}
+                onChange={(e) => setOverrideConfirmed(e.target.checked)}
+                style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#d97706' }}
+              />
+              Tôi xác nhận cấp quyền ngoại lệ khác phòng ban cho nhân sự này
+            </label>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border-default)' }}>
           <button type="button" className="btn btn-secondary" disabled={saving} onClick={onClose}>
             Hủy bỏ
           </button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={!canSubmit}
+            title={isMismatched && !overrideConfirmed ? 'Vui lòng tích xác nhận phân quyền ngoại lệ trước khi tạo tài khoản' : undefined}
+          >
             {saving ? 'Đang tạo...' : 'Tạo tài khoản'}
           </button>
         </div>
@@ -749,6 +825,7 @@ export default function EmployeeDirectory() {
       {accountTarget && (
         <CreateAccountModal
           employee={accountTarget}
+          departments={departments}
           onClose={() => setAccountTarget(null)}
           onCreated={() => { setAccountTarget(null); loadEmployees(); }}
         />

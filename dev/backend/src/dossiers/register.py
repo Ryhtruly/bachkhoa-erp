@@ -88,10 +88,9 @@ _APPLICABLE_TEMPLATES_QUERY = text("""
           and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id))
       or (a.applicability_type = 'TASK_TYPE' and a.task_type_id = tt.id)
       or (a.applicability_type = 'COMBO'
-          and :node_code is not null
           and a.service_package_id = coalesce(sl.service_package_id, tt.service_package_id)
           and a.task_type_id = tt.id
-          and a.node_code = :node_code)
+          and (:node_code is null or a.node_code is null or a.node_code = :node_code))
     join document_checklist_templates t
       on t.id = a.template_id and coalesce(t.is_active, true)
     where sl.id = :service_line_id
@@ -204,7 +203,9 @@ _CHECKLIST_CABINET_QUERY = text("""
     )
     select n.node_code,
            coalesce(nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
-                    wn.name) as node_name,
+                    nullif(n.name, ''),
+                    wn.name,
+                    n.node_code) as node_name,
            n.id as task_node_id,
            cr.id as checklist_result_id,
            cr.checklist_name,
@@ -222,9 +223,9 @@ _CHECKLIST_CABINET_QUERY = text("""
            type_state.file_count
     from public.workflow_instances wi
     join public.task_nodes n on n.workflow_instance_id = wi.id
-    join public.workflow_nodes wn on wn.code = n.node_code
-    join public.task_node_checklist_results cr on cr.task_node_id = n.id
-    join type_state on type_state.checklist_result_id = cr.id
+    left join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.task_node_checklist_results cr on cr.task_node_id = n.id
+    left join type_state on type_state.checklist_result_id = cr.id
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where wi.service_line_id = :service_line_id
@@ -262,6 +263,8 @@ def checklist_cabinet_by_node(db: Session, service_line_id: str) -> list[dict[st
             "total": 0,
             "done": 0,
         })
+        if not row["document_type_id"]:
+            continue
         files = list(row["files"] or [])
         file_count = int(row["file_count"] or 0)
         if file_count > 0:
@@ -314,6 +317,18 @@ def cabinet_by_node(db: Session, service_line_id: str) -> list[dict[str, Any]]:
     node_names = dict(db.execute(
         text("select code, name from public.workflow_nodes")
     ).all())
+    for r in db.execute(
+        text("""
+            select n.node_code, coalesce(nullif(n.name, ''), wn.name, n.node_code) as name
+            from public.task_nodes n
+            join public.workflow_instances wi on wi.id = n.workflow_instance_id
+            left join public.workflow_nodes wn on wn.code = n.node_code
+            where wi.service_line_id = :sid and n.node_code is not null
+        """),
+        {"sid": service_line_id}
+    ).all():
+        if r[0]:
+            node_names[r[0]] = r[1]
 
     # ── Trạng thái thực tế của từng ô giấy ──────────────────────────────────
     # Đếm tệp phải theo ĐÚNG luật của sổ giấy tờ (``_SLOTS_QUERY_TMPL``): tệp vào
@@ -1181,6 +1196,14 @@ def get_register(
     "tài liệu chuyển giao", xem được nhưng không sửa thẳng.
     """
     _contract_or_404(db, contract_id)
+    if service_line_id:
+        try:
+            created = open_service_line_register(db, service_line_id)
+            if created:
+                db.commit()
+        except Exception as e:
+            logging.warning("Auto-sync service line register failed: %s", e)
+
     rows = db.execute(
         _slots_query(db),
         {"contract_id": contract_id, "service_line_id": service_line_id},
@@ -2165,19 +2188,24 @@ def attach_scan(
     return result
 
 
-def read_scan(db: Session, document_id: str) -> tuple[dict, bytes]:
-    from src.services.storage_service import get_file
-
+def get_scan_metadata(db: Session, document_id: str) -> dict:
     row = db.execute(
         text("""
-            select id, object_key, file_name, content_type
+            select id, contract_id, object_key, file_name, content_type
             from dossier_documents where id = :id
         """),
         {"id": document_id},
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy tệp.")
-    return dict(row), get_file(row["object_key"])["Body"].read()
+    return dict(row)
+
+
+def read_scan(db: Session, document_id: str) -> tuple[dict, bytes]:
+    from src.services.storage_service import get_file
+
+    meta = get_scan_metadata(db, document_id)
+    return meta, get_file(meta["object_key"])["Body"].read()
 
 
 # ── Ô giấy phát sinh ngoài mẫu ────────────────────────────────────────────────
@@ -2367,7 +2395,11 @@ def promote_slot_to_template(db: Session, slot_id: str, *, actor_id: str) -> dic
                  default_quantity, sort_order, note)
             values (:task_type_id, :name, :source, false, :needs_original,
                     :quantity, 800, :note)
-            on conflict (coalesce(task_type_id, '~chung~'), name) do update
+            on conflict (
+                coalesce(task_type_id, '~chung~'),
+                lower(regexp_replace(btrim(name), '[[:space:]]+', ' ', 'g')),
+                source
+            ) where is_identity_owner do update
                 set is_active = true, updated_at = now()
             returning id
         """),
@@ -2514,7 +2546,11 @@ def upsert_template(
                  default_quantity, sort_order, note, is_active)
             values (:task_type_id, :name, :source, :is_required, :needs_original,
                     :quantity, :sort_order, :note, :is_active)
-            on conflict (coalesce(task_type_id, '~chung~'), name) do update
+            on conflict (
+                coalesce(task_type_id, '~chung~'),
+                lower(regexp_replace(btrim(name), '[[:space:]]+', ' ', 'g')),
+                source
+            ) where is_identity_owner do update
                 set source = excluded.source, is_required = excluded.is_required,
                     needs_original = excluded.needs_original,
                     default_quantity = excluded.default_quantity,

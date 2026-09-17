@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add app directory to Python path
@@ -50,6 +50,7 @@ from src.contracts.read_model import (
 )
 
 from src.config.settings import settings
+from src.core.refresh_sessions import cleanup_refresh_sessions as cleanup_refresh_session_rows
 from src.core.logging_config import setup_logging
 from src.core.middleware import RequestIdMiddleware
 
@@ -87,6 +88,30 @@ async def refresh_contract_cache_loop():
             logger.warning("Periodic contract cache refresh failed: %s", exc)
 
 
+def _cleanup_refresh_session_rows_once() -> int:
+    db = SessionLocal()
+    try:
+        deleted = cleanup_refresh_session_rows(db)
+        if deleted:
+            logger.info("Cleaned up %s stale refresh-session rows", deleted)
+        return deleted
+    except Exception as exc:
+        logger.warning("Periodic refresh-session cleanup failed: %s", exc)
+        return 0
+    finally:
+        db.close()
+
+
+async def refresh_session_cleanup_loop():
+    interval_hours = settings.AUTH_REFRESH_SESSION_CLEANUP_INTERVAL_HOURS
+    if interval_hours <= 0:
+        return
+
+    while True:
+        await asyncio.to_thread(_cleanup_refresh_session_rows_once)
+        await asyncio.sleep(interval_hours * 60 * 60)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     if not os.getenv("TESTING"):
@@ -99,12 +124,21 @@ async def lifespan(_app: FastAPI):
     if CONTRACT_CACHE_REFRESH_SECONDS > 0:
         refresh_task = asyncio.create_task(refresh_contract_cache_loop())
 
+    refresh_session_cleanup_task = None
+    if not os.getenv("TESTING") and settings.AUTH_REFRESH_SESSION_CLEANUP_INTERVAL_HOURS > 0:
+        refresh_session_cleanup_task = asyncio.create_task(refresh_session_cleanup_loop())
+
     yield
 
     if refresh_task:
         refresh_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await refresh_task
+
+    if refresh_session_cleanup_task:
+        refresh_session_cleanup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresh_session_cleanup_task
 
 
 setup_logging()
@@ -161,11 +195,35 @@ app = FastAPI(
     description="Standardized OpenAPI Specification for Bach Khoa Enterprise Resource Planning (ERP) System.",
     version="2.0.0",
     openapi_tags=openapi_tags,
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if settings.enable_api_docs else None,
+    redoc_url="/redoc" if settings.enable_api_docs else None,
+    openapi_url="/openapi.json" if settings.enable_api_docs else None,
 )
 
+class PublicStaticFiles(StaticFiles):
+    """Serve UI assets only; generated/business documents are never public."""
+
+    _private_prefixes = (
+        "contracts/",
+        "generated_contracts/",
+        "generated_docs/",
+        "generated_quotes/",
+    )
+
+    async def get_response(self, path: str, scope):
+        normalized = path.replace("\\", "/").lstrip("/")
+        if normalized.startswith(self._private_prefixes):
+            return PlainTextResponse("Not Found", status_code=404)
+        return await super().get_response(path, scope)
+
+
 os.makedirs(os.path.join(os.path.dirname(__file__), "..", "static", "contracts"), exist_ok=True)
-app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")), name="static")
+app.mount(
+    "/static",
+    PublicStaticFiles(directory=os.path.join(os.path.dirname(__file__), "..", "static")),
+    name="static",
+)
 
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
@@ -208,3 +266,17 @@ app.include_router(intake_router)
 @app.get("/")
 def read_root():
     return {"message": "OpenClaw ERP API is running"}
+
+
+@app.get("/set-password", include_in_schema=False)
+def fallback_redirect_set_password(token: str = ""):
+    """Fail-safe redirect: if an employee clicks an invite link that was generated with
+    the backend port (or from prior emails), redirect immediately to the frontend UI
+    with the invite token preserved.
+    """
+    from src.user_admin.service import _frontend_base_url
+    base = _frontend_base_url().rstrip("/")
+    target = f"{base}/set-password"
+    if token:
+        target += f"?token={token}"
+    return RedirectResponse(url=target, status_code=307)

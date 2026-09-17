@@ -12,6 +12,7 @@ export default function FinancePrintReport({
   columns = [],
   rows = [],
   footerRow = null,
+  additionalSections = [],
   signers = [],
   emptyText = 'Không có dữ liệu',
 }) {
@@ -58,79 +59,19 @@ export default function FinancePrintReport({
         </section>
       )}
 
-      <table className="finance-print-table">
-        <thead>
-          <tr>
-            {columns.map(column => (
-              <th
-                key={column.key}
-                className={column.align ? `is-${column.align}` : ''}
-                style={{
-                  width: column.width || 'auto',
-                  textAlign: column.headerAlign || column.align || 'left',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="finance-print-empty">{emptyText}</td>
-            </tr>
-          ) : (
-            rows.map((row, index) => (
-              <tr key={row.id || row.contract_id || `${index}`}>
-                {columns.map(column => (
-                  <td
-                    key={column.key}
-                    className={column.align ? `is-${column.align}` : ''}
-                    style={{
-                      width: column.width || 'auto',
-                      textAlign: column.align || 'left',
-                      whiteSpace: column.nowrap ? 'nowrap' : 'normal'
-                    }}
-                  >
-                    {column.render
-                      ? column.render(row[column.key], row, index)
-                      : (column.format
-                          ? column.format(row[column.key], row, index)
-                          : (row[column.key] ?? '—'))}
-                  </td>
-                ))}
-              </tr>
-            ))
-          )}
-        </tbody>
-        {footerRow && rows.length > 0 && (
-          <tfoot>
-            {React.isValidElement(footerRow) ? (
-              footerRow
-            ) : (
-              <tr className="finance-print-footer-row">
-                {columns.map((column, idx) => {
-                  const cellVal = footerRow[column.key];
-                  return (
-                    <td
-                      key={column.key || idx}
-                      className={column.align ? `is-${column.align}` : ''}
-                      style={{
-                        textAlign: column.align || 'left',
-                        fontWeight: 700
-                      }}
-                    >
-                      {cellVal !== undefined ? cellVal : ''}
-                    </td>
-                  );
-                })}
-              </tr>
-            )}
-          </tfoot>
-        )}
-      </table>
+      <PrintTable columns={columns} rows={rows} footerRow={footerRow} emptyText={emptyText} />
+
+      {additionalSections.map((section, index) => (
+        <section className="finance-print-additional-section" key={section.title || index}>
+          {section.title && <h2>{section.title}</h2>}
+          <PrintTable
+            columns={section.columns || []}
+            rows={section.rows || []}
+            footerRow={section.footerRow || null}
+            emptyText={section.emptyText || emptyText}
+          />
+        </section>
+      ))}
 
       <footer className="finance-print-signatures">
         {signatureEntries.map((signer, index) => (
@@ -142,5 +83,114 @@ export default function FinancePrintReport({
         ))}
       </footer>
     </div>
+  );
+}
+
+function PrintTable({ columns, rows, footerRow, emptyText }) {
+  return (
+    <table className="finance-print-table">
+      <colgroup>
+        {columns.map((column, idx) => (
+          <col
+            key={column.key || idx}
+            style={column.width ? { width: column.width } : undefined}
+          />
+        ))}
+      </colgroup>
+      <thead>
+        <tr>
+          {columns.map(column => {
+            const isNowrap = Boolean(column.headerNowrap || (column.nowrap && column.headerNowrap !== false));
+            return (
+              <th
+                key={column.key}
+                className={[
+                  column.align ? `is-${column.align}` : '',
+                  isNowrap ? 'is-nowrap' : '',
+                  column.headerClassName || '',
+                ].filter(Boolean).join(' ')}
+                style={{
+                  width: column.width || 'auto',
+                  textAlign: column.headerAlign || column.align || 'center',
+                  whiteSpace: isNowrap ? 'nowrap' : 'normal',
+                  wordBreak: 'keep-all',
+                  overflowWrap: column.overflowWrap || 'break-word',
+                  lineHeight: 1.25,
+                  ...column.headerStyle,
+                }}
+              >
+                {column.label}
+              </th>
+            );
+          })}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr>
+            <td colSpan={columns.length} className="finance-print-empty">{emptyText}</td>
+          </tr>
+        ) : (
+          rows.map((row, index) => (
+            <tr key={row.id || row.contract_id || `${index}`}>
+              {columns.map(column => {
+                const isNowrap = Boolean(column.nowrap);
+                return (
+                  <td
+                    key={column.key}
+                    className={[
+                      column.align ? `is-${column.align}` : '',
+                      isNowrap ? 'is-nowrap' : '',
+                      column.className || '',
+                    ].filter(Boolean).join(' ')}
+                    style={{
+                      width: column.width || 'auto',
+                      textAlign: column.align || 'left',
+                      whiteSpace: isNowrap ? 'nowrap' : 'normal',
+                      ...column.cellStyle,
+                    }}
+                  >
+                    {column.render
+                      ? column.render(row[column.key], row, index)
+                      : (column.format
+                          ? column.format(row[column.key], row, index)
+                          : (row[column.key] ?? '—'))}
+                  </td>
+                );
+              })}
+            </tr>
+          ))
+        )}
+      </tbody>
+      {footerRow && rows.length > 0 && (
+        <tfoot>
+          {React.isValidElement(footerRow) ? (
+            footerRow
+          ) : (
+            <tr className="finance-print-footer-row">
+              {columns.map((column, idx) => {
+                const cellVal = footerRow[column.key];
+                return (
+                  <td
+                    key={column.key || idx}
+                    className={[
+                      column.align ? `is-${column.align}` : '',
+                      column.nowrap ? 'is-nowrap' : '',
+                    ].filter(Boolean).join(' ')}
+                    style={{
+                      textAlign: column.align || 'left',
+                      fontWeight: 700,
+                      whiteSpace: column.nowrap ? 'nowrap' : 'normal',
+                    }}
+                  >
+                    {cellVal !== undefined ? cellVal : ''}
+                  </td>
+                );
+              })}
+            </tr>
+          )}
+        </tfoot>
+      )}
+    </table>
   );
 }

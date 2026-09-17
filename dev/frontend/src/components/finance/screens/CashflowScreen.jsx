@@ -22,11 +22,11 @@ const STATUS_OPTIONS = [
   { value: 'Đã hủy', label: 'Đã hủy' }
 ];
 
-export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser, focusVoucher = null }) {
+export default function CashflowScreen({ mode = 'all', month: propMonth, setMonth: propSetMonth, isDirector: propIsDirector, user: propUser, focusVoucher = null, onFocusVoucherConsumed }) {
   const printDocumentRef = useRef(null);
   const { addToast } = useToast();
   const [data, setData] = useState([]);
-  const [balance, setBalance] = useState({ cash_balance: 0, bank_balance: 0, balance: 0, total_income: 0, total_expenditure: 0 });
+  const [balance, setBalance] = useState({ cash_balance: 0, bank_balance: 0, balance: 0, opening_balance: null, closing_balance: null, total_income: 0, total_expenditure: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
@@ -48,8 +48,10 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   // Bấm thông báo "phiếu chờ duyệt" thì mở thẳng phiếu đó. Modal tự tải theo mã
   // phiếu nên không phụ thuộc bộ lọc tháng / hình thức thanh toán đang chọn.
   useEffect(() => {
-    if (focusVoucher?.id) setDetailId(focusVoucher.id);
-  }, [focusVoucher?.id, focusVoucher?.nonce]);
+    if (!focusVoucher?.id) return;
+    setDetailId(focusVoucher.id);
+    onFocusVoucherConsumed?.(focusVoucher.id);
+  }, [focusVoucher?.id, focusVoucher?.nonce, onFocusVoucherConsumed]);
 
   const isDirector = propIsDirector !== undefined
     ? propIsDirector
@@ -62,7 +64,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setBalance({ cash_balance: 0, bank_balance: 0, balance: 0, total_income: 0, total_expenditure: 0 });
+    setBalance({ cash_balance: 0, bank_balance: 0, balance: 0, opening_balance: null, closing_balance: null, total_income: 0, total_expenditure: 0 });
     setData([]);
     try {
       const p = new URLSearchParams();
@@ -73,6 +75,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         setData(Array.isArray(json) ? json : (json.transactions || []));
         setBalance({
           balance: json.balance || 0,
+          opening_balance: json.opening_balance,
+          closing_balance: json.closing_balance,
           total_income: json.total_income || 0,
           total_expenditure: json.total_expenditure || 0
         });
@@ -81,6 +85,8 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         setData(Array.isArray(json) ? json : (json.transactions || []));
         setBalance({
           balance: json.balance || 0,
+          opening_balance: json.opening_balance,
+          closing_balance: json.closing_balance,
           total_income: json.total_income || 0,
           total_expenditure: json.total_expenditure || 0
         });
@@ -164,7 +170,10 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   }, [data, search, sort, filters]);
 
   const isIncome = t => t.type === 'INCOME' || t.type === 'Thu' || t.transaction_type === 'INCOME' || t.transaction_type === 'Thu';
-  const isExpense = t => t.type === 'EXPENSE' || t.type === 'Chi' || t.type === 'ADVANCE' || t.type === 'Tạm ứng' || t.transaction_type === 'EXPENSE' || t.transaction_type === 'Chi';
+  const isExpense = t => (
+    ['EXPENSE', 'Chi', 'ADVANCE', 'Tạm ứng', 'REIMBURSEMENT', 'Hoàn ứng'].includes(t.type)
+    || ['EXPENSE', 'Chi', 'ADVANCE', 'Tạm ứng', 'REIMBURSEMENT', 'Hoàn ứng'].includes(t.transaction_type)
+  );
 
   // 1. Số liệu tổng quan kỳ / quỹ (CỐ ĐỊNH theo tháng, không bị nhảy về 0đ khi lọc bảng con)
 
@@ -182,17 +191,27 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
   const printNet = printIncome - printExpense;
 
   const reportTitle = mode === 'all' ? 'Sổ Nhật Ký Thu Chi' : mode === 'cash' ? 'Sổ Quỹ Tiền Mặt' : 'Sổ Quỹ Ngân Hàng';
+  const hasRunningBalance = mode === 'cash' || mode === 'bank';
   const reportColumns = [
-    { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
-    { key: 'Ngày', label: 'Ngày', width: '80px', align: 'center', nowrap: true },
-    { key: 'id', label: 'Số chứng từ', width: '120px', align: 'center', nowrap: true, render: v => <strong>{v}</strong> },
-    { key: 'type', label: 'Loại', width: '55px', align: 'center', nowrap: true, render: (_, row) => isIncome(row) ? 'Thu' : 'Chi' },
-    { key: 'Hạng mục', label: 'Hạng mục thu/chi', width: '145px', align: 'left' },
-    { key: 'Diễn giải', label: 'Nội dung diễn giải', align: 'left' },
-    { key: 'Đối tác', label: 'Đối tác / Người giao dịch', width: '135px', align: 'left' },
-    { key: 'Hình thức', label: 'Hình thức', width: '85px', align: 'center', nowrap: true, render: (_, row) => row.payment_method_label || row['Hình thức'] || (row.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản') },
-    { key: 'income', label: 'Thu (VNĐ)', width: '110px', align: 'right', nowrap: true, render: (_, row) => isIncome(row) ? fmt(row.amount) : '—' },
-    { key: 'expense', label: 'Chi (VNĐ)', width: '110px', align: 'right', nowrap: true, render: (_, row) => isExpense(row) ? fmt(row.amount) : '—' },
+    { key: 'index', label: 'STT', width: '3.5%', align: 'center', nowrap: true, headerNowrap: true, render: (_, __, index) => index + 1 },
+    { key: 'Ngày', label: 'Ngày', width: '7%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'id', label: 'Số chứng từ', width: '9%', align: 'center', nowrap: true, headerNowrap: true, render: v => <strong>{v}</strong> },
+    { key: 'type', label: 'Loại', width: '4.5%', align: 'center', nowrap: true, headerNowrap: true, render: (_, row) => isIncome(row) ? 'Thu' : 'Chi' },
+    { key: 'Hạng mục', label: 'Hạng mục thu/chi', width: isDirector ? (hasRunningBalance ? '12%' : '14%') : (hasRunningBalance ? '14%' : '16%'), align: 'left' },
+    { key: 'Diễn giải', label: 'Nội dung diễn giải', width: isDirector ? (hasRunningBalance ? '20%' : '24%') : (hasRunningBalance ? '24%' : '28%'), align: 'left' },
+    { key: 'Đối tác', label: 'Đối tác / Người giao dịch', width: isDirector ? (hasRunningBalance ? '13%' : '15%') : (hasRunningBalance ? '15%' : '17%'), align: 'left' },
+    { key: 'Hình thức', label: 'Hình thức', width: '7%', align: 'center', nowrap: true, headerNowrap: true, render: (_, row) => row.payment_method_label || row['Hình thức'] || (row.payment_method === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản') },
+    ...(isDirector ? [{ key: 'income', label: 'Thu (VNĐ)', width: '8%', align: 'right', nowrap: true, headerNowrap: true, render: (_, row) => isIncome(row) ? fmt(row.amount) : '—' }] : []),
+    { key: 'expense', label: 'Chi (VNĐ)', width: '8%', align: 'right', nowrap: true, headerNowrap: true, render: (_, row) => isExpense(row) ? fmt(row.amount) : '—' },
+    ...(hasRunningBalance ? [{
+      key: 'running_balance',
+      label: 'Số dư sau giao dịch (VNĐ)',
+      width: '8%',
+      align: 'right',
+      nowrap: true,
+      headerNowrap: false,
+      render: (_, row) => fmt(mode === 'cash' ? row.cash_balance_after : row.bank_balance_after),
+    }] : []),
   ];
 
   const footerRow = {
@@ -204,8 +223,9 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
     'Diễn giải': 'Tổng cộng',
     'Đối tác': '',
     'Hình thức': '',
-    income: fmt(printIncome),
-    expense: fmt(printExpense)
+    ...(isDirector ? { income: fmt(printIncome) } : {}),
+    expense: fmt(printExpense),
+    ...(mode === 'cash' || mode === 'bank' ? { running_balance: '' } : {}),
   };
 
   const handlePrintReport = () => {
@@ -228,16 +248,16 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
             <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Printer size={15} /> In sổ quỹ
             </button>
-            {!isDirector && (
+            {isDirector && (
               <>
                 <button className="btn btn-primary" onClick={() => setModal('Thu')} style={{ background: '#10b981', borderColor: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <PlusCircle size={15} /> Lập phiếu thu
                 </button>
-                <button className="btn btn-primary" onClick={() => setModal('Chi')} style={{ background: '#ef4444', borderColor: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <MinusCircle size={15} /> Lập phiếu chi
-                </button>
               </>
             )}
+            <button className="btn btn-primary" onClick={() => setModal('Chi')} style={{ background: '#ef4444', borderColor: '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <MinusCircle size={15} /> Lập phiếu chi
+            </button>
           </>
         }
       />
@@ -249,18 +269,12 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         </div>
       )}
 
-      <div className="cashflow-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 12 }}>
+      <div className="cashflow-kpi-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${mode === 'all' ? (isDirector ? 3 : 1) : (isDirector ? 3 : 2)}, 1fr)`, gap: 12, marginBottom: 12 }}>
         {mode === 'all' ? (
           <>
-            <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Thu' ? 'All' : 'Thu' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Thu">
-              <BalanceCard
-                title={`Tổng thu (toàn hệ thống)${filters.type === 'Thu' ? ' • Đang lọc' : ''}`}
-                amount={periodIncome}
-                icon={<TrendingUp size={20} color="#10b981" />}
-                forcePositive
-                containerStyle={filters.type === 'Thu' ? { outline: '2px solid #10b981', background: 'rgba(16,185,129,0.04)' } : {}}
-              />
-            </div>
+            {isDirector && <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Thu' ? 'All' : 'Thu' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Thu">
+              <BalanceCard title={`Tổng thu (toàn hệ thống)${filters.type === 'Thu' ? ' • Đang lọc' : ''}`} amount={periodIncome} icon={<TrendingUp size={20} color="#10b981" />} forcePositive containerStyle={filters.type === 'Thu' ? { outline: '2px solid #10b981', background: 'rgba(16,185,129,0.04)' } : {}} />
+            </div>}
             <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Chi' ? 'All' : 'Chi' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Chi">
               <BalanceCard
                 title={`Tổng chi (toàn hệ thống)${filters.type === 'Chi' ? ' • Đang lọc' : ''}`}
@@ -270,13 +284,9 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
                 containerStyle={filters.type === 'Chi' ? { outline: '2px solid #ef4444', background: 'rgba(239,68,68,0.04)' } : {}}
               />
             </div>
-            <div onClick={() => setFilters(p => ({ ...p, type: 'All' }))} style={{ cursor: 'pointer' }} title="Bấm để xem tất cả Thu & Chi">
-              <BalanceCard
-                title="Dòng tiền ròng (Thu - Chi)"
-                amount={periodNet}
-                icon={<Scale size={20} color={periodNet >= 0 ? "#10b981" : "#ef4444"} />}
-              />
-            </div>
+            {isDirector && <div onClick={() => setFilters(p => ({ ...p, type: 'All' }))} style={{ cursor: 'pointer' }} title="Bấm để xem tất cả Thu & Chi">
+              <BalanceCard title="Dòng tiền ròng (Thu - Chi)" amount={periodNet} icon={<Scale size={20} color={periodNet >= 0 ? "#10b981" : "#ef4444"} />} />
+            </div>}
           </>
         ) : (
           <>
@@ -287,15 +297,9 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
                 icon={mode === 'cash' ? <Wallet size={20} color="#10b981" /> : <Building2 size={20} color="#3b82f6" />}
               />
             </div>
-            <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Thu' ? 'All' : 'Thu' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Thu">
-              <BalanceCard
-                title={`Tổng thu${filters.type === 'Thu' ? ' • Đang lọc' : ''}`}
-                amount={balance.total_income}
-                icon={<TrendingUp size={20} color="#10b981" />}
-                forcePositive
-                containerStyle={filters.type === 'Thu' ? { outline: '2px solid #10b981', background: 'rgba(16,185,129,0.04)' } : {}}
-              />
-            </div>
+            {isDirector && <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Thu' ? 'All' : 'Thu' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Thu">
+              <BalanceCard title={`Tổng thu${filters.type === 'Thu' ? ' • Đang lọc' : ''}`} amount={balance.total_income} icon={<TrendingUp size={20} color="#10b981" />} forcePositive containerStyle={filters.type === 'Thu' ? { outline: '2px solid #10b981', background: 'rgba(16,185,129,0.04)' } : {}} />
+            </div>}
             <div onClick={() => setFilters(p => ({ ...p, type: p.type === 'Chi' ? 'All' : 'Chi' }))} style={{ cursor: 'pointer' }} title="Bấm để lọc phiếu Chi">
               <BalanceCard
                 title={`Tổng chi${filters.type === 'Chi' ? ' • Đang lọc' : ''}`}
@@ -315,7 +319,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         onSearchChange={setSearch}
         searchPlaceholder={mode === 'all' ? "Tìm số phiếu, đối tác, danh mục..." : "Tìm số phiếu, đối tác..."}
         filters={[
-          { key: 'type', label: 'Loại', type: 'select', width: 140, options: [{ value: 'All', label: 'Tất cả loại' }, { value: 'Thu', label: 'Thu' }, { value: 'Chi', label: 'Chi' }] },
+          { key: 'type', label: 'Loại', type: 'select', width: 140, options: [{ value: 'All', label: 'Tất cả loại' }, ...(isDirector ? [{ value: 'Thu', label: 'Thu' }] : []), { value: 'Chi', label: 'Chi' }] },
           ...(mode === 'all' ? [{ key: 'payment_method', label: 'Hình thức', type: 'select', width: 165, options: [{ value: 'All', label: 'Tất cả hình thức' }, { value: 'Tiền mặt', label: 'Tiền mặt' }, { value: 'Chuyển khoản', label: 'Chuyển khoản' }] }] : []),
           { key: 'status', label: 'Trạng thái', type: 'select', width: 170, options: STATUS_OPTIONS },
           ...(categoryOptions.length > 2 ? [{ key: 'category', label: 'Hạng mục', type: 'select', width: 220, options: categoryOptions }] : [])
@@ -333,9 +337,9 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         <SummaryStrip
           countText={`${sortedFiltered.length} giao dịch`}
           items={[
-            { label: 'Tổng thu lọc', value: filteredIncome, color: '#10b981', prefix: '+' },
+            ...(isDirector ? [{ label: 'Tổng thu lọc', value: filteredIncome, color: '#10b981', prefix: '+' }] : []),
             { label: 'Tổng chi lọc', value: filteredExpense, color: '#ef4444', prefix: '−' },
-            { label: 'Chênh lệch', value: filteredNet, color: filteredNet >= 0 ? '#10b981' : '#ef4444', prefix: filteredNet >= 0 ? '+' : '−' }
+            ...(isDirector ? [{ label: 'Chênh lệch', value: filteredNet, color: filteredNet >= 0 ? '#10b981' : '#ef4444', prefix: filteredNet >= 0 ? '+' : '−' }] : [])
           ]}
         />
       )}
@@ -347,12 +351,14 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         <FinancePrintReport
           documentRef={printDocumentRef}
           title={reportTitle}
-          subtitle={`Kỳ báo cáo: ${month ? `Tháng ${month.split('-')[1]}/${month.split('-')[0]}` : 'Toàn bộ'} · Phân loại: ${filters.type === 'All' ? 'Tất cả' : filters.type} · Hình thức: ${filters.payment_method === 'All' ? 'Tất cả' : filters.payment_method}`}
+          subtitle={`Kỳ báo cáo: ${month ? `Tháng ${month.split('-')[1]}/${month.split('-')[0]}` : 'Toàn bộ'} · Phân loại: ${filters.type === 'All' ? 'Tất cả' : filters.type} · Hình thức: ${filters.payment_method === 'All' ? 'Tất cả' : filters.payment_method} · Chỉ phiếu đã ghi sổ (Hoàn thành/Đã quyết toán)`}
           summary={[
             { label: 'Số giao dịch', value: printRows.length.toLocaleString('vi-VN') },
-            { label: 'Tổng thu', value: fmt(printIncome) },
+            ...(mode === 'cash' || mode === 'bank') && balance.opening_balance != null ? [{ label: 'Số dư đầu kỳ', value: fmt(balance.opening_balance) }] : [],
+            ...(isDirector ? [{ label: 'Tổng thu', value: fmt(printIncome) }] : []),
             { label: 'Tổng chi', value: fmt(printExpense) },
-            { label: 'Chênh lệch', value: fmt(printNet) },
+            ...(mode === 'cash' || mode === 'bank') ? [{ label: 'Số dư cuối kỳ', value: fmt(balance.closing_balance ?? balance.balance) }] : [],
+            ...(isDirector ? [{ label: 'Chênh lệch', value: fmt(printNet) }] : []),
           ]}
           columns={reportColumns}
           rows={printRows}
@@ -366,7 +372,7 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
         />
       </div>
 
-      <CashflowModal open={!!modal} onClose={() => setModal(null)} defaultType={modal || 'Thu'} onSuccess={load} user={propUser || currentUser} />
+      <CashflowModal open={!!modal} onClose={() => setModal(null)} defaultType={modal || 'Chi'} onSuccess={load} user={propUser || currentUser} isDirector={isDirector} />
       <CashflowDetailModal open={!!detailId} transactionId={detailId} isDirector={isDirector} user={propUser || currentUser} onClose={() => setDetailId(null)} onSuccess={load} />
     </div>
   );

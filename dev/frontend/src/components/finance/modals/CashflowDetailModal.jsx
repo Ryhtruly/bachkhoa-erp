@@ -5,7 +5,9 @@ import { AlertCircle, Check, X, Trash2, Printer } from 'lucide-react';
 import { parseAmt, spellVietnameseCurrency } from '../utils';
 import { apiFetch } from '../../../lib/api';
 import { API } from '../financeConstants';
+import ReceiptLinks from '../ReceiptLinks';
 import { VoucherTemplate } from '../screens/PrintVoucherScreen';
+import { getVoucherPrintStatus } from '../screens/cashflowPrintUtils';
 import { printElement } from '../print/printDocument';
 import voucherPrintStyles from '../screens/PrintVoucherScreen.print.css?inline';
 
@@ -48,6 +50,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
 
   const isPending = detail?.status === 'PENDING' || detail?.status === 'Chờ duyệt' || detail?.status === 'pending';
   const isReadOnly = detail?.status === 'COMPLETED' || detail?.status === 'Hoàn thành' || detail?.status === 'Đã duyệt' || detail?.status === 'Đã quyết toán' || detail?.status === 'CANCELLED' || detail?.status === 'Đã hủy' || detail?.status === 'REJECTED' || detail?.status === 'Từ chối';
+  const printStatus = getVoucherPrintStatus(detail?.status_label || detail?.status);
 
   useEffect(() => {
     if (open && transactionId) {
@@ -406,6 +409,23 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
               </tbody>
             </table>
 
+            <div style={{ marginTop: 16, padding: '12px 14px', background: 'var(--bg-subtle, #f8fafc)', border: '1px solid var(--border-default, #e2e8f0)', borderRadius: 8 }}>
+              <div style={{ marginBottom: 8, color: 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Minh chứng / bill đính kèm
+              </div>
+              {detail?.receipt_attachments?.length || detail?.receipt_attachment_url ? (
+                <ReceiptLinks
+                  attachments={detail.receipt_attachments}
+                  legacyUrl={detail.receipt_attachment_url}
+                  addToast={addToast}
+                />
+              ) : (
+                <div style={{ color: '#991b1b', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                  Phiếu này chưa có ảnh bill hoặc tài liệu minh chứng.
+                </div>
+              )}
+            </div>
+
             {isReadOnly && !isPending && (
               <div style={{
                 marginTop: 16,
@@ -439,8 +459,9 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
                   className="btn btn-secondary"
                   onClick={handlePrintVoucher}
                   style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                  title={printStatus ? `${printStatus.title}. ${printStatus.message}` : 'In chứng từ'}
                 >
-                  <Printer size={15} /> In phiếu
+                  <Printer size={15} /> {printStatus?.key === 'PENDING' ? 'In bản dự thảo' : printStatus ? 'In bản lưu' : 'In phiếu'}
                 </button>
                 {(detail?.status === 'COMPLETED' || detail?.status === 'Hoàn thành') && !isReversal && isDirector && (
                   <button
@@ -517,6 +538,7 @@ function CashflowDetailModal({ open, transactionId, isDirector: propIsDirector, 
             contractId={form.contract_id}
             projectId={detail.project_id}
             accounting={detail.accounting || detail.accounting_name}
+            status={detail.status_label || detail.status}
             documentRef={printDocumentRef}
           />
         </div>

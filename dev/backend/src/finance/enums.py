@@ -16,6 +16,37 @@ class TransactionStatus(str, Enum):
     PENDING = "PENDING"
     REJECTED = "REJECTED"
     CANCELLED = "CANCELLED"
+    SETTLED = "SETTLED"
+
+
+APPROVED_STATUS_SET = {
+    TransactionStatus.COMPLETED.value,
+    TransactionStatus.SETTLED.value,
+}
+
+PENDING_STATUS_SET = {
+    TransactionStatus.PENDING.value,
+}
+
+# Canonical values are used by business logic and are the only values read or
+# written by the runtime.  Vietnamese strings belong only to presentation
+# labels and to the one-time SQL backfill migration.
+APPROVED_STATUS_DB_VALUES = (
+    TransactionStatus.COMPLETED.value,
+    TransactionStatus.SETTLED.value,
+)
+
+PENDING_STATUS_DB_VALUES = (TransactionStatus.PENDING.value,)
+REJECTED_STATUS_DB_VALUES = (TransactionStatus.REJECTED.value,)
+CANCELLED_STATUS_DB_VALUES = (TransactionStatus.CANCELLED.value,)
+
+STATUS_DB_VALUES_BY_CANONICAL = {
+    TransactionStatus.COMPLETED.value: APPROVED_STATUS_DB_VALUES,
+    TransactionStatus.SETTLED.value: APPROVED_STATUS_DB_VALUES,
+    TransactionStatus.PENDING.value: PENDING_STATUS_DB_VALUES,
+    TransactionStatus.REJECTED.value: REJECTED_STATUS_DB_VALUES,
+    TransactionStatus.CANCELLED.value: CANCELLED_STATUS_DB_VALUES,
+}
 
 
 class PaymentMethod(str, Enum):
@@ -28,68 +59,74 @@ class TransactionScope(str, Enum):
     INTERNAL = "INTERNAL"
 
 
-# ─── Normalization maps (supports legacy Vietnamese & English inputs) ───
+INCOME_TYPE_DB_VALUES = (
+    TransactionType.INCOME.value,
+)
+
+EXPENSE_TYPE_DB_VALUES = (TransactionType.EXPENSE.value,)
+
+ADVANCE_TYPE_DB_VALUES = (TransactionType.ADVANCE.value,)
+
+REIMBURSEMENT_TYPE_DB_VALUES = (TransactionType.REIMBURSEMENT.value,)
+
+EXPENDITURE_TYPE_DB_VALUES = (
+    *EXPENSE_TYPE_DB_VALUES,
+    *ADVANCE_TYPE_DB_VALUES,
+)
+
+CASH_PAYMENT_METHOD_DB_VALUES = (PaymentMethod.CASH.value,)
+BANK_PAYMENT_METHOD_DB_VALUES = (PaymentMethod.BANK_TRANSFER.value,)
+COMPANY_SCOPE_DB_VALUES = (TransactionScope.COMPANY.value,)
+INTERNAL_SCOPE_DB_VALUES = (TransactionScope.INTERNAL.value,)
+
+ALL_STATUS_DB_VALUES = (
+    *APPROVED_STATUS_DB_VALUES,
+    *PENDING_STATUS_DB_VALUES,
+    *REJECTED_STATUS_DB_VALUES,
+    *CANCELLED_STATUS_DB_VALUES,
+)
+ALL_TRANSACTION_TYPE_DB_VALUES = (
+    *INCOME_TYPE_DB_VALUES,
+    *EXPENSE_TYPE_DB_VALUES,
+    *ADVANCE_TYPE_DB_VALUES,
+    *REIMBURSEMENT_TYPE_DB_VALUES,
+)
+ALL_PAYMENT_METHOD_DB_VALUES = (
+    *CASH_PAYMENT_METHOD_DB_VALUES,
+    *BANK_PAYMENT_METHOD_DB_VALUES,
+)
+ALL_SCOPE_DB_VALUES = (
+    *COMPANY_SCOPE_DB_VALUES,
+    *INTERNAL_SCOPE_DB_VALUES,
+)
+
+
+# ─── Normalization maps (canonical English values and lowercase English input) ───
 
 TX_TYPE_MAP = {
     "income": TransactionType.INCOME.value,
-    "thu": TransactionType.INCOME.value,
-    "thu tiền": TransactionType.INCOME.value,
-    "thu_tien": TransactionType.INCOME.value,
     "expense": TransactionType.EXPENSE.value,
-    "chi": TransactionType.EXPENSE.value,
-    "chi tiền": TransactionType.EXPENSE.value,
-    "chi_tien": TransactionType.EXPENSE.value,
     "advance": TransactionType.ADVANCE.value,
-    "tạm ứng": TransactionType.ADVANCE.value,
-    "tam_ung": TransactionType.ADVANCE.value,
     "reimbursement": TransactionType.REIMBURSEMENT.value,
-    "hoàn ứng": TransactionType.REIMBURSEMENT.value,
-    "hoan_ung": TransactionType.REIMBURSEMENT.value,
-    "quyết toán": TransactionType.REIMBURSEMENT.value,
-    "quyet_toan": TransactionType.REIMBURSEMENT.value,
-    "advance_clear": TransactionType.REIMBURSEMENT.value,
 }
 
 STATUS_MAP = {
     "completed": TransactionStatus.COMPLETED.value,
-    "approved": TransactionStatus.COMPLETED.value,
-    "hoàn thành": TransactionStatus.COMPLETED.value,
-    "hoan_thanh": TransactionStatus.COMPLETED.value,
-    "đã duyệt": TransactionStatus.COMPLETED.value,
-    "da_duyet": TransactionStatus.COMPLETED.value,
-    "đã quyết toán": TransactionStatus.COMPLETED.value,
-    "da_quyet_toan": TransactionStatus.COMPLETED.value,
+    "settled": TransactionStatus.SETTLED.value,
     "pending": TransactionStatus.PENDING.value,
-    "chờ duyệt": TransactionStatus.PENDING.value,
-    "cho_duyet": TransactionStatus.PENDING.value,
     "rejected": TransactionStatus.REJECTED.value,
-    "từ chối": TransactionStatus.REJECTED.value,
-    "tu_choi": TransactionStatus.REJECTED.value,
     "cancelled": TransactionStatus.CANCELLED.value,
-    "đã hủy": TransactionStatus.CANCELLED.value,
-    "da_huy": TransactionStatus.CANCELLED.value,
 }
 
 PAYMENT_METHOD_MAP = {
     "cash": PaymentMethod.CASH.value,
-    "tiền mặt": PaymentMethod.CASH.value,
-    "tien_mat": PaymentMethod.CASH.value,
-    "tm": PaymentMethod.CASH.value,
     "bank_transfer": PaymentMethod.BANK_TRANSFER.value,
     "bank": PaymentMethod.BANK_TRANSFER.value,
-    "chuyển khoản": PaymentMethod.BANK_TRANSFER.value,
-    "chuyen_khoan": PaymentMethod.BANK_TRANSFER.value,
-    "ckhoản": PaymentMethod.BANK_TRANSFER.value,
-    "ck": PaymentMethod.BANK_TRANSFER.value,
 }
 
 SCOPE_MAP = {
     "company": TransactionScope.COMPANY.value,
-    "công ty": TransactionScope.COMPANY.value,
-    "cong_ty": TransactionScope.COMPANY.value,
     "internal": TransactionScope.INTERNAL.value,
-    "nội bộ": TransactionScope.INTERNAL.value,
-    "noi_bo": TransactionScope.INTERNAL.value,
 }
 
 # ─── Vietnamese Display Labels for UI Presentation ───
@@ -106,6 +143,7 @@ STATUS_LABELS = {
     TransactionStatus.PENDING.value: "Chờ duyệt",
     TransactionStatus.REJECTED.value: "Từ chối",
     TransactionStatus.CANCELLED.value: "Đã hủy",
+    TransactionStatus.SETTLED.value: "Đã quyết toán",
 }
 
 PAYMENT_METHOD_LABELS = {
@@ -171,50 +209,26 @@ def get_transaction_type_aliases(val: Optional[str]) -> list[str]:
     if not val or val in ("All", ""):
         return []
     canon = normalize_transaction_type(val)
-    aliases = {canon, val, TX_TYPE_LABELS.get(canon, "")}
-    for k, v in TX_TYPE_MAP.items():
-        if v == canon:
-            aliases.add(k)
-            aliases.add(k.capitalize())
-            aliases.add(k.upper())
-    return [a for a in aliases if a]
+    return [canon] if canon in ALL_TRANSACTION_TYPE_DB_VALUES else []
 
 
 def get_status_aliases(val: Optional[str]) -> list[str]:
     if not val or val in ("All", ""):
         return []
     canon = normalize_status(val)
-    aliases = {canon, val, STATUS_LABELS.get(canon, "")}
-    for k, v in STATUS_MAP.items():
-        if v == canon:
-            aliases.add(k)
-            aliases.add(k.capitalize())
-            aliases.add(k.upper())
-    return [a for a in aliases if a]
+    return [canon] if canon in ALL_STATUS_DB_VALUES else []
 
 
 def get_payment_method_aliases(val: Optional[str]) -> list[str]:
     if not val or val in ("All", ""):
         return []
     canon = normalize_payment_method(val)
-    aliases = {canon, val, PAYMENT_METHOD_LABELS.get(canon, "")}
-    for k, v in PAYMENT_METHOD_MAP.items():
-        if v == canon:
-            aliases.add(k)
-            aliases.add(k.capitalize())
-            aliases.add(k.upper())
-    return [a for a in aliases if a]
+    return [canon] if canon in ALL_PAYMENT_METHOD_DB_VALUES else []
 
 
 def get_scope_aliases(val: Optional[str]) -> list[str]:
     if not val or val in ("All", ""):
         return []
     canon = normalize_scope(val)
-    aliases = {canon, val, SCOPE_LABELS.get(canon, "")}
-    for k, v in SCOPE_MAP.items():
-        if v == canon:
-            aliases.add(k)
-            aliases.add(k.capitalize())
-            aliases.add(k.upper())
-    return [a for a in aliases if a]
+    return [canon] if canon in ALL_SCOPE_DB_VALUES else []
 

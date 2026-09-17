@@ -35,7 +35,14 @@ const EXPENSE_CATEGORIES = [
   { value: "Khác", label: "Chi khác (Tự nhập)" }
 ];
 
-export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess, user: propUser }) {
+const REQUIRED_LINKAGE_CATEGORIES = new Set([
+  'Chi thụ lý bản vẽ & Trích lục',
+  'Chi hoàn trả khách hàng',
+]);
+
+const requiresLinkage = (value) => REQUIRED_LINKAGE_CATEGORIES.has(value);
+
+export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSuccess, user: propUser, isDirector = false }) {
   const [currentUser, setCurrentUser] = useState(propUser || null);
 
   useEffect(() => {
@@ -53,6 +60,8 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
   const [form, setForm] = useState(() => ({
     category: defaultType === 'Thu' ? 'Thu lãi tiền gửi ngân hàng' : 'Chi tiếp khách & Giao tế',
     payer_payee: '',
+    customer_id: '',
+    counterparty_type: 'free_text',
     payment_method: 'BANK_TRANSFER',
     contract_id: '',
     project_id: '',
@@ -61,6 +70,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     approved_by: '',
   }));
   const [category, setCategory] = useState(defaultType === 'Thu' ? 'Thu lãi tiền gửi ngân hàng' : 'Chi tiếp khách & Giao tế');
+  const [linkageEnabled, setLinkageEnabled] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const [description, setDescription] = useState('');
   const [projects, setProjects] = useState([]);
@@ -72,17 +82,20 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
 
   useEffect(() => {
     if (open) {
-      const initType = defaultType || 'Thu';
+      const initType = !isDirector ? 'Chi' : (defaultType || 'Thu');
       const initCat = initType === 'Thu' ? 'Thu lãi tiền gửi ngân hàng' : 'Chi tiếp khách & Giao tế';
       setType(initType);
       setAmtDisplay('');
       setCategory(initCat);
+      setLinkageEnabled(requiresLinkage(initCat));
       setCustomCategory('');
       setDescription('');
       setError('');
       setForm({
         category: initCat,
         payer_payee: '',
+        customer_id: '',
+        counterparty_type: 'free_text',
         payment_method: 'BANK_TRANSFER',
         contract_id: '',
         project_id: '',
@@ -101,35 +114,54 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
         .then(d => setEmployees(Array.isArray(d) ? d : d.data || []))
         .catch(() => { });
     }
-  }, [open, defaultType, creatorName]);
+  }, [open, defaultType, creatorName, isDirector]);
 
   const handleTypeChange = (newType) => {
+    if (!isDirector && newType === 'Thu') return;
     setType(newType);
     const newCat = newType === 'Thu' ? 'Thu lãi tiền gửi ngân hàng' : 'Chi tiếp khách & Giao tế';
     setCategory(newCat);
+    setLinkageEnabled(false);
     setForm(prev => ({
       ...prev,
       category: newCat,
+      customer_id: '',
+      counterparty_type: 'free_text',
       contract_id: '',
       project_id: ''
     }));
   };
 
+  const selectedCustomerId = form.counterparty_type === 'customer' ? form.customer_id : '';
+
+  const availableContracts = useMemo(() => {
+    if (form.counterparty_type === 'customer' && !selectedCustomerId) return [];
+    if (!selectedCustomerId) return contracts;
+    return contracts.filter(contract => contract.customer_id === selectedCustomerId);
+  }, [contracts, form.counterparty_type, selectedCustomerId]);
+
   const contractOptions = useMemo(() => [
     { value: '', label: '— Không liên kết hợp đồng —' },
-    ...contracts.map(c => ({
+    ...availableContracts.map(c => ({
       value: c.id,
       label: `${c.id} — ${c.customer_name || 'Khách hàng'}${c.service_type ? ` (${c.service_type})` : ''}`
     }))
-  ], [contracts]);
+  ], [availableContracts]);
 
   const projectOptions = useMemo(() => [
     { value: '', label: '— Không liên kết hồ sơ / dự án —' },
-    ...projects.map(p => ({
+    ...projects
+      .filter(project => {
+        if (form.contract_id) return project.contract_id === form.contract_id;
+        if (form.counterparty_type === 'customer' && !selectedCustomerId) return false;
+        if (selectedCustomerId) return project.customer_id === selectedCustomerId;
+        return true;
+      })
+      .map(p => ({
       value: p.id,
-      label: `${p.id} — ${p.service_type || p.name || 'Hồ sơ kỹ thuật'}`
+      label: p.label || `${p.id} — Hồ sơ kỹ thuật`
     }))
-  ], [projects]);
+  ], [form.contract_id, form.counterparty_type, projects, selectedCustomerId]);
 
   const partnerSuggestions = useMemo(() => {
     const list = [];
@@ -159,7 +191,8 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           name,
           desc: `Khách hàng • HĐ ${c.id}`,
           deptCode: '',
-          type: 'customer'
+          type: 'customer',
+          customerId: c.customer_id || ''
         });
       }
     });
@@ -168,11 +201,28 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
   }, [employees, contracts]);
 
   const handleContractChange = (cid) => {
-    const matched = contracts.find(c => c.id === cid);
+    const matched = availableContracts.find(c => c.id === cid);
+    setForm(prev => {
+      const shouldFillCustomer = matched?.customer_name && !prev.payer_payee.trim();
+      return {
+        ...prev,
+        contract_id: cid,
+        project_id: cid && prev.project_id && projects.some(project => project.id === prev.project_id && project.contract_id === cid)
+          ? prev.project_id
+          : '',
+        payer_payee: shouldFillCustomer ? matched.customer_name : prev.payer_payee,
+        customer_id: shouldFillCustomer ? (matched.customer_id || '') : prev.customer_id,
+        counterparty_type: shouldFillCustomer && matched.customer_id ? 'customer' : prev.counterparty_type,
+      };
+    });
+  };
+
+  const handleProjectChange = (projectId) => {
+    const matched = projects.find(project => project.id === projectId);
     setForm(prev => ({
       ...prev,
-      contract_id: cid,
-      payer_payee: (matched?.customer_name && !prev.payer_payee.trim()) ? matched.customer_name : prev.payer_payee
+      project_id: projectId,
+      contract_id: matched?.contract_id || prev.contract_id,
     }));
   };
 
@@ -181,11 +231,11 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
     const amount = parseAmt(amtDisplay);
     if (!amount) { setError('Nhập số tiền hợp lệ'); return; }
 
-    const finalCategory = (category === 'Khác' ? (customCategory.trim() || 'Khác') : category) + (description.trim() ? ': ' + description.trim() : '');
+    const finalCategory = category === 'Khác' ? (customCategory.trim() || 'Khác') : category;
 
-    // Validation constraint for "Chi thụ lý bản vẽ"
-    if (category === 'Chi thụ lý bản vẽ & Trích lục' && !form.contract_id && !form.project_id) {
-      setError("Hạng mục 'Chi thụ lý bản vẽ & Trích lục' bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án!");
+    const shouldLink = !isIncome && (linkageEnabled || requiresLinkage(category));
+    if (shouldLink && !form.contract_id && !form.project_id) {
+      setError(`Hạng mục '${category}' bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ / Dự án!`);
       return;
     }
 
@@ -202,8 +252,9 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
           scope: 'COMPANY',
           category: finalCategory,
           description: description.trim(),
-          contract_id: isIncome ? null : (form.contract_id || null),
-          project_id: isIncome ? null : (form.project_id || null),
+          customer_id: form.counterparty_type === 'customer' ? (form.customer_id || null) : null,
+          contract_id: shouldLink ? (form.contract_id || null) : null,
+          project_id: shouldLink ? (form.project_id || null) : null,
           department_code: form.department_code || null,
           created_by: creatorName,
           approved_by: form.approved_by || null
@@ -235,7 +286,7 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
       <form onSubmit={handleSubmit}>
         {/* Type toggle */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          {['Thu', 'Chi'].map(t => (
+          {(isDirector ? ['Thu', 'Chi'] : ['Chi']).map(t => (
             <button key={t} type="button" onClick={() => handleTypeChange(t)}
               style={{
                 flex: 1, height: 40, borderRadius: 8, border: '2px solid',
@@ -292,6 +343,14 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
                   setForm(prev => ({
                     ...prev,
                     payer_payee: val,
+                    customer_id: matched?.type === 'customer' ? (matched.customerId || '') : '',
+                    counterparty_type: matched?.type || 'free_text',
+                    contract_id: matched?.type === 'customer' && matched.customerId === prev.customer_id
+                      ? prev.contract_id
+                      : '',
+                    project_id: matched?.type === 'customer' && matched.customerId === prev.customer_id
+                      ? prev.project_id
+                      : '',
                     department_code: matched?.deptCode || prev.department_code
                   }));
                 }}
@@ -317,7 +376,15 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
                       <button
                         key={`chip-${emp.id || n}`}
                         type="button"
-                        onClick={() => setForm(p => ({ ...p, payer_payee: n, department_code: emp.department_code || p.department_code }))}
+                        onClick={() => setForm(p => ({
+                          ...p,
+                          payer_payee: n,
+                          customer_id: '',
+                          counterparty_type: 'employee',
+                          contract_id: '',
+                          project_id: '',
+                          department_code: emp.department_code || p.department_code
+                        }))}
                         style={{
                           fontSize: '0.72rem',
                           padding: '1px 8px',
@@ -344,12 +411,17 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
               onChange={(val) => {
                 setCategory(val);
                 const mapping = CATEGORY_AUTO_MAPPING[val];
+                const mustLink = requiresLinkage(val);
+                setLinkageEnabled(mustLink);
                 if (mapping) {
                   setForm(prev => ({
                     ...prev,
                     payer_payee: mapping.payer_payee || prev.payer_payee,
                     department_code: mapping.department_code || prev.department_code,
+                    ...(!mustLink ? { contract_id: '', project_id: '' } : {}),
                   }));
+                } else if (!mustLink) {
+                  setForm(prev => ({ ...prev, contract_id: '', project_id: '' }));
                 }
               }}
               options={currentCategoryOptions}
@@ -386,20 +458,53 @@ export default function CashflowModal({ open, onClose, defaultType = 'Thu', onSu
             </FormRow>
           ) : (
             <>
-              <FormRow label="Hợp đồng liên kết" required={category === 'Chi thụ lý bản vẽ & Trích lục' && !form.project_id}>
-                <Dropdown
-                  value={form.contract_id || ''}
-                  onChange={handleContractChange}
-                  options={contractOptions}
-                />
-              </FormRow>
-              <FormRow label="Hồ sơ / Dự án" required={category === 'Chi thụ lý bản vẽ & Trích lục' && !form.contract_id}>
-                <Dropdown
-                  value={form.project_id || ''}
-                  onChange={pid => setForm(prev => ({ ...prev, project_id: pid }))}
-                  options={projectOptions}
-                />
-              </FormRow>
+              <div style={{ gridColumn: '1 / -1', padding: '10px 12px', border: '1px solid var(--border-default)', borderRadius: 8, background: 'var(--bg-surface)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: requiresLinkage(category) ? 'default' : 'pointer', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={linkageEnabled || requiresLinkage(category)}
+                    disabled={requiresLinkage(category)}
+                    onChange={event => {
+                      const enabled = event.target.checked;
+                      setLinkageEnabled(enabled);
+                      if (!enabled) {
+                        setForm(prev => ({ ...prev, contract_id: '', project_id: '' }));
+                      }
+                    }}
+                  />
+                  <span>Liên kết với hợp đồng / hạng mục</span>
+                  {requiresLinkage(category) && <span style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 600 }}>(bắt buộc)</span>}
+                </label>
+                <div style={{ marginTop: 5, marginLeft: 24, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                  {requiresLinkage(category)
+                    ? 'Hạng mục này phải gắn với hợp đồng hoặc hồ sơ để ghi nhận đúng chi phí.'
+                    : 'Chỉ bật khi khoản chi cần phân bổ cho một hợp đồng hoặc hồ sơ cụ thể.'}
+                </div>
+              </div>
+
+              {(linkageEnabled || requiresLinkage(category)) && (
+                <>
+                  <FormRow label="Hợp đồng liên kết" required={requiresLinkage(category) && !form.project_id}>
+                    <Dropdown
+                      value={form.contract_id || ''}
+                      onChange={handleContractChange}
+                      options={contractOptions}
+                      disabled={form.counterparty_type === 'customer' && !selectedCustomerId}
+                    />
+                    {form.counterparty_type === 'customer' && !selectedCustomerId && (
+                      <p className="form-hint">Hãy chọn khách hàng từ danh sách để lọc hợp đồng.</p>
+                    )}
+                  </FormRow>
+                  <FormRow label="Hồ sơ / Dự án" required={requiresLinkage(category) && !form.contract_id}>
+                    <Dropdown
+                      value={form.project_id || ''}
+                      onChange={handleProjectChange}
+                      options={projectOptions}
+                      disabled={form.counterparty_type === 'customer' && !selectedCustomerId}
+                    />
+                  </FormRow>
+                </>
+              )}
             </>
           )}
         </FormGrid>

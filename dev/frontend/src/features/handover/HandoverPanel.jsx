@@ -49,7 +49,7 @@ export default function HandoverPanel({
   const [showDebtRequest, setShowDebtRequest] = useState(false)
   const [showApproveRequest, setShowApproveRequest] = useState(false)
   const [showRejectRequest, setShowRejectRequest] = useState(false)
-  const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'Tiền mặt', note: '' })
+  const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'Tiền mặt', payer_name: '', note: '' })
   const [paymentFiles, setPaymentFiles] = useState([])
   const [requestForm, setRequestForm] = useState({ reason: '', promised_payment_date: '' })
   const [commitmentFiles, setCommitmentFiles] = useState([])
@@ -176,6 +176,21 @@ export default function HandoverPanel({
     }
   }, [addToast, refreshAll, state?.debt_request?.id])
 
+  const approveInstallment = useCallback(async (transactionId) => {
+    setSaving(true)
+    try {
+      await apiFetch(`/api/finance/cashflow/${transactionId}/approve`, {
+        method: 'POST',
+      })
+      addToast?.('Đã duyệt phiếu thu — công nợ đã được cập nhật', 'success')
+      await refreshAll()
+    } catch (approveError) {
+      addToast?.(approveError.message || 'Không thể duyệt phiếu thu', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }, [addToast, refreshAll])
+
   const submitPayment = useCallback(async () => {
     setSaving(true)
     try {
@@ -184,16 +199,21 @@ export default function HandoverPanel({
         body: buildPaymentFormData(paymentForm, paymentFiles),
       })
       setShowPayment(false)
-      setPaymentForm({ amount: '', payment_method: 'Tiền mặt', note: '' })
+      setPaymentForm({ amount: '', payment_method: 'Chuyển khoản', payer_name: '', note: '' })
       setPaymentFiles([])
-      addToast?.('Đã ghi nhận, chờ Giám đốc duyệt phiếu thu', 'success')
+      addToast?.(
+        isDirector
+          ? 'Đã ghi nhận thanh toán — công nợ đã được cập nhật'
+          : 'Đã gửi thông tin thanh toán, chờ Giám đốc duyệt',
+        'success',
+      )
       await refreshAll()
     } catch (paymentError) {
       addToast?.(paymentError.message || 'Mất kết nối tới máy chủ', 'error')
     } finally {
       setSaving(false)
     }
-  }, [addToast, paymentFiles, paymentForm, refreshAll, taskNodeId])
+  }, [addToast, isDirector, paymentFiles, paymentForm, refreshAll, taskNodeId])
 
   const downloadAll = useCallback(async () => {
     setDownloading(true)
@@ -307,6 +327,17 @@ export default function HandoverPanel({
                 <span className={`handover__inst-status${item.is_approved ? '' : ' is-waiting'}`}>
                   {item.is_approved ? 'Đã duyệt' : 'Chờ duyệt'}
                 </span>
+                {isDirector && !item.is_approved && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-xs handover__inst-approve"
+                    disabled={saving}
+                    onClick={() => approveInstallment(item.id)}
+                    title="Duyệt phiếu thu"
+                  >
+                    Duyệt thu
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -382,11 +413,15 @@ export default function HandoverPanel({
         <article className={`handover__card${collection?.done || debt.is_settled ? ' is-done' : ''}`}>
           <span className="handover__card-mark">{debt.is_settled ? <CheckCircle2 size={17} /> : <Circle size={17} />}</span>
           <div className="handover__card-body">
-            <strong>Thu đủ tiền hợp đồng</strong>
+            <strong>{debt.is_settled ? 'Đã thu đủ tiền hợp đồng' : 'Thu tiền hợp đồng'}</strong>
             {collection?.actor && <small className="handover__card-who">Người phụ trách: {collection.actor}</small>}
             {!readOnly && collection?.can_record_payment && !debt.is_settled && (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowPayment(true)}>
-                <Plus size={14} /> Ghi nhận thanh toán
+              <button
+                type="button"
+                className={`btn ${isDirector ? 'btn-secondary' : 'btn-primary'} btn-sm`}
+                onClick={() => setShowPayment(true)}
+              >
+                <Plus size={14} /> {isDirector ? 'Ghi nhận thanh toán' : 'Báo có tiền'}
               </button>
             )}
           </div>
@@ -482,15 +517,38 @@ export default function HandoverPanel({
         overlayClassName="modal-overlay--top"
       />
 
-      <Modal open={showPayment} onClose={() => setShowPayment(false)} title="Ghi nhận đợt thanh toán" overlayClassName="modal-overlay--top">
+      <Modal
+        open={showPayment}
+        onClose={() => setShowPayment(false)}
+        title={isDirector ? 'Ghi nhận đợt thanh toán' : 'Báo có tiền / Nộp bill thanh toán'}
+        overlayClassName="modal-overlay--top"
+      >
         <div className="handover__form">
-          <p className="handover__form-hint">Còn thiếu <strong>{formatMoney(debt.remaining)}</strong>. Công nợ chỉ giảm sau khi phiếu được duyệt.</p>
-          <label>Số tiền khách đưa
-            <input className="form-control" type="number" min="0" value={paymentForm.amount}
-              onChange={(event) => setPaymentForm((current) => ({ ...current, amount: event.target.value }))} />
+          <p className="handover__form-hint">
+            {isDirector
+              ? `Còn thiếu ${formatMoney(debt.remaining)}. Sau khi ghi nhận, công nợ sẽ được cập nhật ngay.`
+              : `Còn thiếu ${formatMoney(debt.remaining)}. Thông tin và ảnh biên lai sẽ được gửi tới Giám đốc. Sau khi Giám đốc xác nhận duyệt phiếu thu, Cổng nợ sẽ tự động mở.`}
+          </p>
+          <label>Số tiền khách thanh toán
+            <input
+              className="form-control"
+              type="number"
+              min="0"
+              placeholder={`Tối đa ${formatMoney(debt.remaining)}`}
+              value={paymentForm.amount}
+              onChange={(event) => setPaymentForm((current) => ({ ...current, amount: event.target.value }))}
+            />
+          </label>
+          <label>Người nộp / chuyển khoản
+            <input
+              className="form-control"
+              placeholder="Họ tên người nộp tiền (nếu có)"
+              value={paymentForm.payer_name || ''}
+              onChange={(event) => setPaymentForm((current) => ({ ...current, payer_name: event.target.value }))}
+            />
           </label>
           <div className="receipt-field">
-            <span className="receipt-field__label">Ảnh bill / biên lai *</span>
+            <span className="receipt-field__label">Ảnh bill / biên lai chuyển khoản *</span>
             <ReceiptFileInput files={paymentFiles} onChange={setPaymentFiles} disabled={saving} />
           </div>
           <label>Hình thức
@@ -505,8 +563,12 @@ export default function HandoverPanel({
             />
           </label>
           <label>Ghi chú
-            <input className="form-control" value={paymentForm.note}
-              onChange={(event) => setPaymentForm((current) => ({ ...current, note: event.target.value }))} />
+            <input
+              className="form-control"
+              placeholder="Ghi chú đợt thanh toán..."
+              value={paymentForm.note}
+              onChange={(event) => setPaymentForm((current) => ({ ...current, note: event.target.value }))}
+            />
           </label>
           <div className="handover__form-footer">
             <button type="button" className="btn btn-secondary" onClick={() => { setShowPayment(false); setPaymentFiles([]) }}>Hủy</button>
@@ -516,7 +578,7 @@ export default function HandoverPanel({
               disabled={saving || !paymentForm.amount || Number(paymentForm.amount) <= 0 || Number(paymentForm.amount) > Number(debt.remaining) || paymentFiles.length === 0}
               onClick={submitPayment}
             >
-              {saving ? 'Đang lưu…' : 'Ghi nhận'}
+              {saving ? 'Đang gửi…' : (isDirector ? 'Ghi nhận' : 'Gửi báo có tiền')}
             </button>
           </div>
         </div>

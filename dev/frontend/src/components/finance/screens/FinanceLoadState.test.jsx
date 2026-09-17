@@ -1,5 +1,5 @@
 import React from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }))
@@ -36,6 +36,21 @@ describe('Finance screen loading errors', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Không thể tải dữ liệu sổ quỹ')
     fireEvent.click(screen.getByRole('button', { name: 'Thử lại' }))
     expect(apiFetchMock.mock.calls.filter(([url]) => url.includes('/api/finance/cashflow?'))).toHaveLength(2)
+  })
+
+  it('consumes a notification voucher after opening it once', async () => {
+    apiFetchMock.mockResolvedValue([])
+    const onFocusVoucherConsumed = vi.fn()
+
+    render(
+      <CashflowScreen
+        isDirector
+        focusVoucher={{ id: 'PC-09/2026-003', nonce: 1 }}
+        onFocusVoucherConsumed={onFocusVoucherConsumed}
+      />,
+    )
+
+    await waitFor(() => expect(onFocusVoucherConsumed).toHaveBeenCalledTimes(1))
   })
 
   it('shows a retryable error instead of an empty receivables table', async () => {

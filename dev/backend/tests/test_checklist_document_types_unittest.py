@@ -1300,10 +1300,10 @@ class CompletedChecklistPromotionTests(unittest.TestCase):
         self.assertEqual(result["progress"], {
             "approved": 2, "total": 2, "percent": 100, "is_complete": True,
         })
-        promoted_id = db.types["DT-NEW"]["promoted_template_id"]
-        self.assertEqual(result["promoted_template_ids"], [promoted_id])
+        self.assertIsNone(db.types["DT-NEW"]["promoted_template_id"])
+        self.assertEqual(result["promoted_template_ids"], ["TPL-CONFIG"])
         self.assertIsNone(db.types["DT-CONFIG"]["promoted_template_id"])
-        self.assertEqual(db.applicabilities, {(promoted_id, "PKG-1", "TYPE-1", "K02")})
+        self.assertEqual(db.applicabilities, set())
         self.assertEqual(len(db.slots), 2)
         self.assertEqual(len(db.dossier_links), 3)
         self.assertEqual(len(db.checklist_links), 3)
@@ -1339,7 +1339,7 @@ class CompletedChecklistPromotionTests(unittest.TestCase):
 
         promoted_again = promote(db, "CR-1", "DIRECTOR")
 
-        self.assertEqual(promoted_again, [db.types["DT-NEW"]["promoted_template_id"]])
+        self.assertEqual(promoted_again, ["TPL-CONFIG"])
         self.assertEqual(counts_before, (
             len(db.templates), len(db.applicabilities), len(db.slots),
             len(db.dossier_links), len(db.checklist_links),

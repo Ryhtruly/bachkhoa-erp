@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Check, FileWarning, Paperclip, X } from 'lucide-react'
+import { AlertTriangle, Check, FileWarning, Info, Paperclip, X } from 'lucide-react'
 import Modal from '../../components/ui/Modal'
 import ReceiptLinks from '../../components/finance/ReceiptLinks'
 import { useToast } from '../../contexts/ToastContext'
@@ -137,10 +137,25 @@ export default function PendingApprovals() {
               </p>
             )}
 
-            <label>Lý do từ chối <span className="approvals__hint">chỉ cần khi từ chối</span>
-              <input className="form-control" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="VD: bill mờ không đọc được số tiền" />
-            </label>
+            <div className="approvals__field">
+              <div className="approvals__field-header">
+                <label htmlFor="approvals-reject-reason" className="approvals__label">
+                  Lý do từ chối
+                </label>
+                <span id="approvals-reject-hint" className="approvals__hint">
+                  <Info size={12} className="approvals__hint-icon" aria-hidden="true" />
+                  Chỉ cần khi từ chối
+                </span>
+              </div>
+              <input
+                id="approvals-reject-reason"
+                aria-describedby="approvals-reject-hint"
+                className="form-control approvals__input"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="VD: bill mờ không đọc được số tiền"
+              />
+            </div>
 
             <div className="approvals__form-footer">
               <button type="button" className="btn btn-secondary" disabled={saving}

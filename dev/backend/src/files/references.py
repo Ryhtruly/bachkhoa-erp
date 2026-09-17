@@ -97,6 +97,12 @@ STAGE_BY_NODE_CODE = {
     "K05a": "nop-noi-nghiep",
     "K05b": "nop-co-quan",
     "K06": "ket-qua",
+    # Capabilities:
+    "SURVEY_FIELD": "do-hien-truong",
+    "SURVEY_CAD": "chuan-hoa-ky-thuat",
+    "LEGAL_PREP": "soan-ho-so",
+    "GOV_SUBMISSION": "nop-co-quan",
+    "HANDOVER": "ket-qua",
 }
 
 # Xem ghi chú ở workflow_runtime: mã bước có chữ thường nên mọi nơi tra bảng này

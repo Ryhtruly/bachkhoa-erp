@@ -3,7 +3,7 @@ import { FileText, Loader2, Upload } from 'lucide-react'
 
 import { getAccessToken } from '../../lib/api'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
 /**
  * Hai nút thao tác trên file hợp đồng đã ký: xem và thay bản mới.

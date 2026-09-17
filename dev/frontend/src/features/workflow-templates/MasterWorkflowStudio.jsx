@@ -21,14 +21,21 @@ import {
   CheckCircle2,
   CircleDashed,
   Clock3,
+  Compass,
   Copy,
   FileCheck2,
   GitBranch,
+  Landmark,
   ListChecks,
   LockKeyhole,
+  Monitor,
   Pencil,
   Plus,
+  Receipt,
   Save,
+  Scale,
+  Settings,
+  Sparkles,
   Star,
   Trash2,
   UserRound,
@@ -37,6 +44,7 @@ import {
   X,
 } from 'lucide-react'
 
+import CatalogManageModal from '../../components/catalog/CatalogManageModal'
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import CustomSelect from '../../components/ui/CustomSelect'
 import Modal from '../../components/ui/Modal'
@@ -174,10 +182,68 @@ function RoleMultiSelect({
   )
 }
 
+// ── 6 Năng Lực Chuẩn Bách Khoa ERP (Combo-First Architecture) ──
+export const CAPABILITIES = [
+  {
+    code: 'STANDARD',
+    label: 'Tác nghiệp tiêu chuẩn',
+    desc: 'Checklist thông thường, tải tài liệu',
+    icon: CheckCircle2,
+    color: '#3b82f6',
+    suggestDept: 'SALES',
+  },
+  {
+    code: 'SURVEY_FIELD',
+    label: 'Khảo sát & Đo thực địa',
+    desc: 'Tự động tạo Sổ Đo Đạc, bấm giờ xuất phát đo',
+    icon: Compass,
+    color: '#10b981',
+    suggestDept: 'SURVEY',
+  },
+  {
+    code: 'SURVEY_CAD',
+    label: 'Biên tập bản vẽ CAD',
+    desc: 'Xử lý toạ độ GPS, kế thừa số liệu đo',
+    icon: Monitor,
+    color: '#0d9488',
+    suggestDept: 'SURVEY',
+  },
+  {
+    code: 'LEGAL_PREP',
+    label: 'Soạn thảo hồ sơ pháp lý',
+    desc: 'Rà quy hoạch, chuẩn bị đơn từ',
+    icon: Scale,
+    color: '#8b5cf6',
+    suggestDept: 'LEGAL',
+  },
+  {
+    code: 'GOV_SUBMISSION',
+    label: 'Nộp & Theo dõi Một Cửa',
+    desc: 'Tự động tạo Sổ Một Cửa, theo dõi biên nhận',
+    icon: Landmark,
+    color: '#ea580c',
+    suggestDept: 'LEGAL',
+  },
+  {
+    code: 'HANDOVER',
+    label: 'Bàn giao & Quyết toán',
+    desc: 'Cổng đối soát công nợ kế toán',
+    icon: Receipt,
+    color: '#d97706',
+    suggestDept: 'SALES',
+  },
+]
+
+export function capabilityMeta(code) {
+  return CAPABILITIES.find((c) => c.code === code) || CAPABILITIES[0]
+}
+
 // ── Custom Node cho Studio (đồng bộ giao diện với ContractWorkflowDesigner) ──
 function StudioWorkflowNode({ id, data, selected }) {
   const checklistCount = data.checklist?.length || 0
   const poolDept = departmentLabel(data.poolDepartmentCode)
+  const cap = capabilityMeta(data.capability)
+  const capSlug = (data.capability || 'standard').toLowerCase().replace(/_/g, '-')
   const durationText = []
   if (data.durationDays > 0) durationText.push(`${data.durationDays} ngày`)
   if (data.durationHours > 0) durationText.push(`${data.durationHours} giờ`)
@@ -199,6 +265,11 @@ function StudioWorkflowNode({ id, data, selected }) {
         <span><ListChecks size={13} /> {checklistCount} mục</span>
         <span><UserRoundCog size={13} /> {poolDept}</span>
       </div>
+      {data.capability && data.capability !== 'STANDARD' && (
+        <div className={`workflow-node__cap-tag workflow-node__cap-tag--${capSlug}`}>
+          {cap.label}
+        </div>
+      )}
       {durationText.length > 0 && (
         <div className="workflow-node__deadline">
           <Clock3 size={13} /> Hạn: {durationText.join(' ')}
@@ -229,6 +300,7 @@ export const STARTER_NODES_SURVEY = [
   {
     code: 'K01',
     label: 'Tiếp nhận & kiểm tra đầu vào',
+    capability: 'STANDARD',
     dept: 'SALES',
     days: 1,
     hours: 0,
@@ -240,6 +312,7 @@ export const STARTER_NODES_SURVEY = [
   {
     code: 'K02',
     label: 'Khảo sát & đo hiện trường',
+    capability: 'SURVEY_FIELD',
     dept: 'SURVEY',
     days: 2,
     hours: 0,
@@ -252,6 +325,7 @@ export const STARTER_NODES_SURVEY = [
   {
     code: 'K03',
     label: 'Chuẩn hoá tài liệu kỹ thuật',
+    capability: 'SURVEY_CAD',
     dept: 'SURVEY',
     days: 2,
     hours: 0,
@@ -263,6 +337,7 @@ export const STARTER_NODES_SURVEY = [
   {
     code: 'K05a',
     label: 'Nộp hồ sơ (Nội nghiệp)',
+    capability: 'STANDARD',
     dept: 'SURVEY',
     days: 2,
     hours: 0,
@@ -274,6 +349,7 @@ export const STARTER_NODES_SURVEY = [
   {
     code: 'K06',
     label: 'Nhận kết quả & bàn giao',
+    capability: 'HANDOVER',
     dept: 'SALES',
     days: 1,
     hours: 0,
@@ -286,6 +362,7 @@ export const STARTER_NODES_SURVEY = [
   {
     code: 'K07',
     label: 'Lưu trữ & đóng hồ sơ',
+    capability: 'STANDARD',
     dept: 'SALES',
     days: 1,
     hours: 0,
@@ -300,6 +377,7 @@ export const STARTER_NODES_LEGAL = [
   {
     code: 'K01',
     label: 'Tiếp nhận & kiểm tra đầu vào',
+    capability: 'STANDARD',
     dept: 'SALES',
     days: 1,
     hours: 0,
@@ -311,6 +389,7 @@ export const STARTER_NODES_LEGAL = [
   {
     code: 'K04',
     label: 'Soạn bộ hồ sơ pháp lý',
+    capability: 'LEGAL_PREP',
     dept: 'LEGAL',
     days: 3,
     hours: 0,
@@ -322,6 +401,7 @@ export const STARTER_NODES_LEGAL = [
   {
     code: 'K05b',
     label: 'Nộp & theo dõi hồ sơ một cửa',
+    capability: 'GOV_SUBMISSION',
     dept: 'LEGAL',
     days: 7,
     hours: 0,
@@ -334,6 +414,7 @@ export const STARTER_NODES_LEGAL = [
   {
     code: 'K06',
     label: 'Nhận kết quả & bàn giao',
+    capability: 'HANDOVER',
     dept: 'SALES',
     days: 1,
     hours: 0,
@@ -346,6 +427,7 @@ export const STARTER_NODES_LEGAL = [
   {
     code: 'K07',
     label: 'Lưu trữ & đóng hồ sơ',
+    capability: 'STANDARD',
     dept: 'SALES',
     days: 1,
     hours: 0,
@@ -378,6 +460,7 @@ export function makeStarterFlow(packageObj) {
     data: {
       code: item.code,
       label: item.label,
+      capability: item.capability || 'STANDARD',
       poolDepartmentCode: item.dept,
       claimRoles: ['MAIN'],
       durationDays: item.days,
@@ -424,13 +507,15 @@ function flowToGraphJson(nodes, edges, startNode) {
         transitions[`COMPLETED_${index + 1}`] = edge.target
       })
 
+    const cap = node.data.capability || 'STANDARD'
     graphNodes[node.id] = {
       task_code: node.data.code,
       name: node.data.label,
+      capability: cap,
       description: node.data.description || '',
-      requires_gov_submission: Boolean(node.data.requiresGovSubmission),
-      creates_survey_record: Boolean(node.data.createsSurveyRecord),
-      is_handover: Boolean(node.data.isHandover),
+      requires_gov_submission: Boolean(node.data.requiresGovSubmission || cap === 'GOV_SUBMISSION'),
+      creates_survey_record: Boolean(node.data.createsSurveyRecord || cap === 'SURVEY_FIELD'),
+      is_handover: Boolean(node.data.isHandover || cap === 'HANDOVER'),
       duration_days: Number(node.data.durationDays) || 0,
       duration_hours: Number(node.data.durationHours) || 0,
       duration_minutes: Number(node.data.durationMinutes) || 0,
@@ -443,6 +528,9 @@ function flowToGraphJson(nodes, edges, startNode) {
           required: item.required !== false,
           require_evidence: Boolean(item.require_evidence),
           approver_role: item.approver_role || 'admin',
+        }
+        if (item.compensation) {
+          itemObj.compensation = item.compensation
         }
         const validDocs = (item.output_documents || [])
           .filter((doc) => doc.template_id)
@@ -475,32 +563,44 @@ function graphJsonToFlow(graph, packageObj) {
   }
 
   const entries = Object.entries(graph.nodes)
-  const nodes = entries.map(([key, value], index) => ({
-    id: key,
-    type: 'studioNode',
-    position: graph.ui?.[key] || { x: 80 + index * 280, y: 180 },
-    data: {
-      code: value.task_code || key.toUpperCase(),
-      label: value.name || key,
-      description: value.description || '',
-      poolDepartmentCode: value.pool_department_code || '',
-      claimRoles: Array.isArray(value.claim_roles) && value.claim_roles.length > 0 ? value.claim_roles : ['MAIN'],
-      durationDays: Number(value.duration_days) || 0,
-      durationHours: Number(value.duration_hours) || 0,
-      durationMinutes: Number(value.duration_minutes) || 0,
-      requiresGovSubmission: Boolean(value.requires_gov_submission),
-      createsSurveyRecord: Boolean(value.creates_survey_record),
-      isHandover: Boolean(value.is_handover),
-      checklist: (value.checklist || []).map((item) => ({
-        key: item.key || `cl_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-        name: item.name || '',
-        required: item.required !== false,
-        require_evidence: Boolean(item.require_evidence),
-        approver_role: item.approver_role || 'admin',
-        output_documents: item.output_documents || [],
-      })),
-    },
-  }))
+  const nodes = entries.map(([key, value], index) => {
+    const capCode = value.capability || (
+      value.creates_survey_record || value.task_code === 'K02' ? 'SURVEY_FIELD'
+      : value.requires_gov_submission || value.task_code === 'K05' || value.task_code === 'K05B' || value.task_code === 'K05b' ? 'GOV_SUBMISSION'
+      : value.is_handover || value.task_code === 'K06' ? 'HANDOVER'
+      : value.task_code === 'K03' ? 'SURVEY_CAD'
+      : value.task_code === 'K04' ? 'LEGAL_PREP'
+      : 'STANDARD'
+    )
+    return {
+      id: key,
+      type: 'studioNode',
+      position: graph.ui?.[key] || { x: 80 + index * 280, y: 180 },
+      data: {
+        code: value.task_code || key.toUpperCase(),
+        label: value.name || key,
+        capability: capCode,
+        description: value.description || '',
+        poolDepartmentCode: value.pool_department_code || '',
+        claimRoles: Array.isArray(value.claim_roles) && value.claim_roles.length > 0 ? value.claim_roles : ['MAIN'],
+        durationDays: Number(value.duration_days) || 0,
+        durationHours: Number(value.duration_hours) || 0,
+        durationMinutes: Number(value.duration_minutes) || 0,
+        requiresGovSubmission: Boolean(value.requires_gov_submission || capCode === 'GOV_SUBMISSION'),
+        createsSurveyRecord: Boolean(value.creates_survey_record || capCode === 'SURVEY_FIELD'),
+        isHandover: Boolean(value.is_handover || capCode === 'HANDOVER'),
+        checklist: (value.checklist || []).map((item) => ({
+          key: item.key || `cl_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          name: item.name || '',
+          required: item.required !== false,
+          require_evidence: Boolean(item.require_evidence),
+          approver_role: item.approver_role || 'admin',
+          output_documents: item.output_documents || [],
+          compensation: item.compensation,
+        })),
+      },
+    }
+  })
 
   const edges = []
   entries.forEach(([sourceKey, value]) => {
@@ -569,10 +669,64 @@ export default function MasterWorkflowStudio() {
   // UI States
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [nodePickerOpen, setNodePickerOpen] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [workItems, setWorkItems] = useState([])
+
+  // 1-Click Clone States
+  const [cloneModalOpen, setCloneModalOpen] = useState(false)
+  const [cloneTargetPackageId, setCloneTargetPackageId] = useState('')
+  const [cloneTargetTaskTypeId, setCloneTargetTaskTypeId] = useState('')
+  const [cloneTemplateName, setCloneTemplateName] = useState('')
+  const [cloneDescription, setCloneDescription] = useState('')
+  const [cloneIsDefault, setCloneIsDefault] = useState(false)
+  const [cloning, setCloning] = useState(false)
+
+  // Document Source Filter in Modal
+  const [docSourceFilter, setDocSourceFilter] = useState('ALL') // 'ALL' | 'KHACH_HANG' | 'CONG_TY' | 'CO_QUAN'
+
+  // Catalog Management Modal State
+  const [catalogModalConfig, setCatalogModalConfig] = useState({
+    open: false,
+    targetType: 'PACKAGE',
+    mode: 'create',
+    item: null,
+    parentPackageId: null,
+  })
+
+  const openCatalogModal = (targetType, mode, item = null, parentPackageId = null) => {
+    setCatalogModalConfig({
+      open: true,
+      targetType,
+      mode,
+      item,
+      parentPackageId: parentPackageId || selectedPackageId,
+    })
+  }
+
+  const reloadCatalogTree = useCallback(async (preferredPackageId = null, preferredTaskTypeId = null) => {
+    try {
+      const pkgRes = await apiFetch('/api/catalog/service-packages')
+      const pkgs = pkgRes?.data || []
+      setPackageTree(pkgs)
+      if (preferredPackageId) {
+        setSelectedPackageId(preferredPackageId)
+        const pkg = pkgs.find((p) => p.id === preferredPackageId)
+        if (preferredTaskTypeId) {
+          setSelectedTaskTypeId(preferredTaskTypeId)
+        } else if (pkg?.task_types?.length > 0) {
+          setSelectedTaskTypeId(pkg.task_types[0].id)
+        }
+      } else if (pkgs.length > 0 && (!selectedPackageId || !pkgs.some((p) => p.id === selectedPackageId))) {
+        setSelectedPackageId(pkgs[0].id)
+        if (pkgs[0].task_types?.length > 0) {
+          setSelectedTaskTypeId(pkgs[0].task_types[0].id)
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi tải lại danh mục:', err)
+    }
+  }, [selectedPackageId])
 
   // Load catalogs on mount
   useEffect(() => {
@@ -634,14 +788,12 @@ export default function MasterWorkflowStudio() {
     [currentPackage, selectedTaskTypeId]
   )
 
-  // Lọc danh sách mẫu giấy tờ đầu ra THEO ĐÚNG COMBO (Gói + Hạng mục)
-  // và LOẠI TRỪ giấy tờ khách hàng cung cấp (chỉ lấy CONG_TY và CO_QUAN)
+  // Lọc danh sách mẫu giấy tờ THEO ĐÚNG COMBO (Gói + Hạng mục)
+  // và BAO GỒM cả 3 nguồn (Khách hàng, Cơ quan, Công ty)
   const applicableComboOutputDocs = useMemo(() => {
     if (!docTemplates || docTemplates.length === 0) return []
     return docTemplates
       .filter((tpl) => {
-        if (tpl.source === 'KHACH_HANG') return false
-
         if (tpl.task_type_id) {
           return Boolean(selectedTaskTypeId) && tpl.task_type_id === selectedTaskTypeId
         }
@@ -652,6 +804,12 @@ export default function MasterWorkflowStudio() {
             }
             if (app.applicability_type === 'PACKAGE') {
               return Boolean(selectedPackageId) && app.service_package_id === selectedPackageId
+            }
+            if (app.applicability_type === 'COMBO') {
+              return (
+                (!app.task_type_id || app.task_type_id === selectedTaskTypeId) &&
+                (!app.service_package_id || app.service_package_id === selectedPackageId)
+              )
             }
             if (app.applicability_type === 'GLOBAL') {
               return true
@@ -665,6 +823,9 @@ export default function MasterWorkflowStudio() {
         const matchingApp = (tpl.applicabilities || []).find((app) => {
           if (app.applicability_type === 'TASK_TYPE' && app.task_type_id === selectedTaskTypeId) return true
           if (app.applicability_type === 'PACKAGE' && app.service_package_id === selectedPackageId) return true
+          if (app.applicability_type === 'COMBO' &&
+              (!app.task_type_id || app.task_type_id === selectedTaskTypeId) &&
+              (!app.service_package_id || app.service_package_id === selectedPackageId)) return true
           if (app.applicability_type === 'GLOBAL') return true
           return false
         })
@@ -808,9 +969,9 @@ export default function MasterWorkflowStudio() {
     addToast?.('Đã căn lề tự động các node trên sơ đồ', 'success')
   }
 
-  const handleAddNodeFromCatalog = (catalogItem) => {
-    setNodePickerOpen(false)
-    const newId = `${catalogItem.code.toLowerCase()}_${Date.now().toString(36).substr(-4)}`
+  const handleAddNewCustomNode = () => {
+    const nextIndex = nodes.length + 1
+    const newId = `node_${Date.now().toString(36).substr(-4)}`
     const lastNode = nodes[nodes.length - 1]
     const nextX = lastNode ? lastNode.position.x + 280 : 80
     const nextY = lastNode ? lastNode.position.y : 180
@@ -820,21 +981,21 @@ export default function MasterWorkflowStudio() {
       type: 'studioNode',
       position: { x: nextX, y: nextY },
       data: {
-        code: catalogItem.code,
-        label: catalogItem.name,
-        description: catalogItem.description || '',
-        poolDepartmentCode: defaultDeptForCode(catalogItem.code),
+        code: `N${String(nextIndex).padStart(2, '0')}`,
+        name: 'Bước mới',
+        label: 'Bước mới',
+        description: '',
+        capability: 'STANDARD',
+        capability_code: 'STANDARD',
+        poolDepartmentCode: 'SALES',
         claimRoles: ['MAIN'],
         durationDays: 1,
         durationHours: 0,
         durationMinutes: 0,
-        requiresGovSubmission: catalogItem.code === 'K05b',
-        createsSurveyRecord: catalogItem.code === 'K02',
-        isHandover: catalogItem.code === 'K06',
         checklist: [
           {
             key: `cl_${newId}_1`,
-            name: `Nhiệm vụ bước ${catalogItem.code}`,
+            name: 'Nhiệm vụ 1',
             required: true,
             require_evidence: false,
             approver_role: 'admin',
@@ -847,7 +1008,7 @@ export default function MasterWorkflowStudio() {
     setNodes((nds) => [...nds, newNode])
     setSelectedNodeId(newId)
     setInspectorTab('node')
-    addToast?.(`Đã thêm bước [${catalogItem.code}] ${catalogItem.name}`, 'success')
+    addToast?.('Đã tạo bước mới. Bạn có thể đổi tên và gán Năng lực ngầm ở cột bên phải.', 'success')
   }
 
   const handleSave = async () => {
@@ -934,6 +1095,80 @@ export default function MasterWorkflowStudio() {
 
     return { nodeSpecificDocs: nodeSpecific, otherComboDocs: others }
   }, [applicableComboOutputDocs, currentNodeCode])
+
+  const filteredNodeDocs = useMemo(() => {
+    if (docSourceFilter === 'ALL') return nodeSpecificDocs
+    return nodeSpecificDocs.filter((d) => d.source === docSourceFilter)
+  }, [nodeSpecificDocs, docSourceFilter])
+
+  const filteredOtherDocs = useMemo(() => {
+    if (docSourceFilter === 'ALL') return otherComboDocs
+    return otherComboDocs.filter((d) => d.source === docSourceFilter)
+  }, [otherComboDocs, docSourceFilter])
+
+  const cloneTargetPackage = useMemo(
+    () => packageTree.find((p) => p.id === cloneTargetPackageId),
+    [packageTree, cloneTargetPackageId]
+  )
+
+  const handleOpenCloneModal = () => {
+    if (!selectedTemplateId || selectedTemplateId === 'NEW') return
+    setCloneTargetPackageId(selectedPackageId || '')
+    setCloneTargetTaskTypeId(selectedTaskTypeId || '')
+    setCloneTemplateName(`Bản sao - ${templateName || ''}`)
+    setCloneDescription(templateDescription || '')
+    setCloneIsDefault(false)
+    setCloneModalOpen(true)
+  }
+
+  const handleExecuteClone = async () => {
+    if (!cloneTargetPackageId || !cloneTargetTaskTypeId) {
+      addToast?.('Vui lòng chọn Gói dịch vụ và Hạng mục công việc đích', 'error')
+      return
+    }
+    if (!cloneTemplateName.trim()) {
+      addToast?.('Vui lòng nhập tên mẫu quy trình mới', 'error')
+      return
+    }
+    setCloning(true)
+    try {
+      const res = await apiFetch(`/api/contracts/workflow/templates/${selectedTemplateId}/clone`, {
+        method: 'POST',
+        body: JSON.stringify({
+          target_service_package_id: cloneTargetPackageId,
+          target_task_type_id: cloneTargetTaskTypeId,
+          name: cloneTemplateName.trim(),
+          description: cloneDescription.trim() || null,
+          is_default: Boolean(cloneIsDefault),
+        }),
+      })
+      const cloned = res?.data
+      addToast?.('Đã nhân bản quy trình thành công!', 'success')
+      setCloneModalOpen(false)
+      setSelectedPackageId(cloneTargetPackageId)
+      setSelectedTaskTypeId(cloneTargetTaskTypeId)
+      await loadTemplates(cloneTargetPackageId, cloneTargetTaskTypeId, cloned?.id)
+    } catch (err) {
+      addToast?.(err.message || 'Lỗi khi nhân bản quy trình', 'error')
+    } finally {
+      setCloning(false)
+    }
+  }
+
+  const handleSelectCapability = (capCode) => {
+    const cap = CAPABILITIES.find((c) => c.code === capCode)
+    const updates = {
+      capability: capCode,
+      createsSurveyRecord: capCode === 'SURVEY_FIELD',
+      requiresGovSubmission: capCode === 'GOV_SUBMISSION',
+      isHandover: capCode === 'HANDOVER',
+    }
+    const currentDept = normalizeDepartmentCode(selectedNode?.data?.poolDepartmentCode)
+    if (cap?.suggestDept && (!currentDept || currentDept === 'SALES')) {
+      updates.poolDepartmentCode = cap.suggestDept
+    }
+    updateSelectedNodeData(updates)
+  }
 
   const updateSelectedNodeData = useCallback(
     (patch) => {
@@ -1102,16 +1337,47 @@ export default function MasterWorkflowStudio() {
                     className={`mws-pkg-tab${selectedPackageId === pkg.id ? ' is-active' : ''}`}
                     onClick={() => handleSelectPackage(pkg.id)}
                   >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: pkg.color || '#3b82f6',
+                        display: 'inline-block',
+                        marginRight: 6,
+                        verticalAlign: 'middle',
+                      }}
+                    />
                     {pkg.name}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  className="mws-add-catalog-btn"
+                  title="Thêm Gói dịch vụ mới"
+                  aria-label="Thêm Gói dịch vụ mới"
+                  onClick={() => openCatalogModal('PACKAGE', 'create')}
+                >
+                  <Plus size={13} /> Thêm Gói
+                </button>
+                {currentPackage && (
+                  <button
+                    type="button"
+                    className="mws-edit-catalog-btn"
+                    title={`Chỉnh sửa Gói: ${currentPackage.name}`}
+                    aria-label={`Chỉnh sửa Gói: ${currentPackage.name}`}
+                    onClick={() => openCatalogModal('PACKAGE', 'edit', currentPackage)}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="mws-divider-vertical" />
 
             {/* Hạng mục công việc chuẩn CustomSelect */}
-            <div className="mws-combo-group mws-task-type-group">
+            <div className="mws-combo-group mws-task-type-group" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span className="mws-group-label">Hạng Mục:</span>
               <CustomSelect
                 aria-label="Hạng mục công việc"
@@ -1124,6 +1390,26 @@ export default function MasterWorkflowStudio() {
                 onChange={(val) => setSelectedTaskTypeId(val)}
                 placeholder="— Chọn hạng mục —"
               />
+              <button
+                type="button"
+                className="mws-add-catalog-btn"
+                title="Thêm Hạng mục công việc mới"
+                aria-label="Thêm Hạng mục công việc"
+                onClick={() => openCatalogModal('TASK_TYPE', 'create', null, selectedPackageId)}
+              >
+                <Plus size={13} /> Thêm Hạng mục
+              </button>
+              {currentTaskType && (
+                <button
+                  type="button"
+                  className="mws-edit-catalog-btn"
+                  title={`Chỉnh sửa Hạng mục: ${currentTaskType.name}`}
+                  aria-label={`Chỉnh sửa Hạng mục: ${currentTaskType.name}`}
+                  onClick={() => openCatalogModal('TASK_TYPE', 'edit', currentTaskType, selectedPackageId)}
+                >
+                  <Pencil size={13} />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1183,43 +1469,14 @@ export default function MasterWorkflowStudio() {
           </div>
 
           {/* 2. Nút Thêm node */}
-          <div className="workflow-node-picker">
-            <button
-              type="button"
-              className="workspace-icon-button"
-              title="Thêm node"
-              aria-expanded={nodePickerOpen}
-              aria-haspopup="listbox"
-              onClick={() => setNodePickerOpen((v) => !v)}
-            >
-              <Plus size={16} /> Thêm node
-            </button>
-            {nodePickerOpen && (
-              <>
-                <div
-                  className="workflow-node-picker__backdrop"
-                  onClick={() => setNodePickerOpen(false)}
-                />
-                <div className="workflow-node-picker__menu" role="listbox">
-                  {catalogNodes.map((item) => (
-                    <button
-                      key={item.code}
-                      type="button"
-                      role="option"
-                      className="workflow-node-picker__item"
-                      onClick={() => handleAddNodeFromCatalog(item)}
-                    >
-                      <span className="workflow-node-picker__code">{item.code}</span>
-                      <span>
-                        <strong>{item.name}</strong>
-                        {item.description && <em>{item.description}</em>}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <button
+            type="button"
+            className="workspace-icon-button"
+            title="Thêm node mới"
+            onClick={handleAddNewCustomNode}
+          >
+            <Plus size={16} /> Thêm node
+          </button>
 
           {/* 3. Nút Căn */}
           <button
@@ -1242,7 +1499,7 @@ export default function MasterWorkflowStudio() {
             <Save size={15} /> Lưu mẫu
           </button>
 
-          {/* 5. Nút Nhân bản */}
+          {/* 5. Nút Nhân bản nội bộ */}
           <button
             type="button"
             className="workspace-icon-button"
@@ -1251,6 +1508,18 @@ export default function MasterWorkflowStudio() {
             title="Nhân bản mẫu hiện tại"
           >
             <Copy size={15} /> Nhân bản
+          </button>
+
+          {/* 5b. Nút Nhân bản sang Combo khác */}
+          <button
+            type="button"
+            className="workspace-icon-button"
+            disabled={selectedTemplateId === 'NEW' || !selectedTemplateId}
+            onClick={handleOpenCloneModal}
+            title="Nhân bản quy trình sang Combo (Gói & Hạng mục) khác"
+            aria-label="Nhân bản sang Combo"
+          >
+            <Sparkles size={15} /> ⚡ Nhân bản sang Combo
           </button>
 
           {/* 6. Nút Xóa */}
@@ -1306,12 +1575,12 @@ export default function MasterWorkflowStudio() {
             {[
               ['node', 'Node'],
               ['assignment', 'Phân công'],
-              ['transition', 'Điều kiện'],
+              ['capability', 'Năng lực'],
             ].map(([key, label]) => (
               <button
                 type="button"
                 key={key}
-                className={inspectorTab === key ? 'active' : ''}
+                className={(inspectorTab === key || (key === 'capability' && inspectorTab === 'transition')) ? 'active' : ''}
                 onClick={() => setInspectorTab(key)}
               >
                 {label}
@@ -1340,6 +1609,32 @@ export default function MasterWorkflowStudio() {
                         onChange={(e) => updateSelectedNodeData({ label: e.target.value })}
                         placeholder="Tên bước thực hiện..."
                       />
+                    </div>
+                  </div>
+
+                  <div className="wf-node-grid__row">
+                    <span className="wf-node-grid__label">Năng lực bước</span>
+                    <div className="wf-node-grid__value">
+                      <div className="mws-capability-grid">
+                        {CAPABILITIES.map((cap) => {
+                          const Icon = cap.icon
+                          const isSelected = (selectedNode.data.capability || 'STANDARD') === cap.code
+                          return (
+                            <button
+                              type="button"
+                              key={cap.code}
+                              className={`mws-capability-card${isSelected ? ' is-selected' : ''}`}
+                              onClick={() => handleSelectCapability(cap.code)}
+                            >
+                              <div className="mws-capability-card__header">
+                                <Icon size={14} color={isSelected ? '#ea580c' : cap.color} />
+                                <span>{cap.label}</span>
+                              </div>
+                              <span className="mws-capability-card__desc">{cap.desc}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   </div>
 
@@ -1390,14 +1685,6 @@ export default function MasterWorkflowStudio() {
                             poolDepartmentCode: val,
                           })
                         }
-                      />
-                    </div>
-                    <div className="workflow-pool-config__roles">
-                      <RoleMultiSelect
-                        label="Vai trò được nhận việc"
-                        value={selectedNode.data.claimRoles || ['MAIN']}
-                        options={ASSIGNMENT_ROLES}
-                        onChange={(claimRoles) => updateSelectedNodeData({ claimRoles })}
                       />
                     </div>
                   </section>
@@ -1668,12 +1955,23 @@ export default function MasterWorkflowStudio() {
                             <span className="wcl-prop__label"><Banknote size={13} /> Lương khoán</span>
                             <div className="wcl-prop__field wcl-rate-summary">
                               {rates.length > 0 ? (
-                                rates.map((r) => (
-                                  <span key={r.id || r.role_code} className={`wcl-rr${Number(r.amount) > 0 ? '' : ' is-zero'}`}>
-                                    {shortRoleLabel(r.role_code)}:{' '}
-                                    <strong>{Number(r.amount || 0).toLocaleString('vi-VN')}đ</strong>
-                                  </span>
-                                ))
+                                <>
+                                  {rates.map((r) => (
+                                    <span key={r.id || r.role_code} className={`wcl-rr${Number(r.amount) > 0 ? '' : ' is-zero'}`}>
+                                      {shortRoleLabel(r.role_code)}:{' '}
+                                      <strong>{Number(r.amount || 0).toLocaleString('vi-VN')}đ</strong>
+                                    </span>
+                                  ))}
+                                  {Number(rates.find((r) => r.role_code === 'ASSISTANT')?.amount || 0) > 0 ? (
+                                    <span className="mws-auto-role-badge" title="Tự động mở suất thợ phụ theo định mức lương khoán">
+                                      ⚡ Có thợ phụ (Tự động mở suất theo bảng lương)
+                                    </span>
+                                  ) : (
+                                    <span className="mws-auto-role-badge mws-auto-role-badge--single" title="Chỉ 1 người làm chính">
+                                      👤 1 người làm chính
+                                    </span>
+                                  )}
+                                </>
                               ) : (
                                 <span className="wcl-rate-empty">Chưa thiết lập định mức</span>
                               )}
@@ -1752,46 +2050,29 @@ export default function MasterWorkflowStudio() {
               </div>
             </div>
           ) : (
-            /* Tab Điều kiện */
+            /* Tab Năng lực & Chuyển bước */
             <div className="workflow-inspector__content">
               <div className="workflow-section-block">
-                <label className="workflow-section-block__label">ĐIỀU KIỆN KÍCH HOẠT</label>
-                <div className="workflow-trigger-group">
-                  <label className="workflow-trigger-item">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedNode.data.requiresGovSubmission)}
-                      onChange={(e) => updateSelectedNodeData({ requiresGovSubmission: e.target.checked })}
-                    />
-                    <div className="workflow-trigger-item__info">
-                      <strong>Yêu cầu nộp cơ quan nhà nước</strong>
-                      <span>Theo dõi một cửa & biên nhận hẹn trả kết quả</span>
-                    </div>
-                  </label>
-
-                  <label className="workflow-trigger-item">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedNode.data.createsSurveyRecord)}
-                      onChange={(e) => updateSelectedNodeData({ createsSurveyRecord: e.target.checked })}
-                    />
-                    <div className="workflow-trigger-item__info">
-                      <strong>Bước đo vẽ</strong>
-                      <span>Tạo biên bản khảo sát hiện trường & toạ độ mốc ranh</span>
-                    </div>
-                  </label>
-
-                  <label className="workflow-trigger-item">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(selectedNode.data.isHandover)}
-                      onChange={(e) => updateSelectedNodeData({ isHandover: e.target.checked })}
-                    />
-                    <div className="workflow-trigger-item__info">
-                      <strong>Bước bàn giao</strong>
-                      <span>Bàn giao hồ sơ cho khách hàng & chốt công nợ</span>
-                    </div>
-                  </label>
+                <label className="workflow-section-block__label">NĂNG LỰC BƯỚC (CHẠY NGẦM TỰ ĐỘNG)</label>
+                <div className="mws-capability-grid">
+                  {CAPABILITIES.map((cap) => {
+                    const Icon = cap.icon
+                    const isSelected = (selectedNode.data.capability || 'STANDARD') === cap.code
+                    return (
+                      <button
+                        type="button"
+                        key={cap.code}
+                        className={`mws-capability-card${isSelected ? ' is-selected' : ''}`}
+                        onClick={() => handleSelectCapability(cap.code)}
+                      >
+                        <div className="mws-capability-card__header">
+                          <Icon size={14} color={isSelected ? '#ea580c' : cap.color} />
+                          <span>{cap.label}</span>
+                        </div>
+                        <span className="mws-capability-card__desc">{cap.desc}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
@@ -1934,13 +2215,45 @@ export default function MasterWorkflowStudio() {
           <p className="wcl-output-modal__hint">
             Chọn các loại giấy tờ đầu ra mà checklist này cần tạo ra. Có thể chọn nhiều loại, hệ thống sẽ tự đưa vào cấu trúc hồ sơ sau khi duyệt.
           </p>
+
+          <div className="wcl-source-tabs" role="tablist" aria-label="Lọc theo nguồn tài liệu">
+            <button
+              type="button"
+              className={`wcl-source-tab${docSourceFilter === 'ALL' ? ' is-active' : ''}`}
+              onClick={() => setDocSourceFilter('ALL')}
+            >
+              Tất cả nguồn
+            </button>
+            <button
+              type="button"
+              className={`wcl-source-tab${docSourceFilter === 'KHACH_HANG' ? ' is-active' : ''}`}
+              onClick={() => setDocSourceFilter('KHACH_HANG')}
+            >
+              Khách hàng cung cấp
+            </button>
+            <button
+              type="button"
+              className={`wcl-source-tab${docSourceFilter === 'CONG_TY' ? ' is-active' : ''}`}
+              onClick={() => setDocSourceFilter('CONG_TY')}
+            >
+              Nội bộ công ty
+            </button>
+            <button
+              type="button"
+              className={`wcl-source-tab${docSourceFilter === 'CO_QUAN' ? ' is-active' : ''}`}
+              onClick={() => setDocSourceFilter('CO_QUAN')}
+            >
+              Cơ quan nhà nước
+            </button>
+          </div>
+
           {applicableComboOutputDocs.length === 0 ? (
             <div className="wcl-output-modal__empty">
               Chưa có tài liệu đầu ra nào phù hợp với Combo này.
             </div>
           ) : (
             <div className="wcl-output-modal__groups">
-              {nodeSpecificDocs.length > 0 && (
+              {filteredNodeDocs.length > 0 && (
                 <section className="wcl-output-modal__group wcl-output-modal__group--cong-ty">
                   <div className="wcl-output-modal__group-head">
                     <div>
@@ -1952,7 +2265,7 @@ export default function MasterWorkflowStudio() {
                       </p>
                     </div>
                     <span className="wcl-output-modal__group-count">
-                      {nodeSpecificDocs.length} loại
+                      {filteredNodeDocs.length} loại
                     </span>
                   </div>
                   <div
@@ -1961,7 +2274,7 @@ export default function MasterWorkflowStudio() {
                     aria-label="Khuyến nghị cho bước"
                     aria-multiselectable="true"
                   >
-                    {nodeSpecificDocs.map((dt) => {
+                    {filteredNodeDocs.map((dt) => {
                       const currentItem = (selectedNode?.data?.checklist || []).find(
                         (it) => it.key === outputDocModalItemKey
                       )
@@ -2000,7 +2313,7 @@ export default function MasterWorkflowStudio() {
                 </section>
               )}
 
-              {otherComboDocs.length > 0 && (
+              {filteredOtherDocs.length > 0 && (
                 <section className="wcl-output-modal__group wcl-output-modal__group--co-quan">
                   <div className="wcl-output-modal__group-head">
                     <div>
@@ -2012,7 +2325,7 @@ export default function MasterWorkflowStudio() {
                       </p>
                     </div>
                     <span className="wcl-output-modal__group-count">
-                      {otherComboDocs.length} loại
+                      {filteredOtherDocs.length} loại
                     </span>
                   </div>
                   <div
@@ -2021,7 +2334,7 @@ export default function MasterWorkflowStudio() {
                     aria-label="Các mẫu đầu ra khác trong combo"
                     aria-multiselectable="true"
                   >
-                    {otherComboDocs.map((dt) => {
+                    {filteredOtherDocs.map((dt) => {
                       const currentItem = (selectedNode?.data?.checklist || []).find(
                         (it) => it.key === outputDocModalItemKey
                       )
@@ -2065,6 +2378,123 @@ export default function MasterWorkflowStudio() {
           )}
         </div>
       </Modal>
+
+      {/* Modal Nhân Bản Quy Trình Sang Combo Khác */}
+      <Modal
+        open={cloneModalOpen}
+        onClose={() => setCloneModalOpen(false)}
+        title="⚡ Nhân bản quy trình sang Combo khác"
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, width: '100%' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setCloneModalOpen(false)}
+            >
+              Huỷ
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={cloning || !cloneTargetPackageId || !cloneTargetTaskTypeId || !cloneTemplateName.trim()}
+              onClick={handleExecuteClone}
+            >
+              <Sparkles size={15} /> {cloning ? 'Đang nhân bản…' : 'Xác nhận nhân bản'}
+            </button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Nhân bản toàn bộ sơ đồ, các bước và danh sách checklist của mẫu hiện tại sang một Gói dịch vụ hoặc Hạng mục công việc mới chỉ trong 1 chạm.
+          </p>
+
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700 }}>
+              Gói dịch vụ đích <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <CustomSelect
+              aria-label="Gói dịch vụ đích"
+              value={cloneTargetPackageId}
+              options={(packageTree || []).map((p) => ({ value: p.id, label: p.name }))}
+              placeholder="— Chọn gói dịch vụ đích —"
+              onChange={(val) => {
+                setCloneTargetPackageId(val)
+                const targetPkg = packageTree.find((p) => p.id === val)
+                if (targetPkg?.task_types?.length > 0) {
+                  setCloneTargetTaskTypeId(targetPkg.task_types[0].id)
+                } else {
+                  setCloneTargetTaskTypeId('')
+                }
+              }}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700 }}>
+              Hạng mục công việc đích <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <CustomSelect
+              aria-label="Hạng mục công việc đích"
+              value={cloneTargetTaskTypeId}
+              options={(cloneTargetPackage?.task_types || []).map((t) => ({ value: t.id, label: t.name }))}
+              placeholder="— Chọn hạng mục công việc đích —"
+              onChange={(val) => setCloneTargetTaskTypeId(val)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700 }}>
+              Tên mẫu quy trình mới <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              value={cloneTemplateName}
+              onChange={(e) => setCloneTemplateName(e.target.value)}
+              placeholder="VD: Quy trình Cắm mốc nhanh - V1"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" style={{ fontWeight: 700 }}>
+              Ghi chú định hướng
+            </label>
+            <textarea
+              className="form-control"
+              rows={2}
+              value={cloneDescription}
+              onChange={(e) => setCloneDescription(e.target.value)}
+              placeholder="Ghi chú sử dụng..."
+            />
+          </div>
+
+          <label className={`mws-default-toggle${cloneIsDefault ? ' is-default' : ''}`} style={{ marginTop: 4 }}>
+            <input
+              type="checkbox"
+              aria-label="Mặc định của combo đích"
+              checked={cloneIsDefault}
+              onChange={(e) => setCloneIsDefault(e.target.checked)}
+            />
+            <Star size={14} fill={cloneIsDefault ? '#f59e0b' : 'none'} color={cloneIsDefault ? '#f59e0b' : '#64748b'} />
+            <span>{cloneIsDefault ? 'Đặt làm mặc định cho Combo đích' : 'Đặt làm mặc định cho Combo đích'}</span>
+          </label>
+        </div>
+      </Modal>
+
+      {/* Modal Quản lý Gói dịch vụ & Hạng mục công việc */}
+      <CatalogManageModal
+        open={catalogModalConfig.open}
+        targetType={catalogModalConfig.targetType}
+        mode={catalogModalConfig.mode}
+        item={catalogModalConfig.item}
+        parentPackageId={catalogModalConfig.parentPackageId}
+        packageList={packageTree}
+        addToast={addToast}
+        onClose={() => setCatalogModalConfig((prev) => ({ ...prev, open: false }))}
+        onSuccess={reloadCatalogTree}
+      />
     </div>
   )
 }

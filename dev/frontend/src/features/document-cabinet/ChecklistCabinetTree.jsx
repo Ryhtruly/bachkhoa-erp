@@ -158,7 +158,11 @@ export default function ChecklistCabinetTree({ groups = [], currentNodeCode, onO
           </button>
 
           {nodeOpen && <ul className="cab-tree__types">
-            {(group.documents || []).map(type => {
+            {(group.documents || []).length === 0 ? (
+              <li className="cab-tree__empty-node" style={{ padding: '8px 16px', fontSize: '0.82rem', color: 'var(--text-muted, #888)', fontStyle: 'italic' }}>
+                Chưa có tài liệu phân vào bước này
+              </li>
+            ) : (group.documents || []).map(type => {
               const id = typeKey(type)
               const files = type.files || []
               const count = Number(type.file_count ?? files.length)

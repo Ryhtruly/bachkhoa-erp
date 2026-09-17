@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from src.core.auth import require_permission, User
 from src.db.database import get_db
-from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+from src.finance.enums import APPROVED_STATUS_DB_VALUES, PENDING_STATUS_DB_VALUES
+from src.finance.services import INCOME_TX_TYPES
 
 router = APIRouter(prefix="/api/customers", tags=["01b. Customers"])
 
@@ -27,7 +28,8 @@ def _format_date(v):
 
 # Cùng nguồn chân lý với màn Thu Công Nợ: công nợ tính từ phiếu thu ĐÃ DUYỆT,
 # bàn giao đọc từ cờ is_handover của node (không hardcode mã K06).
-_APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
+_APPROVED_SQL = "'" + "','".join(APPROVED_STATUS_DB_VALUES) + "'"
+_PENDING_SQL = "'" + "','".join(PENDING_STATUS_DB_VALUES) + "'"
 _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
 
 
@@ -176,7 +178,7 @@ def get_customer(
                     select t.contract_id, sum(t.amount) as pending_amount
                     from cashflow_transactions t
                     where t.transaction_type in ({_INCOME_SQL})
-                      and t.status in ('Chờ duyệt', 'PENDING', 'pending')
+                      and t.status in ({_PENDING_SQL})
                     group by t.contract_id
                 ) pending_tx on pending_tx.contract_id = c.id
                 where c.customer_id = :id
@@ -205,7 +207,7 @@ def get_customer(
                     select t.contract_id, sum(t.amount) as pending_amount
                     from cashflow_transactions t
                     where t.transaction_type in ({_INCOME_SQL})
-                      and t.status in ('Chờ duyệt', 'PENDING', 'pending')
+                      and t.status in ({_PENDING_SQL})
                     group by t.contract_id
                 ) pending_tx on pending_tx.contract_id = c.id
                 left join lateral (

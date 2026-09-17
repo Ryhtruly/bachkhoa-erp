@@ -11,7 +11,7 @@ from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
-from src.db.models import Permission, RolePermissionGrant, UserPermissionOverride, UserRole
+from src.db.models import Permission, Role, RolePermissionGrant, UserPermissionOverride, UserRole
 
 
 @dataclass(frozen=True)
@@ -122,7 +122,15 @@ def evaluate_normalized_permission(
         return None
 
     permission_codes = [permission.code for permission in permissions]
-    role_ids = [row[0] for row in db.query(UserRole.role_id).filter(UserRole.user_id == user_id).all()]
+    role_ids = [
+        row[0]
+        for row in (
+            db.query(UserRole.role_id)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(UserRole.user_id == user_id, Role.is_active.is_(True))
+            .all()
+        )
+    ]
     grants = (
         db.query(RolePermissionGrant)
         .filter(

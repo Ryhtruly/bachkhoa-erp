@@ -29,18 +29,27 @@ from sqlalchemy.orm import Session
 
 from src.files.payment_receipts import public_receipt_attachments
 from src.finance.services import APPROVED_TX_STATUSES, INCOME_TX_TYPES
+from src.finance.enums import APPROVED_STATUS_DB_VALUES, PENDING_STATUS_DB_VALUES, normalize_status
+from src.core.finance_validation import parse_issued_money
 
 # Trạng thái node coi như đã đóng — không thao tác được nữa.
 _NODE_FINISHED = ("accepted", "cancelled", "skipped")
 
-_APPROVED_SQL = "'" + "','".join(sorted(APPROVED_TX_STATUSES)) + "'"
+_APPROVED_SQL = "'" + "','".join(APPROVED_STATUS_DB_VALUES) + "'"
+_PENDING_SQL = "'" + "','".join(PENDING_STATUS_DB_VALUES) + "'"
 _INCOME_SQL = "'" + "','".join(sorted(INCOME_TX_TYPES)) + "'"
+
+EXCLUDED_INSTALLMENT_STATUSES = frozenset({
+    "Đã hủy", "Từ chối", "CANCELLED", "REJECTED", "cancelled", "rejected",
+    "da_huy", "tu_choi", "VOID", "void", "DELETED", "deleted",
+})
+_EXCLUDED_INSTALLMENT_SQL = "'" + "','".join(sorted(EXCLUDED_INSTALLMENT_STATUSES)) + "'"
 
 
 def _node_or_404(db: Session, task_node_id: str) -> dict:
     row = db.execute(
         text("""
-            select n.id, n.node_key, n.node_code, n.status, n.started_at, n.execution_data,
+            select n.id, n.node_key, n.node_code, n.capability_code, n.status, n.started_at, n.execution_data,
                    n.workflow_instance_id, n.defined_by_revision_id,
                    wi.service_line_id, sl.contract_id, sl.service_type,
                    c.total_value, cu.full_name as customer_name,
@@ -73,8 +82,19 @@ def _node_or_404(db: Session, task_node_id: str) -> dict:
 
 
 def is_handover_node(node: dict) -> bool:
-    """Nhận diện bằng CỜ, không bao giờ bằng mã node."""
-    return bool((node.get("node_def") or {}).get("is_handover"))
+    """Nhận diện bằng CỜ hoặc Năng lực HANDOVER."""
+    node_def = node.get("node_def") or {}
+    cap = str(
+        node_def.get("capability")
+        or node_def.get("capability_code")
+        or node.get("capability_code")
+        or ""
+    ).strip().upper()
+    return bool(
+        node_def.get("is_handover")
+        or cap == "HANDOVER"
+        or str(node.get("node_code") or "").strip().upper() == "K06"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -94,7 +114,15 @@ def debt_summary(
     chỉ làm ``gate_open`` đúng cho đúng Node K06 được duyệt; nó không xóa nợ và
     không được dùng để chốt hợp đồng hoàn thành.
     """
-    total = float(total_value or 0)
+    if contract_id:
+        total = float(parse_issued_money(total_value, f"Giá trị hợp đồng {contract_id}"))
+    else:
+        total = float(total_value or 0)
+        if total < 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Giá trị công nợ không được âm.",
+            )
     if not contract_id:
         settled = total <= 0
         return {"contract_id": None, "total_value": total, "paid": 0.0,
@@ -106,7 +134,7 @@ def debt_summary(
         text(f"""
             select
               coalesce(sum(amount) filter (where status in ({_APPROVED_SQL})), 0) as approved_amount,
-              coalesce(sum(amount) filter (where status in ('Chờ duyệt','PENDING')), 0) as pending_amount
+              coalesce(sum(amount) filter (where status in ({_PENDING_SQL})), 0) as pending_amount
             from public.cashflow_transactions
             where contract_id = :c and transaction_type in ({_INCOME_SQL})
         """),
@@ -345,13 +373,15 @@ def installments(db: Session, contract_id: str | None) -> list[dict]:
                    payer_payee_name, payment_method, description, approved_at
             from public.cashflow_transactions
             where contract_id = :c and transaction_type in ({_INCOME_SQL})
-              and coalesce(status, '') not in ('Đã hủy', 'Từ chối', 'CANCELLED', 'REJECTED')
+              and coalesce(status, '') not in ({_EXCLUDED_INSTALLMENT_SQL})
             order by transaction_date asc, created_at asc
         """),
         {"c": contract_id},
     ).mappings().all()
     result = []
     for row in rows:
+        if row.get("status") in EXCLUDED_INSTALLMENT_STATUSES:
+            continue
         item = dict(row)
         attachments = public_receipt_attachments(
             item.get("receipt_attachments"),
@@ -359,7 +389,7 @@ def installments(db: Session, contract_id: str | None) -> list[dict]:
         )
         item.update({
             "amount": float(row["amount"] or 0),
-            "is_approved": row["status"] in APPROVED_TX_STATUSES,
+            "is_approved": normalize_status(row["status"]) in APPROVED_TX_STATUSES,
             "receipt_attachments": attachments,
             "receipt_attachment_url": attachments[0]["url"] if attachments else None,
         })
@@ -442,13 +472,20 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
 
     is_assigned = False
     can_collect_payment = False
+    is_director_actor = False
     if user_id:
         employee_record = employee_of(db, user_id)
         is_assigned = bool(employee_record) and is_assigned_to_node(
             db, task_node_id=task_node_id, employee_id=employee_record["id"]
         )
         u = db.query(User).filter(User.id == user_id).first()
-        can_collect_payment = bool(u) and check_user_permission(db, u, "finance", "create")
+        from src.finance.access import is_director_user
+        is_director_actor = bool(u and is_director_user(db, u))
+        can_collect_payment = bool(
+            is_director_actor
+            or (u and check_user_permission(db, u, "finance", "create"))
+            or (is_assigned and node["status"] in ("in_progress", "rework_required", "ready"))
+        )
 
     dossier_actors, finance_actors = _split_handover_roles(db, task_node_id)
     payment_collector_name = finance_actors[0]["full_name"] if finance_actors else None
@@ -457,7 +494,7 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
     dossier_deliverer_name = dossier_actors[0]["full_name"] if dossier_actors else None
     dossier_deliverer_user_ids = {r["user_id"] for r in dossier_actors if r["user_id"]}
 
-    is_dossier_actor = bool(user_id and user_id in dossier_deliverer_user_ids)
+    is_dossier_actor = bool(user_id and (user_id in dossier_deliverer_user_ids or is_assigned))
     can_edit_checklist = bool(
         is_dossier_actor
         and node["status"] in ("in_progress", "rework_required")
@@ -519,7 +556,8 @@ def get_state(db: Session, task_node_id: str, *, user_id: str | None = None) -> 
             "desc": "Tự đánh dấu khi khách trả đủ — không ai tick tay được",
             # Không ràng vào trạng thái node: nợ thuộc về hợp đồng, nên bước bàn
             # giao đã đóng mà khách còn khất thì kế toán vẫn ghi nhận được.
-            "can_record_payment": can_collect_payment and not debt["is_settled"],
+            "can_record_payment": bool(can_collect_payment and not debt["is_settled"]),
+            "is_director": is_director_actor,
             "actor": payment_collector_name,
         },
         # Node chỉ đóng được khi CẢ HAI làn xong.
@@ -1084,28 +1122,49 @@ def _record_payment_transaction(
 
     from src.finance.repository import FinanceRepository
     from src.finance.enums import TransactionType, TransactionStatus, TransactionScope, normalize_payment_method
-    from datetime import date
+    from src.finance.services import FinanceService, calculate_balances, capture_document_signer_snapshot
+    from src.dossiers.actor_guard import is_director as check_is_director
+    from src.core.redis_utils import invalidate_money_caches
+    from datetime import date, datetime, timezone
+    from decimal import Decimal
 
     today_date = date.today()
     canon_type = TransactionType.INCOME.value
     canon_pm = normalize_payment_method(payment_method)
-    canon_status = TransactionStatus.PENDING.value
+    is_director = check_is_director(db, actor_id) if actor_id else False
+    canon_status = TransactionStatus.COMPLETED.value if is_director else TransactionStatus.PENDING.value
     canon_scope = TransactionScope.COMPANY.value
     new_id = FinanceRepository.generate_voucher_id(canon_type, db, today_date)
+    bal_tm, bal_ck, bal_sau = calculate_balances(db, canon_type, float(amount), canon_pm)
     first_att = receipt_attachments[0]
     first_receipt_url = first_att.get("url") or f"/api/handover/payment-receipts/{first_att.get('id', 'receipt_1')}"
+    approved_by = actor_id if is_director else None
+    approved_at = datetime.now(timezone.utc) if is_director else None
+    signer_snap = (
+        capture_document_signer_snapshot(
+            db,
+            actor_id,
+            counterparty={"name": payer_name},
+        )
+        if is_director else None
+    )
+
     db.execute(
         text("""
             insert into public.cashflow_transactions
                 (id, contract_id, transaction_type, amount, category_code,
                  payer_payee_name, payment_method, transaction_date, document_number,
                  description, receipt_attachment_url, receipt_attachments,
-                 created_by_user_id, status, scope, created_at)
+                 balance_after, cash_balance_after, bank_balance_after,
+                 created_by_user_id, approved_by_user_id, approved_at,
+                 status, scope, signer_snapshot, created_at)
             values
                 (:id, :contract_id, :tx_type, :amount, 'Thu tiền hợp đồng',
                  :payer, :method, :transaction_date, :id,
                  :description, :bill, cast(:attachments as jsonb),
-                 :actor, :status, :scope, now())
+                 :balance_after, :cash_balance_after, :bank_balance_after,
+                 :actor, :approved_by, :approved_at,
+                 :status, :scope, cast(:signer_snapshot as jsonb), now())
         """),
         {
             "id": new_id, "contract_id": contract_id, "tx_type": canon_type, "amount": float(amount),
@@ -1114,9 +1173,15 @@ def _record_payment_transaction(
             "description": note or default_desc,
             "bill": first_receipt_url,
             "attachments": json.dumps(receipt_attachments, ensure_ascii=False),
+            "balance_after": float(bal_sau),
+            "cash_balance_after": float(bal_tm),
+            "bank_balance_after": float(bal_ck),
             "actor": actor_id,
+            "approved_by": approved_by,
+            "approved_at": approved_at,
             "status": canon_status,
             "scope": canon_scope,
+            "signer_snapshot": json.dumps(signer_snap, ensure_ascii=False) if signer_snap else None,
         },
     )
 
@@ -1133,6 +1198,34 @@ def _record_payment_transaction(
                  "amount": float(amount),
                  "receipt_count": len(receipt_attachments),
              }, ensure_ascii=False)},
+        )
+
+    if is_director:
+        FinanceService._sync_receivables(db, contract_id, float(amount))
+        db.flush()
+        from src.contracts.workflow_runtime import auto_finalize_contract_handover_nodes
+        auto_finalize_contract_handover_nodes(
+            db,
+            contract_id=contract_id,
+            actor_id=actor_id,
+        )
+        FinanceService._finalize_contract_after_full_payment(db, contract_id)
+        invalidate_money_caches()
+    else:
+        # Khi nhân viên nộp bill -> gửi thông báo tới Giám đốc để duyệt 1-chạm
+        payer_desc = f" từ {payer_name}" if payer_name else ""
+        db.execute(
+            text("""
+                insert into public.notifications (id, user_id, title, content, is_read, created_at)
+                select gen_random_uuid()::text, u.id, 'Đợt thanh toán mới chờ duyệt', :content, false, now()
+                from public.users u
+                join public.user_roles ur on ur.user_id = u.id
+                join public.roles r on r.id = ur.role_id
+                where lower(r.role_name) in ('admin', 'director', 'giam_doc', 'giám đốc')
+            """),
+            {
+                "content": f"Hợp đồng {contract_id}: Nhân viên đã nộp bill thanh toán {float(amount):,.0f}₫{payer_desc}, chờ Giám đốc duyệt.",
+            },
         )
 
     return {
@@ -1261,7 +1354,7 @@ def outstanding_handovers(db: Session) -> list[dict]:
                 select t.contract_id, sum(t.amount) as pending_amount
                 from public.cashflow_transactions t
                 where t.transaction_type in ({_INCOME_SQL})
-                  and t.status in ('Chờ duyệt', 'PENDING', 'pending')
+                  and t.status in ({_PENDING_SQL})
                 group by t.contract_id
             ) pending_tx on pending_tx.contract_id = c.id
             -- Phê duyệt giao trước là lịch sử nghiệp vụ của K06, KHÔNG phải
@@ -1359,13 +1452,15 @@ def outstanding_handovers(db: Session) -> list[dict]:
                        payer_payee_name, payment_method, description, approved_at
                 from public.cashflow_transactions
                 where contract_id = any(:c_ids) and transaction_type in ({_INCOME_SQL})
-                  and coalesce(status, '') not in ('Đã hủy', 'Từ chối')
+                  and coalesce(status, '') not in ({_EXCLUDED_INSTALLMENT_SQL})
                 order by transaction_date desc, created_at desc
             """),
             {"c_ids": contract_ids}
         ).mappings().all()
 
         for tx in tx_rows:
+            if tx.get("status") in EXCLUDED_INSTALLMENT_STATUSES:
+                continue
             cid = tx["contract_id"]
             if cid not in contract_installments_map:
                 contract_installments_map[cid] = []
@@ -1376,7 +1471,7 @@ def outstanding_handovers(db: Session) -> list[dict]:
             item = dict(tx)
             item.update({
                 "amount": float(tx["amount"] or 0),
-                "is_approved": tx["status"] in APPROVED_TX_STATUSES,
+                "is_approved": normalize_status(tx["status"]) in APPROVED_TX_STATUSES,
                 "receipt_attachments": attachments,
                 "receipt_attachment_url": attachments[0]["url"] if attachments else None,
             })

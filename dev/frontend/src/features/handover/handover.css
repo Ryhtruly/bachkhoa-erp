@@ -144,21 +144,32 @@
   list-style: none;
 }
 .handover__installments li {
-  display: grid;
-  grid-template-columns: 56px 1fr 20px 76px;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
-  padding: 5px 4px;
+  padding: 6px 6px;
   border-bottom: 1px solid var(--border-subtle);
   font-size: 0.8rem;
 }
 .handover__installments li:last-child { border-bottom: 0; }
-.handover__installments li.is-pending { opacity: 0.62; }
-.handover__inst-date   { color: var(--text-tertiary); }
-.handover__inst-amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+.handover__installments li.is-pending { opacity: 0.85; background: rgba(254, 243, 199, 0.25); border-radius: 6px; }
+.handover__inst-date   { color: var(--text-tertiary); font-size: 0.76rem; min-width: 65px; }
+.handover__inst-amount { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 80px; }
 .handover__inst-nobill { color: #dc2626; text-align: center; }
 .handover__inst-status { color: var(--text-tertiary); font-size: 0.74rem; text-align: right; }
 .handover__inst-status.is-waiting { color: #c2410c; font-weight: 600; }
+.handover__inst-approve {
+  padding: 3px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: 6px;
+  margin-left: auto;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
 
 /* ── Hai khối nghiệp vụ: giao hồ sơ và thu đủ tiền ───────────── */
 .handover__cards { display: flex; flex-direction: column; gap: 8px; }

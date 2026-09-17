@@ -21,6 +21,7 @@ from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import handover as HO
 from src.dossiers.actor_guard import assert_can_act_on_node, assert_can_view_node, format_on_behalf_note
+from src.finance.access import assert_director, is_income_transaction
 from src.files.payment_receipts import (
     MAX_RECEIPT_BYTES,
     MAX_RECEIPT_FILES,
@@ -32,6 +33,8 @@ from src.core.redis_utils import (
     redis_distributed_lock, get_cached_json, set_cached_json,
     invalidate_cache, invalidate_money_caches,
 )
+
+MAX_HANDOVER_PACKAGE_BYTES = 100 * 1024 * 1024
 from src.services.storage_service import (
     BUCKET as MINIO_BUCKET,
     ENDPOINT as MINIO_ENDPOINT,
@@ -69,7 +72,8 @@ def list_outstanding(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("finance", "read")),
 ):
-    """Đã giao — chưa thu đủ. Màn hình chính của kế toán."""
+    """Đã giao — chưa thu đủ. Màn hình quản lý thu công nợ của Giám đốc."""
+    assert_director(db, user, "Chỉ Giám đốc được quản lý danh sách thu công nợ.")
     cache_key = "bachkhoa:handover:outstanding"
     cached = get_cached_json(cache_key)
     if cached is not None:
@@ -275,7 +279,7 @@ def view_payment_receipt(
     """Stream one private receipt to finance readers or the payment creator."""
     row = db.execute(
         text("""
-            select id, created_by_user_id, receipt_attachments
+            select id, created_by_user_id, transaction_type, receipt_attachments
             from public.cashflow_transactions
             where receipt_attachments @> cast(:needle as jsonb)
             limit 1
@@ -284,6 +288,8 @@ def view_payment_receipt(
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy bill/biên lai")
+    if is_income_transaction(row.get("transaction_type")):
+        assert_director(db, user, "Chỉ Giám đốc được xem bill/biên lai thu tiền.")
     can_read_finance = check_user_permission(db, user, "finance", "read")
     is_creator = str(row["created_by_user_id"] or "") == str(user.id)
     if not can_read_finance and not is_creator:
@@ -351,6 +357,7 @@ def download_handover_package(
 
     buffer = io.BytesIO()
     external_links: list[str] = []
+    package_bytes = 0
     static_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "static"))
 
     def _fetch_file_content(url: str):
@@ -388,6 +395,12 @@ def download_handover_package(
                 logger.warning("Không lấy được tệp cho gói bàn giao: %s", url)
                 content = None
             if content:
+                package_bytes += len(content)
+                if package_bytes > MAX_HANDOVER_PACKAGE_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Gói tài liệu bàn giao vượt quá giới hạn 100MB.",
+                    )
                 filename = os.path.basename(item["ten"]) or f"tai_lieu_{i}"
                 zf.writestr(f"{item['nhom']}/{i:02d}_{filename}", content)
             else:
@@ -438,14 +451,15 @@ def deliver(
     return {"status": "success", "data": {**result, "on_behalf": actor["on_behalf"]}}
 
 
-def _store_payment_receipts(db, user, receipt_files, storage_key: str, record_payment):
+def _store_payment_receipts(db, user, receipt_files, storage_key: str, record_payment, allow_assigned_node: bool = False):
     """Nhận bill, đẩy lên kho, rồi gọi `record_payment(attachments)` để tạo phiếu thu.
 
     Tách ra vì có hai đường vào cùng làm việc này: thu tại bước bàn giao và thu
     thẳng theo hợp đồng. Cả hai đều phải có bill, và nếu ghi nhận hỏng thì file
     vừa đẩy lên phải được xoá — nếu không kho sẽ đầy ảnh mồ côi.
     """
-    if not check_user_permission(db, user, "finance", "create"):
+    from src.dossiers.actor_guard import is_director
+    if not allow_assigned_node and not check_user_permission(db, user, "finance", "create") and not is_director(db, user.id):
         raise HTTPException(status_code=403, detail="Không có quyền ghi nhận thu tiền")
     if not receipt_files:
         raise HTTPException(status_code=422, detail="Bắt buộc đính bill/biên lai")
@@ -517,6 +531,7 @@ def record_contract_payment(
     user: User = Depends(require_permission("finance", "read")),
 ):
     """Thu tiền theo hợp đồng — không phụ thuộc quy trình đang đứng ở bước nào."""
+    assert_director(db, user, "Chỉ Giám đốc được ghi nhận tiền thu theo hợp đồng.")
     with redis_distributed_lock(
         f"payment:contract:{contract_id}",
         timeout_seconds=5,
@@ -546,9 +561,24 @@ def record_payment(
     note: Optional[str] = Form(None),
     receipt_files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("finance", "read")),
+    user: User = Depends(require_permission("task_node", "read")),
 ):
-    """Làn B — ghi nhận một đợt khách đưa tiền. Phiếu vào trạng thái Chờ duyệt."""
+    """Làn B — ghi nhận đợt khách đưa tiền / báo có tiền.
+    
+    Giám đốc ghi nhận -> phiếu hoàn thành và mở cổng ngay.
+    Nhân viên phụ trách nộp bill -> phiếu vào trạng thái Chờ duyệt (PENDING), chờ Giám đốc duyệt 1-chạm.
+    """
+    from src.dossiers.actor_guard import employee_of, is_assigned_to_node, is_director
+    user_is_dir = is_director(db, user.id)
+    if not user_is_dir:
+        emp = employee_of(db, user.id)
+        is_assigned = bool(emp) and is_assigned_to_node(db, task_node_id=task_node_id, employee_id=emp["id"])
+        if not is_assigned and not check_user_permission(db, user, "finance", "create"):
+            raise HTTPException(
+                status_code=403,
+                detail="Chỉ Giám đốc hoặc nhân viên được phân công vào bước này mới được nộp báo cáo thu tiền.",
+            )
+
     with redis_distributed_lock(
         f"payment:node:{task_node_id}",
         timeout_seconds=5,
@@ -566,4 +596,5 @@ def record_payment(
                 note=note,
                 actor_id=user.id,
             ),
+            allow_assigned_node=True,
         )

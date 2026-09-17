@@ -9,6 +9,7 @@ describe('Login Forgot Password Flow', () => {
   beforeEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -26,6 +27,32 @@ describe('Login Forgot Password Flow', () => {
     expect(screen.getByRole('heading', { name: /Quên mật khẩu/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/admin hoặc user@gmail.com/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Gửi mã OTP qua Email/i })).toBeInTheDocument();
+  });
+
+  it('sends remember_me=true when the user selects Ghi nhớ', async () => {
+    const onLogin = vi.fn();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        token: 'access-token',
+        user: { username: 'staff' },
+      }),
+    });
+
+    render(<Login onLogin={onLogin} />);
+
+    fireEvent.change(screen.getByLabelText('Tài khoản'), { target: { value: 'staff' } });
+    fireEvent.change(screen.getByLabelText('Mật khẩu'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Ghi nhớ' }));
+    fireEvent.click(screen.getByRole('button', { name: /Truy cập hệ thống/i }));
+
+    await waitFor(() => expect(onLogin).toHaveBeenCalledWith('access-token', { username: 'staff' }));
+
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual({
+      username: 'staff',
+      password: 'password123',
+      remember_me: true,
+    });
   });
 
   it('sends OTP request and transitions to OTP verification step', async () => {

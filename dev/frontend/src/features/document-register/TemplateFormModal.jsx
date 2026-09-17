@@ -41,12 +41,13 @@ export default function TemplateFormModal({
       className="tfm"
       footer={
         <div className="tfm__actions">
-          <button type="button" className="btn-cancel" onClick={onClose}>Huỷ</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose}>Huỷ</button>
           <button
             type="submit"
             form="tfm-form"
-            className="btn-primary"
+            className="btn btn-primary btn-sm"
             disabled={!guiDuoc}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
             {editing ? <Save size={15} /> : <Plus size={15} />}
             <span>{saving ? 'Đang lưu…' : (editing ? 'Lưu' : 'Thêm')}</span>
@@ -78,33 +79,14 @@ export default function TemplateFormModal({
             />
           </label>
 
-          <div className="tfm__row-2">
-            <div className="tfm__field">
-              <span className="tfm__field-label">Nguồn gốc phát sinh</span>
-              <CustomSelect
-                value={value.source}
-                onChange={(source) => set({ source })}
-                options={SOURCE_OPTIONS}
-                aria-label="Nguồn gốc phát sinh"
-              />
-            </div>
-
-            <div className="tfm__field">
-              <span className="tfm__field-label">Bước quy trình thực hiện (Node)</span>
-              <CustomSelect
-                value={value.nodeCode || ''}
-                onChange={(nodeCode) => set({ nodeCode })}
-                placeholder="— Chưa gán bước (Áp dụng chung) —"
-                options={[
-                  { value: '', label: '— Chưa gán bước (Áp dụng chung) —' },
-                  ...(nodes || []).map(node => ({
-                    value: node.code,
-                    label: `${node.code} · ${node.name}`,
-                  })),
-                ]}
-                aria-label="Bước quy trình thực hiện (Node)"
-              />
-            </div>
+          <div className="tfm__field">
+            <span className="tfm__field-label">Nguồn gốc phát sinh <em className="tfm__req">*</em></span>
+            <CustomSelect
+              value={value.source}
+              onChange={(source) => set({ source })}
+              options={SOURCE_OPTIONS}
+              aria-label="Nguồn gốc phát sinh"
+            />
           </div>
         </section>
 
@@ -201,18 +183,7 @@ export default function TemplateFormModal({
 
             <div className="tfm__numbers">
               <label className="tfm__field tfm__field--mini">
-                <span className="tfm__field-label">Số lượng</span>
-                <input
-                  type="number"
-                  min="1"
-                  className="tfm__input tfm__input--num"
-                  value={value.default_quantity}
-                  onChange={(event) => set({ default_quantity: Number(event.target.value) })}
-                />
-              </label>
-
-              <label className="tfm__field tfm__field--mini">
-                <span className="tfm__field-label">Thứ tự</span>
+                <span className="tfm__field-label">Thứ tự sắp xếp</span>
                 <input
                   type="number"
                   className="tfm__input tfm__input--num"

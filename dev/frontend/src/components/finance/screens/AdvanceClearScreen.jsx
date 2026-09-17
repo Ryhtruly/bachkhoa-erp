@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from '../../../contexts/ToastContext';
 import { DataTable, Modal, FormRow, FilterBar } from '../../ui';
 import { fmt, fmtAmt, parseAmt, spellVietnameseCurrency } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Printer } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
+import FinancePrintReport from '../print/FinancePrintReport';
+import { printElement } from '../print/printDocument';
+import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
 export default function AdvanceClearScreen({ month: propMonth, setMonth: propSetMonth }) {
   const [advances, setAdvances] = useState([]);
@@ -25,6 +28,7 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
   const month = propMonth !== undefined ? propMonth : localMonth;
   const setMonth = propSetMonth !== undefined ? propSetMonth : setLocalMonth;
   const [sort, setSort] = useState('desc');
+  const printDocumentRef = useRef(null);
 
   const load = async () => {
     setLoading(true);
@@ -157,12 +161,39 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
     }
   ];
 
+  const settlementPrintColumns = [
+    { key: 'id', label: 'Mã phiếu', width: '13%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'partner', label: 'Người nhận', width: '18%', render: (value, row) => value || row.payer_payee || '—' },
+    { key: 'department_code', label: 'Phòng ban', width: '13%', render: value => value || '—' },
+    { key: 'amount', label: 'Tạm ứng (VNĐ)', width: '16%', align: 'right', nowrap: true, headerNowrap: true, render: value => `−${fmt(value || 0)}` },
+    { key: 'status_label', label: 'Trạng thái', width: '12%', align: 'center', nowrap: true, headerNowrap: true, render: (value, row) => value || row.status || '—' },
+    { key: 'description', label: 'Diễn giải', width: '28%', render: (value, row) => value || row.note || '—' },
+  ];
+  const settlementPrintFooter = {
+    id: '', partner: 'TỔNG CỘNG', department_code: '',
+    amount: `−${fmt(sortedFiltered.reduce((sum, row) => sum + (Number(row.amount) || 0), 0))}`,
+    status_label: '', description: '',
+  };
+  const handlePrintSettlements = () => {
+    printElement({
+      element: printDocumentRef.current,
+      title: 'Danh sách quyết toán hoàn ứng',
+      styles: financeReportPrintStyles,
+      onError: message => addToast(message, 'error'),
+    });
+  };
+
   return (
     <div className="card card--workspace advance-clear-workspace" style={{ padding: '20px 24px', borderRadius: 14 }}>
       <FinanceScreenHeader 
         title="Quyết toán hoàn ứng" 
         subtitle="Đối chiếu hóa đơn thực tế vs tạm ứng — Hệ thống tự tạo phiếu bù"
         onRefresh={load}
+        actions={(
+          <button type="button" className="btn btn-secondary" onClick={handlePrintSettlements} disabled={loading || sortedFiltered.length === 0} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Printer size={15} /> In danh sách
+          </button>
+        )}
       />
 
       <FilterBar
@@ -205,6 +236,19 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
       )}
 
       <DataTable columns={cols} data={sortedFiltered} loading={loading} rowKey="id" emptyText="Chưa có phiếu tạm ứng cần quyết toán" pageSize={10} />
+
+      <div aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}>
+        <FinancePrintReport
+          documentRef={printDocumentRef}
+          title="DANH SÁCH QUYẾT TOÁN HOÀN ỨNG"
+          subtitle="Các phiếu theo bộ lọc hiện tại"
+          summary={[{ label: 'Số phiếu', value: `${sortedFiltered.length} phiếu` }]}
+          columns={settlementPrintColumns}
+          rows={sortedFiltered}
+          footerRow={settlementPrintFooter}
+          emptyText="Không có phiếu phù hợp"
+        />
+      </div>
 
       <Modal open={modal} onClose={() => setModal(false)} size="sm" title="Quyết toán tạm ứng">
         {result ? (

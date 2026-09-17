@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { ACCOUNT_ROLE_OPTIONS, defaultAccountRoleForDepartment } from './accountRoles';
+import {
+  ACCOUNT_ROLE_OPTIONS,
+  defaultAccountRoleForDepartment,
+  getAccountRoleLabel,
+  isRoleMismatchedWithDepartment,
+} from './accountRoles';
 
 describe('account role provisioning', () => {
   it.each([
@@ -26,4 +31,38 @@ describe('account role provisioning', () => {
       'admin',
     ]);
   });
+
+  describe('isRoleMismatchedWithDepartment', () => {
+    it('returns false when role matches department default', () => {
+      expect(isRoleMismatchedWithDepartment('survey_staff', 'dept_dove')).toBe(false);
+      expect(isRoleMismatchedWithDepartment('accountant', 'dept_ketoan')).toBe(false);
+    });
+
+    it('returns true when role differs from department default', () => {
+      expect(isRoleMismatchedWithDepartment('accountant', 'dept_dove')).toBe(true);
+      expect(isRoleMismatchedWithDepartment('sales', 'dept_dove')).toBe(true);
+      expect(isRoleMismatchedWithDepartment('admin', 'dept_dove')).toBe(true);
+      expect(isRoleMismatchedWithDepartment('survey_staff', 'dept_ketoan')).toBe(true);
+    });
+
+    it('returns false when role or department is empty or department is unknown', () => {
+      expect(isRoleMismatchedWithDepartment('', 'dept_dove')).toBe(false);
+      expect(isRoleMismatchedWithDepartment('survey_staff', '')).toBe(false);
+      expect(isRoleMismatchedWithDepartment('survey_staff', 'dept_unknown')).toBe(false);
+    });
+  });
+
+  describe('getAccountRoleLabel', () => {
+    it('returns human label for canonical roles', () => {
+      expect(getAccountRoleLabel('survey_staff')).toBe('Nhân viên đo vẽ');
+      expect(getAccountRoleLabel('accountant')).toBe('Kế toán');
+      expect(getAccountRoleLabel('admin')).toBe('Giám đốc / Quản trị');
+    });
+
+    it('returns fallback value for empty or unknown role', () => {
+      expect(getAccountRoleLabel('custom_role')).toBe('custom_role');
+      expect(getAccountRoleLabel('')).toBe('');
+    });
+  });
 });
+

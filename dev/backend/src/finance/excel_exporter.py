@@ -1,8 +1,22 @@
 import io
 from datetime import datetime
 from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+def _safe_cell_value(val):
+    """Trung hòa ký tự công thức trong ô text chống Formula Injection (CWE-1236)."""
+    if isinstance(val, str) and val.startswith(("=", "+", "-", "@")):
+        return f"'{val}"
+    return val
+
+_orig_worksheet_cell = Worksheet.cell
+
+def _secure_worksheet_cell(self, row, column, value=None):
+    return _orig_worksheet_cell(self, row, column, value=_safe_cell_value(value))
+
+Worksheet.cell = _secure_worksheet_cell
 
 from src.config.company_identity import (
     COMPANY_LEGAL_NAME,
@@ -120,7 +134,7 @@ def generate_monthly_dashboard_excel(data: dict, month_str: str) -> io.BytesIO:
     cur_row = _apply_company_header(
         ws,
         title=f"BÁO CÁO DÒNG TIỀN VÀ KẾT QUẢ THU CHI - THÁNG {month_str}",
-        subtitle=f"Thời gian xuất báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Phân hệ Tài Chính",
+        subtitle=f"Thời gian xuất báo cáo: {datetime.now().strftime('%d/%m/%Y %H:%M')} | Phân hệ Tài Chính | Chỉ phiếu đã ghi sổ (Hoàn thành/Đã quyết toán)",
         max_col=6
     )
 
@@ -228,6 +242,65 @@ def generate_monthly_dashboard_excel(data: dict, month_str: str) -> io.BytesIO:
     t_inc.number_format = NUM_FORMAT_CURRENCY
     t_exp.number_format = NUM_FORMAT_CURRENCY
     t_net.number_format = NUM_FORMAT_CURRENCY
+    cur_row += 3
+
+    # 3. PHÂN BỔ THEO PHÒNG BAN
+    ws.cell(row=cur_row, column=1, value="III. PHÂN BỔ THEO PHÒNG BAN").font = FONT_SECTION
+    cur_row += 1
+
+    dept_headers = ["STT", "Phòng ban", "Tổng Thu (VNĐ)", "Tổng Chi (VNĐ)", "Chênh Lệch (VNĐ)"]
+    for col_idx, h in enumerate(dept_headers, 1):
+        c = ws.cell(row=cur_row, column=col_idx, value=h)
+        c.font = FONT_TH
+        c.fill = FILL_TH
+        c.border = BORDER_THIN
+        c.alignment = ALIGN_CENTER
+    cur_row += 1
+
+    dept_total_income = 0
+    dept_total_expenditure = 0
+    for stt, dept in enumerate(departments, 1):
+        dept_income = dept.get("income", 0)
+        dept_expenditure = dept.get("expenditure", dept.get("expense", 0))
+        dept_net = dept_income - dept_expenditure
+        dept_total_income += dept_income
+        dept_total_expenditure += dept_expenditure
+
+        cells = [
+            ws.cell(row=cur_row, column=1, value=stt),
+            ws.cell(row=cur_row, column=2, value=dept.get("name", "Khác")),
+            ws.cell(row=cur_row, column=3, value=dept_income),
+            ws.cell(row=cur_row, column=4, value=dept_expenditure),
+            ws.cell(row=cur_row, column=5, value=dept_net),
+        ]
+        for cell in cells:
+            cell.font = FONT_TD
+            cell.border = BORDER_THIN
+            if stt % 2 == 0:
+                cell.fill = FILL_ZEBRA
+        cells[0].alignment = ALIGN_CENTER
+        cells[1].alignment = ALIGN_LEFT
+        for cell in cells[2:]:
+            cell.alignment = ALIGN_RIGHT
+            cell.number_format = NUM_FORMAT_CURRENCY
+        cur_row += 1
+
+    dept_total_net = dept_total_income - dept_total_expenditure
+    total_cells = [
+        ws.cell(row=cur_row, column=1, value=""),
+        ws.cell(row=cur_row, column=2, value="TỔNG CỘNG"),
+        ws.cell(row=cur_row, column=3, value=dept_total_income),
+        ws.cell(row=cur_row, column=4, value=dept_total_expenditure),
+        ws.cell(row=cur_row, column=5, value=dept_total_net),
+    ]
+    for cell in total_cells:
+        cell.font = FONT_TOTAL
+        cell.fill = FILL_TOTAL
+        cell.border = BORDER_TOTAL
+    total_cells[1].alignment = ALIGN_LEFT
+    for cell in total_cells[2:]:
+        cell.alignment = ALIGN_RIGHT
+        cell.number_format = NUM_FORMAT_CURRENCY
     cur_row += 3
 
     # Chữ ký người lập biểu và Giám đốc
@@ -610,3 +683,145 @@ def generate_department_payroll_summary_excel(department_name: str, period_label
     wb.save(output)
     output.seek(0)
     return output
+
+
+def _write_table_header(ws, row: int, headers: list[str]) -> int:
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.font = FONT_TH
+        cell.fill = FILL_TH
+        cell.border = BORDER_THIN
+        cell.alignment = ALIGN_CENTER
+    return row + 1
+
+
+def _save_workbook(wb: Workbook) -> io.BytesIO:
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
+def generate_receivables_excel(rows: list, period_label: str = "") -> io.BytesIO:
+    """Xuất sổ công nợ phải thu theo đúng tập dòng đã được lọc ở màn hình."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "So_Cong_No_Phai_Thu"
+    ws.views.sheetView[0].showGridLines = True
+
+    cur_row = _apply_company_header(
+        ws,
+        title="SỔ CÔNG NỢ PHẢI THU",
+        subtitle=f"{period_label} | Ngày xuất: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        max_col=9,
+    )
+    headers = [
+        "STT", "Mã hợp đồng", "Khách hàng / Đối tác", "Giá trị HĐ (VNĐ)",
+        "Đã thu (VNĐ)", "Còn phải thu (VNĐ)", "Nộp thừa (VNĐ)", "Hạn thu", "Trạng thái",
+    ]
+    cur_row = _write_table_header(ws, cur_row, headers)
+    totals = {"total_value": 0, "paid_amount": 0, "remaining_amount": 0, "excess_amount": 0}
+
+    for index, item in enumerate(rows or [], 1):
+        remaining = 0 if item.get("is_overpaid") else float(item.get("remaining_amount") or 0)
+        values = [
+            index,
+            item.get("contract_id") or "—",
+            item.get("customer_name") or item.get("customer") or "—",
+            float(item.get("total_value") or 0),
+            float(item.get("paid_amount") or 0),
+            remaining,
+            float(item.get("excess_amount") or 0),
+            item.get("due_date") or "—",
+            item.get("status_label") or item.get("status") or "—",
+        ]
+        for col_idx, value in enumerate(values, 1):
+            cell = ws.cell(row=cur_row, column=col_idx, value=value)
+            cell.font = FONT_TD
+            cell.border = BORDER_THIN
+            if index % 2 == 0:
+                cell.fill = FILL_ZEBRA
+            cell.alignment = ALIGN_RIGHT if col_idx in (4, 5, 6, 7) else (ALIGN_CENTER if col_idx in (1, 2, 8, 9) else ALIGN_LEFT)
+            if col_idx in (4, 5, 6, 7):
+                cell.number_format = NUM_FORMAT_CURRENCY
+        totals["total_value"] += values[3]
+        totals["paid_amount"] += values[4]
+        totals["remaining_amount"] += values[5]
+        totals["excess_amount"] += values[6]
+        cur_row += 1
+
+    total_values = [
+        "", "", "TỔNG CỘNG", totals["total_value"], totals["paid_amount"],
+        totals["remaining_amount"], totals["excess_amount"], "", "",
+    ]
+    for col_idx, value in enumerate(total_values, 1):
+        cell = ws.cell(row=cur_row, column=col_idx, value=value)
+        cell.font = FONT_TOTAL
+        cell.fill = FILL_TOTAL
+        cell.border = BORDER_TOTAL
+        cell.alignment = ALIGN_RIGHT if col_idx in (4, 5, 6, 7) else ALIGN_LEFT
+        if col_idx in (4, 5, 6, 7):
+            cell.number_format = NUM_FORMAT_CURRENCY
+
+    _auto_column_width(ws)
+    return _save_workbook(wb)
+
+
+def generate_office_payroll_excel(period_label: str, status_label: str, rows: list) -> io.BytesIO:
+    """Xuất bảng lương văn phòng và hoa hồng Sales theo kỳ đã chọn."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Bang_Luong_Van_Phong"
+    ws.views.sheetView[0].showGridLines = True
+
+    cur_row = _apply_company_header(
+        ws,
+        title="BẢNG LƯƠNG VĂN PHÒNG VÀ HOA HỒNG SALES",
+        subtitle=f"Kỳ lương: {period_label} | Trạng thái: {status_label} | Ngày lập: {datetime.now().strftime('%d/%m/%Y')}",
+        max_col=8,
+    )
+    headers = [
+        "STT", "Họ và tên", "Phòng ban", "Chức danh", "Lương cơ bản (VNĐ)",
+        "KPI & Thưởng (VNĐ)", "Hoa hồng BĐS (VNĐ)", "Thực nhận (VNĐ)",
+    ]
+    cur_row = _write_table_header(ws, cur_row, headers)
+    totals = [0, 0, 0, 0]
+
+    for index, item in enumerate(rows or [], 1):
+        numeric = [
+            float(item.get("base_salary") or 0),
+            float(item.get("bonus") or 0),
+            float(item.get("sales_commission") or 0),
+            float(item.get("total_salary") or 0),
+        ]
+        values = [
+            index,
+            item.get("full_name") or "Chưa cập nhật",
+            item.get("department") or "Công ty",
+            item.get("job_title") or "Nhân viên",
+            *numeric,
+        ]
+        for col_idx, value in enumerate(values, 1):
+            cell = ws.cell(row=cur_row, column=col_idx, value=value)
+            cell.font = FONT_TD
+            cell.border = BORDER_THIN
+            if index % 2 == 0:
+                cell.fill = FILL_ZEBRA
+            cell.alignment = ALIGN_RIGHT if col_idx >= 5 else (ALIGN_CENTER if col_idx == 1 else ALIGN_LEFT)
+            if col_idx >= 5:
+                cell.number_format = NUM_FORMAT_CURRENCY
+        totals = [left + right for left, right in zip(totals, numeric)]
+        cur_row += 1
+
+    total_values = ["", "TỔNG CỘNG", "", "", *totals]
+    for col_idx, value in enumerate(total_values, 1):
+        cell = ws.cell(row=cur_row, column=col_idx, value=value)
+        cell.font = FONT_TOTAL
+        cell.fill = FILL_TOTAL
+        cell.border = BORDER_TOTAL
+        cell.alignment = ALIGN_RIGHT if col_idx >= 5 else ALIGN_LEFT
+        if col_idx >= 5:
+            cell.number_format = NUM_FORMAT_CURRENCY
+
+    _auto_column_width(ws)
+    return _save_workbook(wb)
