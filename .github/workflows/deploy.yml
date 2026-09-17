@@ -85,6 +85,22 @@ jobs:
       - name: Compile backend sources
         run: python -m compileall -q src
 
+      - name: Prepare PostgreSQL extensions
+        run: |
+          python -c "
+          import psycopg2
+          conn = psycopg2.connect('postgresql://postgres:postgres@localhost:5432/bachkhoa_erp_test')
+          conn.autocommit = True
+          with conn.cursor() as cur:
+              for ext in ('vector', 'uuid-ossp', 'pgcrypto'):
+                  try:
+                      cur.execute(f'CREATE EXTENSION IF NOT EXISTS \"{ext}\";')
+                  except Exception as e:
+                      print(f'Warning creating {ext}:', e)
+          conn.close()
+          print('PostgreSQL extensions prepared successfully')
+          "
+
       - name: Run backend tests
         env:
           ENV: development

@@ -87,6 +87,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 def _compile_jsonb_sqlite(type_, compiler, **kw):
     return "JSON"
 
+try:
+    from pgvector.sqlalchemy import Vector
+    @compiles(Vector, "sqlite")
+    def _compile_vector_sqlite(type_, compiler, **kw):
+        return "BLOB"
+except Exception:
+    pass
+
 from sqlalchemy.dialects.sqlite.base import SQLiteDDLCompiler
 
 _orig_get_col_default = SQLiteDDLCompiler.get_column_default_string
@@ -240,6 +248,17 @@ def _ensure_audit_log_sequence(connection):
     connection.execute(text("create sequence if not exists public.audit_log_id_seq as bigint"))
 
 
+def _ensure_extensions(connection):
+    if connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+    for ext in ("vector", "uuid-ossp", "pgcrypto"):
+        try:
+            connection.execute(text(f'create extension if not exists "{ext}"'))
+        except Exception:
+            pass
+
+
 def _ensure_task_nodes_columns(connection):
     if connection.dialect.name != "postgresql":
         return
@@ -272,19 +291,25 @@ def _ensure_task_nodes_columns(connection):
 def init_test_db():
     import src.db.models
     from sqlalchemy import text
-    with engine.connect() as conn:
-        if engine.dialect.name == "sqlite":
-            schema_preexisted = False
-        else:
+    schema_preexisted = False
+    if engine.dialect.name == "postgresql":
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                _ensure_extensions(conn)
+        except Exception:
+            with engine.begin() as conn:
+                _ensure_extensions(conn)
+        with engine.connect() as conn:
             schema_preexisted = bool(conn.execute(text(
                 """select exists (
                     select 1 from information_schema.tables
                     where table_schema = 'public'
                 )"""
             )).scalar())
-    Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         _ensure_audit_log_sequence(conn)
+    Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
         _ensure_task_nodes_columns(conn)
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
