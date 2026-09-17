@@ -1,17 +1,4 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/dev/backend/venv/bin/python",
-  "python.terminal.useEnvFile": true,
-  "python.analysis.extraPaths": [
-    "${workspaceFolder}/dev/backend",
-    "${workspaceFolder}/dev/backend/src"
-  ],
-  "python.autoComplete.extraPaths": [
-    "${workspaceFolder}/dev/backend",
-    "${workspaceFolder}/dev/backend/src"
-  ],
-  "python.analysis.typeCheckingMode": "basic",
-  "python.analysis.diagnosticSeverityOverrides": {
-    "reportAttributeAccessIssue": "none",
-    "reportArgumentType": "none"
-  }
+  "python.terminal.useEnvFile": true
 }

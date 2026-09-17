@@ -8,6 +8,7 @@
   "include": [
     "dev/backend"
   ],
+  "typeCheckingMode": "basic",
   "reportAttributeAccessIssue": "none",
   "reportArgumentType": "none"
 }
