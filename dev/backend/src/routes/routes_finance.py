@@ -520,7 +520,7 @@ def update_employee(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("hr", "update"))
 ):
-    return FinanceService.update_employee(db, employee_id, payload)
+    return FinanceService.update_employee(db, employee_id, payload, actor_id=user.id)
 
 @router.delete("/employees/{employee_id}")
 def delete_employee(
@@ -528,7 +528,7 @@ def delete_employee(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("hr", "delete"))
 ):
-    return FinanceService.delete_employee(db, employee_id)
+    return FinanceService.delete_employee(db, employee_id, actor_id=user.id)
 
 @router.post("/employees/{employee_id}/avatar")
 async def upload_employee_avatar(

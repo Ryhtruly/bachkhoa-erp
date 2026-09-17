@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 import logging
 
-from src.core.auth import hash_password, verify_password
+from src.core.auth import hash_password, verify_password, revoke_all_user_tokens
 from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
 from src.core.roles import validate_assignable_role_name
 from src.db.models import Employee, Role, User, UserRole
@@ -237,6 +237,15 @@ def set_user_active_status(db: Session, user_id: str, is_active: bool) -> dict:
     user.is_active = is_active
     db.commit()
     db.refresh(user)
+    if not is_active:
+        try:
+            revoke_all_user_tokens(user_id)
+        except Exception as exc:
+            logger.warning("Không thể thu hồi token khi vô hiệu hoá tài khoản %s: %s", user_id, exc)
+        try:
+            invalidate_cache(f"bachkhoa:user_profile:{user_id}")
+        except Exception as exc:
+            logger.warning("Không thể xóa cache profile khi vô hiệu hoá tài khoản %s: %s", user_id, exc)
     return {"user_id": user.id, "username": user.username, "is_active": user.is_active}
 
 

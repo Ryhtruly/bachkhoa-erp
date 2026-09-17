@@ -26,6 +26,8 @@ export default function HumanResources({ user }) {
     ? activeTab
     : (visibleTabs[0]?.id || defaultTab);
 
+  const isDirector = Boolean(user?.is_director || user?.username === 'admin' || user?.role_name === 'admin');
+
   return (
     <section className="tab-pane active hr-page" id="tab-nhansu">
       <header className="contract-pane-title">
@@ -39,7 +41,7 @@ export default function HumanResources({ user }) {
       </div>
       <div className="hr-page__content">
         {currentTab === 'employees' && canViewHr && <EmployeeDirectory />}
-        {currentTab === 'wiki' && canViewWiki && <Wiki />}
+        {currentTab === 'wiki' && canViewWiki && <Wiki user={user} isDirector={isDirector} />}
       </div>
     </section>
   );

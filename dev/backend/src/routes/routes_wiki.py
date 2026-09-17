@@ -184,6 +184,10 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+import mimetypes
+import os
+
+
 @router.get("/download/{doc_id}")
 def download_document(
     doc_id: str,
@@ -213,10 +217,16 @@ def download_document(
                 else {}
             ),
         )
+        filename = os.path.basename(doc.link) or f"{doc_id}.bin"
+        content_type = stored.get("ContentType")
+        if not content_type or content_type in ("application/octet-stream", "binary/octet-stream"):
+            guessed_type, _ = mimetypes.guess_type(filename)
+            content_type = guessed_type or "application/octet-stream"
+
         return StreamingResponse(
             _stream_storage_body(stored["Body"]),
-            media_type=stored.get("ContentType") or "application/octet-stream",
-            headers={"Content-Disposition": "inline"},
+            media_type=content_type,
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
         )
     except Exception as exc:
         raise HTTPException(status_code=404, detail="File không tồn tại trên object storage.") from exc

@@ -17,3 +17,16 @@ const ROLE_BY_DEPARTMENT = Object.freeze({
 export function defaultAccountRoleForDepartment(departmentId) {
   return ROLE_BY_DEPARTMENT[departmentId] || '';
 }
+
+export function getAccountRoleLabel(roleName) {
+  const match = ACCOUNT_ROLE_OPTIONS.find((option) => option.value === roleName);
+  return match ? match.label : (roleName || '');
+}
+
+export function isRoleMismatchedWithDepartment(roleName, departmentId) {
+  if (!roleName || !departmentId) return false;
+  const expectedRole = defaultAccountRoleForDepartment(departmentId);
+  if (!expectedRole) return false;
+  return roleName !== expectedRole;
+}
+

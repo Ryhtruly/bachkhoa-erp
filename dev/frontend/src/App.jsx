@@ -381,6 +381,9 @@ function App() {
   const permissions = profile?.permissions || {};
   const isDirector = Boolean(profile?.is_director || profile?.username === 'admin' || profile?.role_name === 'admin');
 
+  const isAccountant = String(profile?.role_name || '').trim().toLowerCase() === 'accountant';
+  const canManageHr = Boolean(permissions.hr) && !isAccountant;
+
   // permission: tab chỉ được render khi có quyền đọc tài nguyên tương ứng.
   const TABS = [
     { key: 'dashboard', Component: Dashboard, permission: 'finance', directorOnly: true, props: { user: profile, isDirector } },
@@ -395,13 +398,18 @@ function App() {
     { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
     { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'cashflow-all', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
-    { key: 'wiki', Component: HumanResources, anyPermissions: ['hr', 'wiki'], props: { user: profile, isDirector } },
+    {
+      key: 'wiki',
+      Component: canManageHr ? HumanResources : Wiki,
+      anyPermissions: ['hr', 'wiki'],
+      props: { user: profile, isDirector },
+    },
   ];
 
   const tabFilter = tab => (
     (!tab.permission || permissions[tab.permission])
     && (!tab.anyPermissions || tab.anyPermissions.some(p => permissions[p]))
-    && (!tab.accountantHidden || String(profile?.role_name || '').trim().toLowerCase() !== 'accountant')
+    && (!tab.accountantHidden || !isAccountant)
     && (!tab.directorOnly || isDirector)
   );
 
@@ -412,7 +420,7 @@ function App() {
     { key: 'employee-dashboard', Component: EmployeePortalDashboard },
     { key: 'tasks', Component: Tasks, permission: 'survey_record' },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
-    { key: 'wiki', Component: Wiki, permission: 'wiki' },
+    { key: 'wiki', Component: Wiki, permission: 'wiki', props: { user: profile, isDirector } },
     { key: 'payroll', Component: MyPayroll },
   ];
   const allowedEmployeeTabs = EMPLOYEE_TABS.filter(tabFilter);

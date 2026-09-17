@@ -92,4 +92,73 @@ describe('Wiki private documents', () => {
       expect(addToast).toHaveBeenCalledWith('Phiên đăng nhập đã hết hạn.', 'error')
     })
   })
+
+  it('hides "Thêm Tài Liệu Mới" button for regular employees', async () => {
+    global.fetch = vi.fn(async (url) => {
+      if (String(url).startsWith('/api/wiki/?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [], meta: { total_pages: 1 } }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+
+    render(<Wiki user={{ is_director: false, role_name: 'employee' }} isDirector={false} />)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Thêm Tài Liệu Mới/i })).toBeNull()
+    })
+  })
+
+  it('shows "Thêm Tài Liệu Mới" button for director', async () => {
+    global.fetch = vi.fn(async (url) => {
+      if (String(url).startsWith('/api/wiki/?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ data: [], meta: { total_pages: 1 } }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+
+    render(<Wiki user={{ is_director: true, role_name: 'admin' }} isDirector={true} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Thêm Tài Liệu Mới/i })).toBeInTheDocument()
+    })
+  })
+
+  it('falls back to FilePreviewModal when popup window cannot be opened', async () => {
+    const documentBlob = new Blob(['private wiki'], { type: 'application/pdf' })
+    global.fetch = vi.fn(async (url) => {
+      if (String(url).startsWith('/api/wiki/?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [{ id: 'ISO-001', title: 'Quy trình ISO', category: 'Quy trình ISO' }],
+            meta: { total_pages: 1 },
+          }),
+        }
+      }
+      return { ok: true, status: 200, blob: async () => documentBlob }
+    })
+    setAccessToken('wiki-access-token')
+    vi.spyOn(window, 'open').mockReturnValue(null)
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn(() => 'blob:iso-doc'),
+      revokeObjectURL: vi.fn(),
+    })
+
+    render(<Wiki />)
+    fireEvent.click(await screen.findByRole('button', { name: /Mở file/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+  })
 })

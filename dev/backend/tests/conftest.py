@@ -245,6 +245,12 @@ def _ensure_task_nodes_columns(connection):
         return
     from sqlalchemy import text
 
+    exists = bool(connection.execute(text(
+        "select exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'task_nodes')"
+    )).scalar())
+    if not exists:
+        return
+
     connection.execute(text("""
         alter table public.task_nodes
         add column if not exists name text,
@@ -276,10 +282,10 @@ def init_test_db():
                     where table_schema = 'public'
                 )"""
             )).scalar())
+    Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
         _ensure_audit_log_sequence(conn)
         _ensure_task_nodes_columns(conn)
-    Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "sqlite":
         with engine.begin() as conn:
             conn.execute(text("""
