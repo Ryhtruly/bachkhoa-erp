@@ -102,6 +102,7 @@ class Contract(Base):
     acceptance_period_days = Column(Integer, nullable=True)
     response_period_days = Column(Integer, nullable=True)
     completion_override = Column(Boolean, default=False, nullable=False)
+    completion_override = Column(Boolean, default=False, server_default=text("false"), nullable=False)
     completion_override_by = Column(String, ForeignKey("users.id"), nullable=True)
     completion_override_reason = Column(Text, nullable=True)
     completion_override_at = Column(DateTime(timezone=True), nullable=True)

@@ -16,8 +16,6 @@ if src_dir not in sys.path:
 
 os.environ["CONTRACT_CACHE_REFRESH_SECONDS"] = "0"
 os.environ["TESTING"] = "1"
-if not os.environ.get("TEST_DATABASE_URL"):
-    os.environ["TEST_DATABASE_URL"] = "sqlite:///:memory:"
 
 
 def normalize_database_target(database_url):
@@ -58,7 +56,15 @@ def test_target_is_disposable(database_url):
 
 
 APPLICATION_DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip() or "sqlite:///:memory:"
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip()
+
+if not TEST_DATABASE_URL:
+    if not APPLICATION_DATABASE_URL:
+        TEST_DATABASE_URL = "sqlite:///:memory:"
+    else:
+        raise pytest.UsageError(
+            "TEST_DATABASE_URL is required for backend tests; refusing to fall back to DATABASE_URL."
+        )
 
 try:
     test_target = normalize_database_target(TEST_DATABASE_URL)
@@ -230,6 +236,7 @@ def _ensure_fake_redis_when_redis_offline():
 from src.index import app
 from src.db.database import engine, Base, get_db
 from src.db.models import User, Role, UserRole, RolePermission, AuditLog
+from src.db.models import User, Role, UserRole, RolePermission, AuditLog, Employee
 from src.core.auth import hash_password, create_access_token
 
 
@@ -260,49 +267,28 @@ def _ensure_extensions(connection):
 
 
 def _ensure_task_nodes_columns(connection):
-    if connection.dialect.name != "postgresql":
-        return
-    from sqlalchemy import text
-
-    exists = bool(connection.execute(text(
-        "select exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'task_nodes')"
-    )).scalar())
-    if not exists:
-        return
-
-    connection.execute(text("""
-        alter table public.task_nodes
-        add column if not exists name text,
-        add column if not exists capability_code varchar(50);
-        alter table public.task_nodes
-        drop constraint if exists task_nodes_node_code_fkey;
-
-        alter table public.service_packages
-        add column if not exists category_type varchar(30) not null default 'GENERAL';
-
-        alter table public.task_types
-        add column if not exists category_type varchar(30) not null default 'GENERAL',
-        add column if not exists display_order int null default 100,
-        add column if not exists is_active boolean not null default true;
-    """))
+    pass
 
 
-def _ensure_document_and_helper_tables(connection):
+def _ensure_runtime_tables_and_columns(connection):
     from sqlalchemy import text
     is_pg = connection.dialect.name == "postgresql"
+    p = "public." if is_pg else ""
     bool_true = "TRUE" if is_pg else "1"
     bool_false = "FALSE" if is_pg else "0"
     ts_type = "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" if is_pg else "DATETIME DEFAULT CURRENT_TIMESTAMP"
+    json_type = "JSONB DEFAULT '{}'::jsonb" if is_pg else "TEXT DEFAULT '{}'"
 
-    connection.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS wards (
+    table_statements = [
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}wards (
             code VARCHAR PRIMARY KEY,
             name VARCHAR,
             district_code VARCHAR
         );
-    """))
-    connection.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS document_template_applicabilities (
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}document_template_applicabilities (
             id VARCHAR PRIMARY KEY,
             template_id VARCHAR,
             applicability_type VARCHAR,
@@ -311,9 +297,9 @@ def _ensure_document_and_helper_tables(connection):
             node_code VARCHAR,
             is_default BOOLEAN DEFAULT {bool_true}
         );
-    """))
-    connection.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS document_checklist_templates (
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}document_checklist_templates (
             id VARCHAR PRIMARY KEY,
             task_type_id VARCHAR,
             name VARCHAR NOT NULL,
@@ -328,16 +314,9 @@ def _ensure_document_and_helper_tables(connection):
             created_at {ts_type},
             updated_at {ts_type}
         );
-    """))
-    try:
-        connection.execute(text("""
-            CREATE UNIQUE INDEX IF NOT EXISTS document_checklist_templates_unique
-            ON document_checklist_templates (coalesce(task_type_id, '~chung~'), name);
-        """))
-    except Exception:
-        pass
-    connection.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS dossier_document_slots (
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}dossier_document_slots (
             id VARCHAR PRIMARY KEY,
             scope VARCHAR DEFAULT 'SERVICE_LINE',
             contract_id VARCHAR,
@@ -356,9 +335,9 @@ def _ensure_document_and_helper_tables(connection):
             note TEXT,
             created_at {ts_type}
         );
-    """))
-    connection.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS dossier_documents (
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}dossier_documents (
             id VARCHAR PRIMARY KEY,
             contract_id VARCHAR,
             file_name VARCHAR,
@@ -366,25 +345,231 @@ def _ensure_document_and_helper_tables(connection):
             doc_status VARCHAR DEFAULT 'DANG_DUNG',
             created_at {ts_type}
         );
-    """))
-    connection.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS dossier_document_links (
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}dossier_document_links (
             id VARCHAR PRIMARY KEY,
             slot_id VARCHAR,
             document_id VARCHAR,
             link_status VARCHAR DEFAULT 'DANG_DUNG',
             created_at {ts_type}
         );
-    """))
-    for ddl in [
-        "ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2",
-        "ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR",
-        "ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'",
-    ]:
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}document_slot_change_requests (
+            id VARCHAR PRIMARY KEY,
+            slot_id VARCHAR,
+            service_line_id VARCHAR,
+            change_type VARCHAR,
+            reason TEXT,
+            status VARCHAR DEFAULT 'PENDING',
+            created_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}document_slot_creation_requests (
+            id VARCHAR PRIMARY KEY,
+            contract_id VARCHAR,
+            service_line_id VARCHAR,
+            name VARCHAR,
+            source VARCHAR,
+            kind VARCHAR DEFAULT 'OUTPUT',
+            status VARCHAR DEFAULT 'PENDING',
+            created_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}workflow_nodes (
+            code VARCHAR PRIMARY KEY,
+            name VARCHAR,
+            created_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}workflow_templates (
+            id VARCHAR PRIMARY KEY,
+            name VARCHAR,
+            is_active BOOLEAN DEFAULT {bool_true},
+            created_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}workflow_instances (
+            id VARCHAR PRIMARY KEY,
+            service_line_id VARCHAR,
+            source_workflow_version_id VARCHAR,
+            active_revision_id VARCHAR,
+            status VARCHAR DEFAULT 'not_started',
+            created_by VARCHAR,
+            started_at {ts_type},
+            completed_at {ts_type},
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}workflow_instance_revisions (
+            id VARCHAR PRIMARY KEY,
+            workflow_instance_id VARCHAR,
+            revision_no INTEGER DEFAULT 1,
+            source_workflow_version_id VARCHAR,
+            parent_revision_id VARCHAR,
+            graph {json_type},
+            status VARCHAR DEFAULT 'draft',
+            change_reason TEXT,
+            created_by VARCHAR,
+            activated_by VARCHAR,
+            created_at {ts_type},
+            activated_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}task_nodes (
+            id VARCHAR PRIMARY KEY,
+            workflow_instance_id VARCHAR,
+            defined_by_revision_id VARCHAR,
+            node_key TEXT,
+            node_code VARCHAR,
+            name TEXT,
+            capability_code VARCHAR(50),
+            occurrence_no INTEGER DEFAULT 1,
+            status VARCHAR DEFAULT 'pending',
+            outcome TEXT,
+            execution_data {json_type},
+            planned_start {ts_type},
+            planned_end {ts_type},
+            started_at {ts_type},
+            deadline_at {ts_type},
+            submitted_at {ts_type},
+            accepted_at {ts_type},
+            last_reviewed_at {ts_type},
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}task_node_assignments (
+            id VARCHAR PRIMARY KEY,
+            task_node_id VARCHAR,
+            employee_id VARCHAR,
+            role_code VARCHAR,
+            is_primary BOOLEAN DEFAULT {bool_false},
+            assignment_status VARCHAR DEFAULT 'active',
+            ended_at {ts_type},
+            replacement_reason TEXT,
+            created_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}task_node_checklist_results (
+            id VARCHAR PRIMARY KEY,
+            task_node_id VARCHAR,
+            contract_id VARCHAR,
+            item_key VARCHAR,
+            status VARCHAR,
+            result_data {json_type},
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}survey_records (
+            id VARCHAR PRIMARY KEY,
+            task_node_id VARCHAR,
+            service_line_id VARCHAR,
+            contract_id VARCHAR,
+            dossier_name VARCHAR,
+            ward_code VARCHAR,
+            priority VARCHAR DEFAULT 'NORMAL',
+            manual_status VARCHAR,
+            note TEXT,
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}legal_submissions (
+            id VARCHAR PRIMARY KEY,
+            task_node_id VARCHAR,
+            service_line_id VARCHAR,
+            contract_id VARCHAR,
+            dossier_id VARCHAR,
+            dossier_name VARCHAR,
+            case_description TEXT,
+            assigned_employee_id VARCHAR,
+            contact_phone VARCHAR,
+            receipt_code VARCHAR,
+            receipt_photo_url VARCHAR,
+            dossier_file_url VARCHAR,
+            linked_survey_folder_url VARCHAR,
+            payment_status VARCHAR,
+            legacy_gov_status VARCHAR,
+            received_date {ts_type},
+            expected_return_date {ts_type},
+            submitted_agency VARCHAR,
+            is_first_submission BOOLEAN DEFAULT {bool_true},
+            previous_submission_id VARCHAR,
+            note TEXT,
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}legal_dossiers (
+            id VARCHAR PRIMARY KEY,
+            contract_id VARCHAR,
+            service_line_id VARCHAR,
+            task_node_id VARCHAR,
+            status VARCHAR,
+            sub_status VARCHAR,
+            dossier_name VARCHAR,
+            created_at {ts_type},
+            updated_at {ts_type}
+        );
+        """,
+    ]
+
+    for stmt in table_statements:
+        try:
+            connection.execute(text(stmt))
+        except Exception:
+            pass
+
+    alter_statements = [
+        f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS document_register_version INTEGER DEFAULT 2" if is_pg else "ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2",
+        f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS service_line_id VARCHAR" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS kind VARCHAR DEFAULT 'OUTPUT'" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override BOOLEAN NOT NULL DEFAULT 0",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override_by VARCHAR" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override_by VARCHAR",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override_reason TEXT" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override_reason TEXT",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override_at TIMESTAMPTZ" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override_at DATETIME",
+        f"ALTER TABLE {p}service_packages ADD COLUMN IF NOT EXISTS category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'" if is_pg else "ALTER TABLE service_packages ADD COLUMN category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'",
+        f"ALTER TABLE {p}task_types ADD COLUMN IF NOT EXISTS category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'" if is_pg else "ALTER TABLE task_types ADD COLUMN category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'",
+        f"ALTER TABLE {p}task_types ADD COLUMN IF NOT EXISTS display_order INT NULL DEFAULT 100" if is_pg else "ALTER TABLE task_types ADD COLUMN display_order INT NULL DEFAULT 100",
+        f"ALTER TABLE {p}task_types ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE" if is_pg else "ALTER TABLE task_types ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1",
+        f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS name TEXT" if is_pg else "ALTER TABLE task_nodes ADD COLUMN name TEXT",
+        f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS capability_code VARCHAR(50)" if is_pg else "ALTER TABLE task_nodes ADD COLUMN capability_code VARCHAR(50)",
+    ]
+    if is_pg:
+        alter_statements.append(f"ALTER TABLE {p}task_nodes DROP CONSTRAINT IF EXISTS task_nodes_node_code_fkey")
+
+    for ddl in alter_statements:
         try:
             connection.execute(text(ddl))
         except Exception:
             pass
+
+    try:
+        connection.execute(text(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS document_checklist_templates_unique
+            ON {p}document_checklist_templates (coalesce(task_type_id, '~chung~'), name);
+        """))
+    except Exception:
+        pass
+
+
+def _ensure_document_and_helper_tables(connection):
+    _ensure_runtime_tables_and_columns(connection)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -409,9 +594,21 @@ def init_test_db():
     with engine.begin() as conn:
         _ensure_audit_log_sequence(conn)
     Base.metadata.create_all(bind=engine)
-    with engine.begin() as conn:
-        _ensure_task_nodes_columns(conn)
-        _ensure_document_and_helper_tables(conn)
+    if engine.dialect.name == "postgresql":
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                _ensure_runtime_tables_and_columns(conn)
+        except Exception:
+            with engine.begin() as conn:
+                _ensure_runtime_tables_and_columns(conn)
+    else:
+        with engine.begin() as conn:
+            _ensure_runtime_tables_and_columns(conn)
+    try:
+        from src.dossiers.register import reset_schema_cache
+        reset_schema_cache()
+    except Exception:
+        pass
     yield
 
     # Chỉ dọn khi conftest dựng một database trống. A pg-test dump is a
@@ -441,6 +638,11 @@ def client():
 def db():
     import src.db.models
     from sqlalchemy import text
+    try:
+        from src.dossiers.register import reset_schema_cache
+        reset_schema_cache()
+    except Exception:
+        pass
     connection = engine.connect()
     Base.metadata.create_all(bind=connection)
     if connection.dialect.name == "sqlite":
@@ -515,6 +717,7 @@ def unprivileged_user(db):
     yield user, headers
     # Cleanup
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
+    db.query(Employee).filter(Employee.user_id == user.id).delete()
     db.delete(user)
     db.commit()
 
