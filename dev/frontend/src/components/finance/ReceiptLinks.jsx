@@ -24,9 +24,11 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('keydown', handleKeyDown)
     return () => {
       document.body.style.overflow = prevOverflow
       window.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('keydown', handleKeyDown)
     }
   }, [previewReceipt])
 

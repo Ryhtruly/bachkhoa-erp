@@ -97,10 +97,10 @@ Code đã thấy:
 - `dev/backend/src/employee_portal/service.py`
   - `get_task_pool`, `get_pool_item_detail`
 - Test quan trọng:
-  - `dev/backend/tests/test_be_viec_chuoi_k_unittest.py`
+  - `dev/backend/tests/test_task_pool_chain_k_unittest.py`
   - `dev/backend/tests/test_task_pool_runtime_unittest.py`
   - `dev/backend/tests/test_task_pool_routes_unittest.py`
-  - `dev/backend/tests/test_nhuong_viec_unittest.py`
+  - `dev/backend/tests/test_task_delegation_unittest.py`
 
 Phần này đã có code và test đơn vị, nhưng cần chạy lại integration sau mọi sửa workflow.
 

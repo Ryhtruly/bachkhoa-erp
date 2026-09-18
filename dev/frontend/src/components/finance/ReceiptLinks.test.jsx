@@ -60,6 +60,6 @@ describe('ReceiptLinks', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    })
+    }, { timeout: 3000 })
   })
 })

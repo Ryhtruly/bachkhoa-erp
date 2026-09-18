@@ -5,14 +5,14 @@ sự cô lập giữa hai Hạng mục đều nằm trong SQL. Mock chỉ chứn
 đúng hàm, không chứng minh câu lệnh trả đúng dòng.
 
 Mỗi test tự dựng dữ liệu rồi rollback — chạy được trên DB trống, không để lại
-dấu vết. Xem tests/fixtures_so_giay_to.py.
+dấu vết. Xem tests/fixtures_document_register.py.
 """
 import unittest
 
 from fastapi import HTTPException
 from sqlalchemy import text
 
-from tests.fixtures_so_giay_to import (
+from tests.fixtures_document_register import (
     build_test_context, link_document_to_slot, assign_node, create_test_user, insert_k01_node, insert_template,
     insert_checklist_item, insert_document_slot, insert_document, get_missing_documents,
 )
@@ -28,7 +28,7 @@ class SoGiayToDbThatTests(unittest.TestCase):
             self.db.close()
             self.skipTest(
                 "DB đang dùng thiếu bảng: " + ", ".join(thieu)
-                + ". Chạy dev/backend/scripts/dung_schema_test.py trước."
+                + ". Chạy dev/backend/scripts/setup_test_schema.py trước."
             )
         from src.dossiers import register
 

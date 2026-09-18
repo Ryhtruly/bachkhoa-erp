@@ -276,9 +276,11 @@ def _ensure_runtime_tables_and_columns(connection):
     p = "public." if is_pg else ""
     bool_true = "TRUE" if is_pg else "1"
     bool_false = "FALSE" if is_pg else "0"
-    ts_type = "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" if is_pg else "DATETIME DEFAULT CURRENT_TIMESTAMP"
+    ts_now = "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP" if is_pg else "DATETIME DEFAULT CURRENT_TIMESTAMP"
+    ts_type = "TIMESTAMPTZ" if is_pg else "DATETIME"
     json_type = "JSONB DEFAULT '{}'::jsonb" if is_pg else "TEXT DEFAULT '{}'"
     id_default = "DEFAULT gen_random_uuid()::text" if is_pg else ""
+    daterange_col = ", effective_period daterange GENERATED ALWAYS AS (daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]')) STORED" if is_pg else ""
 
     table_statements = [
         f"""
@@ -298,7 +300,7 @@ def _ensure_runtime_tables_and_columns(connection):
             node_code VARCHAR,
             is_default BOOLEAN DEFAULT {bool_true},
             created_by VARCHAR,
-            created_at {ts_type}
+            created_at {ts_now}
         );
         """,
         f"""
@@ -314,8 +316,8 @@ def _ensure_runtime_tables_and_columns(connection):
             note TEXT,
             is_active BOOLEAN DEFAULT {bool_true},
             is_identity_owner BOOLEAN DEFAULT {bool_true},
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -333,27 +335,41 @@ def _ensure_runtime_tables_and_columns(connection):
             quantity INTEGER DEFAULT 1,
             copy_type VARCHAR,
             storage_place VARCHAR,
+            storage_location_id VARCHAR,
             status VARCHAR DEFAULT 'CHUA_CO',
             sort_order INTEGER DEFAULT 0,
             note TEXT,
             confirmed_by VARCHAR,
             confirmed_at {ts_type},
-            created_at {ts_type}
+            updated_by VARCHAR,
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}dossier_documents (
             id VARCHAR PRIMARY KEY {id_default},
+            dossier_id VARCHAR,
+            service_line_id VARCHAR,
             contract_id VARCHAR,
             scope VARCHAR DEFAULT 'CONTRACT',
             stage VARCHAR DEFAULT 'ho-so-goc',
+            slot_key VARCHAR,
+            slot_id VARCHAR,
+            task_node_id VARCHAR,
             object_key VARCHAR,
             file_name VARCHAR,
             file_path VARCHAR,
             content_type VARCHAR,
             size_bytes BIGINT DEFAULT 0,
+            note TEXT,
+            uploaded_by VARCHAR,
+            uploaded_at {ts_now},
+            checksum_sha256 VARCHAR(64),
+            revision_no INTEGER DEFAULT 1,
+            supersedes_id VARCHAR,
             doc_status VARCHAR DEFAULT 'DANG_DUNG',
-            created_at {ts_type}
+            created_at {ts_now}
         );
         """,
         f"""
@@ -363,7 +379,12 @@ def _ensure_runtime_tables_and_columns(connection):
             slot_id VARCHAR,
             document_id VARCHAR,
             link_status VARCHAR DEFAULT 'DANG_DUNG',
-            created_at {ts_type}
+            note TEXT,
+            linked_by VARCHAR,
+            linked_at {ts_now},
+            unlinked_by VARCHAR,
+            unlinked_at {ts_type},
+            created_at {ts_now}
         );
         """,
         f"""
@@ -374,10 +395,16 @@ def _ensure_runtime_tables_and_columns(connection):
             change_type VARCHAR,
             reason TEXT,
             kind VARCHAR DEFAULT 'UNLOCK',
-            status VARCHAR DEFAULT 'PENDING',
+            status VARCHAR DEFAULT 'pending',
+            requested_by VARCHAR,
+            reviewed_by VARCHAR,
+            reviewed_at {ts_type},
+            review_note TEXT,
+            unlocked_until {ts_type},
             revoked_at {ts_type},
             revoked_by VARCHAR,
-            created_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -385,18 +412,65 @@ def _ensure_runtime_tables_and_columns(connection):
             id VARCHAR PRIMARY KEY {id_default},
             contract_id VARCHAR,
             service_line_id VARCHAR,
+            task_node_id VARCHAR,
+            checklist_result_id VARCHAR,
+            proposed_name VARCHAR,
             name VARCHAR,
             source VARCHAR,
             kind VARCHAR DEFAULT 'OUTPUT',
-            status VARCHAR DEFAULT 'PENDING',
-            created_at {ts_type}
+            status VARCHAR DEFAULT 'draft',
+            description TEXT,
+            reason TEXT,
+            quantity INTEGER DEFAULT 1,
+            approved_name VARCHAR,
+            approved_quantity INTEGER,
+            approved_source VARCHAR,
+            required_before_submit BOOLEAN DEFAULT {bool_false},
+            needs_director_approval BOOLEAN DEFAULT {bool_false},
+            created_slot_id VARCHAR,
+            requested_by VARCHAR,
+            reviewed_by VARCHAR,
+            reviewed_at {ts_type},
+            review_note TEXT,
+            created_at {ts_now},
+            updated_at {ts_now}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}document_slot_creation_request_documents (
+            id VARCHAR PRIMARY KEY {id_default},
+            contract_id VARCHAR,
+            request_id VARCHAR NOT NULL,
+            document_id VARCHAR NOT NULL,
+            created_by VARCHAR,
+            created_at {ts_now}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}document_storage_locations (
+            id VARCHAR PRIMARY KEY {id_default},
+            name VARCHAR NOT NULL UNIQUE,
+            kind VARCHAR NOT NULL DEFAULT 'TAI_CHO',
+            sort_order INTEGER NOT NULL DEFAULT 100,
+            is_active BOOLEAN NOT NULL DEFAULT {bool_true},
+            implies_status VARCHAR,
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
         CREATE TABLE IF NOT EXISTS {p}workflow_nodes (
             code VARCHAR PRIMARY KEY,
             name VARCHAR,
-            created_at {ts_type}
+            description TEXT,
+            allowed_departments TEXT[],
+            default_roles TEXT[],
+            sla_hours INTEGER,
+            allow_pause BOOLEAN DEFAULT {bool_false},
+            allow_gov_tracking BOOLEAN DEFAULT {bool_false},
+            cluster_code VARCHAR,
+            is_active BOOLEAN DEFAULT {bool_true},
+            created_at {ts_now}
         );
         """,
         f"""
@@ -412,7 +486,7 @@ def _ensure_runtime_tables_and_columns(connection):
             is_default BOOLEAN DEFAULT {bool_false},
             graph {json_type},
             is_active BOOLEAN DEFAULT {bool_true},
-            created_at {ts_type}
+            created_at {ts_now}
         );
         """,
         f"""
@@ -425,8 +499,13 @@ def _ensure_runtime_tables_and_columns(connection):
             created_by VARCHAR,
             started_at {ts_type},
             completed_at {ts_type},
-            created_at {ts_type},
-            updated_at {ts_type}
+            cancellation_code TEXT,
+            cancellation_reason TEXT,
+            cancellation_data {json_type},
+            cancelled_by VARCHAR,
+            cancelled_at {ts_type},
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -441,7 +520,7 @@ def _ensure_runtime_tables_and_columns(connection):
             change_reason TEXT,
             created_by VARCHAR,
             activated_by VARCHAR,
-            created_at {ts_type},
+            created_at {ts_now},
             activated_at {ts_type}
         );
         """,
@@ -474,8 +553,8 @@ def _ensure_runtime_tables_and_columns(connection):
             blocked_reason TEXT,
             notes TEXT,
             is_overdue BOOLEAN DEFAULT {bool_false},
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -485,12 +564,37 @@ def _ensure_runtime_tables_and_columns(connection):
             employee_id VARCHAR,
             role_code VARCHAR,
             is_primary BOOLEAN DEFAULT {bool_false},
-            assignment_status VARCHAR DEFAULT 'active',
+            assignment_status VARCHAR DEFAULT 'assigned',
+            planned_start {ts_type},
+            planned_end {ts_type},
+            assigned_by VARCHAR,
+            assigned_at {ts_now},
             ended_at {ts_type},
             replacement_reason TEXT,
-            created_at {ts_type},
             notes TEXT,
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}task_node_checklist_assignments (
+            id VARCHAR(50) PRIMARY KEY {id_default},
+            checklist_result_id VARCHAR(50) NOT NULL,
+            employee_id VARCHAR(50) NOT NULL,
+            role_code TEXT NOT NULL,
+            pay_slot TEXT NOT NULL DEFAULT 'PRIMARY',
+            share_percent NUMERIC(5,2) NOT NULL DEFAULT 100,
+            work_item_rate_id VARCHAR(50),
+            amount_override NUMERIC(15,2),
+            status TEXT NOT NULL DEFAULT 'proposed',
+            assigned_by VARCHAR(50),
+            assigned_at {ts_now},
+            approved_by VARCHAR(50),
+            approved_at {ts_type},
+            ended_at {ts_type},
+            reason TEXT,
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -520,8 +624,8 @@ def _ensure_runtime_tables_and_columns(connection):
             is_overdue BOOLEAN DEFAULT {bool_false},
             late_reason TEXT,
             item_key VARCHAR,
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -538,7 +642,7 @@ def _ensure_runtime_tables_and_columns(connection):
             submission_payload {json_type},
             review_payload {json_type},
             review_note TEXT,
-            created_at {ts_type}
+            created_at {ts_now}
         );
         """,
         f"""
@@ -550,7 +654,7 @@ def _ensure_runtime_tables_and_columns(connection):
             to_status VARCHAR,
             actor_user_id VARCHAR,
             payload {json_type},
-            created_at {ts_type}
+            created_at {ts_now}
         );
         """,
         f"""
@@ -565,8 +669,8 @@ def _ensure_runtime_tables_and_columns(connection):
             claimed_at {ts_type},
             cancelled_at {ts_type},
             cancel_reason TEXT,
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -585,8 +689,8 @@ def _ensure_runtime_tables_and_columns(connection):
             is_active BOOLEAN DEFAULT {bool_true},
             created_by VARCHAR,
             reviewed_by VARCHAR,
-            created_at {ts_type},
-            updated_at {ts_type},
+            created_at {ts_now},
+            updated_at {ts_now},
             reviewed_at {ts_type}
         );
         """,
@@ -603,7 +707,7 @@ def _ensure_runtime_tables_and_columns(connection):
             is_active BOOLEAN DEFAULT {bool_true},
             created_by VARCHAR,
             removed_by VARCHAR,
-            created_at {ts_type},
+            created_at {ts_now},
             removed_at {ts_type}
         );
         """,
@@ -618,7 +722,7 @@ def _ensure_runtime_tables_and_columns(connection):
             reviewed_by VARCHAR,
             reviewed_at {ts_type},
             created_by VARCHAR,
-            created_at {ts_type}
+            created_at {ts_now}
         );
         """,
         f"""
@@ -635,8 +739,8 @@ def _ensure_runtime_tables_and_columns(connection):
             reviewed_by VARCHAR,
             reviewed_at {ts_type},
             review_note TEXT,
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -651,8 +755,8 @@ def _ensure_runtime_tables_and_columns(connection):
             reviewed_at {ts_type},
             review_note TEXT,
             affected_node_ids {json_type},
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -666,8 +770,8 @@ def _ensure_runtime_tables_and_columns(connection):
             priority VARCHAR DEFAULT 'NORMAL',
             manual_status VARCHAR,
             note TEXT,
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -693,8 +797,8 @@ def _ensure_runtime_tables_and_columns(connection):
             is_first_submission BOOLEAN DEFAULT {bool_true},
             previous_submission_id VARCHAR,
             note TEXT,
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
         );
         """,
         f"""
@@ -706,8 +810,66 @@ def _ensure_runtime_tables_and_columns(connection):
             status VARCHAR,
             sub_status VARCHAR,
             dossier_name VARCHAR,
-            created_at {ts_type},
-            updated_at {ts_type}
+            created_at {ts_now},
+            updated_at {ts_now}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}work_pay_entitlements (
+            id VARCHAR PRIMARY KEY {id_default},
+            workflow_instance_id VARCHAR,
+            task_node_id VARCHAR,
+            employee_id VARCHAR,
+            role_code VARCHAR,
+            amount NUMERIC DEFAULT 0,
+            earned_at {ts_type},
+            status TEXT NOT NULL DEFAULT 'eligible',
+            calculation_snapshot {json_type},
+            idempotency_key VARCHAR,
+            is_replaced BOOLEAN DEFAULT {bool_false},
+            replaced_by VARCHAR,
+            replaced_at {ts_type},
+            replacement_reason TEXT,
+            created_at {ts_now},
+            CONSTRAINT work_pay_entitlements_replaced_check CHECK (replaced_by IS NULL OR is_replaced),
+            CONSTRAINT work_pay_entitlements_replaced_self_check CHECK (replaced_by IS DISTINCT FROM id)
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}employee_compensation_terms (
+            id VARCHAR(50) PRIMARY KEY {id_default},
+            employee_id VARCHAR(50) NOT NULL,
+            base_salary NUMERIC(15,2) NOT NULL DEFAULT 0,
+            effective_from DATE NOT NULL,
+            effective_to DATE,
+            status TEXT NOT NULL DEFAULT 'published',
+            source_type TEXT NOT NULL DEFAULT 'manual',
+            source_snapshot {json_type},
+            approved_by VARCHAR(50),
+            approved_at {ts_type},
+            notes TEXT,
+            created_by VARCHAR(50),
+            created_at {ts_now}
+            {daterange_col}
+        );
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS {p}employee_pay_adjustments (
+            id VARCHAR(50) PRIMARY KEY {id_default},
+            employee_id VARCHAR(50) NOT NULL,
+            adjustment_type TEXT NOT NULL,
+            amount NUMERIC(15,2) NOT NULL,
+            effective_date DATE NOT NULL,
+            reason TEXT NOT NULL,
+            source_reference {json_type},
+            status TEXT NOT NULL DEFAULT 'draft',
+            created_by VARCHAR(50),
+            approved_by VARCHAR(50),
+            approved_at {ts_type},
+            voided_by VARCHAR(50),
+            voided_at {ts_type},
+            void_reason TEXT,
+            created_at {ts_now}
         );
         """,
     ]
@@ -726,12 +888,34 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS document_register_version INTEGER DEFAULT 2" if is_pg else "ALTER TABLE service_lines ADD COLUMN document_register_version INTEGER DEFAULT 2",
         f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS priority VARCHAR NOT NULL DEFAULT 'NORMAL'" if is_pg else "ALTER TABLE service_lines ADD COLUMN priority VARCHAR NOT NULL DEFAULT 'NORMAL'",
         f"ALTER TABLE {p}service_lines ALTER COLUMN priority SET DEFAULT 'NORMAL'" if is_pg else "",
+        f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS survey_drive_folder_url TEXT" if is_pg else "ALTER TABLE service_lines ADD COLUMN survey_drive_folder_url TEXT",
+        f"ALTER TABLE {p}service_lines ADD COLUMN IF NOT EXISTS legal_drive_folder_url TEXT" if is_pg else "ALTER TABLE service_lines ADD COLUMN legal_drive_folder_url TEXT",
         f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS service_line_id VARCHAR" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN service_line_id VARCHAR",
         f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS kind VARCHAR DEFAULT 'OUTPUT'" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN kind VARCHAR DEFAULT 'OUTPUT'",
         f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override BOOLEAN NOT NULL DEFAULT 0",
         f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override_by VARCHAR" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override_by VARCHAR",
         f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override_reason TEXT" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override_reason TEXT",
         f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS completion_override_at TIMESTAMPTZ" if is_pg else "ALTER TABLE contracts ADD COLUMN completion_override_at DATETIME",
+        f"ALTER TABLE {p}contracts ALTER COLUMN completion_override SET DEFAULT false" if is_pg else "",
+        f"UPDATE {p}contracts SET completion_override = false WHERE completion_override IS NULL" if is_pg else "",
+        f"ALTER TABLE {p}dossier_document_slots ADD COLUMN IF NOT EXISTS storage_location_id VARCHAR" if is_pg else "ALTER TABLE dossier_document_slots ADD COLUMN storage_location_id VARCHAR",
+        f"ALTER TABLE {p}dossier_document_slots ADD COLUMN IF NOT EXISTS updated_by VARCHAR" if is_pg else "ALTER TABLE dossier_document_slots ADD COLUMN updated_by VARCHAR",
+        f"ALTER TABLE {p}dossier_document_slots ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE dossier_document_slots ADD COLUMN updated_at DATETIME",
+        f"ALTER TABLE {p}dossier_document_links ADD COLUMN IF NOT EXISTS linked_by VARCHAR" if is_pg else "ALTER TABLE dossier_document_links ADD COLUMN linked_by VARCHAR",
+        f"ALTER TABLE {p}dossier_document_links ADD COLUMN IF NOT EXISTS linked_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE dossier_document_links ADD COLUMN linked_at DATETIME",
+        f"ALTER TABLE {p}dossier_document_links ADD COLUMN IF NOT EXISTS unlinked_by VARCHAR" if is_pg else "ALTER TABLE dossier_document_links ADD COLUMN unlinked_by VARCHAR",
+        f"ALTER TABLE {p}dossier_document_links ADD COLUMN IF NOT EXISTS unlinked_at TIMESTAMPTZ" if is_pg else "ALTER TABLE dossier_document_links ADD COLUMN unlinked_at DATETIME",
+        f"ALTER TABLE {p}dossier_document_links ADD COLUMN IF NOT EXISTS note TEXT" if is_pg else "ALTER TABLE dossier_document_links ADD COLUMN note TEXT",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS description TEXT" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN description TEXT",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS allowed_departments TEXT[]" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN allowed_departments TEXT",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS default_roles TEXT[]" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN default_roles TEXT",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS sla_hours INTEGER" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN sla_hours INTEGER",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS allow_pause BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN allow_pause BOOLEAN NOT NULL DEFAULT 0",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS allow_gov_tracking BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN allow_gov_tracking BOOLEAN NOT NULL DEFAULT 0",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS cluster_code VARCHAR" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN cluster_code VARCHAR",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE" if is_pg else "ALTER TABLE workflow_nodes ADD COLUMN is_active BOOLEAN DEFAULT 1",
+        f"ALTER TABLE {p}workflow_nodes ADD COLUMN IF NOT EXISTS checklist_template {json_type}" if is_pg else f"ALTER TABLE workflow_nodes ADD COLUMN checklist_template {json_type}",
+        f"ALTER TABLE {p}work_item_rates ADD COLUMN IF NOT EXISTS effective_period daterange GENERATED ALWAYS AS (daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]')) STORED" if is_pg else "",
         f"ALTER TABLE {p}service_packages ADD COLUMN IF NOT EXISTS category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'" if is_pg else "ALTER TABLE service_packages ADD COLUMN category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'",
         f"ALTER TABLE {p}task_types ADD COLUMN IF NOT EXISTS category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'" if is_pg else "ALTER TABLE task_types ADD COLUMN category_type VARCHAR(30) NOT NULL DEFAULT 'GENERAL'",
         f"ALTER TABLE {p}task_types ADD COLUMN IF NOT EXISTS display_order INT NULL DEFAULT 100" if is_pg else "ALTER TABLE task_types ADD COLUMN display_order INT NULL DEFAULT 100",
@@ -747,11 +931,33 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS paused_note TEXT" if is_pg else "ALTER TABLE task_nodes ADD COLUMN paused_note TEXT",
         f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS paused_seconds BIGINT DEFAULT 0" if is_pg else "ALTER TABLE task_nodes ADD COLUMN paused_seconds BIGINT DEFAULT 0",
         f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS rework_deadline_at TIMESTAMPTZ" if is_pg else "ALTER TABLE task_nodes ADD COLUMN rework_deadline_at DATETIME",
+        f"ALTER TABLE {p}task_nodes ADD COLUMN IF NOT EXISTS last_reviewed_at TIMESTAMPTZ" if is_pg else "ALTER TABLE task_nodes ADD COLUMN last_reviewed_at DATETIME",
         f"ALTER TABLE {p}dossier_document_slots ADD COLUMN IF NOT EXISTS confirmed_by VARCHAR" if is_pg else "ALTER TABLE dossier_document_slots ADD COLUMN confirmed_by VARCHAR",
         f"ALTER TABLE {p}dossier_document_slots ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ" if is_pg else "ALTER TABLE dossier_document_slots ADD COLUMN confirmed_at DATETIME",
         f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS kind VARCHAR DEFAULT 'UNLOCK'" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN kind VARCHAR DEFAULT 'UNLOCK'",
+        f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS requested_by VARCHAR" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN requested_by VARCHAR",
+        f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN reviewed_by VARCHAR",
+        f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN reviewed_at DATETIME",
+        f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS review_note TEXT" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN review_note TEXT",
+        f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS unlocked_until TIMESTAMPTZ" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN unlocked_until DATETIME",
         f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN revoked_at DATETIME",
         f"ALTER TABLE {p}document_slot_change_requests ADD COLUMN IF NOT EXISTS revoked_by VARCHAR" if is_pg else "ALTER TABLE document_slot_change_requests ADD COLUMN revoked_by VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS proposed_name VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN proposed_name VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS task_node_id VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN task_node_id VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS checklist_result_id VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN checklist_result_id VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS description TEXT" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN description TEXT",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS reason TEXT" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN reason TEXT",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN quantity INTEGER DEFAULT 1",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS approved_name VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN approved_name VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS approved_quantity INTEGER" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN approved_quantity INTEGER",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS approved_source VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN approved_source VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS required_before_submit BOOLEAN DEFAULT FALSE" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN required_before_submit BOOLEAN DEFAULT 0",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS needs_director_approval BOOLEAN DEFAULT FALSE" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN needs_director_approval BOOLEAN DEFAULT 0",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS created_slot_id VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN created_slot_id VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS requested_by VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN requested_by VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN reviewed_by VARCHAR",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN reviewed_at DATETIME",
+        f"ALTER TABLE {p}document_slot_creation_requests ADD COLUMN IF NOT EXISTS review_note TEXT" if is_pg else "ALTER TABLE document_slot_creation_requests ADD COLUMN review_note TEXT",
         f"ALTER TABLE {p}checklist_result_document_type_files ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'draft'" if is_pg else "ALTER TABLE checklist_result_document_type_files ADD COLUMN status VARCHAR DEFAULT 'draft'",
         f"ALTER TABLE {p}checklist_result_document_type_files ADD COLUMN IF NOT EXISTS change_reason TEXT" if is_pg else "ALTER TABLE checklist_result_document_type_files ADD COLUMN change_reason TEXT",
         f"ALTER TABLE {p}checklist_result_document_type_files ADD COLUMN IF NOT EXISTS rejection_reason TEXT" if is_pg else "ALTER TABLE checklist_result_document_type_files ADD COLUMN rejection_reason TEXT",
@@ -780,6 +986,27 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}task_node_checklist_results ADD COLUMN IF NOT EXISTS approver_role TEXT DEFAULT 'admin'" if is_pg else "ALTER TABLE task_node_checklist_results ADD COLUMN approver_role TEXT DEFAULT 'admin'",
         f"ALTER TABLE {p}task_node_checklist_results ADD COLUMN IF NOT EXISTS is_overdue BOOLEAN DEFAULT FALSE" if is_pg else "ALTER TABLE task_node_checklist_results ADD COLUMN is_overdue BOOLEAN DEFAULT 0",
         f"ALTER TABLE {p}task_node_checklist_results ADD COLUMN IF NOT EXISTS late_reason TEXT" if is_pg else "ALTER TABLE task_node_checklist_results ADD COLUMN late_reason TEXT",
+        f"ALTER TABLE {p}task_node_assignments ADD COLUMN IF NOT EXISTS assigned_by VARCHAR(50)" if is_pg else "ALTER TABLE task_node_assignments ADD COLUMN assigned_by VARCHAR(50)",
+        f"ALTER TABLE {p}task_node_assignments ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE task_node_assignments ADD COLUMN assigned_at DATETIME",
+        f"ALTER TABLE {p}task_node_assignments ADD COLUMN IF NOT EXISTS planned_start TIMESTAMPTZ" if is_pg else "ALTER TABLE task_node_assignments ADD COLUMN planned_start DATETIME",
+        f"ALTER TABLE {p}task_node_assignments ADD COLUMN IF NOT EXISTS planned_end TIMESTAMPTZ" if is_pg else "ALTER TABLE task_node_assignments ADD COLUMN planned_end DATETIME",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'eligible'" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN status VARCHAR DEFAULT 'eligible'",
+        f"ALTER TABLE {p}workflow_instances ADD COLUMN IF NOT EXISTS cancellation_code TEXT" if is_pg else "ALTER TABLE workflow_instances ADD COLUMN cancellation_code TEXT",
+        f"ALTER TABLE {p}workflow_instances ADD COLUMN IF NOT EXISTS cancellation_reason TEXT" if is_pg else "ALTER TABLE workflow_instances ADD COLUMN cancellation_reason TEXT",
+        f"ALTER TABLE {p}workflow_instances ADD COLUMN IF NOT EXISTS cancellation_data JSONB DEFAULT '{{}}'::jsonb" if is_pg else "ALTER TABLE workflow_instances ADD COLUMN cancellation_data TEXT DEFAULT '{}'",
+        f"ALTER TABLE {p}workflow_instances ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(50)" if is_pg else "ALTER TABLE workflow_instances ADD COLUMN cancelled_by VARCHAR(50)",
+        f"ALTER TABLE {p}workflow_instances ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ" if is_pg else "ALTER TABLE workflow_instances ADD COLUMN cancelled_at DATETIME",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS dossier_id VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN dossier_id VARCHAR",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS service_line_id VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN service_line_id VARCHAR",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS slot_id VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN slot_id VARCHAR",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS slot_key VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN slot_key VARCHAR",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS task_node_id VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN task_node_id VARCHAR",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS note TEXT" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN note TEXT",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS uploaded_by VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN uploaded_by VARCHAR",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN uploaded_at DATETIME",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS checksum_sha256 VARCHAR(64)" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN checksum_sha256 VARCHAR(64)",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS revision_no INTEGER DEFAULT 1" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN revision_no INTEGER DEFAULT 1",
+        f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS supersedes_id VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN supersedes_id VARCHAR",
         f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS scope VARCHAR DEFAULT 'CONTRACT'" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN scope VARCHAR DEFAULT 'CONTRACT'",
         f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS stage VARCHAR DEFAULT 'ho-so-goc'" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN stage VARCHAR DEFAULT 'ho-so-goc'",
         f"ALTER TABLE {p}dossier_documents ADD COLUMN IF NOT EXISTS object_key VARCHAR" if is_pg else "ALTER TABLE dossier_documents ADD COLUMN object_key VARCHAR",
@@ -822,8 +1049,51 @@ def _ensure_runtime_tables_and_columns(connection):
             f"ALTER TABLE {p}survey_records ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}legal_submissions ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}legal_dossiers ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}work_pay_entitlements ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}workflow_nodes ALTER COLUMN allow_pause SET DEFAULT false",
+            f"ALTER TABLE {p}workflow_nodes ALTER COLUMN allow_gov_tracking SET DEFAULT false",
             f"ALTER TABLE {p}users ALTER COLUMN is_active SET DEFAULT true",
             f"ALTER TABLE {p}users ALTER COLUMN email_verified SET DEFAULT false",
+            # Drop unintended defaults on nullable lifecycle/event columns
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN planned_start DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN planned_end DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN started_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN deadline_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN submitted_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN accepted_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN completed_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN last_reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN paused_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_nodes ALTER COLUMN rework_deadline_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_assignments ALTER COLUMN ended_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_assignments ALTER COLUMN planned_start DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_assignments ALTER COLUMN planned_end DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_checklist_results ALTER COLUMN completed_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_checklist_results ALTER COLUMN submitted_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_acceptances ALTER COLUMN submitted_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_acceptances ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_help_requests ALTER COLUMN claimed_at DROP DEFAULT",
+            f"ALTER TABLE {p}task_node_help_requests ALTER COLUMN cancelled_at DROP DEFAULT",
+            f"ALTER TABLE {p}checklist_result_document_types ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}checklist_result_document_type_files ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}checklist_result_document_type_files ALTER COLUMN removed_at DROP DEFAULT",
+            f"ALTER TABLE {p}checklist_result_document_links ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}handover_debt_requests ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}workflow_rollback_requests ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}legal_submissions ALTER COLUMN received_date DROP DEFAULT",
+            f"ALTER TABLE {p}legal_submissions ALTER COLUMN expected_return_date DROP DEFAULT",
+            f"ALTER TABLE {p}work_pay_entitlements ALTER COLUMN earned_at DROP DEFAULT",
+            f"ALTER TABLE {p}work_pay_entitlements ALTER COLUMN replaced_at DROP DEFAULT",
+            f"ALTER TABLE {p}workflow_instances ALTER COLUMN started_at DROP DEFAULT",
+            f"ALTER TABLE {p}workflow_instances ALTER COLUMN completed_at DROP DEFAULT",
+            f"ALTER TABLE {p}workflow_instances ALTER COLUMN cancelled_at DROP DEFAULT",
+            f"ALTER TABLE {p}workflow_instance_revisions ALTER COLUMN activated_at DROP DEFAULT",
+            f"ALTER TABLE {p}dossier_document_slots ALTER COLUMN confirmed_at DROP DEFAULT",
+            f"ALTER TABLE {p}dossier_document_links ALTER COLUMN unlinked_at DROP DEFAULT",
+            f"ALTER TABLE {p}document_slot_change_requests ALTER COLUMN revoked_at DROP DEFAULT",
+            f"ALTER TABLE {p}document_slot_change_requests ALTER COLUMN reviewed_at DROP DEFAULT",
+            f"ALTER TABLE {p}document_slot_change_requests ALTER COLUMN unlocked_until DROP DEFAULT",
+            f"ALTER TABLE {p}document_slot_creation_requests ALTER COLUMN reviewed_at DROP DEFAULT",
         ])
 
     for ddl in alter_statements:
@@ -841,8 +1111,92 @@ def _ensure_runtime_tables_and_columns(connection):
             CREATE UNIQUE INDEX IF NOT EXISTS document_checklist_templates_unique
             ON {p}document_checklist_templates (coalesce(task_type_id, '~chung~'), name);
         """))
+        connection.execute(text(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_checklist_result_document_pair
+            ON {p}checklist_result_document_links (checklist_result_id, document_id);
+        """))
+        connection.execute(text(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_slot_creation_request_document
+            ON {p}document_slot_creation_request_documents (request_id, document_id);
+        """))
     except Exception:
-        pass
+        if is_pg:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+
+    try:
+        if is_pg:
+            connection.execute(text(f"""
+                CREATE OR REPLACE VIEW {p}active_work_pay_entitlements AS
+                SELECT * FROM {p}work_pay_entitlements WHERE NOT COALESCE(is_replaced, FALSE);
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_tpl_app_combo
+                ON {p}document_template_applicabilities (template_id, service_package_id, task_type_id, node_code)
+                WHERE applicability_type = 'COMBO';
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_checklist_document_type_active_name_source
+                ON {p}checklist_result_document_types (checklist_result_id, normalized_name, source)
+                WHERE is_active;
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_checklist_document_type_file_active
+                ON {p}checklist_result_document_type_files (document_type_id, document_id)
+                WHERE is_active;
+            """))
+            connection.execute(text(f"""
+                ALTER TABLE {p}work_pay_entitlements DROP CONSTRAINT IF EXISTS work_pay_entitlements_replaced_check;
+                ALTER TABLE {p}work_pay_entitlements ADD CONSTRAINT work_pay_entitlements_replaced_check CHECK (replaced_by IS NULL OR is_replaced);
+                ALTER TABLE {p}work_pay_entitlements DROP CONSTRAINT IF EXISTS work_pay_entitlements_replaced_self_check;
+                ALTER TABLE {p}work_pay_entitlements ADD CONSTRAINT work_pay_entitlements_replaced_self_check CHECK (replaced_by IS DISTINCT FROM id);
+            """))
+            connection.execute(text(f"""
+                INSERT INTO {p}document_storage_locations (name, kind, sort_order, implies_status) VALUES
+                    ('Tủ hồ sơ A', 'TAI_CHO', 10, NULL),
+                    ('Tủ hồ sơ B', 'TAI_CHO', 20, NULL),
+                    ('Tủ hồ sơ C', 'TAI_CHO', 30, NULL),
+                    ('Két sắt (bản chính)', 'TAI_CHO', 40, NULL),
+                    ('Kho lưu trữ', 'TAI_CHO', 50, NULL),
+                    ('Nhân viên đang giữ', 'BEN_NGOAI', 110, NULL),
+                    ('Đang ở cơ quan', 'BEN_NGOAI', 120, 'DA_NOP'),
+                    ('Đã trả khách', 'BEN_NGOAI', 130, NULL)
+                ON CONFLICT (name) DO NOTHING;
+            """))
+            connection.execute(text(f"""
+                INSERT INTO {p}workflow_nodes
+                    (code, name, allowed_departments, default_roles, cluster_code, allow_pause, allow_gov_tracking, is_active)
+                VALUES
+                    ('K01', 'Tiếp nhận hồ sơ', ARRAY['SALES', 'LEGAL', 'SURVEY'], ARRAY['MAIN'], 'LEGAL_DOSSIER', FALSE, FALSE, TRUE),
+                    ('K02', 'Đo đạc hiện trường', ARRAY['SURVEY'], ARRAY['MAIN', 'ASSISTANT'], 'SURVEY_TECH', FALSE, FALSE, TRUE),
+                    ('K03', 'Chuẩn hoá dữ liệu đo đạc', ARRAY['SURVEY'], ARRAY['MAIN'], 'SURVEY_TECH', FALSE, FALSE, TRUE),
+                    ('K04', 'Soạn thảo hồ sơ pháp lý', ARRAY['LEGAL'], ARRAY['MAIN'], 'LEGAL_DOSSIER', FALSE, FALSE, TRUE),
+                    ('K05a', 'Nộp hồ sơ kỹ thuật', ARRAY['SURVEY'], ARRAY['SUBMITTER'], 'SURVEY_TECH', TRUE, FALSE, TRUE),
+                    ('K05b', 'Nộp & theo dõi hồ sơ cơ quan', ARRAY['LEGAL'], ARRAY['SUBMITTER'], 'LEGAL_DOSSIER', TRUE, TRUE, TRUE),
+                    ('K06', 'Bàn giao kết quả', ARRAY['LEGAL'], ARRAY['MAIN'], 'LEGAL_DOSSIER', FALSE, FALSE, TRUE),
+                    ('K07', 'Hoàn tất & lưu trữ hồ sơ', ARRAY['LEGAL'], ARRAY['MAIN'], 'LEGAL_DOSSIER', FALSE, FALSE, TRUE)
+                ON CONFLICT (code) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    allowed_departments = EXCLUDED.allowed_departments,
+                    default_roles = EXCLUDED.default_roles,
+                    cluster_code = EXCLUDED.cluster_code,
+                    allow_pause = EXCLUDED.allow_pause,
+                    allow_gov_tracking = EXCLUDED.allow_gov_tracking,
+                    is_active = EXCLUDED.is_active;
+            """))
+        else:
+            connection.execute(text("""
+                CREATE VIEW IF NOT EXISTS active_work_pay_entitlements AS
+                SELECT * FROM work_pay_entitlements WHERE NOT COALESCE(is_replaced, 0);
+            """))
+    except Exception:
+        if is_pg:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
 
 
 def _ensure_document_and_helper_tables(connection):

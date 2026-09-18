@@ -396,7 +396,7 @@ Cover both an initial `gate` prop and a hard blocker returned by the click-time 
 
 - [ ] **Step 2: Preserve soft-missing behavior with a regression test**
 
-Assert missing documents leave the button enabled, open `ModalThieuTaiLieu`, and submit only after explicit confirmation.
+Assert missing documents leave the button enabled, open `MissingDocumentsModal`, and submit only after explicit confirmation.
 
 - [ ] **Step 3: Run the focused tests and prove new hard-blocker cases fail**
 
@@ -601,7 +601,7 @@ Expected: all tests and build pass; oxlint has no errors. Existing warnings must
 - [ ] **Step 3: Run existing backend regression tests around authority and review state**
 
 ```powershell
-python -m pytest -q tests/test_document_review.py tests/test_rework_and_single_task_holes.py tests/test_node_pause.py tests/test_nop_nghiem_thu_thieu_tai_lieu.py tests/test_handover_override_gate_unittest.py tests/test_employee_portal_prior_document_security.py
+python -m pytest -q tests/test_document_review.py tests/test_rework_and_single_task_holes.py tests/test_node_pause.py tests/test_submit_acceptance_missing_docs.py tests/test_handover_override_gate_unittest.py tests/test_employee_portal_prior_document_security.py
 ```
 
 Working directory: `dev/backend`  

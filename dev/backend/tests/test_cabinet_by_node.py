@@ -15,7 +15,7 @@ import uuid
 
 from sqlalchemy import text
 
-from tests.fixtures_so_giay_to import get_missing_documents
+from tests.fixtures_document_register import get_missing_documents
 
 
 def _id(prefix):
@@ -61,7 +61,7 @@ class CabinetByNodeTests(unittest.TestCase):
             {"id": self.thu_tuc, "p": self.goi},
         )
         self.hop_dong = _id("HD")
-        self.db.execute(text("insert into public.contracts (id) values (:id)"),
+        self.db.execute(text("insert into public.contracts (id, completion_override) values (:id, false)"),
                         {"id": self.hop_dong})
         self.hang_muc = _id("SL")
         self.db.execute(

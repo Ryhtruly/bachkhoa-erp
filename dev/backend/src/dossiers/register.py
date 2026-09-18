@@ -1140,6 +1140,7 @@ def map_document_templates_to_nodes(db: Session, service_line_id: str) -> dict[s
     rows = db.execute(
         text("""
             select k.key as node_key,
+                   muc->'output_documents' as output_docs,
                    muc->'output_documents' as tai_lieu
             from workflow_instances wi
             join public.workflow_instance_revisions r
@@ -1159,7 +1160,7 @@ def map_document_templates_to_nodes(db: Session, service_line_id: str) -> dict[s
 
     template_node_map: dict[str, str] = {}
     for row in rows:
-        for config in list(row["tai_lieu"] or []):
+        for config in list(row.get("output_docs") or row.get("tai_lieu") or []):
             template_id = config.get("template_id")
             if template_id and template_id not in template_node_map:
                 template_node_map[template_id] = row["node_key"]

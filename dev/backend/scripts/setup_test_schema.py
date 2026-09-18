@@ -8,7 +8,7 @@ Script này chạy trên DB TEST cục bộ, không bao giờ đụng Supabase l
 
     docker exec -e PYTHONPATH=/app \
       -e TEST_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/bachkhoa_test \
-      -w /app bachkhoa-erp-dev-backend-1 python scripts/dung_schema_test.py
+      -w /app bachkhoa-erp-dev-backend-1 python scripts/setup_test_schema.py
 """
 import os
 import pathlib

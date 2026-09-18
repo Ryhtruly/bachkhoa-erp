@@ -101,7 +101,6 @@ class Contract(Base):
     remedy_period_days = Column(Integer, nullable=True)
     acceptance_period_days = Column(Integer, nullable=True)
     response_period_days = Column(Integer, nullable=True)
-    completion_override = Column(Boolean, default=False, nullable=False)
     completion_override = Column(Boolean, default=False, server_default=text("false"), nullable=False)
     completion_override_by = Column(String, ForeignKey("users.id"), nullable=True)
     completion_override_reason = Column(Text, nullable=True)
@@ -137,6 +136,8 @@ class ServiceLine(Base):
     priority_reason = Column(Text, nullable=True)
     priority_set_by = Column(String, nullable=True)
     priority_set_at = Column(DateTime(timezone=True), nullable=True)
+    survey_drive_folder_url = Column(Text, nullable=True)
+    legal_drive_folder_url = Column(Text, nullable=True)
     # document_register_version CỐ Ý KHÔNG map ở đây trong suốt cửa sổ EXPAND.
     #
     # Map vào model là mọi truy vấn ORM trên ServiceLine đều SELECT cột đó — kể
