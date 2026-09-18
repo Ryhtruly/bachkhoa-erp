@@ -215,7 +215,7 @@ export function ChecklistEvidenceItem({ taskNodeId, item, deadlineAt, nodeStatus
     if (!isPrivateObjectKey(evidenceFile.url)) return
     event.preventDefault()
     try {
-      await openPrivateObject(evidenceFile.url)
+      await openPrivateObject(evidenceFile.url, evidenceFile.name)
     } catch (error) {
       addToast(error.message || 'Không thể mở file minh chứng', 'error')
     }
@@ -838,7 +838,7 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
                   className="btn btn-secondary btn-sm"
                   disabled={!target}
                   onClick={() => target && (isPrivateObjectKey(target)
-                    ? openPrivateObject(target)
+                    ? openPrivateObject(target, label)
                     : window.open(target, '_blank', 'noopener,noreferrer'))}
                 >
                   <Paperclip size={13} /> {label}

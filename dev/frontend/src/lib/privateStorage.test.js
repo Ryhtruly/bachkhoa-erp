@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractPrivateKey, isPrivateObjectKey } from './privateStorage'
+import { extractPrivateKey, isPrivateObjectKey, privateObjectEndpoint } from './privateStorage'
 
 describe('extractPrivateKey', () => {
   it('preserves direct private keys beginning with avatars/ or contracts/', () => {
@@ -34,3 +34,16 @@ describe('extractPrivateKey', () => {
     expect(extractPrivateKey(undefined)).toBeNull()
   })
 })
+
+describe('privateObjectEndpoint', () => {
+  it('builds basic endpoint with object_key', () => {
+    expect(privateObjectEndpoint('avatars/emp-1/avatar.png'))
+      .toBe('/api/employee-portal/file?object_key=avatars%2Femp-1%2Favatar.png')
+  })
+
+  it('appends filename and download parameters when provided', () => {
+    expect(privateObjectEndpoint('contracts/c-1/file.pdf', 'Bản vẽ.pdf', true))
+      .toBe('/api/employee-portal/file?object_key=contracts%2Fc-1%2Ffile.pdf&filename=B%E1%BA%A3n%20v%E1%BA%BD.pdf&download=true')
+  })
+})
+

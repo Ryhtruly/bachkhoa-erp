@@ -1070,7 +1070,7 @@ export default function ContractWorkflowDesigner({
     if (!isPrivateObjectKey(file.url)) return;
     event.preventDefault();
     try {
-      await openPrivateObject(file.url);
+      await openPrivateObject(file.url, file.name);
     } catch (error) {
       addToast?.(error.message || 'Không thể mở file minh chứng', 'error');
     }

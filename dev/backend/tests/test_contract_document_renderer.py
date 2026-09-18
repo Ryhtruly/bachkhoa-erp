@@ -125,7 +125,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         self.assertEqual(response.body, b'PK-stored')
         self.assertEqual(
             response.headers['content-disposition'],
-            "inline; filename*=UTF-8''HopDong_2004_BK-2026_L%C3%AA_quang_Tr%C3%AD.docx",
+            'inline; filename="HopDong_2004_BK-2026_Le_quang_Tri.docx"; filename*=UTF-8\'\'HopDong_2004_BK-2026_L%C3%AA_quang_Tr%C3%AD.docx',
         )
 
     def test_document_route_renders_current_persisted_data_not_snapshot(self):
