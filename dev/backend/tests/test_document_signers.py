@@ -40,8 +40,8 @@ def test_document_signers_reject_unknown_role_and_decode_invalid_json_safely():
     assert decode_document_signers("not-json") == DEFAULT_DOCUMENT_SIGNERS
 
 
-def test_document_signers_endpoint_is_readable_by_finance_and_writable_by_admin(
-    client, finance_clerk_user, admin_headers
+def test_document_signers_endpoint_is_readable_and_writable_with_finance_approval(
+    client, finance_clerk_user
 ):
     _, headers = finance_clerk_user
 
@@ -57,20 +57,13 @@ def test_document_signers_endpoint_is_readable_by_finance_and_writable_by_admin(
         "payroll_accountant_name": "",
     }
 
-    clerk_save_response = client.post(
+    save_response = client.post(
         "/api/finance/document-signers",
         json=payload,
         headers=headers,
     )
-    assert clerk_save_response.status_code == 403
-
-    admin_save_response = client.post(
-        "/api/finance/document-signers",
-        json=payload,
-        headers=admin_headers,
-    )
-    assert admin_save_response.status_code == 200
-    assert admin_save_response.json()["accountant_name"] == ""
+    assert save_response.status_code == 200
+    assert save_response.json()["accountant_name"] == ""
 
 
 def test_document_signer_snapshot_is_normalized_and_keeps_capture_metadata():
