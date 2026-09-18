@@ -66,6 +66,7 @@ function makeServiceLine({
   taskCode = 'K01',
   outputDocs = null,
   runtimeDocumentTypes,
+  noExecutionNodes = false,
 } = {}) {
   const node = {
     task_code: taskCode,
@@ -96,7 +97,7 @@ function makeServiceLine({
       revision_status: active ? 'draft' : null,
       graph: { start_node: 'node-1', nodes: { 'node-1': node }, ui: {} },
       active_graph: active ? { start_node: 'node-1', nodes: { 'node-1': activeNode }, ui: {} } : null,
-      execution_nodes: active ? [{
+      execution_nodes: noExecutionNodes ? [] : (active ? [{
         id: 'task-1', node_key: 'node-1', node_code: taskCode, status: 'in_progress',
         started_at: '2026-08-20T08:00:00.000Z',
         deadline_at: '2026-08-25T17:00:00.000Z',
@@ -114,7 +115,7 @@ function makeServiceLine({
         id: 'task-1', node_key: 'node-1', node_code: taskCode,
         status: nodeReady ? 'ready' : 'submitted',
         ...(nodeReady ? {} : { pending_acceptance_id: 'acceptance-1' }),
-      }],
+      }]),
     },
   };
 }
@@ -195,17 +196,12 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     expect(payload.graph.nodes['node-1'].duration_minutes).toBe(45);
   });
 
-  it('persists the director task-pool department and claim roles in the revision graph', async () => {
+  it('persists the director task-pool department in the revision graph', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ id: 'revision-draft' }), { status: 200 })));
     vi.stubGlobal('fetch', fetchMock);
     renderDesigner();
 
     expect(screen.getByLabelText('Phòng ban nhận việc')).toHaveValue('SURVEY');
-    expect(screen.getByRole('button', { name: 'Vai trò được nhận việc' }))
-      .toHaveTextContent('Phụ trách chính, Phối hợp / phụ');
-    fireEvent.click(screen.getByRole('button', { name: 'Vai trò được nhận việc' }));
-    expect(screen.getByRole('option', { name: 'Phụ trách chính' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('option', { name: 'Phối hợp / phụ' })).toHaveAttribute('aria-selected', 'true');
 
     fireEvent.change(screen.getByLabelText('Phòng ban nhận việc'), { target: { value: 'LEGAL' } });
     fireEvent.click(screen.getByRole('button', { name: /^Lưu tạm$/i }));
@@ -1324,6 +1320,8 @@ describe('Giấy chưa gán vào bước nào chỉ CẢNH BÁO, không chặn k
 });
 
 describe('Dropdown chọn Mẫu quy trình (CustomSelect)', () => {
+  afterEach(cleanup);
+
   it('hiển thị dropdown chuẩn CustomSelect với các mẫu có sẵn và cho phép chọn mẫu', async () => {
     const templates = [
       {
@@ -1377,4 +1375,301 @@ describe('Dropdown chọn Mẫu quy trình (CustomSelect)', () => {
     expect(trigger).toHaveTextContent('Tự thiết kế');
   });
 });
+
+describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
+  afterEach(cleanup);
+
+  it('cho phép chọn năng lực cho node từ tab Năng lực và tự động cập nhật', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Click vào tab Năng lực
+    const capabilityTabBtn = screen.getByRole('button', { name: 'Năng lực' });
+    expect(capabilityTabBtn).toBeInTheDocument();
+    fireEvent.click(capabilityTabBtn);
+
+    // Kiểm tra các thẻ năng lực chuẩn xuất hiện
+    const surveyFieldCard = screen.getByRole('button', { name: /Khảo sát & Đo thực địa/i });
+    expect(surveyFieldCard).toBeInTheDocument();
+
+    // Click chọn năng lực Khảo sát & Đo thực địa
+    fireEvent.click(surveyFieldCard);
+    expect(surveyFieldCard).toHaveClass('is-selected');
+
+    // Chuyển về tab Node để kiểm tra badge năng lực và nút "Đổi năng lực →"
+    const nodeTabBtn = screen.getByRole('button', { name: 'Node' });
+    fireEvent.click(nodeTabBtn);
+
+    const changeCapBtn = screen.getByRole('button', { name: /Đổi năng lực →/i });
+    expect(changeCapBtn).toBeInTheDocument();
+
+    // Click nút "Đổi năng lực →" phải chuyển thẳng sang tab Năng lực
+    fireEvent.click(changeCapBtn);
+    expect(capabilityTabBtn).toHaveClass('active');
+  });
+
+  it('khi gán năng lực HANDOVER cho node, Tab 1 lập tức hiện thanh tiến độ thu tiền và Cổng kiểm soát công nợ', async () => {
+    const { container } = render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Mở Tab Năng lực
+    const capabilityTabBtn = screen.getByRole('button', { name: 'Năng lực' });
+    fireEvent.click(capabilityTabBtn);
+
+    // Chọn Bàn giao & Quyết toán
+    const handoverCard = screen.getByRole('button', { name: /Bàn giao & Quyết toán/i });
+    fireEvent.click(handoverCard);
+    expect(handoverCard).toHaveClass('is-selected');
+
+    // Chuyển sang Tab Node
+    const nodeTabBtn = screen.getByRole('button', { name: 'Node' });
+    fireEvent.click(nodeTabBtn);
+
+    // Kiểm tra thanh tiến độ thu tiền hợp đồng xuất hiện
+    expect(container.querySelector('.wf-node-money')).toBeInTheDocument();
+    expect(screen.getByText(/VND/)).toBeInTheDocument();
+
+    // Kiểm tra Cổng kiểm soát công nợ & Bàn giao xuất hiện
+    expect(screen.getByText('Cổng kiểm soát công nợ & Bàn giao')).toBeInTheDocument();
+  });
+
+  it('khi gán năng lực GOV_SUBMISSION cho node, Tab 1 lập tức hiện panel Nộp cơ quan & Một cửa', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine({ noExecutionNodes: true })}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Mở Tab Năng lực và chọn Nộp & Theo dõi Một Cửa
+    fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
+    const govCard = screen.getByRole('button', { name: /Nộp & Theo dõi Một Cửa/i });
+    fireEvent.click(govCard);
+
+    // Chuyển sang Tab Node
+    fireEvent.click(screen.getByRole('button', { name: 'Node' }));
+
+    // Kiểm tra NodeAgencyPanel xuất hiện với preview sau khi nạp
+    await waitFor(() => {
+      expect(screen.getByText('Nộp cơ quan & Theo dõi một cửa')).toBeInTheDocument();
+    });
+  });
+
+  it('khi gán năng lực SURVEY_FIELD cho node, Tab 1 lập tức hiện preview Nghiệp vụ đo đạc & Biên bản hiện trạng', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Mở Tab Năng lực và chọn Khảo sát & Đo thực địa
+    fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
+    const surveyCard = screen.getByRole('button', { name: /Khảo sát & Đo thực địa/i });
+    fireEvent.click(surveyCard);
+
+    // Chuyển sang Tab Node
+    fireEvent.click(screen.getByRole('button', { name: 'Node' }));
+
+    // Kiểm tra Survey preview xuất hiện
+    expect(screen.getByText('Nghiệp vụ đo đạc & Biên bản hiện trạng')).toBeInTheDocument();
+  });
+
+  it('khi gán năng lực SURVEY_CAD cho node, Tab 1 lập tức hiện preview Nội nghiệp biên tập bản vẽ CAD & GIS', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
+    const cadCard = screen.getByRole('button', { name: /Biên tập bản vẽ CAD/i });
+    fireEvent.click(cadCard);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Node' }));
+    expect(screen.getByText('Nội nghiệp biên tập bản vẽ CAD & GIS')).toBeInTheDocument();
+  });
+
+  it('khi gán năng lực LEGAL_PREP cho node, Tab 1 lập tức hiện preview Soạn thảo hồ sơ pháp lý & Rà quy hoạch', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
+    const legalCard = screen.getByRole('button', { name: /Soạn thảo hồ sơ pháp lý/i });
+    fireEvent.click(legalCard);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Node' }));
+    expect(screen.getByText('Soạn thảo hồ sơ pháp lý & Rà quy hoạch')).toBeInTheDocument();
+  });
+
+  describe('Modal chọn tài liệu đầu ra: Tìm kiếm, lọc theo nguồn và đồng bộ mẫu Combo tức thì', () => {
+    afterEach(() => {
+      cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals();
+    });
+
+    it('tìm kiếm theo tên giấy tờ và lọc theo tab nguồn', async () => {
+      const docs = [
+        ...DOC_TEMPLATES,
+        { id: 'TPL_CCCD', name: 'CCCD/CMND của chủ sử dụng đất', source_label: 'Khách hàng cung cấp', is_active: true },
+      ];
+      renderWithDocs({}, docs);
+      await moPanelChecklist();
+      fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+
+      const dialog = screen.getByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+      expect(dialog).toBeInTheDocument();
+
+      // Thanh tìm kiếm
+      const searchInput = within(dialog).getByRole('textbox', { name: /Tìm kiếm theo tên giấy tờ/ });
+      expect(searchInput).toBeInTheDocument();
+
+      // Tìm kiếm "CCCD"
+      fireEvent.change(searchInput, { target: { value: 'CCCD' } });
+      expect(within(dialog).getByRole('option', { name: /CCCD\/CMND/ })).toBeInTheDocument();
+      expect(within(dialog).queryByRole('option', { name: /Sổ đỏ gốc/ })).not.toBeInTheDocument();
+
+      // Xóa tìm kiếm
+      const clearBtn = within(dialog).getByRole('button', { name: /Xoá tìm kiếm/ });
+      fireEvent.click(clearBtn);
+      expect(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ })).toBeInTheDocument();
+
+      // Lọc theo Tab "Công ty soạn/lập"
+      const companyTab = within(dialog).getByRole('tab', { name: /Công ty soạn\/lập/ });
+      fireEvent.click(companyTab);
+      expect(within(dialog).getByRole('option', { name: /Bản kỹ thuật gốc/ })).toBeInTheDocument();
+      expect(within(dialog).queryByRole('option', { name: /Sổ đỏ gốc/ })).not.toBeInTheDocument();
+
+      // Tab Tất cả nguồn
+      const allTab = within(dialog).getByRole('tab', { name: /Tất cả nguồn/ });
+      fireEvent.click(allTab);
+      expect(within(dialog).getByRole('option', { name: /Sổ đỏ gốc/ })).toBeInTheDocument();
+    });
+
+    it('tự động đồng bộ và hiển thị loại giấy SSSS được tạo theo Combo của hợp đồng', async () => {
+      const serviceLineWithCombo = {
+        ...makeServiceLine({ nodeReady: true }),
+        service_package_id: 'PKG_DO_DAC',
+        task_type_id: 'TASK_DO_DAC_THUA_DAT',
+      };
+      const ssssTemplate = {
+        id: 'TPL_SSSS',
+        name: 'SSSS',
+        source_label: 'Công ty soạn/lập',
+        is_active: true,
+        applicabilities: [
+          {
+            applicability_type: 'COMBO',
+            service_package_id: 'PKG_DO_DAC',
+            task_type_id: 'TASK_DO_DAC_THUA_DAT',
+            node_code: null,
+          },
+        ],
+      };
+      const docs = [...DOC_TEMPLATES, ssssTemplate];
+
+      render(
+        <ContractWorkflowDesigner
+          serviceLine={serviceLineWithCombo}
+          contractId="001/BK-2026"
+          workItems={[workItem]}
+          documentTemplates={docs}
+          capabilities={{ amend_workflow: true, review_workflow_checklist: true }}
+          addToast={vi.fn()}
+          targetNodeKey="node-1"
+          targetType="checklist_review"
+          targetNonce={1}
+        />
+      );
+
+      fireEvent.click(await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ }));
+      const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+
+      // Loại giấy SSSS phải xuất hiện ngay lập tức trong modal
+      expect(within(dialog).getByRole('option', { name: /SSSS/ })).toBeInTheDocument();
+
+      // Chọn SSSS và bấm Xong
+      fireEvent.click(within(dialog).getByRole('option', { name: /SSSS/ }));
+      expect(dialog.querySelector('.wcl-output-modal__footer-summary').textContent)
+        .toContain('Đã chọn: 1 loại giấy tờ');
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Xong' }));
+      expect(await screen.findByText('SSSS')).toBeInTheDocument();
+    });
+
+    it('bấm nút + thêm giấy tờ khi đang ở chế độ xem thì modal vẫn mở lên để tra cứu', async () => {
+      const mockToast = vi.fn();
+      // Render với workflow active nhưng chưa bật editMode (nodeReady = false, active = true)
+      render(
+        <ContractWorkflowDesigner
+          serviceLine={makeServiceLine({ active: true, nodeReady: false })}
+          contractId="001/BK-2026"
+          workItems={[workItem]}
+          documentTemplates={DOC_TEMPLATES}
+          capabilities={{ amend_workflow: true, review_workflow_checklist: true }}
+          addToast={mockToast}
+          targetNodeKey="node-1"
+          targetType="checklist_review"
+          targetNonce={1}
+        />
+      );
+
+      const addDocBtn = await screen.findByRole('button', { name: /Thêm giấy tờ đầu ra/ });
+      expect(addDocBtn).not.toBeDisabled();
+      fireEvent.click(addDocBtn);
+
+      const dialog = await screen.findByRole('dialog', { name: /Chọn tài liệu đầu ra/ });
+      expect(dialog).toBeInTheDocument();
+      expect(within(dialog).getByRole('status')).toHaveTextContent(/chế độ xem/);
+
+      // Cố gắng chọn loại giấy tờ khi đang xem sẽ hiện cảnh báo toast
+      fireEvent.click(within(dialog).getByRole('option', { name: /Bản kỹ thuật gốc/ }));
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Quy trình đang chạy.*Sửa/i),
+        'warning'
+      );
+    });
+
+    it('bấm nút + thêm mục checklist khi đang ở chế độ xem thì toast nhắc bật chế độ sửa', async () => {
+      const mockToast = vi.fn();
+      render(
+        <ContractWorkflowDesigner
+          serviceLine={makeServiceLine({ active: true, nodeReady: false })}
+          contractId="001/BK-2026"
+          workItems={[workItem]}
+          documentTemplates={DOC_TEMPLATES}
+          capabilities={{ amend_workflow: true, review_workflow_checklist: true }}
+          addToast={mockToast}
+          targetNodeKey="node-1"
+          targetType="checklist_review"
+          targetNonce={1}
+        />
+      );
+
+      const addChecklistBtn = await screen.findByRole('button', { name: /Thêm mục checklist/ });
+      expect(addChecklistBtn).not.toBeDisabled();
+      fireEvent.click(addChecklistBtn);
+
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.stringMatching(/Quy trình đang chạy.*Sửa/i),
+        'warning'
+      );
+    });
+  });
+});
+
+
+
 

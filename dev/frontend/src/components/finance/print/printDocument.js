@@ -134,11 +134,18 @@ html, body {
   font-size: 8.5pt !important;
   text-transform: uppercase !important;
   letter-spacing: 0.3px !important;
-  white-space: nowrap !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  line-height: 1.25 !important;
   text-align: center !important;
-  padding: 2.5mm 3mm !important;
+  padding: 2.2mm 2mm !important;
   border: 1px solid #334155 !important;
   vertical-align: middle !important;
+}
+.finance-print-table th.is-nowrap,
+.finance-print-table td.is-nowrap {
+  white-space: nowrap !important;
 }
 .finance-print-table td {
   padding: 2.5mm 3mm !important;
@@ -152,13 +159,25 @@ html, body {
 .finance-print-table tbody tr:nth-child(even) td {
   background: #f8fafc !important;
 }
-.finance-print-table .is-right {
+.finance-print-table td.is-right {
   text-align: right !important;
   white-space: nowrap !important;
 }
-.finance-print-table .is-center {
+.finance-print-table td.is-center {
   text-align: center !important;
   white-space: nowrap !important;
+}
+.finance-print-table th.is-right {
+  text-align: right !important;
+  white-space: normal !important;
+}
+.finance-print-table th.is-center {
+  text-align: center !important;
+  white-space: normal !important;
+}
+.finance-print-table th.is-left {
+  text-align: left !important;
+  white-space: normal !important;
 }
 /* Grand total belongs to the end of the report, not to every printed page. */
 .finance-print-table tfoot {

@@ -1,5 +1,6 @@
 import logging
 import os
+import uuid
 import jwt
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
@@ -19,7 +20,7 @@ from src.core.roles import (
 
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 bearer_scheme = HTTPBearer(auto_error=False)
 logger = logging.getLogger(__name__)
@@ -39,20 +40,62 @@ def verify_password(plain: str, hashed: str) -> bool:
     except Exception:
         return False
 
-def create_access_token(user_id: str) -> str:
+def create_access_token(user_id: str, expires_delta: timedelta | None = None) -> str:
+    lifetime = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS),
+        "iat": int(now.timestamp()),
+        "jti": str(uuid.uuid4()),
+        "exp": now + lifetime,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
+
+def revoke_access_token(token_str_or_jti: str, ttl_seconds: int = 3600) -> None:
+    from src.core.redis_utils import set_cached_json
+    jti = token_str_or_jti
+    if "." in token_str_or_jti:
+        try:
+            payload = jwt.decode(token_str_or_jti, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_exp": False})
+            jti = payload.get("jti") or token_str_or_jti
+        except Exception:
+            pass
+    if jti:
+        set_cached_json(f"bachkhoa:revoked_token:{jti}", True, ttl_seconds=ttl_seconds)
+
+
+def revoke_all_user_tokens(user_id: str, ttl_seconds: int = 3600) -> None:
+    from src.core.redis_utils import set_cached_json
+    cutoff = int(datetime.now(timezone.utc).timestamp())
+    set_cached_json(f"bachkhoa:user_token_cutoff:{user_id}", cutoff, ttl_seconds=ttl_seconds)
+
+
+def is_token_revoked(payload: dict) -> bool:
+    from src.core.redis_utils import get_cached_json
+    jti = payload.get("jti")
+    if jti and get_cached_json(f"bachkhoa:revoked_token:{jti}"):
+        return True
+    user_id = payload.get("sub")
+    iat = payload.get("iat")
+    if user_id and iat:
+        cutoff = get_cached_json(f"bachkhoa:user_token_cutoff:{user_id}")
+        if cutoff and iat <= cutoff:
+            return True
+    return False
+
+
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token hết hạn")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token không hợp lệ")
+
+    if is_token_revoked(payload):
+        raise HTTPException(status_code=401, detail="Token đã bị thu hồi hoặc phiên đăng nhập đã hết hiệu lực")
+    return payload
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
@@ -96,6 +139,25 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
         return False
 
     valid_resources = RESOURCE_ALIASES.get(resource, [resource])
+
+    # The normalized RBAC tables are authoritative whenever the requested
+    # resource/action is represented there. Keep the legacy evaluator only as
+    # a compatibility fallback for resources that have not been migrated yet.
+    try:
+        normalized_decision = evaluate_normalized_permission(
+            db,
+            user_id=user.id,
+            resource_codes=valid_resources,
+            action=action,
+        )
+    except SQLAlchemyError:
+        # Keep older deployments usable until the RBAC migration is applied;
+        # once normalized rows exist, their decision is authoritative.
+        db.rollback()
+        logger.exception("Normalized RBAC tables unavailable; using legacy permission compatibility path")
+        normalized_decision = None
+    if normalized_decision is not None:
+        return normalized_decision.allowed
 
     # Single unified query: check either admin role OR valid permission grant
     allowed = db.query(
@@ -219,13 +281,15 @@ def require_payroll_all(
 from sqlalchemy import func
 
 def seed_default_admin(db: Session):
+    if not settings.ADMIN_BOOTSTRAP_PASSWORD:
+        raise RuntimeError("ADMIN_BOOTSTRAP_PASSWORD phải được cấu hình khi bật seed admin.")
     existing = db.query(User).filter(User.username == "admin").first()
     import uuid
     if not existing:
         admin = User(
             id=str(uuid.uuid4()),
             username="admin",
-            password_hash=hash_password("admin123"),
+            password_hash=hash_password(settings.ADMIN_BOOTSTRAP_PASSWORD),
             email="admin@bachkhoa.local",
             is_active=True,
         )

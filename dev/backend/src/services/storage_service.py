@@ -25,7 +25,29 @@ _TRUE_VALUES = {"1", "true", "yes", "on"}
 def get_object_storage_config(environ: dict[str, str] | None = None) -> ObjectStorageConfig:
     """Load provider-neutral S3 settings with a local MinIO compatibility fallback."""
     values = os.environ if environ is None else environ
+    environment = values.get("ENV", "development").strip().lower()
     using_managed_settings = bool(values.get("OBJECT_STORAGE_ENDPOINT", "").strip())
+    access_key = values.get("OBJECT_STORAGE_ACCESS_KEY") or values.get("MINIO_ACCESS_KEY", "")
+    secret_key = values.get("OBJECT_STORAGE_SECRET_KEY") or values.get("MINIO_SECRET_KEY", "")
+    if environment in {"production", "prod", "staging"}:
+        if (
+            not access_key
+            or not secret_key
+            or access_key in {"minioadmin", "admin"}
+            or secret_key in {"minioadmin", "password", "12345678"}
+        ):
+            raise RuntimeError("Object storage credentials phải được cấu hình an toàn trong production.")
+        endpoint_candidate = values.get("OBJECT_STORAGE_ENDPOINT") or values.get("MINIO_ENDPOINT", "")
+        if endpoint_candidate:
+            from urllib.parse import urlparse
+            parsed = urlparse(endpoint_candidate)
+            host = (parsed.hostname or "").lower()
+            is_internal = host in {"localhost", "127.0.0.1", "minio"} or host.endswith(".local") or host.endswith(".internal")
+            if not is_internal and parsed.scheme != "https":
+                raise RuntimeError(
+                    f"Object storage endpoint ngoại vi ({endpoint_candidate}) bắt buộc phải sử dụng HTTPS trong production/staging."
+                )
+
     create_buckets = (
         not using_managed_settings
         and values.get("OBJECT_STORAGE_CREATE_BUCKETS", "true").strip().lower() in _TRUE_VALUES
@@ -38,8 +60,8 @@ def get_object_storage_config(environ: dict[str, str] | None = None) -> ObjectSt
     )
     return ObjectStorageConfig(
         endpoint=values.get("OBJECT_STORAGE_ENDPOINT") or values.get("MINIO_ENDPOINT", "http://localhost:9000"),
-        access_key=values.get("OBJECT_STORAGE_ACCESS_KEY") or values.get("MINIO_ACCESS_KEY", "minioadmin"),
-        secret_key=values.get("OBJECT_STORAGE_SECRET_KEY") or values.get("MINIO_SECRET_KEY", "minioadmin"),
+        access_key=access_key or "minioadmin",
+        secret_key=secret_key or "minioadmin",
         region=values.get("OBJECT_STORAGE_REGION") or "us-east-1",
         public_url=values.get("OBJECT_STORAGE_PUBLIC_URL") or values.get("MINIO_PUBLIC_URL", "http://localhost:9000"),
         create_buckets=create_buckets,

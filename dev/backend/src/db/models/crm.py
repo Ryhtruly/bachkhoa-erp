@@ -67,6 +67,7 @@ class Contract(Base):
     __tablename__ = "contracts"
     id = Column(String, primary_key=True) # e.g. 128/BK-2026
     customer_id = Column(String, ForeignKey("customers.id"))
+    customer = relationship("Customer")
     lead_id = Column(String, ForeignKey("leads_pipeline.id"), nullable=True)
     contract_template_id = Column(
         String,
@@ -100,7 +101,7 @@ class Contract(Base):
     remedy_period_days = Column(Integer, nullable=True)
     acceptance_period_days = Column(Integer, nullable=True)
     response_period_days = Column(Integer, nullable=True)
-    completion_override = Column(Boolean, default=False, nullable=False)
+    completion_override = Column(Boolean, default=False, server_default=text("false"), nullable=False)
     completion_override_by = Column(String, ForeignKey("users.id"), nullable=True)
     completion_override_reason = Column(Text, nullable=True)
     completion_override_at = Column(DateTime(timezone=True), nullable=True)
@@ -131,10 +132,12 @@ class ServiceLine(Base):
     property_metadata = Column(JSONB, nullable=True, default=dict)
     price = Column(Numeric, nullable=True)
     # Ưu tiên hồ sơ (Q5): đặt từ đầu, khoá khi kích hoạt. Giám đốc mới đặt được.
-    priority = Column(String, nullable=False, default="NORMAL")
+    priority = Column(String, nullable=False, default="NORMAL", server_default=text("'NORMAL'"))
     priority_reason = Column(Text, nullable=True)
     priority_set_by = Column(String, nullable=True)
     priority_set_at = Column(DateTime(timezone=True), nullable=True)
+    survey_drive_folder_url = Column(Text, nullable=True)
+    legal_drive_folder_url = Column(Text, nullable=True)
     # document_register_version CỐ Ý KHÔNG map ở đây trong suốt cửa sổ EXPAND.
     #
     # Map vào model là mọi truy vấn ORM trên ServiceLine đều SELECT cột đó — kể

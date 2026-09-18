@@ -9,6 +9,7 @@ import { printElement } from '../print/printDocument';
 import voucherPrintStyles from './PrintVoucherScreen.print.css?inline';
 import './PrintVoucherScreen.css';
 import { getVoucherSignatureRoles } from './voucherSignatureUtils';
+import { getVoucherPrintStatus } from './cashflowPrintUtils';
 import { useDocumentSigners } from '../print/documentSigners';
 import {
   Printer,
@@ -48,13 +49,14 @@ const formatDisplayDate = (d) => {
 export function VoucherTemplate({
   title, voucherId, date, personName, labelPerson, description, amount, amountWords,
   category, paymentMethod, department, contractId, projectId, _accounting, creatorName = '', signerSnapshot = null,
-  documentRef, paperSize = 'a4'
+  documentRef, paperSize = 'a4', status
 }) {
   const isReceiptVoucher = title.includes('THU');
   const isAdvancePayment = title.includes('TẠM ỨNG');
   const isAdvanceReimbursement = title.includes('HOÀN ỨNG');
   const documentSigners = useDocumentSigners();
   const effectiveDocumentSigners = signerSnapshot || documentSigners;
+  const printStatus = getVoucherPrintStatus(status);
 
   const isBankTransfer = paymentMethod === 'BANK_TRANSFER' || paymentMethod === 'Chuyển khoản';
   const paymentMethodLabel = isBankTransfer ? 'Chuyển khoản' : (paymentMethod === 'CASH' || paymentMethod === 'Tiền mặt' ? 'Tiền mặt' : (paymentMethod || 'Tiền mặt'));
@@ -120,6 +122,29 @@ export function VoucherTemplate({
           <span>Có: <strong>{creditAccount}</strong></span>
         </div>
       </div>
+
+      {printStatus && (
+        <div
+          className="voucher-print-status-stamp"
+          role="note"
+          style={{
+            border: `2px solid ${printStatus.key === 'REJECTED' ? '#dc2626' : printStatus.key === 'PENDING' ? '#d97706' : '#64748b'}`,
+            color: printStatus.key === 'REJECTED' ? '#b91c1c' : printStatus.key === 'PENDING' ? '#92400e' : '#475569',
+            background: printStatus.key === 'REJECTED' ? '#fef2f2' : printStatus.key === 'PENDING' ? '#fffbeb' : '#f1f5f9',
+            textAlign: 'center',
+            padding: '9px 12px',
+            margin: '0 auto 18px',
+            maxWidth: 620,
+            fontWeight: 800,
+            letterSpacing: '0.04em',
+          }}
+        >
+          <div>{printStatus.title}</div>
+          <div style={{ fontSize: '0.82rem', fontWeight: 600, letterSpacing: 0, marginTop: 3 }}>
+            {printStatus.message}
+          </div>
+        </div>
+      )}
 
       {/* Nội Dung Chi Tiết Chứng Từ */}
       <div className="voucher-print-details" style={{ fontSize: '1rem', lineHeight: 1.9, marginBottom: 24 }}>
@@ -231,9 +256,8 @@ const METHOD_OPTIONS = [
 ];
 
 const CATEGORIES_REQUIRE_LINK = [
-  'Chi thụ lý bản vẽ',
-  'Lương khoán',
-  'Công chứng hồ sơ'
+  'Chi thụ lý bản vẽ & Trích lục',
+  'Chi hoàn trả khách hàng'
 ];
 
 const TX_TYPE_META = {
@@ -265,7 +289,7 @@ const emptyForm = {
   signer_snapshot: null
 };
 
-export default function PrintVoucherScreen({ month, user }) {
+export default function PrintVoucherScreen({ month, user, isDirector = false }) {
   const voucherDocumentRef = useRef(null);
   const [mode, setMode] = useState('create');
   const [txType, setTxType] = useState('Chi');
@@ -276,6 +300,11 @@ export default function PrintVoucherScreen({ month, user }) {
   const [selectedAdvanceId, setSelectedAdvanceId] = useState('');
   const [approvedAdvanceRequests, setApprovedAdvanceRequests] = useState([]);
   const [selectedAdvanceRequestId, setSelectedAdvanceRequestId] = useState('');
+  const [linkageEnabled, setLinkageEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!isDirector && txType === 'Thu') setTxType('Chi');
+  }, [isDirector, txType]);
 
   const currentUserName = user?.full_name || user?.name || user?.username || '';
   const [form, setForm] = useState({ ...emptyForm, created_by: currentUserName });
@@ -285,11 +314,13 @@ export default function PrintVoucherScreen({ month, user }) {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const { addToast } = useToast();
 
   const loadAll = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(null);
     try {
       const [rTx, rAdv, rAdvReq, rC, rP, rDept] = await Promise.allSettled([
         apiFetch(`${API}/api/finance/cashflow`),
@@ -299,7 +330,13 @@ export default function PrintVoucherScreen({ month, user }) {
         apiFetch(`${API}/api/finance/projects`),
         apiFetch(`${API}/api/finance/departments`)
       ]);
-      if (rTx.status === 'fulfilled' && Array.isArray(rTx.value)) setTransactions(rTx.value);
+      if (rTx.status === 'fulfilled' && Array.isArray(rTx.value)) {
+        setTransactions(rTx.value);
+      } else if (rTx.status === 'rejected') {
+        setTransactions([]);
+        setLoadError('Không thể tải danh sách chứng từ. Vui lòng thử lại.');
+        addToast('Không thể tải danh sách chứng từ để in', 'error');
+      }
       if (rAdv.status === 'fulfilled' && Array.isArray(rAdv.value)) setActiveAdvances(rAdv.value);
       if (rAdvReq.status === 'fulfilled' && Array.isArray(rAdvReq.value)) {
         setApprovedAdvanceRequests(rAdvReq.value.filter(request => request.status === 'DIRECTOR_APPROVED'));
@@ -339,6 +376,7 @@ export default function PrintVoucherScreen({ month, user }) {
             category: txType === 'Tạm ứng' ? 'Tạm ứng kinh phí' : (txType === 'Hoàn ứng' ? 'Quyết toán tạm ứng' : 'Khác'),
             payment_method: txType === 'Tạm ứng' ? 'Tạm ứng' : 'BANK_TRANSFER'
           });
+          setLinkageEnabled(false);
         } catch { }
       };
       fetchNextId();
@@ -401,6 +439,8 @@ export default function PrintVoucherScreen({ month, user }) {
       .sort((a, b) => (b.id || '').localeCompare(a.id || ''));
   }, [transactions, printSearch, month]);
 
+  const selectedPrintStatus = getVoucherPrintStatus(form.status);
+
   const departmentOptions = useMemo(() => {
     const names = [
       ...departments.map(department => department.name),
@@ -414,10 +454,25 @@ export default function PrintVoucherScreen({ month, user }) {
       .map(name => ({ value: name, label: name }));
   }, [departments, transactions, form.department_code]);
 
+  const matchedCustomer = useMemo(() => {
+    const name = form.payer_payee.trim().toLowerCase();
+    if (!name) return null;
+    return contracts.find(contract => (contract.customer_name || '').trim().toLowerCase() === name) || null;
+  }, [contracts, form.payer_payee]);
+
+  const availableContracts = useMemo(() => {
+    if (!matchedCustomer?.customer_id) return contracts;
+    return contracts.filter(contract => contract.customer_id === matchedCustomer.customer_id);
+  }, [contracts, matchedCustomer]);
+
   const availableProjects = useMemo(() => {
-    if (!form.contract_id) return projects;
-    return projects.filter(p => p.contract_id === form.contract_id);
-  }, [projects, form.contract_id]);
+    if (form.contract_id) return projects.filter(p => p.contract_id === form.contract_id);
+    if (matchedCustomer?.customer_id) return projects.filter(p => p.customer_id === matchedCustomer.customer_id);
+    return projects;
+  }, [projects, form.contract_id, matchedCustomer]);
+
+  const isRequiredLinkage = txType === 'Chi' && CATEGORIES_REQUIRE_LINK.includes(form.category);
+  const shouldShowLinkage = txType === 'Chi' && (linkageEnabled || isRequiredLinkage);
 
   const handleContractChange = (val) => {
     const matched = val ? projects.filter(p => p.contract_id === val) : [];
@@ -512,7 +567,7 @@ export default function PrintVoucherScreen({ month, user }) {
       addToast('Vui lòng nhập họ tên người giao dịch', 'warning');
       return;
     }
-    if (CATEGORIES_REQUIRE_LINK.includes(form.category) && !form.contract_id && !form.project_id) {
+    if (isRequiredLinkage && !form.contract_id && !form.project_id) {
       addToast(`Hạng mục "${form.category}" bắt buộc phải liên kết Hợp đồng hoặc Hồ sơ/Dự án!`, 'warning');
       return;
     }
@@ -565,8 +620,8 @@ export default function PrintVoucherScreen({ month, user }) {
             category: form.category,
             payer_payee: form.payer_payee,
             payment_method: canonicalMethod,
-            contract_id: form.contract_id || null,
-            project_id: form.project_id || null,
+            contract_id: txType === 'Thu' || (txType === 'Chi' && !shouldShowLinkage) ? null : (form.contract_id || null),
+            project_id: txType === 'Thu' || (txType === 'Chi' && !shouldShowLinkage) ? null : (form.project_id || null),
             created_by: form.created_by,
             approved_by: form.approved_by,
             status: canonicalStatus,
@@ -628,13 +683,17 @@ export default function PrintVoucherScreen({ month, user }) {
 
           {mode === 'create' && (
             <div className="print-screen-type-group">
-              {Object.keys(TX_TYPE_META).map(t => {
+              {Object.keys(TX_TYPE_META).filter(t => isDirector || t !== 'Thu').map(t => {
                 const meta = TX_TYPE_META[t];
                 const active = txType === t;
                 return (
                   <button
                     key={t}
-                    onClick={() => setTxType(t)}
+                    onClick={() => {
+                      setTxType(t);
+                      setLinkageEnabled(false);
+                      setForm(prev => ({ ...prev, contract_id: '', project_id: '' }));
+                    }}
                     className="print-screen-type-btn"
                     style={{
                       background: active ? meta.color : 'transparent',
@@ -665,7 +724,7 @@ export default function PrintVoucherScreen({ month, user }) {
             onClick={handlePrint}
             className="print-screen-btn-primary"
           >
-            <Printer size={16} /> In chứng từ (Print/PDF)
+            <Printer size={16} /> {selectedPrintStatus?.key === 'PENDING' ? 'In bản dự thảo' : selectedPrintStatus ? 'In bản lưu' : 'In chứng từ (Print/PDF)'}
           </button>
         </div>
       </div>
@@ -690,24 +749,46 @@ export default function PrintVoucherScreen({ month, user }) {
               onChange={e => setPrintSearch(e.target.value)}
               className="print-screen-search-input"
             />
+            {loadError && (
+              <div role="alert" style={{ color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                {loadError}
+              </div>
+            )}
             <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {printList.map(t => (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedId(t.id)}
-                  className={`print-screen-list-item ${selectedId === t.id ? 'is-selected' : ''}`}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                    <span style={{ fontFamily: 'monospace' }}>{t.id}</span>
-                    <span style={{ color: (t.type === 'INCOME' || t.type === 'Thu') ? 'var(--green-500, #10b981)' : 'var(--red-500, #ef4444)' }}>
-                      {(t.type === 'INCOME' || t.type === 'Thu') ? '+' : '-'}{fmtShort(t.amount)}
-                    </span>
+              {printList.map(t => {
+                const itemPrintStatus = getVoucherPrintStatus(t.status || t.status_label);
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedId(t.id)}
+                    className={`print-screen-list-item ${selectedId === t.id ? 'is-selected' : ''}`}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontWeight: 700 }}>
+                      <span style={{ fontFamily: 'monospace' }}>{t.id}</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        {itemPrintStatus && (
+                          <span style={{
+                            borderRadius: 999,
+                            padding: '2px 7px',
+                            fontSize: '0.68rem',
+                            color: itemPrintStatus.key === 'REJECTED' ? '#b91c1c' : itemPrintStatus.key === 'PENDING' ? '#92400e' : '#475569',
+                            background: itemPrintStatus.key === 'REJECTED' ? '#fee2e2' : itemPrintStatus.key === 'PENDING' ? '#fef3c7' : '#e2e8f0',
+                            letterSpacing: '0.02em',
+                          }}>
+                            {itemPrintStatus.label}
+                          </span>
+                        )}
+                        <span style={{ color: (t.type === 'INCOME' || t.type === 'Thu') ? 'var(--green-500, #10b981)' : 'var(--red-500, #ef4444)' }}>
+                          {(t.type === 'INCOME' || t.type === 'Thu') ? '+' : '-'}{fmtShort(t.amount)}
+                        </span>
+                      </span>
+                    </div>
+                    <div style={{ color: 'var(--text-tertiary, #64748b)', fontSize: '0.78rem', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t.partner || t.payer_payee || '—'} · {t.category || 'Khác'}
+                    </div>
                   </div>
-                  <div style={{ color: 'var(--text-tertiary, #64748b)', fontSize: '0.78rem', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {t.partner || t.payer_payee || '—'} · {t.category || 'Khác'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -905,6 +986,8 @@ export default function PrintVoucherScreen({ month, user }) {
                       value={form.category}
                       onChange={v => {
                         const mapping = CATEGORY_AUTO_MAPPING[v];
+                        const mustLink = txType === 'Chi' && CATEGORIES_REQUIRE_LINK.includes(v);
+                        setLinkageEnabled(mustLink);
                         if (mapping) {
                           setForm(prev => ({
                             ...prev,
@@ -912,10 +995,15 @@ export default function PrintVoucherScreen({ month, user }) {
                             payer_payee: mapping.payer_payee,
                             department_code: mapping.department_code,
                             created_by: mapping.created_by,
-                            approved_by: mapping.approved_by
+                            approved_by: mapping.approved_by,
+                            ...(!mustLink ? { contract_id: '', project_id: '' } : {})
                           }));
                         } else {
-                          setForm(prev => ({ ...prev, category: v }));
+                          setForm(prev => ({
+                            ...prev,
+                            category: v,
+                            ...(!mustLink ? { contract_id: '', project_id: '' } : {})
+                          }));
                         }
                       }}
                       options={CATEGORY_OPTIONS}
@@ -995,55 +1083,93 @@ export default function PrintVoucherScreen({ month, user }) {
                     </div>
                   </div>
 
-                  {/* Hàng 3 - Cột 1: Mã Hợp Đồng */}
-                  <div>
-                    <label className="print-screen-label">
-                      <FolderOpen size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Liên kết Mã Hợp Đồng
-                    </label>
-                    <Select
-                      value={form.contract_id}
-                      onChange={handleContractChange}
-                      options={[
-                        { value: '', label: '-- Không liên kết HĐ --' },
-                        ...contracts.map(c => ({
-                          value: c.id || c.contract_id,
-                          label: `${c.id || c.contract_id} — ${c.customer_name || 'Khách hàng'}`
-                        }))
-                      ]}
-                      placeholder="-- Không liên kết HĐ --"
-                    />
-                    {form.contract_id && (
-                      <span className={`print-screen-link-hint ${availableProjects.length > 0 ? 'is-linked' : ''}`}>
-                        {availableProjects.length > 0
-                          ? `✓ Khớp ${availableProjects.length} hồ sơ thuộc HĐ này`
-                          : 'ℹ Hợp đồng chưa có hồ sơ kỹ thuật'}
-                      </span>
-                    )}
-                  </div>
+                  {txType === 'Thu' ? (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <div className="print-screen-link-hint" style={{ display: 'block' }}>
+                        🔒 Thu tiền theo hợp đồng được thực hiện tập trung tại màn <strong>Thu công nợ</strong> (đính kèm biên lai). Phiếu thu ở đây dành cho các khoản thu ngoài hợp đồng.
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {txType === 'Chi' && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <label className="print-screen-checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={shouldShowLinkage}
+                              disabled={isRequiredLinkage}
+                              onChange={e => {
+                                const enabled = e.target.checked;
+                                setLinkageEnabled(enabled);
+                                if (!enabled) {
+                                  setForm(prev => ({ ...prev, contract_id: '', project_id: '' }));
+                                }
+                              }}
+                            />
+                            <span>Liên kết với hợp đồng / hạng mục</span>
+                            {isRequiredLinkage && <span className="print-screen-link-hint is-required">(bắt buộc với hạng mục này)</span>}
+                          </label>
+                          <div className="print-screen-link-hint" style={{ display: 'block' }}>
+                            Chỉ bật khi khoản chi phát sinh từ một hợp đồng hoặc hạng mục cụ thể.
+                          </div>
+                        </div>
+                      )}
 
-                  {/* Hàng 3 - Cột 2: Mã Hồ Sơ / Dự Án */}
-                  <div>
-                    <label className="print-screen-label">
-                      <Briefcase size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Liên kết Mã Hồ Sơ / Dự Án
-                    </label>
-                    <Select
-                      value={form.project_id}
-                      onChange={handleProjectChange}
-                      options={[
-                        { value: '', label: form.contract_id ? '-- Chọn hồ sơ thuộc HĐ đã chọn --' : '-- Không liên kết Hồ sơ --' },
-                        ...availableProjects.map(p => ({
-                          value: p.id,
-                          label: p.label || 'Hồ sơ kỹ thuật chưa có mã'
-                        }))
-                      ]}
-                      placeholder={form.contract_id ? '-- Chọn hồ sơ thuộc HĐ --' : '-- Không liên kết Hồ sơ --'}
-                    />
-                    {form.project_id && (
-                      <span className="print-screen-link-hint is-linked">
-                        ✓ Đã liên kết hồ sơ kỹ thuật
-                      </span>
-                    )}
-                  </div>
+                      {(txType !== 'Chi' || shouldShowLinkage) && (
+                        <>
+                          {/* Hàng 3 - Cột 1: Mã Hợp Đồng */}
+                          <div>
+                            <label className="print-screen-label">
+                              <FolderOpen size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Liên kết Mã Hợp Đồng
+                            </label>
+                            <Select
+                              value={form.contract_id}
+                              onChange={handleContractChange}
+                              options={[
+                                { value: '', label: '-- Không liên kết HĐ --' },
+                                ...availableContracts.map(c => ({
+                                  value: c.id || c.contract_id,
+                                  label: `${c.id || c.contract_id} — ${c.customer_name || 'Khách hàng'}`
+                                }))
+                              ]}
+                              placeholder="-- Không liên kết HĐ --"
+                            />
+                            {form.contract_id && (
+                              <span className={`print-screen-link-hint ${availableProjects.length > 0 ? 'is-linked' : ''}`}>
+                                {availableProjects.length > 0
+                                  ? `✓ Khớp ${availableProjects.length} hồ sơ thuộc HĐ này`
+                                  : 'ℹ Hợp đồng chưa có hồ sơ kỹ thuật'}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Hàng 3 - Cột 2: Mã Hồ Sơ / Dự Án */}
+                          <div>
+                            <label className="print-screen-label">
+                              <Briefcase size={14} style={{ color: 'var(--text-tertiary, #64748b)' }} /> Liên kết Mã Hồ Sơ / Dự Án
+                            </label>
+                            <Select
+                              value={form.project_id}
+                              onChange={handleProjectChange}
+                              options={[
+                                { value: '', label: form.contract_id ? '-- Chọn hồ sơ thuộc HĐ đã chọn --' : '-- Không liên kết Hồ sơ --' },
+                                ...availableProjects.map(p => ({
+                                  value: p.id,
+                                  label: p.label || 'Hồ sơ kỹ thuật chưa có mã'
+                                }))
+                              ]}
+                              placeholder={form.contract_id ? '-- Chọn hồ sơ thuộc HĐ --' : '-- Không liên kết Hồ sơ --'}
+                            />
+                            {form.project_id && (
+                              <span className="print-screen-link-hint is-linked">
+                                ✓ Đã liên kết hồ sơ kỹ thuật
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
 
                   {/* Hàng 3 - Cột 3: Phòng ban thụ hưởng */}
                   <div>
@@ -1149,7 +1275,7 @@ export default function PrintVoucherScreen({ month, user }) {
                 className="no-print print-screen-btn-secondary"
                 style={{ height: 32, padding: '0 12px' }}
               >
-                <Printer size={15} /> In nhanh
+                <Printer size={15} /> {selectedPrintStatus?.key === 'PENDING' ? 'In bản dự thảo' : selectedPrintStatus ? 'In bản lưu' : 'In nhanh'}
               </button>
             </div>
 
@@ -1174,6 +1300,7 @@ export default function PrintVoucherScreen({ month, user }) {
                 projectId={projects.find(project => project.id === form.project_id)?.label || (form.project_id ? 'Hồ sơ đã liên kết' : '')}
                 accounting={form.accounting}
                 signerSnapshot={form.signer_snapshot}
+                status={form.status}
                 documentRef={voucherDocumentRef}
               />
             </div>

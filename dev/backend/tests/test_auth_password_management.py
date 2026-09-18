@@ -4,8 +4,20 @@ import pytest
 
 from src.core.auth import hash_password, verify_password
 from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+from src.core import redis_utils
 from src.db.models import User
 from src.user_admin.service import _hash_token
+
+
+@pytest.fixture(autouse=True)
+def clear_process_local_rate_limits(monkeypatch):
+    # Redis is intentionally optional in this local test mode. Keep fallback
+    # rate-limit state isolated so one test cannot consume another test's IP
+    # quota.
+    monkeypatch.setattr(redis_utils, "get_redis_client", lambda: None)
+    redis_utils._fallback_store.clear()
+    yield
+    redis_utils._fallback_store.clear()
 
 
 @pytest.fixture
@@ -33,7 +45,7 @@ def test_forgot_password_request_otp_success(client, db, test_user):
         assert res.status_code == 200
         data = res.json()
         assert data["success"] is True
-        assert "email_masked" in data
+        assert data["email_sent"] is True
 
         cached_otp = get_cached_json(f"bachkhoa:auth:otp:{test_user.id}")
         assert cached_otp is not None
@@ -56,7 +68,12 @@ def test_forgot_password_request_otp_not_found(client):
         "/api/auth/forgot-password/request-otp",
         json={"identifier": "nonexistent_user_xyz"},
     )
-    assert res.status_code == 404
+    assert res.status_code == 200
+    assert res.json() == {
+        "success": True,
+        "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
+        "email_sent": False,
+    }
 
 
 def test_forgot_password_request_otp_inactive_user(client, db):
@@ -74,8 +91,8 @@ def test_forgot_password_request_otp_inactive_user(client, db):
         "/api/auth/forgot-password/request-otp",
         json={"identifier": user.username},
     )
-    assert res.status_code == 403
-    assert "vô hiệu hoá" in res.json()["detail"]
+    assert res.status_code == 200
+    assert res.json()["email_sent"] is False
 
 
 def test_forgot_password_request_otp_no_email(client, db):
@@ -93,24 +110,22 @@ def test_forgot_password_request_otp_no_email(client, db):
         "/api/auth/forgot-password/request-otp",
         json={"identifier": user.username},
     )
-    assert res.status_code == 400
-    assert "chưa được liên kết email" in res.json()["detail"]
+    assert res.status_code == 200
+    assert res.json()["email_sent"] is False
 
 
-def test_forgot_password_resend_overwrites_old_otp(client, db, test_user):
+def test_forgot_password_resend_is_throttled(client, db, test_user, monkeypatch):
+    monkeypatch.setattr("src.routes.routes_auth.consume_rate_limit", lambda *args, **kwargs: (True, 1))
     with patch("src.user_admin.service.send_email"):
         # First request
         res1 = client.post("/api/auth/forgot-password/request-otp", json={"identifier": test_user.username})
         assert res1.status_code == 200
         cached1 = get_cached_json(f"bachkhoa:auth:otp:{test_user.id}")
 
-        # Second request (Resend)
+        # A second request within the cooldown window must not overwrite the
+        # valid OTP or create an email-spam primitive.
         res2 = client.post("/api/auth/forgot-password/request-otp", json={"identifier": test_user.username})
-        assert res2.status_code == 200
-        cached2 = get_cached_json(f"bachkhoa:auth:otp:{test_user.id}")
-
-        assert cached2 is not None
-        assert cached2["attempts"] == 0
+        assert res2.status_code == 429
 
 
 def test_forgot_password_verify_otp(client, db, test_user):
@@ -130,7 +145,8 @@ def test_forgot_password_verify_otp(client, db, test_user):
     assert "không chính xác" in res_wrong.json()["detail"]
 
     cached = get_cached_json(f"bachkhoa:auth:otp:{test_user.id}")
-    assert cached["attempts"] == 1
+    assert cached["attempts"] == 0
+    assert get_cached_json(f"bachkhoa:auth:otp-attempts:{test_user.id}") is not None
 
     # Correct OTP with whitespace
     res_ok = client.post(

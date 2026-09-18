@@ -29,32 +29,35 @@ def template_identity_db(db_session):
         pytest.skip("requires PostgreSQL expression indexes")
 
     savepoint = db_session.begin_nested()
-    db_session.connection().exec_driver_sql(
-        _migration_body("20260904100000_document_template_identity.sql")
-    )
-    suffix = uuid4().hex[:12]
-    package_id = f"PKG-TPL-{suffix}"
-    task_type_id = f"TYPE-TPL-{suffix}"
-    db_session.execute(
-        text("insert into public.service_packages (id, name) values (:id, :name)"),
-        {"id": package_id, "name": f"Template identity {suffix}"},
-    )
-    db_session.execute(
-        text("""
-            insert into public.task_types (id, name, service_package_id, code)
-            values (:id, :name, :package_id, :code)
-        """),
-        {
-            "id": task_type_id,
-            "name": f"Template identity {suffix}",
-            "package_id": package_id,
-            "code": f"TPL-{suffix}",
-        },
-    )
     try:
+        db_session.connection().exec_driver_sql(
+            _migration_body("20260904100000_document_template_identity.sql")
+        )
+        suffix = uuid4().hex[:12]
+        package_id = f"PKG-TPL-{suffix}"
+        task_type_id = f"TYPE-TPL-{suffix}"
+        db_session.execute(
+            text("insert into public.service_packages (id, name) values (:id, :name)"),
+            {"id": package_id, "name": f"Template identity {suffix}"},
+        )
+        db_session.execute(
+            text("""
+                insert into public.task_types (id, name, service_package_id, code)
+                values (:id, :name, :package_id, :code)
+            """),
+            {
+                "id": task_type_id,
+                "name": f"Template identity {suffix}",
+                "package_id": package_id,
+                "code": f"TPL-{suffix}",
+            },
+        )
         yield db_session, package_id, task_type_id, suffix
     finally:
-        savepoint.rollback()
+        try:
+            savepoint.rollback()
+        except Exception:
+            db_session.rollback()
 
 
 def _insert_template(db, *, name, source, required=False):

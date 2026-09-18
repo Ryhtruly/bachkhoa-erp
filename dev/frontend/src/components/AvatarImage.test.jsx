@@ -1,8 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AvatarImage from './AvatarImage'
+import { clearAccessToken, setAccessToken } from '../lib/api'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  clearAccessToken()
+})
 
 describe('AvatarImage', () => {
   it('uses initials after a valid avatar URL fails to load', () => {
@@ -21,7 +25,7 @@ describe('AvatarImage', () => {
   })
 
   it('loads a persisted avatar object key through the authenticated backend', async () => {
-    window.localStorage.setItem('bachkhoa_access_token', 'avatar-token')
+    setAccessToken('avatar-token')
     const blob = new Blob(['avatar'], { type: 'image/png' })
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => blob })
     vi.stubGlobal('fetch', fetchMock)

@@ -4,7 +4,9 @@ import pytest
 from src.finance.excel_exporter import (
     generate_monthly_dashboard_excel,
     generate_employee_payroll_excel,
-    generate_department_payroll_summary_excel
+    generate_department_payroll_summary_excel,
+    generate_receivables_excel,
+    generate_office_payroll_excel,
 )
 from src.routes.routes_finance_export import _safe_filename
 
@@ -84,6 +86,10 @@ def test_excel_export_large_and_negative_datasets():
     ws = wb["Bao_Cao_Thang"]
     assert ws is not None
 
+    values = [cell.value for row in ws.iter_rows() for cell in row if cell.value is not None]
+    assert "III. PHÂN BỔ THEO PHÒNG BAN" in values
+    assert "Phòng Đo đạc" in values
+
     # Full employee ledger with bonuses, penalties, allowances
     full_ledger = {
         "employee": {
@@ -150,3 +156,42 @@ def test_excel_export_large_and_negative_datasets():
     wb_ledger = openpyxl.load_workbook(stream_ledger)
     ws_ledger = wb_ledger["Phieu_Luong_Ca_Nhan"]
     assert ws_ledger is not None
+
+
+def test_receivables_and_office_payroll_exports_include_report_rows_and_totals():
+    receivables = [
+        {
+            "contract_id": "HD-001",
+            "customer_name": "Khách hàng A",
+            "total_value": 10000000,
+            "paid_amount": 2500000,
+            "remaining_amount": 7500000,
+            "excess_amount": 0,
+            "due_date": "2026-09-30",
+            "status": "overdue",
+        }
+    ]
+    receivables_stream = generate_receivables_excel(receivables, "Tháng 9/2026")
+    receivables_wb = openpyxl.load_workbook(receivables_stream)
+    receivables_ws = receivables_wb["So_Cong_No_Phai_Thu"]
+    values = [cell.value for row in receivables_ws.iter_rows() for cell in row]
+    assert "HD-001" in values
+    assert "TỔNG CỘNG" in values
+
+    office_rows = [
+        {
+            "full_name": "Nguyễn Văn A",
+            "department": "Phòng Kế toán",
+            "job_title": "Kế toán",
+            "base_salary": 12000000,
+            "bonus": 500000,
+            "sales_commission": 0,
+            "total_salary": 12500000,
+        }
+    ]
+    office_stream = generate_office_payroll_excel("Tháng 9/2026", "Đã chốt", office_rows)
+    office_wb = openpyxl.load_workbook(office_stream)
+    office_ws = office_wb["Bang_Luong_Van_Phong"]
+    office_values = [cell.value for row in office_ws.iter_rows() for cell in row]
+    assert "Nguyễn Văn A" in office_values
+    assert any("Đã chốt" in str(value) for value in office_values)

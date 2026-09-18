@@ -102,7 +102,7 @@ def test_avatar_upload_compensates_storage_when_employee_update_fails(monkeypatc
         content_type = "image/png"
         filename = "avatar.png"
 
-        async def read(self):
+        async def read(self, _size=-1):
             return b"image-data"
 
     deleted = []

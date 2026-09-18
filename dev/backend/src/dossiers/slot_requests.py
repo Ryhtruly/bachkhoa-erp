@@ -46,6 +46,13 @@ _DEFAULT_SOURCE_BY_NODE = {
     "K02": "CONG_TY", "K03": "CONG_TY", "K04": "CONG_TY",
     "K05a": "CONG_TY",
     "K05b": "CO_QUAN", "K06": "CO_QUAN",
+    # Capabilities:
+    "STANDARD": "KHACH_HANG",
+    "SURVEY_FIELD": "CONG_TY",
+    "SURVEY_CAD": "CONG_TY",
+    "LEGAL_PREP": "CONG_TY",
+    "GOV_SUBMISSION": "CO_QUAN",
+    "HANDOVER": "CO_QUAN",
 }
 # Mã bước có chữ thường ("K05a") nên phải tra qua chỉ mục viết hoa.
 _DEFAULT_SOURCE_BY_UPPER_NODE = {
@@ -54,16 +61,39 @@ _DEFAULT_SOURCE_BY_UPPER_NODE = {
 
 
 def default_source_for_node(db: Session, task_node_id: str) -> str:
-    """Nguồn nghiệp vụ suy từ bước. Bước lạ thì rơi về công ty soạn."""
-    node_code = db.execute(
-        text("select node_code from public.task_nodes where id = :id"),
+    """Nguồn nghiệp vụ suy từ bước. Tra capability_code hoặc node_code, bước lạ rơi về công ty soạn."""
+    res = db.execute(
+        text("select node_code, capability_code from public.task_nodes where id = :id"),
         {"id": task_node_id},
-    ).scalar()
-    return _DEFAULT_SOURCE_BY_UPPER_NODE.get(str(node_code or "").strip().upper(), "CONG_TY")
+    )
+    if hasattr(res, "mappings"):
+        try:
+            mapping_res = res.mappings()
+            node_row = mapping_res.first() if hasattr(mapping_res, "first") else None
+            if node_row is not None and hasattr(node_row, "get"):
+                cap = node_row.get("capability_code")
+                if isinstance(cap, str) and cap.strip().upper() in _DEFAULT_SOURCE_BY_UPPER_NODE:
+                    return _DEFAULT_SOURCE_BY_UPPER_NODE[cap.strip().upper()]
+                code = node_row.get("node_code")
+                if isinstance(code, str) and code.strip().upper() in _DEFAULT_SOURCE_BY_UPPER_NODE:
+                    return _DEFAULT_SOURCE_BY_UPPER_NODE[code.strip().upper()]
+        except Exception:
+            pass
+
+    if hasattr(res, "scalar"):
+        try:
+            scalar_val = res.scalar()
+            if isinstance(scalar_val, str) and scalar_val.strip().upper() in _DEFAULT_SOURCE_BY_UPPER_NODE:
+                return _DEFAULT_SOURCE_BY_UPPER_NODE[scalar_val.strip().upper()]
+        except Exception:
+            pass
+
+    return "CONG_TY"
 
 
-# Trạng thái đề xuất mà tài liệu bên trong CHƯA phải tài liệu chính thức.
-_TRANG_THAI_CHUA_DUYET = ("draft", "pending", "rejected", "needs_more")
+# Unapproved request statuses where files are not yet official dossier documents.
+_UNAPPROVED_STATUSES = ("draft", "pending", "rejected", "needs_more")
+_TRANG_THAI_CHUA_DUYET = _UNAPPROVED_STATUSES
 
 
 def assert_document_not_reserved(db: Session, document_id: str) -> None:
@@ -84,10 +114,10 @@ def assert_document_not_reserved(db: Session, document_id: str) -> None:
             from public.document_slot_creation_request_documents rd
             join public.document_slot_creation_requests r on r.id = rd.request_id
             where rd.document_id = :document_id
-              and r.status = any(:trang_thai)
+              and r.status = any(:statuses)
             limit 1
         """),
-        {"document_id": document_id, "trang_thai": list(_TRANG_THAI_CHUA_DUYET)},
+        {"document_id": document_id, "statuses": list(_UNAPPROVED_STATUSES)},
     ).mappings().first()
     if row:
         nhan = {
@@ -351,14 +381,14 @@ def submit_request(db: Session, request_id: str, *, actor_id: str) -> dict[str, 
 
     # Đếm cho cả hai loại — con số này đi vào payload trả về. Chỉ RIÊNG việc ép
     # buộc là khác nhau: OUTPUT không tệp thì Giám đốc không có gì để xem.
-    so_tep = int(db.execute(
+    file_count = int(db.execute(
         text("""
             select count(*) from public.document_slot_creation_request_documents
             where request_id = :id
         """),
         {"id": request_id},
     ).scalar() or 0)
-    if (request.get("kind") or "OUTPUT") == "OUTPUT" and not so_tep:
+    if (request.get("kind") or "OUTPUT") == "OUTPUT" and not file_count:
         raise HTTPException(status_code=422, detail="Tải lên ít nhất một tệp rồi hãy gửi duyệt.")
 
     _audit(db, request_id, "DOCUMENT_SLOT_REQUEST_SUBMITTED", actor_id, None)
@@ -375,10 +405,10 @@ def submit_request(db: Session, request_id: str, *, actor_id: str) -> dict[str, 
         """),
         {"id": request_id},
     )
-    return {"id": request_id, "status": "pending", "file_count": int(so_tep)}
+    return {"id": request_id, "status": "pending", "file_count": int(file_count)}
 
 
-_PROMOTION_SCOPES = ("HANG_MUC_NAY", "TASK_TYPE", "PACKAGE", "GLOBAL")
+_PROMOTION_SCOPES = ("HANG_MUC_NAY", "SERVICE_LINE", "TASK_TYPE", "PACKAGE", "GLOBAL")
 
 
 def _compare_template_configuration(
@@ -574,23 +604,41 @@ def promote_template_for_combo(
         needs_original=False,
         reject_conflicting_same_name=False,
     )
-    db.execute(
+    existing_app = db.execute(
         text("""
-            insert into public.document_template_applicabilities
-                (template_id, applicability_type, service_package_id, task_type_id,
-                 node_code, is_default, created_by)
-            values (:template_id, 'COMBO', :service_package_id, :task_type_id,
-                    :node_code, true, :actor_id)
-            on conflict do nothing
+            select 1 from public.document_template_applicabilities
+            where template_id = :template_id
+              and applicability_type = 'COMBO'
+              and service_package_id = :service_package_id
+              and task_type_id = :task_type_id
+              and node_code = :node_code
+            limit 1
         """),
         {
             "template_id": template_id,
             "service_package_id": service_package_id,
             "task_type_id": task_type_id,
             "node_code": normalized_node,
-            "actor_id": actor_id,
         },
-    )
+    ).scalar()
+    if not existing_app:
+        db.execute(
+            text("""
+                insert into public.document_template_applicabilities
+                    (template_id, applicability_type, service_package_id, task_type_id,
+                     node_code, is_default, created_by)
+                values (:template_id, 'COMBO', :service_package_id, :task_type_id,
+                        :node_code, true, :actor_id)
+                on conflict do nothing
+            """),
+            {
+                "template_id": template_id,
+                "service_package_id": service_package_id,
+                "task_type_id": task_type_id,
+                "node_code": normalized_node,
+                "actor_id": actor_id,
+            },
+        )
     return template_id
 
 
@@ -612,7 +660,7 @@ def _promote_template_by_scope(
     ``None`` hoặc ``HANG_MUC_NAY`` — không ghi gì. Ô runtime đã tạo là đủ; loại
     giấy này chỉ tồn tại trong đúng hồ sơ đã phát sinh ra nó.
     """
-    if promotion_scope in (None, "HANG_MUC_NAY"):
+    if promotion_scope in (None, "HANG_MUC_NAY", "SERVICE_LINE"):
         return
     from src.dossiers.register import SOURCE_LABELS
 

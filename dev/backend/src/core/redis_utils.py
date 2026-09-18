@@ -1,6 +1,10 @@
+import fnmatch
 import json
 import logging
 import os
+import threading
+import time
+import urllib.parse
 from contextlib import contextmanager
 from typing import Any, Optional
 
@@ -13,6 +17,20 @@ logger = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 _client: Optional[redis.Redis] = None
+
+
+def _redact_redis_url(url: str) -> str:
+    """Mask password or credentials inside Redis URL before logging."""
+    if not url:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.password:
+            netloc = parsed.netloc.replace(f":{parsed.password}@", ":***@")
+            return urllib.parse.urlunsplit(parsed._replace(netloc=netloc))
+    except Exception:
+        pass
+    return url
 
 
 def get_redis_client() -> Optional[redis.Redis]:
@@ -30,38 +48,80 @@ def get_redis_client() -> Optional[redis.Redis]:
             # Ping nhẹ để kiểm tra liveness
             _client.ping()
         except Exception as exc:
-            logger.warning("Không kết nối được tới Redis (%s): %s", REDIS_URL, exc)
+            redacted_url = _redact_redis_url(REDIS_URL)
+            err_msg = str(exc)
+            try:
+                parsed = urllib.parse.urlsplit(REDIS_URL)
+                if parsed.password:
+                    err_msg = err_msg.replace(parsed.password, "***")
+            except Exception:
+                pass
+            logger.warning("Không kết nối được tới Redis (%s): %s", redacted_url, err_msg)
             _client = None
     return _client
 
+_fallback_store: dict[str, tuple[float, str]] = {}
+_fallback_lock = threading.Lock()
+
+
+def _fallback_get(key: str) -> Optional[Any]:
+    with _fallback_lock:
+        item = _fallback_store.get(key)
+        if not item:
+            return None
+        expires_at, raw = item
+        if time.time() > expires_at:
+            _fallback_store.pop(key, None)
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
+
+def _fallback_set(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
+    try:
+        from fastapi.encoders import jsonable_encoder
+
+        raw = json.dumps(jsonable_encoder(data), ensure_ascii=False)
+        with _fallback_lock:
+            _fallback_store[key] = (time.time() + ttl_seconds, raw)
+        return True
+    except Exception as exc:
+        logger.warning("Fallback cache set error for key '%s': %s", key, exc)
+        return False
+
+
+def _fallback_invalidate(key_or_prefix: str) -> None:
+    with _fallback_lock:
+        if "*" in key_or_prefix:
+            keys_to_delete = [k for k in _fallback_store if fnmatch.fnmatch(k, key_or_prefix)]
+            for k in keys_to_delete:
+                _fallback_store.pop(k, None)
+        else:
+            _fallback_store.pop(key_or_prefix, None)
+
 
 def get_cached_json(key: str) -> Optional[Any]:
-    """Lấy dữ liệu JSON từ cache Redis; tự động bỏ qua nếu lỗi."""
+    """Lấy dữ liệu JSON từ cache Redis (hoặc in-memory fallback nếu Redis offline)."""
     client = get_redis_client()
     if not client:
-        return None
+        return _fallback_get(key)
     try:
         raw = client.get(key)
         if raw:
             return json.loads(raw)
     except Exception as exc:
         logger.warning("Redis cache get error cho key '%s': %s", key, exc)
+        return _fallback_get(key)
     return None
 
 
 def set_cached_json(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
-    """Lưu dữ liệu JSON vào cache Redis với TTL; tự động bỏ qua nếu lỗi.
-
-    Đi qua `jsonable_encoder` chứ không `json.dumps` trần: payload thật có
-    `datetime`, `Decimal`, `UUID` — `json.dumps` ném lỗi, và vì lỗi bị nuốt vào
-    log warning nên cache **im lặng không ghi được dòng nào**, tưởng là có cache
-    mà thực tế mọi request vẫn xuống thẳng DB. Encoder này cũng chính là thứ
-    FastAPI dùng để trả response, nên dữ liệu đọc từ cache khớp từng kiểu với
-    dữ liệu trả thẳng.
-    """
+    """Lưu dữ liệu JSON vào cache Redis với TTL; fallback RAM nếu Redis offline."""
     client = get_redis_client()
     if not client:
-        return False
+        return _fallback_set(key, data, ttl_seconds)
     try:
         from fastapi.encoders import jsonable_encoder
 
@@ -70,11 +130,42 @@ def set_cached_json(key: str, data: Any, ttl_seconds: int = 3600) -> bool:
         return True
     except Exception as exc:
         logger.warning("Redis cache set error cho key '%s': %s", key, exc)
-    return False
+        return _fallback_set(key, data, ttl_seconds)
+
+
+def consume_rate_limit(key: str, *, limit: int, window_seconds: int) -> tuple[bool, int]:
+    """Atomically consume one request from a short-lived Redis rate limit.
+
+    The in-memory fallback is intentionally process-local and is used only when
+    Redis is unavailable for non-financial public endpoints. Financial locks do
+    not use this fallback.
+    """
+    client = get_redis_client()
+    if client:
+        try:
+            count = int(client.incr(key))
+            if count == 1:
+                client.expire(key, window_seconds)
+            return count <= limit, count
+        except RedisError as exc:
+            logger.warning("Redis rate-limit error cho key '%s': %s", key, exc)
+
+    with _fallback_lock:
+        now = time.time()
+        item = _fallback_store.get(key)
+        if item and now <= item[0]:
+            expires_at, raw = item
+            count = int(raw) + 1
+        else:
+            expires_at = now + window_seconds
+            count = 1
+        _fallback_store[key] = (expires_at, str(count))
+    return count <= limit, count
 
 
 def invalidate_cache(key_or_prefix: str) -> None:
-    """Xóa cache theo key hoặc tiền tố."""
+    """Xóa cache theo key hoặc tiền tố trên cả Redis và in-memory fallback."""
+    _fallback_invalidate(key_or_prefix)
     client = get_redis_client()
     if not client:
         return
@@ -114,13 +205,14 @@ def redis_distributed_lock(
     """Khóa phân tán Redis chống race condition / bấm trùng nút.
 
     - Nếu Redis hoạt động: Lấy khóa lock trong timeout_seconds. Nếu đang bị giữ, báo lỗi 429.
-    - Nếu Redis sập: Bỏ qua lỗi lock và cho phép đi tiếp (Graceful degradation).
+    - Nếu Redis sập: Từ chối thao tác để bảo toàn tính nguyên tử của nghiệp vụ.
     """
     client = get_redis_client()
     if not client:
-        # Fallback khi Redis không khả dụng
-        yield True
-        return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Dịch vụ khóa giao dịch tạm thời không khả dụng. Vui lòng thử lại.",
+        )
 
     full_key = f"bachkhoa:lock:{lock_key}"
     lock = client.lock(full_key, timeout=timeout_seconds, blocking_timeout=blocking_timeout)
@@ -132,8 +224,11 @@ def redis_distributed_lock(
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
         yield True
     except RedisError as exc:
-        logger.warning("Redis lock error cho '%s': %s (fallback proceed)", full_key, exc)
-        yield True
+        logger.error("Redis lock error cho '%s': thao tác bị từ chối: %s", full_key, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Không thể xác nhận khóa giao dịch. Vui lòng thử lại.",
+        ) from exc
     finally:
         if acquired:
             try:

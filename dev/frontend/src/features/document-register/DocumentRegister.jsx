@@ -8,7 +8,7 @@ import { apiFetch, getAccessToken } from '../../lib/api'
 import { laLoiChuaKichHoat, loiHienThi } from '../../lib/schemaV2'
 import './documentRegister.css'
 
-const API = import.meta.env.VITE_API_URL || ''
+const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
 
 const STATUS_TONE = {
   CHUA_CO: 'idle',
@@ -46,36 +46,42 @@ const optionLabel = (options, value, fallback = '—') => (
  *
  * Dưới "Đã đủ" mới tới quyết định hành chính, rồi mới tới tình trạng thiếu.
  */
-export const trangThaiGiay = (slot) => {
-  const soTep = slot.file_count || 0
-  const canCo = Math.max(1, Number(slot.quantity || 1))
-  const duTep = soTep >= canCo
+export const documentSlotStatus = (slot) => {
+  const fileCount = slot.file_count || 0
+  const requiredCount = Math.max(1, Number(slot.quantity || 1))
+  const isComplete = fileCount >= requiredCount
 
-  if (duTep) {
+  if (isComplete) {
     return {
       nhan: 'Đã đủ',
+      label: 'Đã đủ',
       tone: 'du',
-      title: `${soTep}/${canCo} tệp`,
+      title: `${fileCount}/${requiredCount} tệp`,
       // Nhãn phụ giữ lịch sử: ô này từng được miễn nhưng cuối cùng vẫn có giấy.
       phu: slot.is_waived ? 'Từng được miễn' : null,
+      subtitle: slot.is_waived ? 'Từng được miễn' : null,
     }
   }
   if (slot.is_waived) {
-    return { nhan: 'Đã được miễn', tone: 'mien', title: slot.waiver?.reason || '', phu: null }
+    return { nhan: 'Đã được miễn', label: 'Đã được miễn', tone: 'mien', title: slot.waiver?.reason || '', phu: null, subtitle: null }
   }
   if (slot.waiver_pending) {
-    return { nhan: 'Đang xin miễn', tone: 'cho', title: 'Chờ Giám đốc duyệt', phu: null }
+    return { nhan: 'Đang xin miễn', label: 'Đang xin miễn', tone: 'cho', title: 'Chờ Giám đốc duyệt', phu: null, subtitle: null }
   }
   if (slot.is_required) {
     return {
       nhan: 'Thiếu',
+      label: 'Thiếu',
       tone: 'thieu',
-      title: soTep ? `Mới có ${soTep}/${canCo} tệp` : 'Bắt buộc nhưng chưa có tệp',
+      title: fileCount ? `Mới có ${fileCount}/${requiredCount} tệp` : 'Bắt buộc nhưng chưa có tệp',
       phu: null,
+      subtitle: null,
     }
   }
-  return { nhan: 'Chưa có', tone: 'idle', title: 'Không bắt buộc', phu: null }
+  return { nhan: 'Chưa có', label: 'Chưa có', tone: 'idle', title: 'Không bắt buộc', phu: null, subtitle: null }
 }
+
+export const trangThaiGiay = documentSlotStatus
 
 
 /**

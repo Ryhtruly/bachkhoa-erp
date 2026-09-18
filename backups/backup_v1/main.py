@@ -1,5 +1,13 @@
 import os
 import sys
+
+if os.getenv("ALLOW_LEGACY_BACKUP_APP") != "1":
+    raise RuntimeError(
+        "backups/backup_v1 là bản lưu trữ mã nguồn cũ và không được phép khởi chạy trực tiếp. "
+        "Vui lòng chạy ứng dụng chính tại dev/backend/src/index.py. "
+        "Để cho phép chạy trong môi trường kiểm toán đặc biệt, đặt biến môi trường ALLOW_LEGACY_BACKUP_APP=1."
+    )
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse

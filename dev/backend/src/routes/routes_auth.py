@@ -1,16 +1,25 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Header, HTTPException, Request, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 from src.db.database import get_db
+from src.config.settings import settings
 from src.db.models import Employee, Role, User, UserRole, RolePermission
 from src.core.auth import (
     RESOURCE_ALIASES,
     check_user_permission,
     create_access_token,
     get_current_user,
+    revoke_access_token,
+    revoke_all_user_tokens,
     seed_default_admin,
     verify_password,
+)
+from src.core.refresh_sessions import (
+    issue_refresh_session,
+    revoke_refresh_session,
+    revoke_user_sessions,
+    rotate_refresh_session,
 )
 from src.user_admin.service import (
     complete_invite,
@@ -21,13 +30,14 @@ from src.user_admin.service import (
     reset_password_with_otp,
     change_user_password,
 )
-from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
 
 router = APIRouter(prefix="/api/auth", tags=["01. Authentication & Security"])
 
 class LoginSchema(BaseModel):
     username: str
     password: str
+    remember_me: bool = False
 
 class LoginResponse(BaseModel):
     token: str
@@ -37,7 +47,7 @@ class CompleteInviteSchema(BaseModel):
     password: str
 
 class ForgotPasswordRequestOtpSchema(BaseModel):
-    identifier: str
+    identifier: str = Field(min_length=1, max_length=320)
 
 class ForgotPasswordVerifyOtpSchema(BaseModel):
     identifier: str
@@ -76,32 +86,19 @@ def _build_user_profile(user: User, db: Session) -> dict:
     sorted_roles = sorted(user_roles, key=lambda r: (0 if r.role_name == "admin" else 1, r.id))
     role_row = sorted_roles[0] if sorted_roles else None
 
-    # Lấy toàn bộ permissions của các roles này trong 1 query duy nhất (nếu không phải superadmin)
-    role_ids = [r.id for r in user_roles]
-    role_perms = (
-        db.query(RolePermission)
-        .filter(RolePermission.role_id.in_(role_ids))
-        .all()
-    ) if role_ids and not is_admin else []
-
     def check_perm(resource: str, action: str) -> bool:
         if is_admin:
             return True
-        col = f"can_{action}"
-        valid_res = RESOURCE_ALIASES.get(resource, [resource])
-        return any(
-            p.resource in valid_res and bool(getattr(p, col, False))
-            for p in role_perms
-        )
+        return check_user_permission(db, user, resource, action)
 
-    is_management_user = check_perm("hr", "read") or is_admin
+    is_management_user = check_perm("hr", "read") or check_perm("finance", "read") or is_admin
     default_workspace = "management" if is_management_user else "employee"
 
     permissions = {
         resource: check_perm(resource, "read")
         for resource in (
             "survey_record", "legal_submission",
-            "finance", "crm", "contract", "hr", "settings", "customer",
+            "finance", "crm", "contract", "hr", "settings", "customer", "wiki",
         )
     }
 
@@ -132,19 +129,141 @@ def _build_user_profile(user: User, db: Session) -> dict:
     set_cached_json(cache_key, profile_data, ttl_seconds=300)
     return profile_data
 
+
+def _request_metadata(request: Request) -> tuple[str | None, str | None]:
+    user_agent = request.headers.get("user-agent")
+    ip_address = request.client.host if request.client else None
+    return user_agent, ip_address
+
+
+def _cookie_samesite() -> str:
+    value = settings.AUTH_COOKIE_SAMESITE
+    return value if value in {"lax", "strict", "none"} else "lax"
+
+
+def _set_refresh_cookie(response: Response, raw_token: str, remember_me: bool) -> None:
+    max_age = (
+        settings.REMEMBER_ME_REFRESH_TOKEN_EXPIRE_DAYS
+        if remember_me
+        else settings.REFRESH_TOKEN_EXPIRE_DAYS
+    ) * 24 * 60 * 60
+    response.set_cookie(
+        key=settings.AUTH_COOKIE_NAME,
+        value=raw_token,
+        max_age=max_age,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=_cookie_samesite(),
+        domain=settings.AUTH_COOKIE_DOMAIN,
+        path="/api/auth",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.AUTH_COOKIE_NAME,
+        domain=settings.AUTH_COOKIE_DOMAIN,
+        path="/api/auth",
+        samesite=_cookie_samesite(),
+    )
+
+
+def _assert_allowed_origin(request: Request) -> None:
+    """Keep cookie-backed refresh/logout endpoints resistant to cross-site POSTs."""
+
+    origin = request.headers.get("origin")
+    allowed_origins = settings.cors_origins
+    if origin and "*" not in allowed_origins and origin not in allowed_origins:
+        raise HTTPException(status_code=403, detail="Origin không được phép.")
+
 @router.post("/login", summary="User Login", description="Authenticate username/password credentials and issue JWT Access Token.")
-def login(body: LoginSchema, db: Session = Depends(get_db)):
+def login(
+    body: LoginSchema,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    rate_key = f"bachkhoa:auth:login:{client_ip}:{body.username.strip().lower()}"
+    allowed, _ = consume_rate_limit(rate_key, limit=10, window_seconds=300)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Quá nhiều lần thử đăng nhập thất bại. Vui lòng thử lại sau 5 phút.",
+        )
+
     user = db.query(User).filter(User.username == body.username).first()
-    if not user or not verify_password(body.password, user.password_hash):
+    if not user or not user.is_active or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu")
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="Tài khoản đã bị vô hiệu hoá")
+
+    invalidate_cache(rate_key)
+    user_agent, ip_address = _request_metadata(request)
+    refresh_token, _ = issue_refresh_session(
+        db,
+        user.id,
+        user_agent=user_agent,
+        ip_address=ip_address,
+        remember_me=body.remember_me,
+    )
+    _set_refresh_cookie(response, refresh_token, body.remember_me)
     token = create_access_token(user.id)
     profile_data = _build_user_profile(user, db)
     return LoginResponse(
         token=token,
         user=profile_data,
     )
+
+
+@router.post(
+    "/refresh",
+    summary="Refresh Access Token",
+    description="Rotate the HttpOnly refresh cookie and issue a short-lived access token.",
+)
+def refresh_access_token(
+    request: Request,
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=settings.AUTH_COOKIE_NAME),
+    db: Session = Depends(get_db),
+):
+    _assert_allowed_origin(request)
+    try:
+        user_agent, ip_address = _request_metadata(request)
+        replacement, session = rotate_refresh_session(
+            db,
+            refresh_token or "",
+            user_agent=user_agent,
+            ip_address=ip_address,
+        )
+    except HTTPException:
+        _clear_refresh_cookie(response)
+        raise
+
+    _set_refresh_cookie(response, replacement, session.remember_me)
+    return {"token": create_access_token(session.user_id)}
+
+
+@router.post(
+    "/logout",
+    summary="Logout",
+    description="Revoke the current refresh-token family and clear the browser cookie.",
+)
+def logout(
+    request: Request,
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=settings.AUTH_COOKIE_NAME),
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    # Do not let an unrelated site revoke a user's browser session by sending a
+    # credentialed POST. Requests without an Origin (CLI/server-to-server) are
+    # still allowed; CORS remains the browser-side allowlist.
+    _assert_allowed_origin(request)
+    revoke_refresh_session(db, refresh_token)
+    _clear_refresh_cookie(response)
+    if authorization and authorization.lower().startswith("bearer "):
+        token_str = authorization.split(" ", 1)[1].strip()
+        revoke_access_token(token_str)
+    return {"ok": True}
 
 @router.get("/me", summary="Get Current User Profile", description="Retrieve profile details for the authenticated user.")
 def get_me(
@@ -166,8 +285,22 @@ def check_invite(token: str, db: Session = Depends(get_db)):
     summary="Complete Invite",
     description="Public endpoint (no auth) — sets the password for a pending invited account and logs them in.",
 )
-def complete_invite_route(token: str, body: CompleteInviteSchema, db: Session = Depends(get_db)):
+def complete_invite_route(
+    token: str,
+    body: CompleteInviteSchema,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     user_info = complete_invite(db, token, body.password)
+    user_agent, ip_address = _request_metadata(request)
+    refresh_token, _ = issue_refresh_session(
+        db,
+        user_info["id"],
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )
+    _set_refresh_cookie(response, refresh_token, False)
     access_token = create_access_token(user_info["id"])
     return LoginResponse(
         token=access_token,
@@ -183,11 +316,44 @@ def complete_invite_route(token: str, body: CompleteInviteSchema, db: Session = 
 def request_otp_route(
     body: ForgotPasswordRequestOtpSchema,
     background_tasks: BackgroundTasks,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    response_data, user, otp = prepare_password_reset_otp(db, body.identifier)
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:auth:forgot-password:{client_ip}",
+        limit=5,
+        window_seconds=300,
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.",
+        )
+
+    try:
+        _, user, otp = prepare_password_reset_otp(db, body.identifier)
+    except HTTPException as exc:
+        # Do not disclose whether the identifier exists, is active, or has an
+        # email address. Only rate-limit and OTP cooldown errors remain visible.
+        if exc.status_code in {
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+        }:
+            return {
+                "success": True,
+                "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
+                "email_sent": False,
+            }
+        raise
+
     background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp)
-    return response_data
+    return {
+        "success": True,
+        "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
+        "email_sent": True,
+    }
 
 
 @router.post(
@@ -195,7 +361,19 @@ def request_otp_route(
     summary="Verify Password Reset OTP",
     description="Public endpoint (no auth) — validates the 6-digit OTP.",
 )
-def verify_otp_route(body: ForgotPasswordVerifyOtpSchema, db: Session = Depends(get_db)):
+def verify_otp_route(
+    body: ForgotPasswordVerifyOtpSchema,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    # IP-level throttling complements the atomic per-user OTP counter in the
+    # service and limits identifier spraying from one client.
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:auth:forgot-password-verify:{client_ip}", limit=30, window_seconds=300
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.")
     return verify_password_reset_otp(db, body.identifier, body.otp)
 
 
@@ -204,9 +382,30 @@ def verify_otp_route(body: ForgotPasswordVerifyOtpSchema, db: Session = Depends(
     summary="Reset Password with OTP",
     description="Public endpoint (no auth) — verifies OTP, updates password, and returns login session token.",
 )
-def reset_password_route(body: ForgotPasswordResetSchema, db: Session = Depends(get_db)):
+def reset_password_route(
+    body: ForgotPasswordResetSchema,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, _ = consume_rate_limit(
+        f"bachkhoa:auth:forgot-password-reset:{client_ip}", limit=10, window_seconds=300
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.")
     user_info = reset_password_with_otp(db, body.identifier, body.otp, body.new_password)
     user = db.query(User).filter(User.id == user_info["id"]).first()
+    revoke_user_sessions(db, user.id)
+    revoke_all_user_tokens(user.id)
+    user_agent, ip_address = _request_metadata(request)
+    refresh_token, _ = issue_refresh_session(
+        db,
+        user.id,
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )
+    _set_refresh_cookie(response, refresh_token, False)
     access_token = create_access_token(user.id)
     profile_data = _build_user_profile(user, db)
     return LoginResponse(
@@ -225,5 +424,8 @@ def change_password_route(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return change_user_password(db, current_user, body.current_password, body.new_password)
+    result = change_user_password(db, current_user, body.current_password, body.new_password)
+    revoke_user_sessions(db, current_user.id)
+    revoke_all_user_tokens(current_user.id)
+    return result
 

@@ -3,13 +3,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MyPayroll from './MyPayroll';
 
-const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }));
+const { apiFetchMock, downloadFileMock } = vi.hoisted(() => ({
+  apiFetchMock: vi.fn(),
+  downloadFileMock: vi.fn(),
+}));
 
-vi.mock('../../lib/api', () => ({ apiFetch: apiFetchMock }));
+vi.mock('../../lib/api', () => ({ apiFetch: apiFetchMock, downloadFile: downloadFileMock }));
 
 afterEach(() => {
   cleanup();
   apiFetchMock.mockReset();
+  downloadFileMock.mockReset();
 });
 
 describe('MyPayroll error state', () => {
@@ -81,7 +85,7 @@ describe('MyPayroll period status and interaction semantics', () => {
 
   it.each([
     ['Locked', 'Đã chốt sổ'],
-    ['Paid', 'Đã chi trả'],
+    ['Paid', 'Đã xác nhận chi trả'],
   ])('shows the persisted %s status for the current period', async (status, label) => {
     const row = payrollRow({ status });
     apiFetchMock.mockResolvedValue({
@@ -148,5 +152,26 @@ describe('MyPayroll period status and interaction semantics', () => {
     expect(historyRow).toHaveAttribute('role', 'button');
     fireEvent.keyDown(historyRow, { key: 'Enter' });
     expect(historyRow).toHaveClass('is-selected');
+  });
+});
+
+describe('MyPayroll print and export', () => {
+  it('prints and exports only the logged-in employee payroll', async () => {
+    apiFetchMock.mockResolvedValue({
+      employee: { id: 'emp-1', full_name: 'Nguyễn Văn A', job_title: 'Kỹ thuật viên' },
+      selected_payroll: { month: '2026-09-01', total_salary: 1000000, base_salary: 800000, piece_amount: 200000, adjustment_amount: 0, status: 'locked' },
+      payroll_history: [],
+    });
+    downloadFileMock.mockResolvedValue('Luong_Cua_Toi.xlsx');
+
+    render(<MyPayroll />);
+    const exportButton = await screen.findByRole('button', { name: /Xuất Excel/i });
+    fireEvent.click(exportButton);
+
+    await waitFor(() => expect(downloadFileMock).toHaveBeenCalledWith(
+      expect.stringContaining('employee_id=emp-1'),
+      expect.stringContaining('.xlsx'),
+    ));
+    expect(screen.getByRole('button', { name: /In phiếu lương/i })).toBeInTheDocument();
   });
 });

@@ -16,7 +16,7 @@ const TAB_PREFETCH_HANDLERS = {
     if (typeof prefetchApi === 'function') {
       prefetchApi('/api/document-register/templates');
       prefetchApi('/api/document-register/workflow-nodes');
-      prefetchApi('/api/document-register/package-tree');
+      prefetchApi('/api/catalog/service-packages');
     }
   },
   crm: () => {
@@ -42,6 +42,7 @@ const TAB_PREFETCH_HANDLERS = {
   },
   wiki: () => {
     import('../pages/HumanResources').catch(() => {});
+    import('../pages/Wiki').catch(() => {});
   },
 };
 
@@ -50,12 +51,16 @@ export default function Sidebar({
   setActiveTab,
   mode = 'management',
   permissions = {},
+  roleName = '',
   isDirector = false,
   collapsed = false,
   overlayOpen = false,
   onToggleCollapsed = () => {},
   onRequestClose = () => {},
 }) {
+  const isAccountant = String(roleName || '').trim().toLowerCase() === 'accountant';
+  const canManageHr = Boolean(permissions.hr) && !isAccountant;
+
   // `permission` = tài nguyên phải có quyền đọc thì tab mới hiện.
   // Đây chỉ là dọn giao diện cho gọn; chặn thật nằm ở từng endpoint phía server.
   const menuItems = [
@@ -74,23 +79,31 @@ export default function Sidebar({
     { id: 'doc-templates', label: 'Quy Trình & Mẫu Giấy', icon: Workflow, directorOnly: true },
     { id: 'cashflow', label: 'Thu Chi Sổ Quỹ', icon: Wallet, permission: 'finance' },
     { id: 'kpi', label: 'KPI Nhân Sự', icon: BarChart2, permission: 'hr', directorOnly: true },
-    { id: 'wiki', label: 'Nhân Sự & Đào Tạo', icon: BookOpen, permission: 'hr' },
+    {
+      id: 'wiki',
+      label: canManageHr ? 'Nhân Sự & Đào Tạo' : 'Đào Tạo & ISO',
+      icon: BookOpen,
+      anyPermissions: ['hr', 'wiki'],
+    },
   ];
 
   // Nhân viên chỉ thấy đúng phần việc của mình: lịch trình, hồ sơ của PHÒNG mình
-  // (lọc theo quyền, nên đo vẽ không thấy pháp lý và ngược lại), và lương cá nhân.
+  // (lọc theo quyền, nên đo vẽ không thấy pháp lý và ngược lại), tài liệu đào tạo/ISO và lương cá nhân.
   const employeeMenuItems = [
     { id: 'employee-dashboard', label: 'Lịch trình', icon: LayoutDashboard },
     { id: 'tasks', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban, permission: 'survey_record' },
     { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck, permission: 'legal_submission' },
+    { id: 'wiki', label: 'Đào Tạo & ISO', icon: BookOpen, permission: 'wiki' },
     { id: 'payroll', label: 'Lương', icon: Wallet },
   ];
 
   const visibleMenuItems = (mode === 'employee' ? employeeMenuItems : menuItems)
-    .filter(item => (
-      (!item.permission || permissions[item.permission])
-      && (!item.directorOnly || isDirector)
-    ));
+    .filter(item => {
+      const hasPerm = item.anyPermissions
+        ? item.anyPermissions.some(p => Boolean(permissions[p]))
+        : (!item.permission || Boolean(permissions[item.permission]));
+      return hasPerm && (!item.directorOnly || isDirector);
+    });
 
   const handleSelect = (tabId) => {
     setActiveTab(tabId);

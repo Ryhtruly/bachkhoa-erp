@@ -8,6 +8,24 @@ from typing import List, Dict, Any
 import httpx
 
 router = APIRouter(prefix="/api/settings", tags=["11. System & Webhooks"])
+MASKED_SECRET = "********"
+SENSITIVE_SETTING_KEYS = {
+    "zalo_oa_token",
+    "telegram_bot_token",
+    "gemini_api_key",
+    "vietqr_api_key",
+    "hanet_client_secret",
+    "stringee_api_key_secret",
+    "google_sheets_service_account",
+}
+
+
+def _is_sensitive_key(key: str) -> bool:
+    normalized = key.casefold()
+    return key in SENSITIVE_SETTING_KEYS or any(
+        marker in normalized
+        for marker in ("token", "api_key", "secret", "private_key", "password")
+    )
 
 class SettingItem(BaseModel):
     key: str
@@ -27,7 +45,7 @@ def get_all_settings(
         settings = db.query(SystemSetting).all()
         result = {}
         for s in settings:
-            result[s.key] = s.value
+            result[s.key] = MASKED_SECRET if _is_sensitive_key(s.key) and s.value else s.value
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -42,7 +60,14 @@ def update_settings(
         for item in payload:
             setting = db.query(SystemSetting).filter(SystemSetting.key == item.key).first()
             if setting:
-                setting.value = item.value
+                # The frontend receives a mask, never the secret itself. Keep
+                # the stored value when the user saves without replacing it.
+                if not (
+                    _is_sensitive_key(item.key)
+                    and item.value.strip() in {"", MASKED_SECRET}
+                    and setting.value
+                ):
+                    setting.value = item.value
                 if item.description:
                     setting.description = item.description
             else:
@@ -59,7 +84,6 @@ def update_settings(
             object_type="SystemSetting",
             payload_json={"updated_keys": [item.key for item in payload]}
         ))
-        
         db.commit()
         return {"status": "success", "message": "Đã cập nhật cài đặt."}
     except Exception as e:
@@ -69,25 +93,32 @@ def update_settings(
 @router.post("/test")
 async def test_connection(
     payload: TestRequest,
+    db: Session = Depends(get_db),
     user: User = Depends(require_permission("settings", "update"))
 ):
-
     """Test real API connection for a given service."""
     service = payload.service
-    s = payload.settings
-    
+    stored = {row.key: row.value for row in db.query(SystemSetting).all()}
+    s = dict(stored)
+    for key, value in (payload.settings or {}).items():
+        if not (_is_sensitive_key(key) and str(value or "").strip() in {"", MASKED_SECRET}):
+            s[key] = value
+
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            
             if service == "telegram":
                 token = s.get("telegram_bot_token", "")
                 if not token:
                     return {"ok": False, "message": "Chưa nhập Telegram Bot Token"}
-                r = await client.get(f"https://api.telegram.org/bot{token}/getMe")
-                data = r.json()
-                if data.get("ok"):
-                    return {"ok": True, "message": f"Bot: @{data['result']['username']}"}
-                return {"ok": False, "message": data.get("description", "Token không hợp lệ")}
+                try:
+                    r = await client.get(f"https://api.telegram.org/bot{token}/getMe")
+                    data = r.json()
+                    if data.get("ok"):
+                        return {"ok": True, "message": f"Bot: @{data['result']['username']}"}
+                    return {"ok": False, "message": data.get("description", "Token không hợp lệ")}
+                except Exception as ex:
+                    err_msg = str(ex).replace(token, "[REDACTED]")
+                    return {"ok": False, "message": f"Lỗi kết nối Telegram: {err_msg}"}
 
             elif service == "zalo":
                 token = s.get("zalo_oa_token", "")
@@ -107,7 +138,8 @@ async def test_connection(
                 if not key:
                     return {"ok": False, "message": "Chưa nhập Gemini API Key"}
                 r = await client.get(
-                    f"https://generativelanguage.googleapis.com/v1/models?key={key}"
+                    "https://generativelanguage.googleapis.com/v1/models",
+                    headers={"x-goog-api-key": key}
                 )
                 if r.status_code == 200:
                     return {"ok": True, "message": "Gemini API Key hợp lệ"}
@@ -168,5 +200,8 @@ async def test_connection(
     except httpx.TimeoutException:
         return {"ok": False, "message": "Timeout — kiểm tra kết nối mạng"}
     except Exception as e:
-        return {"ok": False, "message": str(e)}
-
+        msg = str(e)
+        for val in s.values():
+            if val and isinstance(val, str) and len(val) > 5:
+                msg = msg.replace(val, "[REDACTED]")
+        return {"ok": False, "message": msg}

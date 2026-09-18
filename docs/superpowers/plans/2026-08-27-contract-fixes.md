@@ -84,8 +84,8 @@
 - Modify: `dev/backend/src/dossiers/documents.py`
 - Modify: `dev/backend/src/dossiers/register.py`
 - Modify: `dev/backend/src/dossiers/slot_requests.py`
-- Modify: `dev/backend/tests/test_tai_lieu_dau_ra_unittest.py`
-- Modify: `dev/backend/tests/test_de_xuat_loai_tai_lieu_unittest.py`
+- Modify: `dev/backend/tests/test_output_documents_unittest.py`
+- Modify: `dev/backend/tests/test_document_type_proposal_unittest.py`
 
 - [ ] Gỡ tài liệu bằng `DA_GO` and active-link updates, preserving the dossier row and object.
 - [ ] Do not delete an object when a DB write fails after upload; preserve the immutable object for audit/reconciliation.

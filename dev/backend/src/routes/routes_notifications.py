@@ -10,6 +10,7 @@ from src.db.models import Employee, User
 from src.services.timeline_realtime import notification_event_stream
 from src.core.redis_utils import get_cached_json, invalidate_cache, set_cached_json
 from src.contracts.workflow_runtime import flush_stale_review_batches
+from src.finance.enums import PENDING_STATUS_DB_VALUES, INCOME_TYPE_DB_VALUES
 
 router = APIRouter(prefix="/api/notifications", tags=["Notifications"])
 
@@ -18,6 +19,8 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
     "Connection": "keep-alive",
 }
+
+_PENDING_CASHFLOW_SQL = "','".join(PENDING_STATUS_DB_VALUES)
 
 # Số phiếu xin bỏ giấy đang chờ của chính Hạng mục đó. Không đưa con số này lên
 # chuông thì Giám đốc mở lượt nghiệm thu ra mà không biết mình sắp cho qua một
@@ -29,12 +32,13 @@ _DEM_PHIEU_MIEN = """
                and r.service_line_id = sl.id) as so_phieu_mien"""
 
 _MANAGER_NODE_REVIEW_TMPL = """
-    select a.id as ref_id, n.id as task_node_id, n.node_key, wn.name as node_name,
+    select a.id as ref_id, n.id as task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
            c.id as contract_id, sl.id as service_line_id, a.submitted_at as created_at,
 __DEM_PHIEU_MIEN__
     from public.task_node_acceptances a
     join public.task_nodes n on n.id = a.task_node_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.contracts c on c.id = sl.contract_id
@@ -57,18 +61,44 @@ def _build_acceptance_query(db):
     return text(_MANAGER_NODE_REVIEW_TMPL.replace("__DEM_PHIEU_MIEN__", waiver_count_sql))
 
 
+_MANAGER_DOC_TYPE_REVIEW_QUERY = text(
+    """
+    select t.id as document_type_id, t.name as document_type_name,
+           cr.id as checklist_result_id, cr.checklist_name,
+           n.id as task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
+           c.id as contract_id, sl.id as service_line_id,
+           coalesce(t.updated_at, t.created_at) as created_at
+    from public.checklist_result_document_types t
+    join public.task_node_checklist_results cr on cr.id = t.checklist_result_id
+    join public.task_nodes n on n.id = cr.task_node_id
+    left join public.workflow_nodes wn on wn.code = n.node_code
+    join public.workflow_instances wi on wi.id = n.workflow_instance_id
+    join public.service_lines sl on sl.id = wi.service_line_id
+    join public.contracts c on c.id = sl.contract_id
+    where t.status = 'pending_review' and t.is_active = true
+    order by coalesce(t.updated_at, t.created_at) asc
+    limit 50
+    """
+)
+
 _MANAGER_CHECKLIST_REVIEW_QUERY = text(
     """
-    select r.id as ref_id, n.id as task_node_id, n.node_key, wn.name as node_name,
+    select r.id as ref_id, n.id as task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
            r.checklist_name, c.id as contract_id, sl.id as service_line_id,
            r.submitted_at as created_at
     from public.task_node_checklist_results r
     join public.task_nodes n on n.id = r.task_node_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.contracts c on c.id = sl.contract_id
     where r.status in ('pending_approval', 'late_pending_approval')
+      and not exists (
+          select 1 from public.checklist_result_document_types t
+          where t.checklist_result_id = r.id and t.is_active = true
+      )
     order by r.submitted_at asc
     limit 50
     """
@@ -93,7 +123,7 @@ _MANAGER_DEBT_REVIEW_QUERY = text(
 # thì kế toán bấm gửi xong là tiền rơi vào im lặng: giám đốc không biết có gì để
 # duyệt, kế toán không biết phiếu của mình đã đi tới đâu.
 _MANAGER_CASHFLOW_APPROVAL_QUERY = text(
-    """
+    f"""
     select t.id as voucher_id, t.transaction_type, t.amount,
            t.payer_payee_name, t.contract_id,
            coalesce(t.created_at, t.transaction_date::timestamptz) as created_at,
@@ -109,28 +139,34 @@ _MANAGER_CASHFLOW_APPROVAL_QUERY = text(
         left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
         where sl.contract_id = t.contract_id
           and n.status <> 'cancelled'
-          and coalesce((
+          and (
+              coalesce((
                 coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'is_handover'
               )::boolean, false)
+              or upper(coalesce(n.capability_code, '')) = 'HANDOVER'
+              or upper(coalesce((coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'capability'), '')) = 'HANDOVER'
+              or upper(coalesce(n.node_code, '')) = 'K06'
+          )
         order by n.created_at desc
         limit 1
     ) bg on true
-    where t.status in ('Chờ duyệt', 'PENDING', 'pending')
+    where t.status in ('{_PENDING_CASHFLOW_SQL}')
     order by coalesce(t.created_at, t.transaction_date::timestamptz) asc
     limit 50
     """
 )
 
 
-_EMPLOYEE_NODE_START_QUERY = text(
+_EMPLOYEE_NODE_TODO_QUERY = text(
     """
-    select distinct n.id as task_node_id, n.node_key, wn.name as node_name,
+    select distinct n.id as task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
            c.id as contract_id, sl.id as service_line_id, n.status, n.updated_at as created_at
     from public.task_nodes n
     join public.task_node_assignments a
       on a.task_node_id = n.id and a.employee_id = :employee_id
      and a.assignment_status not in ('replaced', 'declined')
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.contracts c on c.id = sl.contract_id
@@ -140,9 +176,13 @@ _EMPLOYEE_NODE_START_QUERY = text(
     """
 )
 
+_EMPLOYEE_NODE_START_QUERY = _EMPLOYEE_NODE_TODO_QUERY
+
+
 _EMPLOYEE_CHECKLIST_RESUBMIT_QUERY = text(
     """
-    select distinct r.id as ref_id, n.id as task_node_id, n.node_key, wn.name as node_name,
+    select distinct r.id as ref_id, n.id as task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
            r.checklist_name, c.id as contract_id, sl.id as service_line_id,
            r.updated_at as created_at
     from public.task_node_checklist_results r
@@ -150,7 +190,7 @@ _EMPLOYEE_CHECKLIST_RESUBMIT_QUERY = text(
     join public.task_node_assignments a
       on a.task_node_id = n.id and a.employee_id = :employee_id
      and a.assignment_status not in ('replaced', 'declined')
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.contracts c on c.id = sl.contract_id
@@ -164,12 +204,13 @@ _EMPLOYEE_CHECKLIST_RESUBMIT_QUERY = text(
 _EMPLOYEE_LEGAL_DOSSIER_QUERY = text(
     """
     select d.id as dossier_id, d.status, d.sub_status, d.dossier_name,
-           d.task_node_id, n.node_key, wn.name as node_name,
+           d.task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
            d.contract_id, d.service_line_id,
            coalesce(d.updated_at, d.created_at) as created_at
     from public.legal_dossiers d
     join public.task_nodes n on n.id = d.task_node_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     where d.assigned_employee_id = :employee_id
       and d.status in ('ASSIGNED', 'PENDING')
     order by created_at asc
@@ -182,33 +223,53 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
-def _manager_review_notifications(*, checklist_rows, debt_rows) -> list[dict]:
+def _manager_review_notifications(*, doc_type_rows=None, checklist_rows=None, debt_rows=None) -> list[dict]:
     """Map hàng đợi duyệt sang đích điều hướng bất biến trên chuông."""
-    items = [{
-        "type": "checklist_review",
-        "target_type": "checklist_review",
-        "target_id": row["ref_id"],
-        "label": f"Checklist '{row['checklist_name']}' ({row['node_key'].upper()}) chờ duyệt minh chứng",
-        "contract_id": row["contract_id"],
-        "service_line_id": row["service_line_id"],
-        "node_key": row["node_key"],
-        "task_node_id": row["task_node_id"],
-        "created_at": _iso(row["created_at"]),
-    } for row in checklist_rows]
-    items.extend({
-        "type": "debt_review",
-        "target_type": "debt_review",
-        "target_id": row["request_id"],
-        "label": (
-            f"Hợp đồng {row['contract_id']} còn nợ "
-            f"{float(row['remaining_amount_snapshot'] or 0):,.0f}₫ — chờ duyệt cho nợ"
-        ),
-        "contract_id": row["contract_id"],
-        "service_line_id": row["service_line_id"],
-        "node_key": row["node_key"],
-        "task_node_id": row["task_node_id"],
-        "created_at": _iso(row["created_at"]),
-    } for row in debt_rows)
+    items = []
+    if doc_type_rows:
+        items.extend({
+            "type": "document_type_review",
+            "target_type": "document_type_review",
+            "target_id": row["document_type_id"],
+            "label": f"Loại giấy '{row['document_type_name']}' ({row['node_key'].upper()}) chờ duyệt thẩm định",
+            "contract_id": row["contract_id"],
+            "service_line_id": row["service_line_id"],
+            "node_key": row["node_key"],
+            "task_node_id": row["task_node_id"],
+            "checklist_result_id": row["checklist_result_id"],
+            "document_type_id": row["document_type_id"],
+            "created_at": _iso(row["created_at"]),
+        } for row in doc_type_rows)
+
+    if checklist_rows:
+        items.extend({
+            "type": "checklist_review",
+            "target_type": "checklist_review",
+            "target_id": row["ref_id"],
+            "label": f"Checklist '{row['checklist_name']}' ({row['node_key'].upper()}) chờ duyệt minh chứng",
+            "contract_id": row["contract_id"],
+            "service_line_id": row["service_line_id"],
+            "node_key": row["node_key"],
+            "task_node_id": row["task_node_id"],
+            "checklist_result_id": row["ref_id"],
+            "created_at": _iso(row["created_at"]),
+        } for row in checklist_rows)
+
+    if debt_rows:
+        items.extend({
+            "type": "debt_review",
+            "target_type": "debt_review",
+            "target_id": row["request_id"],
+            "label": (
+                f"Hợp đồng {row['contract_id']} còn nợ "
+                f"{float(row['remaining_amount_snapshot'] or 0):,.0f}₫ — chờ duyệt cho nợ"
+            ),
+            "contract_id": row["contract_id"],
+            "service_line_id": row["service_line_id"],
+            "node_key": row["node_key"],
+            "task_node_id": row["task_node_id"],
+            "created_at": _iso(row["created_at"]),
+        } for row in debt_rows)
     return items
 
 
@@ -232,11 +293,12 @@ _EMPLOYEE_FEED_TYPES = (
 
 _EMPLOYEE_FEED_QUERY = text("""
     select ev.id as event_id, ev.event_type, ev.payload, ev.created_at,
-           n.id as task_node_id, n.node_key, wn.name as node_name,
+           n.id as task_node_id, n.node_key,
+           coalesce(nullif(n.name, ''), wn.name, n.node_code) as node_name,
            c.id as contract_id, sl.id as service_line_id
     from public.task_node_events ev
     join public.task_nodes n on n.id = ev.task_node_id
-    join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
     join public.contracts c on c.id = sl.contract_id
@@ -372,6 +434,7 @@ def get_notifications_summary(
                 "created_at": _iso(row["created_at"]),
             })
         items.extend(_manager_review_notifications(
+            doc_type_rows=db.execute(_MANAGER_DOC_TYPE_REVIEW_QUERY).mappings().all(),
             checklist_rows=db.execute(_MANAGER_CHECKLIST_REVIEW_QUERY).mappings().all(),
             debt_rows=db.execute(_MANAGER_DEBT_REVIEW_QUERY).mappings().all(),
         ))
@@ -380,7 +443,7 @@ def get_notifications_summary(
     # ở chuông của người duyệt, không để nằm chờ vô hạn trong sổ quỹ.
     if check_user_permission(db, user, "finance", "approve"):
         for row in db.execute(_MANAGER_CASHFLOW_APPROVAL_QUERY).mappings().all():
-            is_receipt = row["transaction_type"] in ("Thu", "INCOME")
+            is_receipt = row["transaction_type"] in INCOME_TYPE_DB_VALUES
             voucher_label = "Phiếu thu" if is_receipt else "Phiếu chi"
             partner_name = row["payer_payee_name"] or "khách"
             items.append({
@@ -403,7 +466,7 @@ def get_notifications_summary(
         .first()
     )
     if employee:
-        for row in db.execute(_EMPLOYEE_NODE_START_QUERY, {"employee_id": employee.id}).mappings().all():
+        for row in db.execute(_EMPLOYEE_NODE_TODO_QUERY, {"employee_id": employee.id}).mappings().all():
             action = "cần bắt đầu" if row["status"] == "ready" else "bị yêu cầu làm lại"
             items.append({
                 "type": "node_start",

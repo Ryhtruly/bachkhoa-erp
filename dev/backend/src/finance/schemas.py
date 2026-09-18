@@ -2,15 +2,24 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 from datetime import date
 from src.finance.enums import (
-    normalize_transaction_type, normalize_payment_method, normalize_scope, normalize_status
+    TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
+    normalize_transaction_type, normalize_payment_method, normalize_scope, normalize_status,
 )
+
+
+def _require_canonical(value, normalizer, allowed: set[str], field_name: str) -> str:
+    normalized = normalizer(value)
+    if normalized not in allowed:
+        raise ValueError(f"{field_name} phải dùng giá trị enum tiếng Anh canonical")
+    return normalized
 
 class CashflowIn(BaseModel):
     type: str = "INCOME"                # "INCOME" | "EXPENSE" | "ADVANCE" | "REIMBURSEMENT"
     amount: float = Field(gt=0)
-    category: str                       # Category code / label
+    category: str = Field(min_length=1, max_length=255)  # Category code / UI label
     payer_payee: str
     payment_method: str = "CASH"        # "CASH" | "BANK_TRANSFER"
+    customer_id: Optional[str] = None
     contract_id: Optional[str] = None
     project_id: Optional[str] = None
     department_code: Optional[str] = None
@@ -24,26 +33,46 @@ class CashflowIn(BaseModel):
     @field_validator("type", mode="before")
     @classmethod
     def normalize_type(cls, v):
-        return normalize_transaction_type(v)
+        return _require_canonical(
+            v,
+            normalize_transaction_type,
+            {item.value for item in TransactionType},
+            "Loại giao dịch",
+        )
 
     @field_validator("payment_method", mode="before")
     @classmethod
     def normalize_pm(cls, v):
-        return normalize_payment_method(v)
+        return _require_canonical(
+            v,
+            normalize_payment_method,
+            {item.value for item in PaymentMethod},
+            "Phương thức thanh toán",
+        )
 
     @field_validator("scope", mode="before")
     @classmethod
     def normalize_sc(cls, v):
-        return normalize_scope(v)
+        return _require_canonical(
+            v,
+            normalize_scope,
+            {item.value for item in TransactionScope},
+            "Phạm vi giao dịch",
+        )
 
     @field_validator("status", mode="before")
     @classmethod
     def normalize_st(cls, v):
-        return normalize_status(v) if v else None
+        return _require_canonical(
+            v,
+            normalize_status,
+            {item.value for item in TransactionStatus},
+            "Trạng thái giao dịch",
+        ) if v else None
 
 
 class CashflowUpdateIn(BaseModel):
-    category: str
+    category: str = Field(min_length=1, max_length=255)
     payer_payee: str
     payment_method: str = "CASH"
     amount: float = Field(gt=0)
@@ -51,17 +80,19 @@ class CashflowUpdateIn(BaseModel):
     description: Optional[str] = ""
     notes: Optional[str] = ""
     contract_id: Optional[str] = None
+    project_id: Optional[str] = None
+    customer_id: Optional[str] = None
     scope: Optional[str] = "COMPANY"
 
     @field_validator("payment_method", mode="before")
     @classmethod
     def normalize_pm(cls, v):
-        return normalize_payment_method(v)
+        return _require_canonical(v, normalize_payment_method, {item.value for item in PaymentMethod}, "Phương thức thanh toán")
 
     @field_validator("scope", mode="before")
     @classmethod
     def normalize_sc(cls, v):
-        return normalize_scope(v)
+        return _require_canonical(v, normalize_scope, {item.value for item in TransactionScope}, "Phạm vi giao dịch")
 
 
 class CashflowVoidIn(BaseModel):
@@ -84,7 +115,7 @@ class AdvanceCreateIn(BaseModel):
     @field_validator("payment_method", mode="before")
     @classmethod
     def normalize_pm(cls, v):
-        return normalize_payment_method(v)
+        return _require_canonical(v, normalize_payment_method, {item.value for item in PaymentMethod}, "Phương thức thanh toán")
 
 
 class AdvanceRequestIn(BaseModel):
@@ -105,7 +136,7 @@ class AdvanceRequestIn(BaseModel):
     @field_validator("payment_method", mode="before")
     @classmethod
     def normalize_pm(cls, v):
-        return normalize_payment_method(v)
+        return _require_canonical(v, normalize_payment_method, {item.value for item in PaymentMethod}, "Phương thức thanh toán")
 
 
 class AdvanceClearIn(BaseModel):
@@ -124,7 +155,7 @@ class FundCloseIn(BaseModel):
     @field_validator("payment_method", mode="before")
     @classmethod
     def normalize_pm(cls, v):
-        return normalize_payment_method(v)
+        return _require_canonical(v, normalize_payment_method, {item.value for item in PaymentMethod}, "Phương thức thanh toán")
 
 
 class WageCreateIn(BaseModel):
@@ -137,7 +168,7 @@ class WageCreateIn(BaseModel):
     @field_validator("payment_method", mode="before")
     @classmethod
     def normalize_pm(cls, v):
-        return normalize_payment_method(v)
+        return _require_canonical(v, normalize_payment_method, {item.value for item in PaymentMethod}, "Phương thức thanh toán")
 
 class EmployeeUpsertIn(BaseModel):
     full_name: str

@@ -19,7 +19,7 @@ import uuid
 
 from sqlalchemy import text
 
-from tests.fixtures_so_giay_to import build_test_context, create_test_user, get_missing_documents
+from tests.fixtures_document_register import build_test_context, create_test_user, get_missing_documents
 
 
 def _id(prefix):

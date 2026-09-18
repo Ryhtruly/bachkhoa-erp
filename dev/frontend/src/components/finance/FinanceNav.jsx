@@ -52,10 +52,13 @@ export default function FinanceNav({ activeTab, onSelectTab, isDirector }) {
   const visibleGroups = useMemo(() => {
     return FINANCE_GROUPS.map(group => {
       let filteredTabs = group.tabs;
-      if (isDirector) {
-        filteredTabs = filteredTabs.filter(tab => tab.id !== 'cashflow-print');
-      } else {
-        filteredTabs = filteredTabs.filter(tab => !tab.directorOnly);
+      if (!isDirector) {
+        filteredTabs = filteredTabs.filter(tab => (
+          !tab.directorOnly
+          && tab.id !== 'debt-collection'
+          && tab.id !== 'receivables'
+          && tab.id !== 'monthly-dashboard'
+        ));
       }
       return { ...group, tabs: filteredTabs };
     });

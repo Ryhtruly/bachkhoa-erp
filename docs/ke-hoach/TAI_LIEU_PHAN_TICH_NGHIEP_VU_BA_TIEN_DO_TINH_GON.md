@@ -2,7 +2,7 @@
 ## DỰ ÁN: BACH KHOA ERP — PHÂN HỆ QUẢN LÝ TIẾN ĐỘ HỢP ĐỒNG & THEO DÕI THỜI GIAN THỰC (GIAI ĐOẠN 1 TINH GỌN)
 
 **Người lập:** Senior Business Analyst (BA)  
-**Khách hàng:** Công ty TNHH Đo đạc Xây dựng & Bất động sản Bách Khoa  
+**Khách hàng:** Công Ty TNHH Kiến Trúc Xây Dựng và Đo Đạc Bản Đồ Bách Khoa  
 **Phiên bản:** v1.0 — Phân hệ Tinh Gọn (Lean Operations Phase)  
 **Ngày lập:** 21/08/2026  
 

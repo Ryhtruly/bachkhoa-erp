@@ -64,6 +64,15 @@ describe('Select', () => {
     expect(screen.getByRole('listbox').parentElement).toBe(document.body);
   });
 
+  it('keeps the full option label available when the visible text is truncated', () => {
+    const longLabel = 'HD-AUTO-AF821C — Khách hàng Cam Trang (Dịch vụ: Đo hiện trạng | Quy mô: 120 m2)';
+    render(<Select value="long" options={[{ value: 'long', label: longLabel }]} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: longLabel }));
+
+    expect(screen.getByRole('option', { name: longLabel })).toHaveAttribute('title', longLabel);
+  });
+
   it('does not open while disabled', () => {
     render(<Select value="desc" options={options} onChange={vi.fn()} disabled />);
 

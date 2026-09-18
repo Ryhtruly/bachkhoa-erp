@@ -100,7 +100,41 @@ function RuntimeNodeOutputList({
   const [types, setTypes] = useState(() => checklistItem?.document_types || [])
 
   useEffect(() => {
-    setTypes(checklistItem?.document_types || [])
+    setTypes(current => {
+      const serverTypes = checklistItem?.document_types || []
+      const localOnlyTypes = (current || []).filter(t => {
+        if (serverTypes.some(st => st.id === t.id)) return false
+        if (t.template_id && serverTypes.some(st => st.template_id === t.template_id)) return false
+        if (t.name && serverTypes.some(st =>
+          st.name?.trim().toLowerCase() === t.name?.trim().toLowerCase() && st.source === t.source
+        )) return false
+        return true
+      })
+
+      const mergedServerTypes = serverTypes.map(st => {
+        const local = (current || []).find(t =>
+          t.id === st.id
+          || (t.template_id && t.template_id === st.template_id)
+          || (t.name && st.name && t.name.trim().toLowerCase() === st.name.trim().toLowerCase() && t.source === st.source)
+        )
+        if (!local) return st
+        return {
+          ...st,
+          ...local,
+          id: st.id,
+          files: (local.files && local.files.length > 0) ? local.files : (st.files || []),
+          file_count: Math.max(
+            local.file_count ?? 0,
+            st.file_count ?? 0,
+            (local.files || []).length,
+            (st.files || []).length,
+          ),
+          is_optimistic: false,
+        }
+      })
+
+      return [...mergedServerTypes, ...localOnlyTypes]
+    })
   }, [checklistItem?.document_types])
 
   const isPaperless = types.length === 0
@@ -277,6 +311,23 @@ function RuntimeNodeOutputList({
                       return [...current, { ...created, files: created.files || [], file_count: created.file_count || 0, status: created.status || 'draft' }]
                     })
                   }
+                }}
+                onReconcile={(tempId, real) => {
+                  setTypes(current => current.map(t => {
+                    if (t.id !== tempId) return t
+                    return {
+                      ...t,
+                      ...real,
+                      files: real.files && real.files.length ? real.files : t.files,
+                      file_count: real.file_count ?? t.files.length,
+                      is_optimistic: false,
+                    }
+                  }))
+                  onChanged?.()
+                }}
+                onError={(tempId, msg) => {
+                  setTypes(current => current.filter(t => t.id !== tempId))
+                  addToast?.(msg || 'Lỗi lưu loại giấy.', 'error')
                   onChanged?.()
                 }}
               />

@@ -1,13 +1,14 @@
 import React from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const { apiFetchMock, addToastMock } = vi.hoisted(() => ({
+const { apiFetchMock, downloadFileMock, addToastMock } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
+  downloadFileMock: vi.fn(),
   addToastMock: vi.fn(),
 }))
 
-vi.mock('../../../lib/api', () => ({ apiFetch: apiFetchMock }))
+vi.mock('../../../lib/api', () => ({ apiFetch: apiFetchMock, downloadFile: downloadFileMock }))
 vi.mock('../../../contexts/ToastContext', () => ({
   useToast: () => ({ addToast: addToastMock }),
 }))
@@ -17,6 +18,7 @@ import PayrollOfficeScreen from './PayrollOfficeScreen'
 afterEach(() => {
   cleanup()
   apiFetchMock.mockReset()
+  downloadFileMock.mockReset()
   addToastMock.mockReset()
 })
 
@@ -49,5 +51,28 @@ describe('PayrollOfficeScreen sensitive actions', () => {
     render(<PayrollOfficeScreen />)
 
     expect(await screen.findByText(/Vuốt ngang để xem đầy đủ các khoản lương/i)).toBeInTheDocument()
+  })
+
+  it('offers an Excel export for the current office payroll period', async () => {
+    const month = new Date().toISOString().slice(0, 7)
+    apiFetchMock.mockImplementation((path) => {
+      if (path.includes('/payroll?')) return Promise.resolve([{ id: 'payroll-1', full_name: 'Nhân sự 1', total_salary: 1000000 }])
+      if (path.includes('/payroll/periods')) return Promise.resolve([{ id: 'period-1', period_month: `${month}-01`, status: 'locked' }])
+      return Promise.resolve([])
+    })
+    downloadFileMock.mockResolvedValue('Bang_Luong_Van_Phong.xlsx')
+
+    render(<PayrollOfficeScreen />)
+
+    const exportButton = await screen.findByRole('button', { name: /Xuất Excel/i })
+    await waitFor(() => expect(exportButton).not.toBeDisabled())
+    fireEvent.click(exportButton)
+
+    await waitFor(() => {
+      expect(downloadFileMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/finance/export/office-payroll-excel?month='),
+        expect.stringContaining('.xlsx'),
+      )
+    })
   })
 })

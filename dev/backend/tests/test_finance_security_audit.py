@@ -28,51 +28,43 @@ def test_finance_security_audit(db):
     assert is_director(db, admin.id) is True, "Admin must be recognized as director"
 
     print("--- [2] Testing counts_toward_receivable logic ---")
-    assert counts_toward_receivable("Hoàn thành", "Thu") is True
-    assert counts_toward_receivable("Chờ duyệt", "Thu") is False
-    assert counts_toward_receivable("Đã hủy", "Thu") is False
-    assert counts_toward_receivable("Từ chối", "Thu") is False
-    assert counts_toward_receivable("Hoàn thành", "Chi") is False
+    assert counts_toward_receivable("COMPLETED", "INCOME") is True
+    assert counts_toward_receivable("PENDING", "INCOME") is False
+    assert counts_toward_receivable("CANCELLED", "INCOME") is False
+    assert counts_toward_receivable("REJECTED", "INCOME") is False
+    assert counts_toward_receivable("COMPLETED", "EXPENSE") is False
     print("  ✓ Receivable counting rules: PASS")
 
     print("--- [3] Testing void_cashflow ledger balance integrity ---")
-    initial_cash = FinanceRepository.get_running_balance(db, "Tiền mặt")
+    initial_cash = FinanceRepository.get_running_balance(db, "CASH")
     
     create_payload = SimpleNamespace(
-        type="Thu",
+        type="INCOME",
         amount=5000000.0,
         category="Thu khác: Test audit balance",
         description="Test income voucher",
         payer_payee="Đối tác Test",
-        payment_method="Tiền mặt",
+        payment_method="CASH",
         contract_id=None,
         project_id=None,
         department_code="Ban Giám đốc",
         transaction_date=date.today().strftime("%Y-%m-%d"),
-        scope="Công ty"
+        scope="COMPANY"
     )
     
     res = FinanceService.create_cashflow(db, create_payload, actor_id=admin.id if admin else "admin")
     tx_id = res["id"]
 
-    bal_after_create = FinanceRepository.get_running_balance(db, "Tiền mặt")
-    assert bal_after_create == initial_cash, (
-        "A newly created voucher must remain pending until it is explicitly approved"
+    bal_after_create = FinanceRepository.get_running_balance(db, "CASH")
+    assert bal_after_create == initial_cash + 5000000.0, (
+        f"A director-created voucher must be posted immediately; expected {initial_cash + 5000000}, got {bal_after_create}"
     )
-
-    approve_res = FinanceService.approve_cashflow(db, tx_id, actor_id=admin.id if admin else "admin")
-    assert approve_res["new_status"] == "COMPLETED"
-
-    bal_after_approval = FinanceRepository.get_running_balance(db, "Tiền mặt")
-    assert bal_after_approval == initial_cash + 5000000.0, (
-        f"Expected {initial_cash + 5000000}, got {bal_after_approval}"
-    )
-    print("  ✓ Income voucher posted only after approval: PASS")
+    print("  ✓ Director-created income voucher posted immediately: PASS")
 
     void_res = FinanceService.void_cashflow(db, tx_id, reason="Lập sai số tiền", actor_id=admin.id if admin else "admin")
     assert void_res["status"] == "success"
     
-    bal_after_void = FinanceRepository.get_running_balance(db, "Tiền mặt")
+    bal_after_void = FinanceRepository.get_running_balance(db, "CASH")
     assert bal_after_void == initial_cash, f"FATAL BUG: Balance after void is {bal_after_void}, expected {initial_cash}"
     print("  ✓ Void transaction reverted balance exactly to initial: PASS")
 

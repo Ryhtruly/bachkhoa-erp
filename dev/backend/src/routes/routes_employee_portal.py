@@ -42,6 +42,7 @@ from src.dossiers.checklist_document_types import node_type_review_summary
 from src.files.references import FileReference
 from src.services.storage_service import AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX, delete_file, ensure_bucket, get_file, upload_file
 from src.services.timeline_realtime import employee_task_event_stream, publish_timeline_change
+from src.contracts.access import user_has_all_contract_read_access
 
 
 class SubmitNodeIn(BaseModel):
@@ -117,7 +118,7 @@ def read_private_file(
                 "task_node_id": task_node_id,
             },
         ).first()
-        if not assigned and not check_user_permission(db, user, "contracts", "read"):
+        if not assigned and not user_has_all_contract_read_access(db, user):
             raise HTTPException(status_code=403, detail="Không đủ quyền xem file minh chứng này.")
     try:
         stored = get_file(object_key)
@@ -537,7 +538,7 @@ async def submit_checklist_evidence(
     if file:
         if file.content_type not in ALLOWED_EVIDENCE_TYPES:
             raise HTTPException(status_code=422, detail="Chỉ chấp nhận ảnh JPEG/PNG/WEBP/GIF hoặc PDF.")
-        file_bytes = await file.read()
+        file_bytes = await file.read(MAX_EVIDENCE_BYTES + 1)
         if len(file_bytes) > MAX_EVIDENCE_BYTES:
             raise HTTPException(status_code=422, detail="File không được vượt quá 10MB.")
 
@@ -1015,7 +1016,7 @@ def prior_documents(
         db,
         workflow_instance_id=node["workflow_instance_id"],
         employee_id=employee.id if employee else None,
-    ) or check_user_permission(db, user, "contract", "read")
+    ) or user_has_all_contract_read_access(db, user)
     if not duoc_xem:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1054,7 +1055,7 @@ def download_prior_document(
         db,
         workflow_instance_id=node["workflow_instance_id"],
         employee_id=employee.id if employee else None,
-    ) or check_user_permission(db, user, "contract", "read")
+    ) or user_has_all_contract_read_access(db, user)
     if not duoc_xem:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

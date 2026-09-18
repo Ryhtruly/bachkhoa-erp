@@ -65,7 +65,7 @@ class AccountingPolicyTests(unittest.TestCase):
 
     def test_pending_or_legacy_null_transaction_is_not_posted(self):
         self.assertTrue(is_posted_transaction_status("COMPLETED"))
-        self.assertTrue(is_posted_transaction_status("Đã duyệt"))
+        self.assertFalse(is_posted_transaction_status("Đã duyệt"))
         self.assertFalse(is_posted_transaction_status("PENDING"))
         self.assertFalse(is_posted_transaction_status(None))
         self.assertFalse(is_posted_transaction_status(""))

@@ -10,6 +10,7 @@ import { API } from '../financeConstants';
 import { apiFetch, downloadFile } from '../../../lib/api';
 import { printElement } from '../print/printDocument';
 import FinancePrintReport from '../print/FinancePrintReport';
+import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
 const payrollPeriodLabels = {
   Open: 'Đang mở',
@@ -191,6 +192,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
     printElement({
       element: printDocumentRef.current,
       title,
+      styles: financeReportPrintStyles,
       onError: (msg) => addToast(msg, 'error')
     });
   };
@@ -585,7 +587,7 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
           columns={detailColumns}
           data={ledger?.details || []}
           loading={loading || optionsLoading}
-          rowKey="id"
+          rowKey={(row, idx) => row.id || `task_${row.task_id || 'item'}_${idx}`}
           emptyText="Không có nhiệm vụ phát sinh lương trong kỳ này"
           pageSize={10}
           compact
@@ -639,7 +641,12 @@ export default function PieceRatePayrollScreen({ isDirector = false }) {
         <div className="payroll-preview-modal__document">
           <FinancePrintReport
             documentRef={printDocumentRef}
-            title="PHIẾU THANH TOÁN LƯƠNG KHOÁN NHIỆM VỤ"
+            title={(
+              <span className="payroll-print-title">
+                <span className="payroll-print-title__main">Phiếu thanh toán lương khoán nhiệm vụ</span>
+                <span className="payroll-print-title__status">{payrollPeriodLabels[ledger?.period_status] || 'Đang mở'}</span>
+              </span>
+            )}
             subtitle={`Nhân viên: ${ledger?.employee?.full_name || ''} · ${ledger?.employee?.job_title || ''} (${ledger?.employee?.department || ''}) · Kỳ ${String(month).padStart(2, '0')}/${year} ${ledger?.period_range?.label ? `(${ledger.period_range.label})` : ''}`}
             summary={[
               { label: 'Lương đã duyệt', value: fmt(summary.approved_salary ?? summary.recorded_total ?? 0) },

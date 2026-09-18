@@ -1,13 +1,26 @@
 import io
 import os
+import re
+import secrets
+from pathlib import Path
+from urllib.parse import quote
 from docx import Document
 
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-OUTPUT_DIR = os.path.join(BACKEND_DIR, "static", "generated_docs")
+OUTPUT_DIR = os.path.join(BACKEND_DIR, "private", "generated_docs")
 CONTRACT_TEMPLATE_VERSIONS = {
     "contract_template_v1": "mau_hop_dong.docx",
     "mau_hop_dong_v1": "mau_hop_dong.docx",
 }
+
+
+def sanitize_filename_component(value: str, fallback: str = "document") -> str:
+    """Return one safe filename component for the generated-doc directory."""
+    normalized = str(value or "").replace("/", "_").replace("\\", "_")
+    normalized = re.sub(r'[<>:"|?*\x00-\x1f]', "_", normalized)
+    normalized = re.sub(r"\.{2,}", "_", normalized)
+    normalized = re.sub(r"\s+", "_", normalized).strip(" .")
+    return (normalized or fallback)[:160]
 
 
 def repository_template_fallback_allowed(environ: dict[str, str] | None = None) -> bool:
@@ -55,7 +68,14 @@ def render_contract_document(data: dict, template_version: str, template_bytes: 
     doc.save(output)
     return output.getvalue()
 
-def generate_document(data, template_name="mau_hop_dong.docx", output_prefix="Doc"):
+def generate_document(
+    data,
+    template_name="mau_hop_dong.docx",
+    output_prefix="Doc",
+    *,
+    owner_id: str,
+    download_route: str = "/api/quotations/documents",
+):
     """
     Generate a .docx file by replacing placeholders in the template.
     data: dictionary containing placeholder values
@@ -73,13 +93,22 @@ def generate_document(data, template_name="mau_hop_dong.docx", output_prefix="Do
         # Use primary key from data if available, else timestamp
         import time
         identifier = data.get('MA_HO_SO') or data.get('customer_name') or str(int(time.time()))
-        filename = f"{output_prefix}_{identifier}.docx"
-        filename = filename.replace("/", "_").replace(" ", "_") # Sanitize filename
-        output_path = os.path.join(OUTPUT_DIR, filename)
+        owner_component = sanitize_filename_component(owner_id, fallback="user")
+        nonce = secrets.token_urlsafe(18)
+        filename = (
+            f"{sanitize_filename_component(output_prefix)}_"
+            f"{owner_component}_{nonce}_"
+            f"{sanitize_filename_component(identifier)}.docx"
+        )
+        output_path = os.path.abspath(os.path.join(OUTPUT_DIR, filename))
+        output_root = Path(OUTPUT_DIR).resolve()
+        if Path(output_path).resolve().parent != output_root:
+            raise ValueError("Đường dẫn tài liệu sinh ra không hợp lệ")
         doc.save(output_path)
         
-        # Return web-accessible path
-        return True, f"/static/generated_docs/{filename}", output_path
+        # Return an authenticated backend route; the generated file lives
+        # outside the public static tree and the route validates ownership.
+        return True, f"{download_route}/{quote(filename, safe='')}", output_path
     except Exception as e:
         print(f"Error generating document: {e}")
         return False, str(e), None

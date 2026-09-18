@@ -628,7 +628,7 @@ def progress(db: Session, checklist_result_id: str) -> dict[str, Any]:
 
 
 def node_type_review_summary(db: Session, task_node_id: str) -> dict[str, Any]:
-    """Summarize active runtime types without treating an empty set as a blocker."""
+    """Summarize active runtime types and paperless checklist confirmation status."""
     rows = [dict(row) for row in db.execute(text("""
         select t.status,
                count(f.document_id) filter (where f.is_active) as file_count
@@ -646,6 +646,28 @@ def node_type_review_summary(db: Session, task_node_id: str) -> dict[str, Any]:
         if row["status"] == DocumentTypeStatus.APPROVED.value
         and int(row["file_count"] or 0) > 0
     )
+
+    paperless_rows = [dict(row) for row in db.execute(text("""
+        select cr.id, cr.checklist_name, cr.status, cr.is_required
+        from public.task_node_checklist_results cr
+        where cr.task_node_id = :task_node_id
+          and cr.status <> 'not_applicable'
+          and not exists (
+              select 1
+              from public.checklist_result_document_types t
+              where t.checklist_result_id = cr.id and t.is_active
+          )
+        order by cr.id
+    """), {"task_node_id": task_node_id}).mappings().all()]
+
+    unconfirmed_required = [
+        r for r in paperless_rows
+        if r.get("is_required") and r.get("status") not in ("approved", "late_approved")
+    ]
+    doc_types_complete = (approved == total)
+    paperless_complete = (len(unconfirmed_required) == 0)
+    is_complete = doc_types_complete and paperless_complete
+
     return {
         "total": total,
         "approved": approved,
@@ -656,7 +678,14 @@ def node_type_review_summary(db: Session, task_node_id: str) -> dict[str, Any]:
             1 for row in rows if row["status"] == DocumentTypeStatus.REJECTED.value
         ),
         "missing_files": sum(1 for row in rows if int(row["file_count"] or 0) == 0),
-        "is_complete": approved == total,
+        "is_complete": is_complete,
+        "doc_types_complete": doc_types_complete,
+        "paperless_complete": paperless_complete,
+        "unconfirmed_checklists": [r["checklist_name"] for r in unconfirmed_required],
+        "pending_checklist_confirmations": sum(
+            1 for r in paperless_rows if r.get("status") in ("pending_approval", "late_pending_approval")
+        ),
+        "paperless_total": len(paperless_rows),
     }
 
 
@@ -789,7 +818,7 @@ def promote_completed_checklist_types(
     ):
         raise HTTPException(
             status_code=409,
-            detail="Checklist thiếu Gói dịch vụ, Dạng hạng mục hoặc Mã bước để học mẫu.",
+            detail="Checklist thiếu Gói dịch vụ, Dạng hạng mục hoặc Mã bước để xử lý hồ sơ.",
         )
 
     types = [dict(row) for row in db.execute(
@@ -805,33 +834,19 @@ def promote_completed_checklist_types(
         {"checklist_result_id": checklist_result_id},
     ).mappings().all()]
 
-    from src.dossiers.slot_requests import promote_template_for_combo
-
     promoted_template_ids: list[str] = []
     for document_type in types:
         template_id = document_type.get("template_id")
         if document_type["origin"] == "EMPLOYEE_CREATED":
+            # CHẶN HỌC MẪU: Giấy tờ do nhân viên tự tạo là giấy tờ phát sinh riêng
+            # của hợp đồng cụ thể. Tuyệt đối KHÔNG tự động lưu/học vào Mẫu quy trình
+            # (document_template_applicabilities/document_checklist_templates).
             promoted_template_id = document_type.get("promoted_template_id")
-            if not promoted_template_id:
-                promoted_template_id = promote_template_for_combo(
-                    db,
-                    name=document_type["name"],
-                    source=document_type["source"],
-                    service_package_id=context["service_package_id"],
-                    task_type_id=context["task_type_id"],
-                    node_code=context["node_code"],
-                    actor_id=actor_id,
-                )
-                db.execute(
-                    text("""
-                        update public.checklist_result_document_types
-                        set promoted_template_id = :template_id, updated_at = now()
-                        where id = :type_id
-                    """),
-                    {"type_id": document_type["id"], "template_id": promoted_template_id},
-                )
             template_id = promoted_template_id
-            promoted_template_ids.append(promoted_template_id)
+            if promoted_template_id:
+                promoted_template_ids.append(promoted_template_id)
+        elif template_id:
+            promoted_template_ids.append(template_id)
 
         slot_id = document_type.get("slot_id")
         if not slot_id:
@@ -859,7 +874,7 @@ def promote_completed_checklist_types(
                 text("""
                     update public.checklist_result_document_types
                     set slot_id = :slot_id, updated_at = now()
-                    where id = :type_id and slot_id is null
+                    where id = :type_id
                 """),
                 {"type_id": document_type["id"], "slot_id": slot_id},
             )
@@ -1008,6 +1023,23 @@ def review_type(
         and current_progress["is_complete"]
         else []
     )
+    if decision == DocumentTypeStatus.APPROVED.value and current_progress["is_complete"]:
+        db.execute(
+            text("""
+                update public.task_node_checklist_results cr
+                set status = case
+                        when cr.status in ('late_pending_approval', 'late_approved')
+                          then 'late_approved'
+                        else 'approved'
+                    end,
+                    completed_by = coalesce(completed_by, :actor_id),
+                    completed_at = coalesce(completed_at, now()),
+                    updated_at = now()
+                where cr.id = :checklist_result_id
+                  and cr.status <> 'not_applicable'
+            """),
+            {"checklist_result_id": checklist_result_id, "actor_id": actor_id},
+        )
     node_progress = node_type_review_summary(db, checklist["task_node_id"])
     result = {
         "id": type_id,

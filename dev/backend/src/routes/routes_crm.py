@@ -9,6 +9,7 @@ import os
 import re
 import io
 import logging
+import tempfile
 from docxtpl import DocxTemplate
 
 from src.db.database import get_db
@@ -21,6 +22,7 @@ from src.contracts.services import ContractService, _create_initial_service_line
 from src.services.storage_service import upload_contract_document, CONTRACT_TEMPLATE_CONTENT_TYPE
 from src.files.references import DossierFileReference
 from src.core.auth import require_permission, User
+from src.core.finance_validation import parse_issued_money
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +131,11 @@ def update_lead_status(
         raise HTTPException(status_code=404, detail="Lead not found")
         
     old_status = lead.status
+    issued_total = None
+    if body.new_status == "Chốt" and old_status != "Chốt":
+        # Validate before changing the lead or creating any finance/dossier row.
+        issued_total = parse_issued_money(body.price)
+
     lead.status = body.new_status
     contract_created = False
     # --- AUTOMATION: Nếu chốt thành công -> Sinh Hợp đồng & Hồ sơ hoàn chỉnh ---
@@ -141,12 +148,7 @@ def update_lead_status(
         contract_id = ContractService.get_next_contract_code(db)
 
         # 2. Xử lý giá trị hợp đồng
-        numeric_total_value = 0.0
-        if body.price:
-            try:
-                numeric_total_value = float(str(body.price).replace(".", "").replace(",", "").strip())
-            except (ValueError, TypeError):
-                numeric_total_value = 0.0
+        numeric_total_value = float(issued_total)
 
         # 3. Quy đổi diện tích cho cột số (service_area)
         numeric_area = None
@@ -191,9 +193,6 @@ def update_lead_status(
         safe_id = contract_id.replace("/", "_").replace("\\", "_")
         safe_cust = re.sub(r'[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]', '_', customer.full_name if customer else 'KhachHang')
         output_filename = f"HopDong_{safe_id}_{safe_cust}.docx"
-        static_contracts_dir = os.path.join(os.path.dirname(__file__), "..", "..", "static", "contracts")
-        os.makedirs(static_contracts_dir, exist_ok=True)
-        output_path = os.path.join(static_contracts_dir, output_filename)
 
         formatted_price = f"{int(numeric_total_value):,}".replace(",", ".") + " VNĐ" if numeric_total_value > 0 else "Chưa báo giá"
         price_text = "Chưa báo giá"
@@ -224,10 +223,20 @@ def update_lead_status(
             try:
                 doc = DocxTemplate(template_path)
                 doc.render(context)
-                doc.save(output_path)
-                file_link = f"/static/contracts/{output_filename}"
-                with open(output_path, "rb") as f:
-                    doc_bytes = f.read()
+                with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as temporary:
+                    output_path = temporary.name
+                try:
+                    doc.save(output_path)
+                    with open(output_path, "rb") as f:
+                        doc_bytes = f.read()
+                finally:
+                    try:
+                        os.unlink(output_path)
+                    except FileNotFoundError:
+                        pass
+                # The document is stored in the private object store below;
+                # the browser must use the authorized contract endpoint.
+                file_link = f"/api/contracts/{contract_id}/document"
             except Exception as doc_err:
                 logger.warning("Không render được file docx: %s", doc_err)
 

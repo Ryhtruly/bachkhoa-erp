@@ -14,6 +14,7 @@ from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import register
 from src.services.timeline_realtime import publish_timeline_change
+from src.contracts.access import assert_contract_read_access, user_has_all_contract_read_access
 
 router = APIRouter(prefix="/api/document-register", tags=["Document Register"])
 
@@ -64,6 +65,16 @@ def _require_can_work(db: Session, user: User, contract_id: Optional[str]) -> No
         )
 
 
+def _assert_can_access_contract_documents(db: Session, user: User, contract_id: Optional[str]) -> None:
+    if not contract_id:
+        return
+    if user_has_all_contract_read_access(db, user):
+        return
+    if _can_work_on_contract(db, user, contract_id):
+        return
+    assert_contract_read_access(db, user, contract_id)
+
+
 def _actor_department(db: Session, user_id: str) -> Optional[str]:
     return db.execute(
         text("""
@@ -108,6 +119,15 @@ def get_contract_register(
     hợp đồng", không phân biệt đo vẽ hay pháp lý. Đó là điểm của tài liệu
     chuyển giao — hai bên thấy giấy của nhau.
     """
+    if not user_has_all_contract_read_access(db, user):
+        try:
+            assert_contract_read_access(db, user, contract_id)
+        except HTTPException:
+            if not _can_work_on_contract(db, user, contract_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Bạn không có quyền xem sổ giấy tờ của hợp đồng này.",
+                )
     return register.get_register(db, contract_id, service_line_id=service_line_id)
 
 
@@ -502,7 +522,9 @@ def list_workflow_nodes(
     rows = db.execute(
         text("""
             select code, name, description from public.workflow_nodes
-            where coalesce(is_active, true) order by code
+            where coalesce(is_active, true)
+              and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMISSION', 'HANDOVER')
+            order by code
         """)
     ).mappings().all()
     return {"status": "success", "data": [dict(row) for row in rows]}
@@ -523,6 +545,7 @@ async def upload_source_document(
     # Đây là thao tác tiếp nhận ngay trong form Hợp đồng, trước khi K01 được
     # phân công. Sale hoặc Giám đốc đều dùng được khi có quyền tạo Hợp đồng;
     # không hard-code tên vai trò.
+    _assert_can_access_contract_documents(db, user, contract_id)
     data = await file.read(MAX_SCAN_BYTES + 1)
     try:
         result = register.upload_source_document(
@@ -548,6 +571,7 @@ def list_source_documents(
     user: User = Depends(require_permission("contract", "read")),
 ):
     """Kho nguồn của Hợp đồng — K01 mở ra để đọc và phân loại."""
+    _assert_can_access_contract_documents(db, user, contract_id)
     rows = db.execute(
         text("""
             select d.id, d.file_name, d.content_type, d.size_bytes, d.uploaded_at,
@@ -658,7 +682,10 @@ def download_slot_scan(
     user: User = Depends(require_permission("contract", "read")),
 ):
     """Bucket là private nên đọc qua máy chủ, không phát link trực tiếp."""
-    row, body = register.read_scan(db, document_id)
+    row = register.get_scan_metadata(db, document_id)
+    _assert_can_access_contract_documents(db, user, row.get("contract_id"))
+    from src.services.storage_service import get_file
+    body = get_file(row["object_key"])["Body"].read()
     return Response(
         content=body,
         media_type=row["content_type"] or "application/octet-stream",
@@ -824,6 +851,13 @@ def list_templates(
 ):
     """Bộ mẫu giấy tờ theo từng Dạng hồ sơ — màn cấu hình của Giám đốc."""
     return {"status": "success", "data": register.list_templates(db)}
+
+
+@router.get("/package-tree")
+def get_package_tree_alias(db: Session = Depends(get_db)):
+    """Tương thích ngược cho các lời gọi prefetch / API cũ."""
+    from src.routes.routes_catalog import catalog_tree
+    return {"status": "success", "data": catalog_tree(db)}
 
 
 @router.post("/templates")

@@ -9,7 +9,7 @@ name: bachkhoa-erp-backend-prod
 
 services:
   redis-contracts:
-    image: redis:7.4.9-alpine
+    image: redis:7.4.9-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
     restart: unless-stopped
     command:
       - redis-server
@@ -31,7 +31,7 @@ services:
     build:
       context: ./dev/backend
       dockerfile: Dockerfile.prod
-    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:${BACKEND_IMAGE_TAG:-local}
+    image: ghcr.io/ryhtruly/bachkhoa-erp-backend:${BACKEND_IMAGE_TAG:?Thiếu BACKEND_IMAGE_TAG để dùng image bất biến}
     restart: unless-stopped
     init: true
     env_file:
@@ -63,5 +63,18 @@ services:
       retries: 12
       start_period: 20s
 
+  frontend:
+    build:
+      context: ./dev/frontend
+      dockerfile: Dockerfile
+    image: ghcr.io/ryhtruly/bachkhoa-erp-frontend:${FRONTEND_IMAGE_TAG:?Thiếu FRONTEND_IMAGE_TAG để dùng image bất biến}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3222:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   contract-files:
+

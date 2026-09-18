@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'lucide-react';
 import { fmt } from './utils';
 
-export const API = '';
+export const API = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || '').replace(/\/+$/, '');
 
 export const TRANSACTION_TYPES = Object.freeze({
   INCOME: 'INCOME',

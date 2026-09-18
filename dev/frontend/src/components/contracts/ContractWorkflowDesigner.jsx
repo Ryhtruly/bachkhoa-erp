@@ -26,16 +26,23 @@ import {
   ChevronRight,
   CircleDashed,
   Clock3,
+  Compass,
   ExternalLink,
   FileCheck2,
   GitBranch,
+  Landmark,
   ListChecks,
   LoaderCircle,
   LockKeyhole,
+  Monitor,
   Pencil,
   Play,
   Plus,
+  Receipt,
   Save,
+  Scale,
+  Search,
+  ShieldCheck,
   Star,
   Trash2,
   TriangleAlert,
@@ -63,7 +70,7 @@ import {
   removeChecklistDefinition,
 } from './workflowChecklistState';
 import DebtReviewCard from '../../features/handover/DebtReviewCard';
-import ThieuTaiLieuKhiNop from '../../features/document-register/ThieuTaiLieuKhiNop';
+import MissingDocumentsOnSubmit from '../../features/document-register/MissingDocumentsOnSubmit';
 import NodeChecklistCard from './NodeChecklistCard';
 import LegalDossierNodePanel from '../../features/legal-dossier/LegalDossierNodePanel';
 import NodeAgencyPanel from './NodeAgencyPanel';
@@ -92,6 +99,62 @@ const NODE_COLORS = {
   pending: '#94a3b8',
   cancelled: '#64748b',
 };
+
+// ── 6 Năng Lực Chuẩn Bách Khoa ERP (Combo-First Architecture) ──
+export const CAPABILITIES = [
+  {
+    code: 'STANDARD',
+    label: 'Tác nghiệp tiêu chuẩn',
+    desc: 'Checklist thông thường, tải tài liệu',
+    icon: CheckCircle2,
+    color: '#3b82f6',
+    suggestDept: 'SALES',
+  },
+  {
+    code: 'SURVEY_FIELD',
+    label: 'Khảo sát & Đo thực địa',
+    desc: 'Tự động tạo Sổ Đo Đạc, bấm giờ xuất phát đo',
+    icon: Compass,
+    color: '#10b981',
+    suggestDept: 'SURVEY',
+  },
+  {
+    code: 'SURVEY_CAD',
+    label: 'Biên tập bản vẽ CAD',
+    desc: 'Xử lý toạ độ GPS, kế thừa số liệu đo',
+    icon: Monitor,
+    color: '#0d9488',
+    suggestDept: 'SURVEY',
+  },
+  {
+    code: 'LEGAL_PREP',
+    label: 'Soạn thảo hồ sơ pháp lý',
+    desc: 'Rà quy hoạch, chuẩn bị đơn từ',
+    icon: Scale,
+    color: '#8b5cf6',
+    suggestDept: 'LEGAL',
+  },
+  {
+    code: 'GOV_SUBMISSION',
+    label: 'Nộp & Theo dõi Một Cửa',
+    desc: 'Tự động tạo Sổ Một Cửa, theo dõi biên nhận',
+    icon: Landmark,
+    color: '#ea580c',
+    suggestDept: 'LEGAL',
+  },
+  {
+    code: 'HANDOVER',
+    label: 'Bàn giao & Quyết toán',
+    desc: 'Cổng đối soát công nợ kế toán',
+    icon: Receipt,
+    color: '#d97706',
+    suggestDept: 'SALES',
+  },
+];
+
+export function capabilityMeta(code) {
+  return CAPABILITIES.find((c) => c.code === code) || CAPABILITIES[0];
+}
 
 const CANCELLATION_OPTIONS = [
   ['CUSTOMER_REQUEST', 'Khách hàng yêu cầu hủy'],
@@ -247,9 +310,14 @@ function WorkflowNode({ id, data, selected }) {
           <UserRoundCog size={13} />
           {assignmentsForDisplay.length
             ? `${assignmentsForDisplay.length} người`
-            : (data.poolDepartmentLabel || 'Chưa cấu hình')}
+            : (poolDepartmentLabel(data.poolDepartmentCode) || poolDepartmentLabel(data.poolDepartmentLabel) || 'Chưa cấu hình')}
         </span>
       </div>
+      {data.capability && data.capability !== 'STANDARD' && (
+        <div className={`workflow-node__cap-tag workflow-node__cap-tag--${(data.capability || 'standard').toLowerCase().replace(/_/g, '-')}`}>
+          {capabilityMeta(data.capability).label}
+        </div>
+      )}
       {data.deadlineAt && (
         <div className={`workflow-node__deadline${data.isOverdue ? ' is-overdue' : ''}`}>
           <Clock3 size={13} /> Hạn chung: {formatDateTime(data.deadlineAt)}
@@ -409,7 +477,12 @@ const DEFAULT_POOL_BY_NODE_CODE = {
 };
 
 const poolDefaults = code => DEFAULT_POOL_BY_NODE_CODE[code] || { department: '', roles: [] };
-const poolDepartmentLabel = code => POOL_DEPARTMENTS.find(item => item[0] === code)?.[1] || code;
+
+const poolDepartmentLabel = code => {
+  const upper = String(code || '').trim().toUpperCase();
+  if (upper === 'SALES' || upper === 'KINH DOANH') return 'Phòng Sale/CSKH';
+  return POOL_DEPARTMENTS.find(item => item[0] === upper)?.[1] || code;
+};
 
 const APPROVER_ROLES = [
   ['admin', 'Giám đốc'],
@@ -626,9 +699,33 @@ function graphToFlow(graph, catalog, executionNodes = [], options = {}) {
           ? value.claim_roles
           : poolDefaults(value.task_code).roles,
         taskNodeId: execution?.id || null,
-        requiresGovSubmission: Boolean(value.requires_gov_submission),
-        createsSurveyRecord: Boolean(value.creates_survey_record),
-        isHandover: Boolean(value.is_handover),
+        capability: value.capability || value.capability_code || (
+          value.creates_survey_record || value.task_code === 'K02' ? 'SURVEY_FIELD'
+          : value.requires_gov_submission || value.task_code === 'K05B' ? 'GOV_SUBMISSION'
+          : value.is_handover || value.task_code === 'K06' ? 'HANDOVER'
+          : value.task_code === 'K03' ? 'SURVEY_CAD'
+          : value.task_code === 'K04' ? 'LEGAL_PREP'
+          : 'STANDARD'
+        ),
+        capability_code: value.capability_code || value.capability || 'STANDARD',
+        requiresGovSubmission: Boolean(
+          value.requires_gov_submission
+          || value.capability === 'GOV_SUBMISSION'
+          || value.capability_code === 'GOV_SUBMISSION'
+          || value.task_code === 'K05B'
+        ),
+        createsSurveyRecord: Boolean(
+          value.creates_survey_record
+          || value.capability === 'SURVEY_FIELD'
+          || value.capability_code === 'SURVEY_FIELD'
+          || value.task_code === 'K02'
+        ),
+        isHandover: Boolean(
+          value.is_handover
+          || value.capability === 'HANDOVER'
+          || value.capability_code === 'HANDOVER'
+          || value.task_code === 'K06'
+        ),
         durationDays: value.duration_days ?? '',
         durationHours: value.duration_hours ?? '',
         durationMinutes: value.duration_minutes ?? '',
@@ -681,10 +778,12 @@ function flowToGraph(nodes, edges, startNode, labels = DEFAULT_WORKFLOW_LABELS) 
     graphNodes[node.id] = {
       task_code: node.data.code,
       name: node.data.label,
+      capability: node.data.capability || 'STANDARD',
+      capability_code: node.data.capability || 'STANDARD',
       description: node.data.description || '',
-      requires_gov_submission: Boolean(node.data.requiresGovSubmission),
-      creates_survey_record: Boolean(node.data.createsSurveyRecord),
-      is_handover: Boolean(node.data.isHandover),
+      requires_gov_submission: Boolean(node.data.requiresGovSubmission || node.data.capability === 'GOV_SUBMISSION'),
+      creates_survey_record: Boolean(node.data.createsSurveyRecord || node.data.capability === 'SURVEY_FIELD'),
+      is_handover: Boolean(node.data.isHandover || node.data.capability === 'HANDOVER'),
       duration_days: Number(node.data.durationDays) || 0,
       duration_hours: Number(node.data.durationHours) || 0,
       duration_minutes: Number(node.data.durationMinutes) || 0,
@@ -759,6 +858,7 @@ function comparableNodeDefinition(node = {}) {
   return {
     task_code: node.task_code || '',
     name: node.name || '',
+    capability: node.capability || node.capability_code || 'STANDARD',
     description: node.description || '',
     requires_gov_submission: Boolean(node.requires_gov_submission),
     creates_survey_record: Boolean(node.creates_survey_record),
@@ -797,6 +897,52 @@ const DOC_TEMPLATES_URL = '/api/document-register/templates';
 const AGENCY_NODE_CODES = new Set(['K05b']);
 /** Hai bước nộp hồ sơ có khối riêng phía Giám đốc (K05a nộp nội nghiệp, K05b nộp một cửa). */
 const AGENCY_PANEL_NODE_CODES = new Set(['K05a', 'K05b']);
+
+export const isHandoverNode = (node) => {
+  if (!node) return false;
+  const data = node.data || node;
+  return data.code === 'K06'
+    || Boolean(data.isHandover)
+    || Boolean(data.is_handover)
+    || data.capability === 'HANDOVER'
+    || data.capability_code === 'HANDOVER';
+};
+
+export const isAgencyNode = (node) => {
+  if (!node) return false;
+  const data = node.data || node;
+  return AGENCY_PANEL_NODE_CODES.has(data.code)
+    || Boolean(data.requiresGovSubmission)
+    || Boolean(data.requires_gov_submission)
+    || data.capability === 'GOV_SUBMISSION'
+    || data.capability_code === 'GOV_SUBMISSION';
+};
+
+export const isSurveyFieldNode = (node) => {
+  if (!node) return false;
+  const data = node.data || node;
+  return data.code === 'K02'
+    || Boolean(data.createsSurveyRecord)
+    || Boolean(data.creates_survey_record)
+    || data.capability === 'SURVEY_FIELD'
+    || data.capability_code === 'SURVEY_FIELD';
+};
+
+export const isSurveyCadNode = (node) => {
+  if (!node) return false;
+  const data = node.data || node;
+  return data.code === 'K03'
+    || data.capability === 'SURVEY_CAD'
+    || data.capability_code === 'SURVEY_CAD';
+};
+
+export const isLegalPrepNode = (node) => {
+  if (!node) return false;
+  const data = node.data || node;
+  return data.code === 'K04'
+    || data.capability === 'LEGAL_PREP'
+    || data.capability_code === 'LEGAL_PREP';
+};
 
 const hasRuntimeDocumentTypes = item => Object.hasOwn(item?.runtime || {}, 'document_types');
 
@@ -857,6 +1003,8 @@ export default function ContractWorkflowDesigner({
   targetTaskNodeId,
   targetType,
   targetId,
+  targetChecklistResultId = '',
+  targetDocumentTypeId = '',
   targetNonce,
 }) {
   // Gieo từ cache NGAY lúc render. Chỉ dựa vào effect thì khung hình đầu tiên
@@ -902,16 +1050,21 @@ export default function ContractWorkflowDesigner({
   // Tách "đang nạp" khỏi "nạp xong mà rỗng". Trước đây cả hai cùng là mảng rỗng
   // nên lúc chưa có danh mục, mọi dòng giấy bị khẳng định là "Tài liệu chưa rõ".
   const [loadingDocTemplates, setLoadingDocTemplates] = useState(false);
+  const loadingDocTemplatesRef = useRef(false);
   const docTemplatesReady = Boolean(documentTemplates) || loadedDocTemplates !== null;
 
-  const ensureDocTemplates = useCallback(() => {
-    if (documentTemplates || loadedDocTemplates !== null || loadingDocTemplates) return;
+  const ensureDocTemplates = useCallback((force = false) => {
+    if ((!force && (documentTemplates || loadedDocTemplates !== null)) || loadingDocTemplatesRef.current) return;
+    loadingDocTemplatesRef.current = true;
     setLoadingDocTemplates(true);
     apiFetch(DOC_TEMPLATES_URL)
       .then(payload => setLoadedDocTemplates(flattenDocTemplates(payload) || []))
       .catch(() => setLoadedDocTemplates([]))
-      .finally(() => setLoadingDocTemplates(false));
-  }, [documentTemplates, loadedDocTemplates, loadingDocTemplates]);
+      .finally(() => {
+        loadingDocTemplatesRef.current = false;
+        setLoadingDocTemplates(false);
+      });
+  }, [documentTemplates, loadedDocTemplates]);
 
   const openEvidenceFile = useCallback(async (event, file) => {
     if (!isPrivateObjectKey(file.url)) return;
@@ -1040,6 +1193,9 @@ export default function ContractWorkflowDesigner({
   const [dragChecklistIndex, setDragChecklistIndex] = useState(null);
   const [openChecklistPicker, setOpenChecklistPicker] = useState(null);
   const [outputDocumentModalIndex, setOutputDocumentModalIndex] = useState(null);
+  const [outputDocSearch, setOutputDocSearch] = useState('');
+  const [outputDocSourceTab, setOutputDocSourceTab] = useState('ALL');
+
   const [selectedTemplateId, setSelectedTemplateId] = useState(workflow?.template?.id || defaultComboTemplate?.id || '');
   const [workflowLabels, setWorkflowLabels] = useState(parsed.labels);
   const [saving, setSaving] = useState(false);
@@ -1162,6 +1318,93 @@ export default function ContractWorkflowDesigner({
     // nhánh cũ trỏ 'checklist' sẽ rơi vào tab không tồn tại → panel trắng.
     setInspectorTab('node');
   }, [targetNodeKey, targetTaskNodeId, targetType, targetNonce, nodes]);
+
+  // Highlight & scroll tới checklist hoặc loại giấy tờ khi điều hướng từ thông báo
+  const [highlightedChecklistId, setHighlightedChecklistId] = useState(null);
+  const [highlightedDocTypeId, setHighlightedDocTypeId] = useState(null);
+
+  useEffect(() => {
+    const chkId = targetChecklistResultId || (targetType === 'checklist_review' ? targetId : null);
+    const dtId = targetDocumentTypeId || null;
+    if (!chkId && !dtId) return;
+
+    setHighlightedChecklistId(chkId);
+    setHighlightedDocTypeId(dtId);
+
+    const timer = setTimeout(() => {
+      let el = null;
+      if (dtId) {
+        el = document.getElementById(`doc-type-${dtId}`);
+      }
+      if (!el && chkId) {
+        el = document.getElementById(`checklist-card-${chkId}`)
+          || document.getElementById(`checklist-${chkId}`)
+          || document.querySelector(`[data-testid="review-target-${chkId}"]`);
+      }
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 280);
+
+    const clearTimer = setTimeout(() => {
+      setHighlightedChecklistId(null);
+      setHighlightedDocTypeId(null);
+    }, 6000);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clearTimer);
+    };
+  }, [targetChecklistResultId, targetDocumentTypeId, targetId, targetType, targetNonce]);
+
+  const getNodeReviewEligibility = useCallback((node) => {
+    if (!node?.data) return { canApprove: false, reason: 'Không có dữ liệu Node' };
+    const checklist = node.data.checklist || [];
+
+    let pendingDocTypesCount = 0;
+    let rejectedDocTypesCount = 0;
+    checklist.forEach(item => {
+      const docTypes = item.runtime?.document_types || [];
+      docTypes.forEach(dt => {
+        if (dt.status === 'pending_review') pendingDocTypesCount++;
+        if (dt.status === 'rejected') rejectedDocTypesCount++;
+      });
+    });
+
+    if (pendingDocTypesCount > 0) {
+      return {
+        canApprove: false,
+        reason: `Còn ${pendingDocTypesCount} loại giấy tờ đang chờ thẩm định`,
+      };
+    }
+    if (rejectedDocTypesCount > 0) {
+      return {
+        canApprove: false,
+        reason: `Có ${rejectedDocTypesCount} loại giấy tờ không đạt cần nhân viên làm lại`,
+      };
+    }
+
+    let unconfirmedRequiredCount = 0;
+    checklist.forEach(item => {
+      const hasDocTypes = (item.runtime?.document_types || []).length > 0;
+      const isRequired = item.is_required !== false;
+      if (!hasDocTypes && isRequired) {
+        const st = item.runtime?.status;
+        if (!['approved', 'late_approved', 'completed'].includes(st)) {
+          unconfirmedRequiredCount++;
+        }
+      }
+    });
+
+    if (unconfirmedRequiredCount > 0) {
+      return {
+        canApprove: false,
+        reason: `Còn ${unconfirmedRequiredCount} mục checklist bắt buộc chưa hoàn thành`,
+      };
+    }
+
+    return { canApprove: true, reason: '' };
+  }, []);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
   const selectedAssignmentsForDisplay = visibleNodeAssignments(selectedNode?.data);
@@ -1318,8 +1561,24 @@ export default function ContractWorkflowDesigner({
         poolDepartmentLabel: poolDepartmentLabel(poolDefaults(item.code).department),
         claimRoles: poolDefaults(item.code).roles,
         requiresGovSubmission: AGENCY_NODE_CODES.has(item.code),
-        createsSurveyRecord: false,
-        isHandover: false,
+        createsSurveyRecord: item.code === 'K02',
+        isHandover: item.code === 'K06',
+        capability: (
+          item.code === 'K02' ? 'SURVEY_FIELD'
+          : item.code === 'K03' ? 'SURVEY_CAD'
+          : item.code === 'K04' ? 'LEGAL_PREP'
+          : item.code === 'K05B' ? 'GOV_SUBMISSION'
+          : item.code === 'K06' ? 'HANDOVER'
+          : 'STANDARD'
+        ),
+        capability_code: (
+          item.code === 'K02' ? 'SURVEY_FIELD'
+          : item.code === 'K03' ? 'SURVEY_CAD'
+          : item.code === 'K04' ? 'LEGAL_PREP'
+          : item.code === 'K05B' ? 'GOV_SUBMISSION'
+          : item.code === 'K06' ? 'HANDOVER'
+          : 'STANDARD'
+        ),
         durationDays: '',
         durationHours: '',
         durationMinutes: '',
@@ -1331,6 +1590,52 @@ export default function ContractWorkflowDesigner({
     if (!startNode) setStartNode(id);
     setIsSelectingNode(false);
   }, [nodes, setNodes, startNode]);
+
+  const handleAddNewCustomNode = useCallback(() => {
+    if (!structureEditable) return;
+    const nextNum = nodes.length + 1;
+    let id = `node_${nextNum}`;
+    let suffix = 2;
+    while (nodes.some(node => node.id === id)) id = `node_${nextNum}_${suffix++}`;
+    const next = {
+      id,
+      type: 'workflowNode',
+      position: { x: 120 + nodes.length * 80, y: 120 + nodes.length * 55 },
+      data: {
+        code: `N${String(nextNum).padStart(2, '0')}`,
+        name: 'Bước mới',
+        label: 'Bước mới',
+        capability: 'STANDARD',
+        capability_code: 'STANDARD',
+        description: '',
+        checklist: [
+          {
+            key: `cl_${id}_1`,
+            name: 'Nhiệm vụ 1',
+            required: true,
+            require_evidence: false,
+            approver_role: 'admin',
+            output_documents: [],
+          },
+        ],
+        role: '',
+        poolDepartmentCode: 'SALES',
+        poolDepartmentLabel: poolDepartmentLabel('SALES'),
+        claimRoles: ['MAIN'],
+        requiresGovSubmission: false,
+        createsSurveyRecord: false,
+        isHandover: false,
+        durationDays: 1,
+        durationHours: 0,
+        durationMinutes: 0,
+        executionStatus: 'pending',
+      },
+    };
+    setNodes(current => [...current, next]);
+    setSelectedNodeId(id);
+    if (!startNode) setStartNode(id);
+    addToast?.('Đã tạo bước mới. Bạn có thể đổi tên và phân công ở cột bên phải.', 'success');
+  }, [nodes, setNodes, startNode, structureEditable, addToast]);
 
   const removeSelectedNode = useCallback(() => {
     if (!selectedNodeId) return;
@@ -1533,9 +1838,22 @@ export default function ContractWorkflowDesigner({
     if (!selectedNode) return;
     const current = selectedNode.data.checklist || [];
     updateSelectedNode({
-      checklist: [...current, createChecklistDefinition(current.length + 1)],
+      checklist: [createChecklistDefinition(current.length + 1), ...current],
     });
   }, [selectedNode, updateSelectedNode]);
+
+  const handleAddChecklistItemClick = useCallback(() => {
+    if (!checklistEditable) {
+      addToast?.(
+        hasActiveRuntime
+          ? 'Quy trình đang chạy. Vui lòng bấm nút "Sửa" ở thanh công cụ phía trên để thêm mục checklist.'
+          : 'Bạn không có quyền chỉnh sửa checklist của bước này.',
+        'warning'
+      );
+      return;
+    }
+    addChecklistItem();
+  }, [checklistEditable, hasActiveRuntime, addToast, addChecklistItem]);
 
   // Ba thao tác trên danh sách tài liệu đầu ra. Cố ý XOÁ HẲN khoá khi danh sách
   // rỗng: checklist không cấu hình gì thì payload gửi lên phải y hệt trước đây,
@@ -1556,10 +1874,10 @@ export default function ContractWorkflowDesigner({
   const addOutputDocument = useCallback((index) => {
     ensureDocTemplates();
     const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
-    setOutputDocuments(index, [...current, {
+    setOutputDocuments(index, [{
       template_id: '', min_count: 1,
       required_before_submit: true, needs_director_approval: false,
-    }]);
+    }, ...current]);
   }, [selectedNode, setOutputDocuments, ensureDocTemplates]);
 
   const updateOutputDocument = useCallback((index, docIndex, patch) => {
@@ -1605,16 +1923,35 @@ export default function ContractWorkflowDesigner({
   }, [pickerAnchor]);
 
   const openOutputDocumentModal = useCallback((index) => {
-    ensureDocTemplates();
+    setOutputDocSearch('');
+    setOutputDocSourceTab('ALL');
     closeChecklistPicker();
     setOutputDocumentModalIndex(index);
-  }, [closeChecklistPicker, ensureDocTemplates]);
+    ensureDocTemplates(true);
+    if (contractId && serviceLine?.id) {
+      apiFetch(registerUrlOf(contractId, serviceLine.id))
+        .then(payload => {
+          if (payload?.planned_node_by_template) setLoadedPlannedNode(payload.planned_node_by_template);
+          if (payload?.groups) setRegisterGroups(payload.groups);
+        })
+        .catch(() => {});
+    }
+  }, [closeChecklistPicker, ensureDocTemplates, contractId, serviceLine?.id]);
 
   const closeOutputDocumentModal = useCallback(() => {
     setOutputDocumentModalIndex(null);
   }, []);
 
   const toggleOutputDocument = useCallback((index, templateId) => {
+    if (!checklistEditable) {
+      addToast?.(
+        hasActiveRuntime
+          ? 'Quy trình đang chạy. Vui lòng bấm nút "Sửa" ở thanh công cụ phía trên để thay đổi tài liệu đầu ra.'
+          : 'Bạn không có quyền chỉnh sửa tài liệu đầu ra của bước này.',
+        'warning'
+      );
+      return;
+    }
     ensureDocTemplates();
     const current = selectedNode?.data.checklist?.[index]?.output_documents || [];
     if (!templateId) return;
@@ -1622,13 +1959,13 @@ export default function ContractWorkflowDesigner({
       setOutputDocuments(index, current.filter(doc => doc.template_id !== templateId));
       return;
     }
-    setOutputDocuments(index, [...current, {
+    setOutputDocuments(index, [{
       template_id: templateId,
       min_count: 1,
       required_before_submit: true,
       needs_director_approval: false,
-    }]);
-  }, [ensureDocTemplates, selectedNode, setOutputDocuments]);
+    }, ...current]);
+  }, [checklistEditable, hasActiveRuntime, addToast, ensureDocTemplates, selectedNode, setOutputDocuments]);
 
   const updateChecklistItem = useCallback((index, patch) => {
     if (!selectedNode) return;
@@ -1791,13 +2128,21 @@ export default function ContractWorkflowDesigner({
   }, [addToast, onPersisted, lyDoLamLai]);
 
   const [reviewingChecklistId, setReviewingChecklistId] = useState('');
-  const reviewChecklistEvidence = useCallback(async (checklistResultId, decision) => {
+  const reviewChecklistEvidence = useCallback(async (checklistResultId, decision, reason = null) => {
+    const trimmedReason = String(reason || '').trim();
+    if (decision === 'failed' && trimmedReason.length < 5) {
+      addToast?.('Lý do từ chối checklist phải từ 5 ký tự trở lên', 'error');
+      return;
+    }
     setReviewingChecklistId(checklistResultId);
     try {
       await apiFetch(`/api/contracts/workflow/checklist/${checklistResultId}/review`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({
+          decision,
+          reason: decision === 'failed' ? trimmedReason : null,
+        }),
       });
       addToast?.(decision === 'approved' ? 'Đã duyệt đạt checklist' : 'Đã từ chối checklist', 'success');
       await onPersisted?.();
@@ -2293,15 +2638,79 @@ export default function ContractWorkflowDesigner({
     }
     const pending = [];
     const checklistItems = node.data.checklist || [];
+    const transitionKeys = Object.keys(node.data.transitions || {});
+    const requiresOutcome = transitionKeys.length > 1;
+    const hasMissing = (node.data.pendingMissing || []).length > 0;
+
+    let hasPendingDocTypes = false;
+    let hasPendingPaperless = false;
+
+    if (canReviewChecklist) {
+      checklistItems.forEach(item => {
+        const docTypes = item.runtime?.document_types || [];
+        const hasDocTypes = docTypes.length > 0;
+        if (hasDocTypes) {
+          const pendingTypes = docTypes.filter(type => type.status === 'pending_review');
+          if (pendingTypes.length > 0) {
+            hasPendingDocTypes = true;
+            pending.push({
+              id: `checklist:${item.runtime?.id || `${node.id}:${item.key}`}`,
+              nodeId: node.id,
+              tab: 'node',
+              code: node.data.code,
+              label: item.name,
+              checklistResultId: item.runtime?.id,
+              taskNodeId: node.data.taskNodeId,
+              checklistItem: item,
+              checklistIndex: (node.data.checklist || []).indexOf(item),
+              evidenceFiles: Array.isArray(item.runtime?.evidence_data?.files)
+                ? item.runtime.evidence_data.files
+                : [],
+              typeLabel: 'Duyệt loại giấy',
+            });
+          }
+        } else {
+          // Checklist thuần không có loại giấy tờ
+          if (['pending_approval', 'late_pending_approval'].includes(item.runtime?.status)) {
+            hasPendingPaperless = true;
+            pending.push({
+              id: `checklist:${item.runtime?.id || `${node.id}:${item.key}`}`,
+              nodeId: node.id,
+              tab: 'node',
+              code: node.data.code,
+              label: item.name,
+              checklistResultId: item.runtime?.id,
+              taskNodeId: node.data.taskNodeId,
+              checklistItem: item,
+              checklistIndex: (node.data.checklist || []).indexOf(item),
+              evidenceFiles: Array.isArray(item.runtime?.evidence_data?.files)
+                ? item.runtime.evidence_data.files
+                : [],
+              typeLabel: item.runtime?.status === 'late_pending_approval'
+                ? 'Xác nhận nộp trễ'
+                : 'Xác nhận hoàn thành',
+            });
+          }
+        }
+      });
+    }
+
+    const hasPendingChecklistWork = hasPendingDocTypes || hasPendingPaperless;
     const hasConfiguredDocumentTypes = checklistItems.some(item => (item.runtime?.document_types || []).length > 0);
-    const usesRuntimeTypeReview = hasConfiguredDocumentTypes;
-    // Node dùng luồng duyệt theo loại giấy không được quay lại phiếu nghiệm thu
-    // Node cũ. Loại cuối cùng được duyệt Đạt sẽ tự chốt Node ở backend; kể cả
-    // dữ liệu cũ còn pending_acceptance_id thì cũng không bắt Giám đốc duyệt
-    // thêm lần thứ hai. Nếu Node không có loại giấy nào mà nhân viên đã nộp nghiệm thu,
-    // Giám đốc duyệt nghiệm thu trực tiếp cho Node.
-    if (canReviewNode && node.data.pendingAcceptanceId && !usesRuntimeTypeReview) {
-      pending.push({
+
+    // Với Node có checklist đang chờ duyệt (loại giấy hoặc checklist thuần), Giám đốc duyệt trực tiếp
+    // từng mục. Khi mục cuối cùng đạt, backend tự động hoàn tất Node và mở bước kế tiếp.
+    // Do đó KHÔNG sinh mục 'Nghiệm thu Node' thừa thãi trong Chờ duyệt khi đang có việc checklist cần làm.
+    // Chỉ thêm 'Nghiệm thu Node' khi:
+    // 1. Không còn việc checklist nào đang chờ
+    // 2. VÀ (Node không dùng loại giấy runtime, HOẶC cần chọn kết quả rẽ nhánh, HOẶC duyệt chấp nhận thiếu)
+    if (
+      canReviewNode
+      && node.data.pendingAcceptanceId
+      && !hasPendingChecklistWork
+      && (!hasConfiguredDocumentTypes || requiresOutcome || hasMissing)
+    ) {
+      pending.unshift({
         id: `node:${node.data.pendingAcceptanceId}`,
         nodeId: node.id,
         tab: 'node',
@@ -2311,38 +2720,6 @@ export default function ContractWorkflowDesigner({
         pendingAcceptanceId: node.data.pendingAcceptanceId,
         pendingMissing: node.data.pendingMissing || [],
         transitions: node.data.transitions || {},
-      });
-    }
-    if (canReviewChecklist) {
-      checklistItems.forEach(item => {
-        const usesRuntimeTypes = hasRuntimeDocumentTypes(item);
-        const hasPendingTypes = usesRuntimeTypes
-          && (item.runtime?.document_types || []).some(type => type.status === 'pending_review');
-        if (usesRuntimeTypes ? !hasPendingTypes : !['pending_approval', 'late_pending_approval'].includes(item.runtime?.status)) return;
-        pending.push({
-          id: `checklist:${item.runtime.id || `${node.id}:${item.key}`}`,
-          nodeId: node.id,
-          // Checklist đã gộp vào tab Node — trỏ 'checklist' là rơi vào tab
-          // không tồn tại, panel hiện trắng.
-          tab: 'node',
-          code: node.data.code,
-          label: item.name,
-          checklistResultId: item.runtime.id,
-          // id bước trong DB, khác node.id (id trên sơ đồ). Chốt đợt duyệt gọi
-          // theo id DB — nhầm hai thứ này là gọi vào một bước không tồn tại.
-          taskNodeId: node.data.taskNodeId,
-          // Kèm chính mục checklist để thanh Chờ duyệt bày được đúng card như
-          // trong tab Node, thay vì dựng một cách hiển thị thứ hai cho cùng dữ
-          // liệu — hai cách hiển thị là sớm muộn nói khác nhau.
-          checklistItem: item,
-          checklistIndex: (node.data.checklist || []).indexOf(item),
-          evidenceFiles: Array.isArray(item.runtime?.evidence_data?.files)
-            ? item.runtime.evidence_data.files
-            : [],
-          typeLabel: item.runtime?.status === 'late_pending_approval'
-            ? 'Minh chứng nộp trễ'
-            : usesRuntimeTypes ? 'Duyệt loại giấy' : 'Minh chứng checklist',
-        });
       });
     }
     return pending;
@@ -2412,60 +2789,173 @@ export default function ContractWorkflowDesigner({
     [docTemplates],
   );
 
-  const outputDocumentGroups = useMemo(() => {
-    // ── Nguồn: SỔ GIẤY TỜ CỦA CHÍNH HẠNG MỤC NÀY ──
-    //
-    // Không lấy danh mục mẫu toàn hệ thống. Danh mục đó gộp mọi Gói và mọi Hạng
-    // mục, nên nó mời Giám đốc khai một loại giấy KHÔNG thuộc hạng mục đang mở —
-    // rồi checklist đòi một tờ mà sổ hồ sơ không bao giờ có ô để chứa.
-    //
-    // Sổ đã lọc sẵn theo bốn trục Gói → Hạng mục → Node → Loại giấy, và đó cũng
-    // đúng những gì Tủ hồ sơ ở sidebar đang bày. Hai chỗ nói về cùng một hồ sơ
-    // thì phải nói giống nhau.
-    if (registerGroups?.length) {
-      const nhan = new Map(OUTPUT_DOCUMENT_SOURCE_GROUPS.map(group => [group.key, group]));
-      return registerGroups
-        .map(group => ({
-          key: group.source,
-          label: group.label || nhan.get(group.source)?.label || group.source,
-          hint: nhan.get(group.source)?.hint || '',
-          // Ô tự thêm không có template_id nên không khai làm đầu ra được:
-          // output_documents khoá theo loại giấy, không theo ô.
-          items: (group.slots || [])
-            .filter(slot => slot.template_id)
-            .map(slot => ({
-              id: slot.template_id,
-              name: slot.name,
-              source_label: slot.source_label,
-              needs_original: slot.needs_original,
-            })),
-        }))
-        .filter(group => group.items.length > 0);
-    }
+  const isTemplateApplicableToServiceLine = useCallback((template, currentServiceLine) => {
+    if (!template) return false;
+    const pId = currentServiceLine?.service_package_id;
+    const tId = currentServiceLine?.task_type_id;
 
-    // Chưa gắn hợp đồng (đang dựng quy trình mẫu) thì không có sổ để đọc — rơi
-    // về danh mục chung, chứ để trống là không khai được gì.
-    const buckets = new Map(OUTPUT_DOCUMENT_SOURCE_GROUPS.map(group => [group.key, []]));
-    const khac = [];
-    docTemplates.forEach(template => {
-      if (!isHardCopyCustomerDocument(template)) return;
-      const key = outputDocumentSourceKey(template);
-      if (buckets.has(key)) buckets.get(key).push(template);
-      else khac.push(template);
-    });
-    const groups = OUTPUT_DOCUMENT_SOURCE_GROUPS
-      .map(group => ({ ...group, items: buckets.get(group.key) || [] }))
-      .filter(group => group.items.length > 0);
-    if (khac.length) {
-      groups.push({
-        key: 'KHAC',
-        label: 'Khác',
-        hint: 'Mẫu chưa khai rõ nguồn, cần kiểm tra lại cấu hình.',
-        items: khac,
+    if (!pId && !tId) return false;
+
+    if (tId && template.task_type_id && String(template.task_type_id) === String(tId)) return true;
+    if (pId && template.service_package_id && String(template.service_package_id) === String(pId)) return true;
+
+    if (Array.isArray(template.applicabilities) && template.applicabilities.length > 0) {
+      return template.applicabilities.some(app => {
+        if (app.applicability_type === 'TASK_TYPE') {
+          return Boolean(tId) && String(app.task_type_id) === String(tId);
+        }
+        if (app.applicability_type === 'PACKAGE') {
+          return Boolean(pId) && String(app.service_package_id) === String(pId);
+        }
+        if (app.applicability_type === 'COMBO') {
+          const matchT = !app.task_type_id || (Boolean(tId) && String(app.task_type_id) === String(tId));
+          const matchP = !app.service_package_id || (Boolean(pId) && String(app.service_package_id) === String(pId));
+          const hasSpecificTarget = Boolean(app.task_type_id || app.service_package_id);
+          return hasSpecificTarget && matchT && matchP;
+        }
+        return false;
       });
     }
-    return groups;
-  }, [docTemplates, registerGroups]);
+
+    return false;
+  }, []);
+
+  const outputDocumentGroups = useMemo(() => {
+    const nhan = new Map(OUTPUT_DOCUMENT_SOURCE_GROUPS.map(group => [group.key, group]));
+    const groupsMap = new Map();
+    const knownTemplateIds = new Set();
+
+    // 1. Sổ giấy tờ của chính hạng mục này (nếu có)
+    if (registerGroups?.length) {
+      registerGroups.forEach(group => {
+        const key = group.source || outputDocumentSourceKey(group);
+        const meta = nhan.get(key) || {
+          label: group.label || key,
+          hint: '',
+        };
+        const seenInGroup = new Set();
+        const items = [];
+        (group.slots || []).forEach(slot => {
+          if (!slot.template_id || seenInGroup.has(slot.template_id)) return;
+          seenInGroup.add(slot.template_id);
+          knownTemplateIds.add(slot.template_id);
+          items.push({
+            id: slot.template_id,
+            name: slot.name,
+            source_label: slot.source_label || meta.label,
+            needs_original: slot.needs_original,
+          });
+        });
+        if (items.length > 0) {
+          if (!groupsMap.has(key)) {
+            groupsMap.set(key, {
+              key,
+              label: group.label || meta.label,
+              hint: meta.hint || '',
+              items: [],
+            });
+          }
+          groupsMap.get(key).items.push(...items);
+        }
+      });
+
+      // Hợp nhất các mẫu mới tạo theo Combo của hợp đồng/hạng mục này (nếu chưa có ô)
+      (docTemplates || []).forEach(template => {
+        if (!template?.id || knownTemplateIds.has(template.id)) return;
+        if (!isTemplateApplicableToServiceLine(template, serviceLine)) return;
+
+        const key = outputDocumentSourceKey(template);
+        const meta = nhan.get(key) || {
+          key: 'KHAC',
+          label: 'Khác',
+          hint: 'Mẫu chưa khai rõ nguồn, cần kiểm tra lại cấu hình.',
+        };
+
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, {
+            key,
+            label: meta.label,
+            hint: meta.hint || '',
+            items: [],
+          });
+        }
+        groupsMap.get(key).items.unshift({
+          id: template.id,
+          name: template.name,
+          source_label: template.source_label || meta.label,
+          needs_original: template.needs_original,
+          is_new: true,
+        });
+        knownTemplateIds.add(template.id);
+      });
+    } else {
+      // 2. Chưa có sổ giấy tờ (đang dựng quy trình mẫu hoặc chưa nạp sổ)
+      const hasServiceContext = Boolean(serviceLine?.service_package_id || serviceLine?.task_type_id);
+      const buckets = new Map(OUTPUT_DOCUMENT_SOURCE_GROUPS.map(group => [group.key, []]));
+      const khac = [];
+      const seenTemplateIds = new Set();
+
+      (docTemplates || []).forEach(template => {
+        if (!template?.id || seenTemplateIds.has(template.id)) return;
+        if (hasServiceContext) {
+          if (!isTemplateApplicableToServiceLine(template, serviceLine)) return;
+        } else {
+          if (!isHardCopyCustomerDocument(template)) return;
+        }
+        seenTemplateIds.add(template.id);
+        const key = outputDocumentSourceKey(template);
+        if (buckets.has(key)) buckets.get(key).push(template);
+        else khac.push(template);
+      });
+      OUTPUT_DOCUMENT_SOURCE_GROUPS.forEach(group => {
+        const items = buckets.get(group.key) || [];
+        if (items.length > 0) {
+          groupsMap.set(group.key, { ...group, items });
+        }
+      });
+      if (khac.length > 0) {
+        groupsMap.set('KHAC', {
+          key: 'KHAC',
+          label: 'Khác',
+          hint: 'Mẫu chưa khai rõ nguồn, cần kiểm tra lại cấu hình.',
+          items: khac,
+        });
+      }
+    }
+
+    const order = ['KHACH_HANG', 'CONG_TY', 'CO_QUAN', 'KHAC'];
+    const result = [];
+    order.forEach(k => {
+      if (groupsMap.has(k) && groupsMap.get(k).items.length > 0) {
+        result.push(groupsMap.get(k));
+      }
+    });
+    groupsMap.forEach((val, k) => {
+      if (!order.includes(k) && val.items.length > 0) {
+        result.push(val);
+      }
+    });
+    return result;
+  }, [docTemplates, registerGroups, serviceLine, isTemplateApplicableToServiceLine]);
+
+  const totalAvailableOutputDocs = useMemo(() => (
+    outputDocumentGroups.reduce((acc, g) => acc + (g.items?.length || 0), 0)
+  ), [outputDocumentGroups]);
+
+  const filteredOutputDocumentGroups = useMemo(() => {
+    const searchTrim = boDauTiengViet(outputDocSearch).trim();
+    return outputDocumentGroups
+      .filter(group => outputDocSourceTab === 'ALL' || group.key === outputDocSourceTab)
+      .map(group => {
+        if (!searchTrim) return group;
+        const matchingItems = group.items.filter(item => (
+          boDauTiengViet(item.name).includes(searchTrim) ||
+          boDauTiengViet(item.source_label).includes(searchTrim)
+        ));
+        return { ...group, items: matchingItems };
+      })
+      .filter(group => group.items.length > 0);
+  }, [outputDocumentGroups, outputDocSourceTab, outputDocSearch]);
 
   return (
     <div className="workflow-designer">
@@ -2516,36 +3006,15 @@ export default function ContractWorkflowDesigner({
           {/* Trước đây nút này tự chọn hộ: quét danh mục, lấy bước đầu tiên chưa
               dùng rồi nhét vào sơ đồ. Người dựng quy trình không được chọn thêm
               bước nào — mà đó mới là việc chính của họ. */}
-          <div className="workflow-node-picker">
-            <button type="button" disabled={!structureEditable} className="workspace-icon-button"
-title="Thêm node"
-              aria-expanded={isSelectingNode} aria-haspopup="listbox"
-              onClick={() => setIsSelectingNode(value => !value)}>
-              <Plus size={16} /> Thêm node
-            </button>
-            {isSelectingNode && structureEditable && (
-              <>
-                <div className="workflow-node-picker__backdrop" onClick={() => setIsSelectingNode(false)} />
-                <div className="workflow-node-picker__menu" role="listbox">
-                  {availableCatalogNodes.length === 0 ? (
-                    <p className="workflow-node-picker__empty">
-                      Đã dùng hết {catalog.length} bước trong danh mục. Mỗi bước chỉ đặt được một lần
-                      trong cùng quy trình.
-                    </p>
-                  ) : availableCatalogNodes.map(item => (
-                    <button key={item.code} type="button" role="option"
-                      className="workflow-node-picker__item" onClick={() => addCatalogNode(item)}>
-                      <span className="workflow-node-picker__code">{item.code}</span>
-                      <span>
-                        <strong>{item.name}</strong>
-                        {item.description && <em>{item.description}</em>}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+          <button
+            type="button"
+            disabled={!structureEditable}
+            className="workspace-icon-button"
+            title="Thêm node mới"
+            onClick={handleAddNewCustomNode}
+          >
+            <Plus size={16} /> Thêm node
+          </button>
           {structureEditable && nodes.length > 0 && (
             <div className="workflow-node-picker">
               <button type="button" className="workspace-icon-button"
@@ -2811,12 +3280,12 @@ title="Lưu quy trình hiện tại thành mẫu"
             {[
               ['node', 'Node'],
               ['assignment', 'Phân công'],
-              ['transition', 'Điều kiện'],
+              ['capability', 'Năng lực'],
             ].map(([key, label]) => (
               <button
                 type="button"
                 key={key}
-                className={inspectorTab === key ? 'active' : ''}
+                className={(inspectorTab === key || (key === 'capability' && inspectorTab === 'transition')) ? 'active' : ''}
                 onClick={() => setInspectorTab(key)}
               >
                 {label}
@@ -2833,13 +3302,10 @@ title="Lưu quy trình hiện tại thành mẫu"
           ) : inspectorTab === 'node' ? (
             <div className="workflow-inspector__content wf-node-panel">
               <div className="wf-node-panel__fixed">
-              {/* Tiến độ thu tiền — CHỈ Node K06.
-                  K06 là bước nhận kết quả và bàn giao, và luật nghiệp vụ là phải
-                  THU ĐỦ tiền hợp đồng mới đóng được bước này. Bày ở đây để Giám
-                  đốc thấy ngay còn thiếu bao nhiêu, không phải mở sang Thu chi
-                  rồi quay lại. Các Node khác không dính tiền nên không hiện —
-                  thêm một thanh luôn bằng 0 chỉ làm nhiễu. */}
-              {selectedNode.data.code === 'K06' && (
+              {/* Tiến độ thu tiền — Cho Node Bàn giao (K06 hoặc có năng lực HANDOVER).
+                  Luật nghiệp vụ là phải THU ĐỦ tiền hợp đồng mới đóng được bước này.
+                  Bày ở đây để Giám đốc thấy ngay còn thiếu bao nhiêu. */}
+              {isHandoverNode(selectedNode) && (
                 <section className="wf-node-money" aria-label="Tiến độ thu tiền hợp đồng">
                   <div
                     className="wf-node-money__bar"
@@ -2856,7 +3322,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                 </section>
               )}
 
-              {selectedNode.data.code === 'K06' && selectedNode.data.taskNodeId && (
+              {isHandoverNode(selectedNode) && selectedNode.data.taskNodeId && (
                 <DebtReviewCard
                   taskNodeId={selectedNode.data.taskNodeId}
                   targetRequestId={targetType === 'debt_review' ? targetId : undefined}
@@ -2866,9 +3332,22 @@ title="Lưu quy trình hiện tại thành mẫu"
                 />
               )}
 
-              {/* K05a · K05b: hồ sơ nộp cơ quan. Đặt trên cùng vì "đang tạm dừng
-                  vì cái gì" và "hẹn ngày nào trả" là hai câu Giám đốc hỏi đầu tiên. */}
-              {AGENCY_PANEL_NODE_CODES.has(selectedNode.data.code) && (
+              {isHandoverNode(selectedNode) && (
+                <section className="wf-agency" aria-label="Cổng công nợ & Bàn giao">
+                  <div className="wf-agency__preview wf-agency__preview--handover">
+                    <ShieldCheck size={14} />
+                    <div>
+                      <strong>Cổng kiểm soát công nợ & Bàn giao</strong>
+                      <span>
+                        Bước bàn giao nghiệm thu yêu cầu thu đủ 100% tiền hợp đồng hoặc có phiếu phê duyệt công nợ từ Ban Giám Đốc mới được mở cổng hoàn thành.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Nộp cơ quan & theo dõi một cửa — Cho Node có năng lực GOV_SUBMISSION hoặc K05a/K05b */}
+              {isAgencyNode(selectedNode) && (
                 <NodeAgencyPanel
                   taskNodeId={selectedNode.data.taskNodeId}
                   nodeCode={selectedNode.data.code}
@@ -2879,12 +3358,100 @@ title="Lưu quy trình hiện tại thành mẫu"
                 />
               )}
 
+              {/* Đo đạc hiện trạng — Cho Node có năng lực SURVEY_FIELD hoặc K02 */}
+              {isSurveyFieldNode(selectedNode) && (
+                <section className="wf-agency" aria-label="Đo đạc hiện trạng">
+                  <div className="wf-agency__preview wf-agency__preview--survey">
+                    <Compass size={14} />
+                    <div>
+                      <strong>Nghiệp vụ đo đạc & Biên bản hiện trạng</strong>
+                      <span>
+                        Bước này liên kết máy đo RTK GPS, tọa độ mốc ranh và xuất Biên bản đo đạc hiện trạng có chữ ký các bên.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Biên tập bản vẽ CAD — Cho Node có năng lực SURVEY_CAD hoặc K03 */}
+              {isSurveyCadNode(selectedNode) && (
+                <section className="wf-agency" aria-label="Biên tập bản vẽ CAD">
+                  <div className="wf-agency__preview wf-agency__preview--cad">
+                    <Monitor size={14} />
+                    <div>
+                      <strong>Nội nghiệp biên tập bản vẽ CAD & GIS</strong>
+                      <span>
+                        Bước này kế thừa dữ liệu tọa độ từ máy RTK GPS hoặc sổ đo hiện trường để hoàn thiện hồ sơ kỹ thuật thửa đất, bản vẽ trích lục.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Soạn thảo pháp lý — Cho Node có năng lực LEGAL_PREP hoặc K04 */}
+              {isLegalPrepNode(selectedNode) && (
+                <section className="wf-agency" aria-label="Soạn thảo pháp lý">
+                  <div className="wf-agency__preview wf-agency__preview--legal">
+                    <Scale size={14} />
+                    <div>
+                      <strong>Soạn thảo hồ sơ pháp lý & Rà quy hoạch</strong>
+                      <span>
+                        Bước này tập trung rà soát quy hoạch, thẩm định điều kiện cấp đổi/chuyển nhượng và lập bộ tờ trình, đơn từ hoàn chỉnh.
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {/* Người nhận việc + lối tắt sang chi tiết phân công. Avatar chồng
                   nhau để một Node nhiều người vẫn gọn một dòng. */}
               {/* Lưới cấu hình theo bản vẽ: nhãn cam cột trái, giá trị cột phải.
                   Bốn hàng mô tả · phòng ban · vai trò · thời lượng dùng lại đúng
                   các điều khiển đã có, chỉ đổi cách bày. */}
               <div className="wf-node-grid">
+                <div className="wf-node-grid__row">
+                  <span className="wf-node-grid__label">Tên bước</span>
+                  <div className="wf-node-grid__value">
+                    {structureEditable ? (
+                      <input
+                        type="text"
+                        className="mws-node-title-input"
+                        style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontWeight: 600, fontSize: '13.5px' }}
+                        value={selectedNode.data.label || selectedNode.data.name || ''}
+                        onChange={event => updateSelectedNode({ label: event.target.value, name: event.target.value })}
+                        placeholder="Tên bước thực hiện…"
+                      />
+                    ) : (
+                      <strong>{selectedNode.data.label || selectedNode.data.name || '—'}</strong>
+                    )}
+                  </div>
+                </div>
+                <div className="wf-node-grid__row">
+                  <span className="wf-node-grid__label">Năng lực</span>
+                  <div className="wf-node-grid__value" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className={`workflow-node__cap-tag workflow-node__cap-tag--${(selectedNode.data.capability || 'standard').toLowerCase().replace(/_/g, '-')}`}>
+                      {capabilityMeta(selectedNode.data.capability).label}
+                    </span>
+                    {structureEditable && (
+                      <button
+                        type="button"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--orange-600, #ea580c)',
+                          cursor: 'pointer',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: 0,
+                          textDecoration: 'underline',
+                        }}
+                        onClick={() => setInspectorTab('capability')}
+                      >
+                        Đổi năng lực →
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="wf-node-grid__row">
                   <span className="wf-node-grid__label">Nhân sự</span>
                   <div className="wf-node-grid__value wf-node-people" aria-label="Người thực hiện">
@@ -2952,15 +3519,6 @@ title="Lưu quy trình hiện tại thành mẫu"
                       poolDepartmentCode: val,
                       poolDepartmentLabel: poolDepartmentLabel(val),
                     })}
-                  />
-                </div>
-                <div className="workflow-pool-config__roles">
-                  <RoleMultiSelect
-                    label="Vai trò được nhận việc"
-                    disabled={!structureEditable}
-                    value={selectedNode.data.claimRoles || []}
-                    options={ASSIGNMENT_ROLES}
-                    onChange={claimRoles => updateSelectedNode({ claimRoles })}
                   />
                 </div>
               </section>
@@ -3040,10 +3598,9 @@ title="Lưu quy trình hiện tại thành mẫu"
                       Chữ chuyển hết sang title + aria-label nên không mất gì. */}
                   <button
                     type="button"
-                    disabled={!checklistEditable}
                     className="wcl-btn wcl-btn--primary wcl-btn--icon"
-                    onClick={addChecklistItem}
-                    title="Thêm mục checklist"
+                    onClick={handleAddChecklistItemClick}
+                    title={checklistEditable ? "Thêm mục checklist" : "Quy trình đang ở chế độ xem — Bấm để xem hướng dẫn"}
                     aria-label="Thêm mục checklist"
                   >
                     <Plus size={15} />
@@ -3055,17 +3612,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                   ở dưới phải đứng yên để còn đối chiếu khi cuộn checklist. */}
               <div className="wf-node-panel__scroll">
 
-              {/* Hai node đặc biệt: K05 (nộp cơ quan) và K06 (bàn giao) nếu có runtime */}
-              {selectedNode.data.requiresGovSubmission
-                && selectedNode.data.taskNodeId
-                && !AGENCY_PANEL_NODE_CODES.has(selectedNode.data.code) && (
-                <LegalDossierNodePanel
-                  taskNodeId={selectedNode.data.taskNodeId}
-                  addToast={addToast}
-                  onChanged={onPersisted}
-                  readOnly
-                />
-              )}
+
               {selectedNode.data.checklist.length === 0 ? (
                 <div className="workflow-inspector__empty compact">
                   <ListChecks size={24} />
@@ -3087,12 +3634,18 @@ title="Lưu quy trình hiện tại thành mẫu"
                     }
                     canManageCompensation={canManageCompensation}
                     readOnly
+                    canReviewDocuments={canReviewChecklist}
+                    onApproveChecklist={id => reviewChecklistEvidence(id, 'approved')}
+                    onRejectChecklist={(id, reason) => reviewChecklistEvidence(id, 'failed', reason)}
+                    highlightedDocumentTypeId={highlightedDocTypeId}
+                    isHighlighted={String(item.runtime?.id) === String(highlightedChecklistId)}
                     nodeStatus={selectedNode.data.executionStatus || selectedNode.data.status}
                     onOpenDocument={file => openChecklistDocument(selectedNode.data.taskNodeId, file)}
                   />
                 ) : (
                 <div
-                  className={`workflow-checklist-card${dragChecklistIndex === index ? ' is-dragging' : ''}`}
+                  id={`checklist-card-${item.runtime?.id || index}`}
+                  className={`workflow-checklist-card${dragChecklistIndex === index ? ' is-dragging' : ''}${String(item.runtime?.id) === String(highlightedChecklistId) ? ' is-highlighted' : ''}`}
                   key={item.key || index}
                   onDragOver={event => { if (dragChecklistIndex != null) event.preventDefault(); }}
                   onDrop={event => { event.preventDefault(); moveChecklistItem(dragChecklistIndex, index); setDragChecklistIndex(null); }}
@@ -3124,9 +3677,8 @@ title="Lưu quy trình hiện tại thành mẫu"
                     <button
                       type="button"
                       className="wcl-add-doc"
-                      disabled={!checklistEditable}
                       onClick={() => openOutputDocumentModal(index)}
-                      title="Thêm giấy tờ đầu ra cho mục này"
+                      title={checklistEditable ? "Thêm giấy tờ đầu ra cho mục này" : "Xem tài liệu đầu ra của mục này"}
                       aria-label="Thêm giấy tờ đầu ra cho mục này"
                     >
                       <Plus size={13} />
@@ -3327,8 +3879,8 @@ title="Lưu quy trình hiện tại thành mẫu"
                         </div>
                         {(workItemById.get(item.compensation.work_item_id)?.rates || []).length > 0 && (
                           <div className="wcl-rate-readout">
-                            {(workItemById.get(item.compensation.work_item_id)?.rates || []).map(rate => (
-                              <span key={rate.id} className={`wcl-rr${Number(rate.amount) > 0 ? '' : ' is-zero'}`}>
+                            {(workItemById.get(item.compensation.work_item_id)?.rates || []).map((rate, rateIndex) => (
+                              <span key={rate.id || rate.role_code || rateIndex} className={`wcl-rr${Number(rate.amount) > 0 ? '' : ' is-zero'}`}>
                                 {shortRoleLabel(rate.role_code)}: <strong>{formatMoney(rate.amount)}</strong>
                               </span>
                             ))}
@@ -3366,7 +3918,15 @@ title="Lưu quy trình hiện tại thành mẫu"
                             type="button"
                             className="btn btn-secondary btn-sm"
                             disabled={reviewingChecklistId === item.runtime.id}
-                            onClick={() => reviewChecklistEvidence(item.runtime.id, 'failed')}
+                            onClick={() => {
+                              const reason = window.prompt('Nhập lý do không đạt (tối thiểu 5 ký tự):');
+                              if (reason === null) return;
+                              if (reason.trim().length < 5) {
+                                addToast?.('Lý do từ chối phải từ 5 ký tự trở lên', 'error');
+                                return;
+                              }
+                              reviewChecklistEvidence(item.runtime.id, 'failed', reason.trim());
+                            }}
                           >
                             <XCircle size={14} /> Từ chối
                           </button>
@@ -3391,44 +3951,84 @@ title="Lưu quy trình hiện tại thành mẫu"
                 </div>
                 )
               ))}
-              {canReviewNode && selectedNode.data.pendingAcceptanceId && !(selectedNode.data.checklist || []).some(item => (item.runtime?.document_types || []).length > 0) && (
-                <div className="workflow-evidence-review" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed' }}>
-                  <span style={{ fontWeight: 650, color: '#9a3412', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <CircleDashed size={14} /> Nhân viên đã nộp nghiệm thu Node — chờ Giám đốc duyệt
-                  </span>
-                  {(selectedNode.data.pendingMissing || []).length > 0 && (
-                    <small style={{ display: 'block', marginTop: 4, color: '#c2410c' }}>
-                      Thiếu tài liệu: {selectedNode.data.pendingMissing.map(m => m.name || m.title || m).join(', ')}
-                    </small>
-                  )}
-                  <div className="workflow-evidence-review__actions" style={{ marginTop: 8 }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      disabled={reviewingNodeId === selectedNode.data.pendingAcceptanceId}
-                      onClick={() => reviewNodeAcceptance(selectedNode.data.pendingAcceptanceId, 'rework_required')}
-                    >
-                      <XCircle size={14} /> Cần làm lại
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      disabled={reviewingNodeId === selectedNode.data.pendingAcceptanceId}
-                      onClick={() => reviewNodeAcceptance(
-                        selectedNode.data.pendingAcceptanceId,
-                        'accepted',
-                        null,
-                        (selectedNode.data.pendingMissing || []).length > 0,
-                      )}
-                    >
-                      <CheckCircle2 size={14} />
-                      {(selectedNode.data.pendingMissing || []).length
-                        ? ' Duyệt chấp nhận thiếu'
-                        : ' Duyệt đạt'}
-                    </button>
+              {canReviewNode && selectedNode.data.pendingAcceptanceId && (
+                (selectedNode.data.checklist || []).length === 0
+                || Object.keys(selectedNode.data.transitions || {}).length > 1
+                || (selectedNode.data.pendingMissing || []).length > 0
+              ) && (() => {
+                const eligibility = getNodeReviewEligibility(selectedNode);
+                const hasMissing = (selectedNode.data.pendingMissing || []).length > 0;
+                const transitionKeys = Object.keys(selectedNode.data.transitions || {});
+                const requiresOutcome = transitionKeys.length > 0;
+                const canApprove = eligibility.canApprove && (!requiresOutcome || Boolean(reviewOutcome));
+
+                return (
+                  <div className="workflow-evidence-review" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed' }}>
+                    <span style={{ fontWeight: 650, color: '#9a3412', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <CircleDashed size={14} /> Nhân viên đã nộp nghiệm thu Node — chờ Giám đốc duyệt
+                    </span>
+                    {hasMissing && (
+                      <small style={{ display: 'block', marginTop: 4, color: '#c2410c' }}>
+                        Thiếu tài liệu: {selectedNode.data.pendingMissing.map(m => m.name || m.title || m).join(', ')}
+                      </small>
+                    )}
+                    {requiresOutcome && (
+                      <label style={{ display: 'grid', gap: 4, marginTop: 8, fontSize: 11, fontWeight: 700, color: '#475569' }}>
+                        Kết quả xử lý (chọn nhánh tiếp theo):
+                        <select
+                          className="form-control form-control-sm"
+                          value={reviewOutcome}
+                          onChange={event => setReviewOutcome(event.target.value)}
+                        >
+                          <option value="">— Chọn kết quả —</option>
+                          {transitionKeys.map(code => (
+                            <option key={code} value={code}>{workflowLabels.outcomes[code] || code}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    <label style={{ display: 'grid', gap: 4, marginTop: 8, fontSize: 11, fontWeight: 700, color: '#475569' }}>
+                      {hasMissing ? 'Lý do chấp nhận thiếu / Lý do trả lại (bắt buộc):' : 'Lý do yêu cầu làm lại:'}
+                      <input
+                        className="form-control form-control-sm"
+                        value={lyDoLamLai}
+                        placeholder={hasMissing ? 'VD: Được phép bổ sung trước khi đóng hợp đồng' : 'VD: Cần chụp rõ hơn mốc ranh số 3'}
+                        onChange={event => setLyDoLamLai(event.target.value)}
+                      />
+                    </label>
+                    {!eligibility.canApprove && (
+                      <small style={{ display: 'block', marginTop: 6, color: '#b91c1c', fontWeight: 600 }}>
+                        ⚠️ Chưa thể nghiệm thu Node: {eligibility.reason}
+                      </small>
+                    )}
+                    <div className="workflow-evidence-review__actions" style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        disabled={reviewingNodeId === selectedNode.data.pendingAcceptanceId}
+                        onClick={() => reviewNodeAcceptance(selectedNode.data.pendingAcceptanceId, 'rework_required')}
+                      >
+                        <XCircle size={14} /> Cần làm lại
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={reviewingNodeId === selectedNode.data.pendingAcceptanceId || !canApprove}
+                        title={!eligibility.canApprove ? eligibility.reason : (requiresOutcome && !reviewOutcome ? 'Vui lòng chọn kết quả xử lý' : '')}
+                        onClick={() => reviewNodeAcceptance(
+                          selectedNode.data.pendingAcceptanceId,
+                          'accepted',
+                          reviewOutcome || null,
+                          hasMissing,
+                        )}
+                      >
+                        <CheckCircle2 size={14} />
+                        {hasMissing ? ' Duyệt chấp nhận thiếu' : ' Duyệt đạt Node'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
               {!checklistEditable && selectedNode.data.taskNodeId && (
                 <div className="workflow-note-box">
                   <LockKeyhole size={16} /> Node đã bắt đầu nên danh sách nghiệm thu được khóa; bản sửa đổi chỉ được đổi đường chuyển bước hoặc thêm Node mới.
@@ -3577,56 +4177,47 @@ title="Lưu quy trình hiện tại thành mẫu"
             </div>
           ) : (
             <div className="workflow-inspector__content">
-              {/* Ba cờ này ĐÚNG NGHĨA là điều kiện của bước, nên thuộc tab
-                  "điều kiện" chứ không phải tab "node". Để ở tab node làm phần
-                  cấu hình dài thêm mà bản vẽ không có chỗ cho nó. */}
-              {/* Mục: ĐIỀU KIỆN KÍCH HOẠT */}
+              {/* Mục: NĂNG LỰC BƯỚC (6 Thẻ Chuẩn Bách Khoa ERP) */}
               <div className="workflow-section-block">
-                <label className="workflow-section-block__label">ĐIỀU KIỆN KÍCH HOẠT</label>
-                <div className="workflow-trigger-group">
-                  <label className="workflow-trigger-item">
-                    <input
-                      type="checkbox"
-                      disabled={!structureEditable || AGENCY_NODE_CODES.has(selectedNode.data.code)}
-                      checked={Boolean(selectedNode.data.requiresGovSubmission)
-                        || AGENCY_NODE_CODES.has(selectedNode.data.code)}
-                      onChange={event => updateSelectedNode({ requiresGovSubmission: event.target.checked })}
-                    />
-                    <div className="workflow-trigger-item__info">
-                      <strong>Yêu cầu nộp cơ quan nhà nước</strong>
-                      {AGENCY_NODE_CODES.has(selectedNode.data.code) && (
-                        <span>Bước {selectedNode.data.code} luôn nộp cơ quan — không tắt được.</span>
-                      )}
-                    </div>
-                  </label>
-
-                  <label className="workflow-trigger-item">
-                    <input
-                      type="checkbox"
-                      disabled={!structureEditable}
-                      checked={Boolean(selectedNode.data.createsSurveyRecord)}
-                      onChange={event => updateSelectedNode({ createsSurveyRecord: event.target.checked })}
-                    />
-                    <div className="workflow-trigger-item__info">
-                      <strong>Bước đo vẽ</strong>
-                    </div>
-                  </label>
-
-                  <label className="workflow-trigger-item">
-                    <input
-                      type="checkbox"
-                      disabled={!structureEditable}
-                      checked={Boolean(selectedNode.data.isHandover)}
-                      onChange={event => updateSelectedNode({ isHandover: event.target.checked })}
-                    />
-                    <div className="workflow-trigger-item__info">
-                      <strong>Bước bàn giao</strong>
-                    </div>
-                  </label>
+                <label className="workflow-section-block__label">NĂNG LỰC BƯỚC (CHẠY NGẦM TỰ ĐỘNG)</label>
+                <div className="mws-capability-grid">
+                  {CAPABILITIES.map((cap) => {
+                    const Icon = cap.icon;
+                    const isSelected = (selectedNode.data.capability || 'STANDARD') === cap.code;
+                    return (
+                      <button
+                        type="button"
+                        key={cap.code}
+                        disabled={!structureEditable}
+                        className={`mws-capability-card${isSelected ? ' is-selected' : ''}`}
+                        onClick={() => {
+                          const updates = {
+                            capability: cap.code,
+                            capability_code: cap.code,
+                            requiresGovSubmission: cap.code === 'GOV_SUBMISSION',
+                            createsSurveyRecord: cap.code === 'SURVEY_FIELD',
+                            isHandover: cap.code === 'HANDOVER',
+                          };
+                          const currentDept = selectedNode.data.poolDepartmentCode;
+                          if (cap.suggestDept && (!currentDept || currentDept === 'SALES')) {
+                            updates.poolDepartmentCode = cap.suggestDept;
+                            updates.poolDepartmentLabel = poolDepartmentLabel(cap.suggestDept);
+                          }
+                          updateSelectedNode(updates);
+                        }}
+                      >
+                        <div className="mws-capability-card__header">
+                          <Icon size={14} color={isSelected ? '#ea580c' : cap.color} />
+                          <span>{cap.label}</span>
+                        </div>
+                        <span className="mws-capability-card__desc">{cap.desc}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="workflow-inspector__section-title">
-                <div><span>Đường chuyển bước</span><strong>{edges.filter(edge => edge.source === selectedNode.id).length} nhánh</strong></div>
+                <div><span>Đường chuyển bước & Điều kiện rẽ nhánh</span><strong>{edges.filter(edge => edge.source === selectedNode.id).length} nhánh</strong></div>
               </div>
               {edges.filter(edge => edge.source === selectedNode.id).map(edge => (
                 <div className="workflow-transition-card" key={edge.id}>
@@ -3777,13 +4368,21 @@ title="Lưu quy trình hiện tại thành mẫu"
                               )
                             )) : <span>Không có tệp minh chứng</span>}
                           </div>
-                          {!hasRuntimeDocumentTypes(item.checklistItem) && (
+                          {!(item.checklistItem?.runtime?.document_types || []).length && (
                           <div className="workflow-review-inbox__actions">
                             <button
                               type="button"
                               className="btn btn-secondary"
                               disabled={reviewingChecklistId === item.checklistResultId}
-                              onClick={() => reviewChecklistEvidence(item.checklistResultId, 'failed')}
+                              onClick={() => {
+                                const reason = window.prompt('Nhập lý do không đạt (tối thiểu 5 ký tự):');
+                                if (reason === null) return;
+                                if (reason.trim().length < 5) {
+                                  addToast?.('Lý do từ chối phải từ 5 ký tự trở lên', 'error');
+                                  return;
+                                }
+                                reviewChecklistEvidence(item.checklistResultId, 'failed', reason.trim());
+                              }}
                             >
                               <XCircle size={13} /> Từ chối
                             </button>
@@ -3798,7 +4397,15 @@ title="Lưu quy trình hiện tại thành mẫu"
                           </div>
                           )}
                         </article>
-                      ) : (
+                      ) : (() => {
+                        const targetNode = nodes.find(n => n.id === item.nodeId);
+                        const eligibility = getNodeReviewEligibility(targetNode);
+                        const hasMissing = (item.pendingMissing || []).length > 0;
+                        const transitionKeys = Object.keys(item.transitions || {});
+                        const requiresOutcome = transitionKeys.length > 0;
+                        const canApprove = eligibility.canApprove && (!requiresOutcome || Boolean(reviewOutcome));
+
+                        return (
                         <article className="workflow-review-inbox__item" key={item.id}>
                           <div className="workflow-review-inbox__item-heading">
                             <span>{item.code}</span>
@@ -3808,7 +4415,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                             </div>
                           </div>
                           <div className="workflow-review-card workflow-review-card--inbox">
-                            <ThieuTaiLieuKhiNop danhSach={item.pendingMissing || []} />
+                            <MissingDocumentsOnSubmit items={item.pendingMissing || []} />
                             <label>
                               Kết quả xử lý
                               <select
@@ -3817,17 +4424,17 @@ title="Lưu quy trình hiện tại thành mẫu"
                                 onChange={event => setReviewOutcome(event.target.value)}
                               >
                                 <option value="">— Chọn kết quả —</option>
-                                {Object.keys(item.transitions || {}).map(code => (
+                                {transitionKeys.map(code => (
                                   <option key={code} value={code}>{workflowLabels.outcomes[code] || code}</option>
                                 ))}
                               </select>
                             </label>
                             <label>
-                              {(item.pendingMissing || []).length
+                              {hasMissing
                                 ? 'Lý do trả lại / lý do chấp nhận thiếu'
                                 : 'Lý do trả lại'}
                               <span className="workflow-review-card__hint">
-                                {(item.pendingMissing || []).length
+                                {hasMissing
                                   ? 'bắt buộc cho cả hai lựa chọn'
                                   : 'chỉ cần khi yêu cầu làm lại'}
                               </span>
@@ -3838,6 +4445,11 @@ title="Lưu quy trình hiện tại thành mẫu"
                                 onChange={event => setLyDoLamLai(event.target.value)}
                               />
                             </label>
+                            {!eligibility.canApprove && (
+                              <small style={{ display: 'block', marginTop: 4, color: '#b91c1c', fontWeight: 600 }}>
+                                ⚠️ Chưa thể duyệt đạt Node: {eligibility.reason}
+                              </small>
+                            )}
                             <div className="workflow-review-card__actions">
                               <button
                                 type="button"
@@ -3850,23 +4462,23 @@ title="Lưu quy trình hiện tại thành mẫu"
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
-                                disabled={reviewingNodeId === item.pendingAcceptanceId || (Object.keys(item.transitions || {}).length > 0 && !reviewOutcome)}
+                                disabled={reviewingNodeId === item.pendingAcceptanceId || !canApprove}
+                                title={!eligibility.canApprove ? eligibility.reason : (requiresOutcome && !reviewOutcome ? 'Vui lòng chọn kết quả xử lý' : '')}
                                 onClick={() => reviewNodeAcceptance(
                                   item.pendingAcceptanceId,
                                   'accepted',
                                   reviewOutcome || null,
-                                  (item.pendingMissing || []).length > 0,
+                                  hasMissing,
                                 )}
                               >
                                 <CheckCircle2 size={14} />
-                                {(item.pendingMissing || []).length
-                                  ? ' Duyệt chấp nhận thiếu'
-                                  : ' Duyệt đạt'}
+                                {hasMissing ? ' Duyệt chấp nhận thiếu' : ' Duyệt đạt Node'}
                               </button>
                             </div>
                           </div>
                         </article>
-                      )
+                        );
+                      })()
                     ))}
                   </div>
                 </div>
@@ -3891,75 +4503,187 @@ title="Lưu quy trình hiện tại thành mẫu"
         </button>
       </div>
 
-<Modal
+      <Modal
         open={outputDocumentModalIndex !== null}
         onClose={closeOutputDocumentModal}
         title="Chọn tài liệu đầu ra"
         id="workflow-output-documents-modal"
         size="lg"
-        className='workflow-output-documents-modal'
+        className="workflow-output-documents-modal"
         footer={(
-          <button type="button" className="btn btn-primary" onClick={closeOutputDocumentModal}>
-            Xong
-          </button>
+          <div className="wcl-output-modal__footer">
+            <div className="wcl-output-modal__footer-summary">
+              {outputDocumentModalSelected.size > 0 ? (
+                <span>Đã chọn: <strong className="wcl-output-modal__footer-count">{outputDocumentModalSelected.size}</strong> loại giấy tờ</span>
+              ) : (
+                <span className="wcl-output-modal__footer-empty">Chưa chọn giấy tờ nào</span>
+              )}
+            </div>
+            <div className="wcl-output-modal__footer-actions">
+              <button type="button" className="btn btn-secondary" onClick={closeOutputDocumentModal}>
+                Huỷ
+              </button>
+              <button type="button" className="btn btn-primary" onClick={closeOutputDocumentModal}>
+                Xong
+              </button>
+            </div>
+          </div>
         )}
       >
         <div className="wcl-output-modal">
+          <div className="wcl-output-modal__controls">
+            <div className="wcl-output-modal__search-wrapper">
+              <Search size={16} className="wcl-output-modal__search-icon" aria-hidden="true" />
+              <input
+                type="text"
+                className="wcl-output-modal__search-input"
+                placeholder="Tìm kiếm theo tên giấy tờ..."
+                value={outputDocSearch}
+                onChange={(e) => setOutputDocSearch(e.target.value)}
+                aria-label="Tìm kiếm theo tên giấy tờ"
+              />
+              {outputDocSearch && (
+                <button
+                  type="button"
+                  className="wcl-output-modal__search-clear"
+                  onClick={() => setOutputDocSearch('')}
+                  title="Xoá tìm kiếm"
+                  aria-label="Xoá tìm kiếm"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="wcl-output-modal__tabs" role="tablist" aria-label="Bộ lọc nguồn tài liệu">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={outputDocSourceTab === 'ALL'}
+                className={`wcl-output-modal__tab ${outputDocSourceTab === 'ALL' ? 'is-active' : ''}`}
+                onClick={() => setOutputDocSourceTab('ALL')}
+              >
+                <span>Tất cả nguồn</span>
+                <span className="wcl-output-modal__tab-count">{totalAvailableOutputDocs}</span>
+              </button>
+              {outputDocumentGroups.map(group => (
+                <button
+                  type="button"
+                  key={group.key}
+                  role="tab"
+                  aria-selected={outputDocSourceTab === group.key}
+                  className={`wcl-output-modal__tab wcl-output-modal__tab--${group.key.toLowerCase().replaceAll('_', '-')} ${outputDocSourceTab === group.key ? 'is-active' : ''}`}
+                  onClick={() => setOutputDocSourceTab(group.key)}
+                >
+                  <span>{group.label}</span>
+                  <span className="wcl-output-modal__tab-count">{group.items.length}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!checklistEditable && (
+            <div className="wcl-output-modal__readonly-banner" role="status" style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              marginBottom: '12px',
+              backgroundColor: 'var(--color-bg-warning, #fffbeb)',
+              border: '1px solid var(--color-border-warning, #fef3c7)',
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: 'var(--color-text-warning, #b45309)',
+            }}>
+              <LockKeyhole size={15} />
+              <span>Quy trình đang ở chế độ xem. Bấm nút "Sửa" ở thanh công cụ phía trên nếu bạn muốn cập nhật danh sách tài liệu đầu ra.</span>
+            </div>
+          )}
+
           <p className="wcl-output-modal__hint">
             Chọn các loại giấy tờ mà checklist này cần tạo ra. Có thể chọn nhiều loại, hệ thống sẽ tự đưa vào cấu trúc hồ sơ của Hạng mục sau khi nộp và duyệt.
           </p>
+
           {outputDocumentGroups.length > 0 ? (
-            <div className="wcl-output-modal__groups">
-              {outputDocumentGroups.map(group => (
-                <section
-                  key={group.key}
-                  className={`wcl-output-modal__group wcl-output-modal__group--${group.key.toLowerCase().replaceAll('_', '-')}`}
-                >
-                  <div className="wcl-output-modal__group-head">
-                    <div>
-                      <h3 className="wcl-output-modal__group-title">{group.label}</h3>
-                      <p className="wcl-output-modal__group-hint">{group.hint}</p>
-                    </div>
-                    <span className="wcl-output-modal__group-count">{group.items.length} loại</span>
-                  </div>
-                  <div
-                    className="wcl-output-modal__grid"
-                    role="listbox"
-                    aria-label={group.label}
-                    aria-multiselectable="true"
+            filteredOutputDocumentGroups.length > 0 ? (
+              <div className="wcl-output-modal__groups">
+                {filteredOutputDocumentGroups.map(group => (
+                  <section
+                    key={group.key}
+                    className={`wcl-output-modal__group wcl-output-modal__group--${group.key.toLowerCase().replaceAll('_', '-')}`}
                   >
-                    {group.items.map(template => {
-                      const selected = outputDocumentModalSelected.has(template.id);
-                      const viTri = viTriLoaiGiay(template.id);
-                      return (
-                        <button
-                          type="button"
-                          key={template.id}
-                          role="option"
-                          aria-selected={selected}
-                          className={`wcl-output-modal__option${selected ? ' is-selected' : ''}`}
-                          onClick={() => {
-                            if (outputDocumentModalIndex === null) return;
-                            toggleOutputDocument(outputDocumentModalIndex, template.id);
-                          }}
-                        >
-                          <span className="wcl-output-modal__check" aria-hidden="true">
-                            {selected ? <Check size={14} /> : null}
-                          </span>
-                          <span className="wcl-output-modal__name">{template.name}</span>
-                          <span className="wcl-output-modal__source">{template.source_label || group.label}</span>
-                          <span className="wcl-output-modal__meta">
-                            {template.needs_original ? 'Cần bản chính' : 'Bản sao được'}
-                            {' · '}
-                            <b className={`wcl-output-modal__where is-${viTri.tone}`}>{viTri.text}</b>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
+                    <div className="wcl-output-modal__group-head">
+                      <div>
+                        <h3 className="wcl-output-modal__group-title">{group.label}</h3>
+                        <p className="wcl-output-modal__group-hint">{group.hint}</p>
+                      </div>
+                      <span className="wcl-output-modal__group-count">{group.items.length} loại</span>
+                    </div>
+                    <div
+                      className="wcl-output-modal__grid"
+                      role="listbox"
+                      aria-label={group.label}
+                      aria-multiselectable="true"
+                    >
+                      {group.items.map(template => {
+                        const selected = outputDocumentModalSelected.has(template.id);
+                        const viTri = viTriLoaiGiay(template.id);
+                        return (
+                          <button
+                            type="button"
+                            key={template.id}
+                            role="option"
+                            aria-selected={selected}
+                            className={`wcl-output-modal__option${selected ? ' is-selected' : ''}`}
+                            onClick={() => {
+                              if (outputDocumentModalIndex === null) return;
+                              toggleOutputDocument(outputDocumentModalIndex, template.id);
+                            }}
+                          >
+                            <span className="wcl-output-modal__check" aria-hidden="true">
+                              {selected ? <Check size={14} /> : null}
+                            </span>
+                            <span className="wcl-output-modal__name">
+                              {template.name}
+                              {template.is_new && (
+                                <span className="wcl-output-modal__tag-new" style={{
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  padding: '1px 5px',
+                                  marginLeft: '6px',
+                                  backgroundColor: 'var(--color-primary-subtle, #e0f2fe)',
+                                  color: 'var(--color-primary, #0369a1)',
+                                  borderRadius: '4px',
+                                  display: 'inline-block',
+                                  verticalAlign: 'middle',
+                                }}>Mới</span>
+                              )}
+                            </span>
+                            <span className="wcl-output-modal__source">{template.source_label || group.label}</span>
+                            <span className="wcl-output-modal__meta">
+                              {template.needs_original ? 'Cần bản chính' : 'Bản sao được'}
+                              {' · '}
+                              <b className={`wcl-output-modal__where is-${viTri.tone}`}>{viTri.text}</b>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <div className="wcl-output-modal__empty">
+                <p>Không tìm thấy loại giấy tờ nào phù hợp với từ khóa "{outputDocSearch}".</p>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => { setOutputDocSearch(''); setOutputDocSourceTab('ALL'); }}
+                >
+                  Xoá bộ lọc
+                </button>
+              </div>
+            )
           ) : (
             <p className="wcl-output-modal__empty">Chưa có mẫu tài liệu để chọn.</p>
           )}

@@ -4,7 +4,16 @@ import TopHeader from './components/TopHeader';
 import Login from './pages/Login';
 import SetPassword from './pages/SetPassword';
 import ChatWidget from './components/ChatWidget';
-import { apiFetch, clearAccessToken } from './lib/api';
+import {
+  clearAccessToken,
+  getAccessToken,
+  hasRefreshSessionHint,
+  logoutSession,
+  markRefreshSessionActive,
+  refreshAccessToken,
+  setAccessToken,
+} from './lib/api';
+import { validateSession } from './lib/sessionValidation';
 import { requestNavigationPermission } from './lib/unsavedChangesGuard';
 import { ToastProvider } from './contexts/ToastContext';
 import { safeViewTransition } from './lib/viewTransition';
@@ -21,6 +30,7 @@ const Contracts = lazy(() => import('./pages/Contracts'));
 const Cashflow = lazy(() => import('./pages/Cashflow'));
 const KPI = lazy(() => import('./pages/KPI'));
 const HumanResources = lazy(() => import('./pages/HumanResources'));
+const Wiki = lazy(() => import('./pages/Wiki'));
 const ContractTimeline = lazy(() => import('./pages/ContractTimeline'));
 const EmployeePortalDashboard = lazy(() => import('./features/employee-portal/EmployeePortalDashboard'));
 const MyPayroll = lazy(() => import('./features/employee-portal/MyPayroll'));
@@ -29,6 +39,7 @@ const DocumentTemplateSettings = lazy(() => import('./features/document-register
 const CustomerIntakePage = lazy(() => import('./pages/CustomerIntakePage'));
 
 const SIDEBAR_COLLAPSED_KEY = 'bachkhoa_sidebar_collapsed';
+const PUBLIC_PATHS = new Set(['/set-password', '/intake', '/yeu-cau-dich-vu']);
 const NAVIGATION_TARGET_PERMISSIONS = {
   cashflow: 'finance',
   contracts: 'contract',
@@ -67,11 +78,19 @@ const MemoizedActiveTabScreen = React.memo(ActiveTabScreen, (previous, next) => 
 });
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(() => Boolean(localStorage.getItem('bachkhoa_access_token')));
+  const isPublicPath = PUBLIC_PATHS.has(window.location.pathname);
+  const isLoginPath = window.location.pathname === '/';
+  const shouldBootstrapSession = !isPublicPath && (!isLoginPath || hasRefreshSessionHint());
+  // The access token is intentionally memory-only. Bootstrap renews it from
+  // the HttpOnly refresh cookie before asking /me after a page refresh.
+  const [loggedIn, setLoggedIn] = useState(shouldBootstrapSession);
   const sessionActiveRef = useRef(loggedIn);
   const [workspace, setWorkspace] = useState('management');
   const [profile, setProfile] = useState(null);
-  const [sessionLoading, setSessionLoading] = useState(() => Boolean(localStorage.getItem('bachkhoa_access_token')));
+  const [sessionLoading, setSessionLoading] = useState(shouldBootstrapSession);
+  const [sessionRetrying, setSessionRetrying] = useState(false);
+  const [sessionValidationError, setSessionValidationError] = useState(null);
+  const [sessionValidationAttempt, setSessionValidationAttempt] = useState(0);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
@@ -137,7 +156,10 @@ function App() {
   const handleLogin = (token, initialUser) => {
     clearNavigationQueue();
     sessionActiveRef.current = true;
-    localStorage.setItem('bachkhoa_access_token', token);
+    markRefreshSessionActive();
+    setSessionValidationError(null);
+    setSessionRetrying(false);
+    setAccessToken(token);
     if (initialUser && initialUser.username) {
       setProfile(initialUser);
       const isEmp = initialUser.default_workspace === 'employee';
@@ -159,31 +181,46 @@ function App() {
   const handleLogout = useCallback(() => {
     sessionActiveRef.current = false;
     clearNavigationQueue();
+    void logoutSession().catch(() => {});
     clearAccessToken();
     setSidebarOverlayOpen(false);
     setWorkspace('management');
     setProfile(null);
     setSessionLoading(false);
+    setSessionRetrying(false);
+    setSessionValidationError(null);
     setLoggedIn(false);
   }, [clearNavigationQueue]);
 
   useEffect(() => {
-    if (!loggedIn) {
+    if (isPublicPath || !loggedIn) {
       setSessionLoading(false);
+      setSessionRetrying(false);
       return undefined;
     }
     let mounted = true;
 
+    setSessionValidationError(null);
+
     const safetyTimer = setTimeout(() => {
       if (mounted) {
-        console.warn('Authentication verification timed out.');
-        handleLogout();
+        console.warn('Authentication verification timed out; keeping the session for retry.');
+        setSessionLoading(false);
+        setSessionRetrying(false);
+        setSessionValidationError(new Error('Không thể kết nối tới máy chủ để xác thực phiên.'));
       }
-    }, 7000);
+    }, 35000);
 
-    apiFetch('/api/auth/me', { timeout: 6000 })
+    validateSession({
+      ensureAccessToken: () => getAccessToken() || refreshAccessToken(),
+      onRetry: () => {
+        if (mounted) setSessionRetrying(true);
+      },
+    })
       .then((user) => {
         if (!mounted) return;
+        setSessionValidationError(null);
+        setSessionRetrying(false);
         setProfile(user);
         const isEmp = user.default_workspace === 'employee';
         setWorkspace(isEmp ? 'employee' : 'management');
@@ -197,18 +234,27 @@ function App() {
       })
       .catch((err) => {
         console.error('Session validation error:', err);
-        if (mounted) handleLogout();
+        if (!mounted) return;
+        setSessionRetrying(false);
+        if (err?.status === 401) {
+          handleLogout();
+          return;
+        }
+        setSessionValidationError(err);
       })
       .finally(() => {
         clearTimeout(safetyTimer);
-        if (mounted) setSessionLoading(false);
+        if (mounted) {
+          setSessionRetrying(false);
+          setSessionLoading(false);
+        }
       });
 
     return () => {
       mounted = false;
       clearTimeout(safetyTimer);
     };
-  }, [handleLogout, loggedIn]);
+  }, [handleLogout, isPublicPath, loggedIn, sessionValidationAttempt]);
 
   useEffect(() => {
     window.addEventListener('bachkhoa:unauthorized', handleLogout);
@@ -246,7 +292,9 @@ function App() {
     return () => window.removeEventListener('app:navigate', navigateFromFeature);
   }, []);
 
-  if (window.location.pathname === '/set-password') {
+  const normalizedPath = window.location.pathname.replace(/\/$/, '');
+  const windowHash = window.location.hash || '';
+  if (normalizedPath === '/set-password' || windowHash.startsWith('#/set-password')) {
     return (
       <SetPassword
         onDone={(token) => {
@@ -274,8 +322,14 @@ function App() {
       <div className="app-session-loader">
         <div className="app-session-loader__box">
           <div className="app-session-loader__spinner" />
-          <h3 className="app-session-loader__title">Đang xác thực phiên làm việc...</h3>
-          <p className="app-session-loader__sub">Hệ thống đang kiểm tra phiên đăng nhập và tải quyền người dùng.</p>
+          <h3 className="app-session-loader__title">
+            {sessionRetrying ? 'Máy chủ đang khởi động...' : 'Đang xác thực phiên làm việc...'}
+          </h3>
+          <p className="app-session-loader__sub">
+            {sessionRetrying
+              ? 'Đang thử kết nối lại. Phiên đăng nhập của bạn vẫn được giữ nguyên.'
+              : 'Hệ thống đang kiểm tra phiên đăng nhập và tải quyền người dùng.'}
+          </p>
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -289,9 +343,46 @@ function App() {
     );
   }
 
+  if (sessionValidationError && !profile) {
+    return (
+      <div className="app-session-loader">
+        <div className="app-session-loader__box">
+          <h3 className="app-session-loader__title">Chưa thể kết nối tới máy chủ</h3>
+          <p className="app-session-loader__sub">
+            Phiên đăng nhập vẫn được giữ lại. Bạn có thể thử kết nối lại sau khi backend khởi động xong.
+          </p>
+          <div className="app-session-loader__actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setSessionValidationError(null);
+                setSessionRetrying(false);
+                setSessionLoading(true);
+                setSessionValidationAttempt(current => current + 1);
+              }}
+            >
+              Thử kết nối lại
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleLogout}
+            >
+              Đăng nhập lại
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const employeeMode = workspace === 'employee';
   const permissions = profile?.permissions || {};
   const isDirector = Boolean(profile?.is_director || profile?.username === 'admin' || profile?.role_name === 'admin');
+
+  const isAccountant = String(profile?.role_name || '').trim().toLowerCase() === 'accountant';
+  const canManageHr = Boolean(permissions.hr) && !isAccountant;
 
   // permission: tab chỉ được render khi có quyền đọc tài nguyên tương ứng.
   const TABS = [
@@ -305,26 +396,34 @@ function App() {
     { key: 'timeline', Component: ContractTimeline, directorOnly: true, props: { user: profile, isDirector } },
     { key: 'approvals', Component: ApprovalQueue, directorOnly: true, props: {} },
     { key: 'doc-templates', Component: DocumentTemplateSettings, directorOnly: true, props: {} },
-    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'debt-collection', user: profile, isDirector } },
+    { key: 'cashflow', Component: Cashflow, permission: 'finance', props: { landing: isDirector ? undefined : 'cashflow-all', user: profile, isDirector } },
     { key: 'kpi', Component: KPI, permission: 'hr', directorOnly: true, props: { user: profile, isDirector } },
-    { key: 'wiki', Component: HumanResources, permission: 'hr', props: { user: profile, isDirector } },
+    {
+      key: 'wiki',
+      Component: canManageHr ? HumanResources : Wiki,
+      anyPermissions: ['hr', 'wiki'],
+      props: { user: profile, isDirector },
+    },
   ];
 
-  const allowedTabs = TABS.filter(tab => (
+  const tabFilter = tab => (
     (!tab.permission || permissions[tab.permission])
+    && (!tab.anyPermissions || tab.anyPermissions.some(p => permissions[p]))
+    && (!tab.accountantHidden || !isAccountant)
     && (!tab.directorOnly || isDirector)
-  ));
+  );
 
-  // Nhân viên dùng bộ tab riêng: lịch trình, hồ sơ của phòng mình, lương cá nhân.
+  const allowedTabs = TABS.filter(tabFilter);
+
+  // Nhân viên dùng bộ tab riêng: lịch trình, hồ sơ của phòng mình, tài liệu đào tạo/ISO và lương cá nhân.
   const EMPLOYEE_TABS = [
     { key: 'employee-dashboard', Component: EmployeePortalDashboard },
     { key: 'tasks', Component: Tasks, permission: 'survey_record' },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
+    { key: 'wiki', Component: Wiki, permission: 'wiki', props: { user: profile, isDirector } },
     { key: 'payroll', Component: MyPayroll },
   ];
-  const allowedEmployeeTabs = EMPLOYEE_TABS.filter(
-    tab => !tab.permission || permissions[tab.permission]
-  );
+  const allowedEmployeeTabs = EMPLOYEE_TABS.filter(tabFilter);
 
   const currentAllowedTabs = employeeMode ? allowedEmployeeTabs : allowedTabs;
   const effectiveTab = currentAllowedTabs.some(tab => tab.key === activeTab)
@@ -351,6 +450,8 @@ function App() {
     if (item.type === 'cashflow_approval') {
       queueTabNavigation('cashflow', 'bachkhoa:open-cashflow-voucher', {
         voucherId: item.voucher_id,
+        voucher_id: item.voucher_id,
+        id: item.voucher_id,
         nonce: Date.now(),
       });
       return;
@@ -369,6 +470,8 @@ function App() {
       taskNodeId: item.task_node_id,
       targetType: item.target_type || item.type,
       targetId: item.target_id || item.ref_id,
+      checklistResultId: item.checklist_result_id,
+      documentTypeId: item.document_type_id,
       nonce: Date.now(),
     });
   };
@@ -389,6 +492,7 @@ function App() {
             setActiveTab={handleTabChange}
             mode={workspace}
             permissions={permissions}
+            roleName={profile?.role_name}
             isDirector={isDirector}
             collapsed={sidebarCollapsed}
             overlayOpen={sidebarOverlayOpen}

@@ -17,7 +17,7 @@ from src.core.auth import check_user_permission, require_permission
 from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import documents
-from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note
+from src.dossiers.actor_guard import assert_can_act_on_node, format_on_behalf_note, is_director
 from src.services.timeline_realtime import publish_timeline_change
 from src.dossiers.legal_lifecycle import (
     ACTION_LABELS,
@@ -31,6 +31,34 @@ from src.dossiers.legal_lifecycle import (
 )
 
 router = APIRouter(prefix="/api/legal-dossiers", tags=["Legal Dossiers"])
+
+
+def _assert_dossier_document_access(db: Session, user: User, *, dossier_id: str) -> None:
+    """Require privileged finance/director access or assignment to the dossier."""
+    if is_director(db, user.id) or check_user_permission(db, user, "finance", "read"):
+        return
+    assigned = db.execute(
+        text("""
+            select 1
+            from public.legal_dossiers d
+            join public.employees e on e.id = d.assigned_employee_id
+            where d.id = :dossier_id and e.user_id = :user_id
+            limit 1
+        """),
+        {"dossier_id": dossier_id, "user_id": user.id},
+    ).first()
+    if not assigned:
+        raise HTTPException(status_code=403, detail="Bạn không được truy cập tài liệu của hồ sơ này.")
+
+
+def _assert_document_access(db: Session, user: User, document_id: str) -> None:
+    row = db.execute(
+        text("select dossier_id from public.dossier_documents where id = :document_id"),
+        {"document_id": document_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tệp.")
+    _assert_dossier_document_access(db, user, dossier_id=row["dossier_id"])
 
 
 _BASE_SQL = """
@@ -327,6 +355,7 @@ def list_dossier_documents(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("legal_submission", "read")),
 ):
+    _assert_dossier_document_access(db, user, dossier_id=dossier_id)
     return documents.list_documents(db, dossier_id)
 
 
@@ -341,6 +370,7 @@ async def upload_dossier_document(
     user: User = Depends(require_permission("legal_submission", "read")),
 ):
     """Nhân viên scan giấy tờ và lưu vào đúng ngăn giai đoạn của hồ sơ."""
+    _assert_dossier_document_access(db, user, dossier_id=dossier_id)
     if not check_user_permission(db, user, "legal_submission", "update"):
         raise HTTPException(status_code=403, detail="Không có quyền xử lý hồ sơ pháp lý")
 
@@ -372,6 +402,7 @@ def download_dossier_document(
     user: User = Depends(require_permission("legal_submission", "read")),
 ):
     """Đọc tệp qua máy chủ — bucket là private, không phát link trực tiếp."""
+    _assert_document_access(db, user, document_id)
     row, body = documents.read_document(db, document_id)
     return Response(
         content=body,
@@ -391,6 +422,7 @@ def remove_dossier_document(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("legal_submission", "read")),
 ):
+    _assert_document_access(db, user, document_id)
     if not check_user_permission(db, user, "legal_submission", "update"):
         raise HTTPException(status_code=403, detail="Không có quyền xử lý hồ sơ pháp lý")
     result = documents.delete_document(db, document_id, actor_id=user.id)

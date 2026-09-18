@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUpRight, Check, ChevronDown, FileText, Plus, X } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronDown, CircleDashed, FileText, Plus, X } from 'lucide-react';
 
 import { payRateFor } from './nodeCompensation';
 
@@ -32,11 +32,12 @@ function DocumentTypeRow({
   type,
   canReview,
   busy,
+  isHighlighted = false,
   onOpen,
   onApprove,
   onReject,
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => isHighlighted);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState('');
   const files = Array.isArray(type.files) ? type.files : [];
@@ -56,7 +57,10 @@ function DocumentTypeRow({
   };
 
   return (
-    <section className={`wf-check-type is-${type.status || 'draft'}`}>
+    <section
+      id={`doc-type-${type.id}`}
+      className={`wf-check-type is-${type.status || 'draft'}${isHighlighted ? ' is-highlighted' : ''}`}
+    >
       <div className="wf-check-type__summary">
         <div className="wf-check-type__identity">
           <button
@@ -299,10 +303,14 @@ export default function NodeChecklistCard({
   onReject,
   onApproveType,
   onRejectType,
+  onApproveChecklist,
+  onRejectChecklist,
   reviewingTypeId = '',
   reviewQueue = false,
   onChangeWorkItem,
   nodeStatus = null,
+  highlightedDocumentTypeId = null,
+  isHighlighted = false,
 }) {
   // Sự tồn tại của key là ranh giới rollout: mảng runtime rỗng vẫn là nguồn thật,
   // không được rơi về cấu hình legacy và làm lộ những dòng chưa materialize.
@@ -326,17 +334,23 @@ export default function NodeChecklistCard({
   const isFinished = ['accepted', 'completed', 'cancelled', 'skipped'].includes(nodeStatus);
   const canReview = Boolean(onApprove && onReject) && (canReviewDocuments || !readOnly) && !isFinished;
   const canReviewTypes = Boolean(onApproveType && onRejectType) && (canReviewDocuments || !readOnly) && !isFinished;
+  const canConfirmChecklist = Boolean(onApproveChecklist && onRejectChecklist) && (canReviewDocuments || !readOnly) && !isFinished;
   const reviewCount = usesRuntimeTypes ? documentTypes.length : documents.length;
 
   return (
-    <article className="wf-check-card">
+    <article
+      id={`checklist-card-${item.runtime?.id || index}`}
+      className={`wf-check-card${isHighlighted ? ' is-highlighted' : ''}`}
+    >
       <header className="wf-check-card__head">
         {/* Badge đếm số GIẤY ĐẦU RA, không đếm gì khác — đó là khối lượng Giám
             đốc phải duyệt để checklist này xong. */}
         <span className="wf-check-card__count">{reviewCount}</span>
         <span className="wf-check-card__name">{item.name || 'Chưa đặt tên'}</span>
         {usesRuntimeTypes ? (
-          <span className="wf-check-card__mode" title="Chế độ: Duyệt theo từng loại giấy tờ">Duyệt theo loại</span>
+          <span className="wf-check-card__mode" title="Chế độ: Duyệt theo từng loại giấy tờ">
+            {reviewCount > 0 ? 'Duyệt theo loại' : 'Checklist công việc'}
+          </span>
         ) : (
           <button
             type="button"
@@ -351,9 +365,58 @@ export default function NodeChecklistCard({
 
       <div className="wf-check-card__docs">
         {reviewCount === 0 && (
-          <p className="wf-check-card__empty">
-            {usesRuntimeTypes ? 'Chưa có loại giấy nào trong checklist.' : 'Chưa gán giấy tờ đầu ra nào.'}
-          </p>
+          <div className="wf-check-card__paperless-body">
+            <p className="wf-check-card__empty" style={{ margin: 0 }}>
+              {usesRuntimeTypes ? 'Chưa có loại giấy nào trong checklist.' : 'Chưa gán giấy tờ đầu ra nào.'}
+            </p>
+            {['pending_approval', 'late_pending_approval'].includes(item.runtime?.status) && canConfirmChecklist && (
+              <div className="wf-check-card__confirm-box" style={{ marginTop: 8, padding: '8px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <CircleDashed size={13} /> Chờ Giám đốc xác nhận hoàn thành
+                </span>
+                <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: 11, padding: '3px 8px', height: 'auto', minHeight: 26 }}
+                    onClick={() => {
+                      const reason = window.prompt('Nhập lý do trả lại (tối thiểu 5 ký tự):');
+                      if (reason === null) return;
+                      if (reason.trim().length < 5) {
+                        alert('Lý do từ chối phải từ 5 ký tự trở lên');
+                        return;
+                      }
+                      onRejectChecklist?.(item.runtime.id, reason.trim());
+                    }}
+                  >
+                    <X size={12} /> Trả lại
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: 11, padding: '3px 8px', height: 'auto', minHeight: 26 }}
+                    onClick={() => onApproveChecklist?.(item.runtime.id)}
+                  >
+                    <Check size={12} /> Xác nhận hoàn thành
+                  </button>
+                </div>
+              </div>
+            )}
+            {['approved', 'late_approved'].includes(item.runtime?.status) && (
+              <div style={{ marginTop: 6 }}>
+                <span className="workflow-evidence-decision workflow-evidence-decision--passed" style={{ fontSize: 11, color: '#166534', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                  <Check size={13} /> {item.runtime?.status === 'late_approved' ? 'Đã duyệt trễ hạn' : 'Đã xác nhận hoàn thành'}
+                </span>
+              </div>
+            )}
+            {item.runtime?.status === 'failed' && (
+              <div style={{ marginTop: 6 }}>
+                <span className="workflow-evidence-decision workflow-evidence-decision--failed" style={{ fontSize: 11, color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                  <X size={13} /> Đã từ chối — chờ nhân viên nộp lại
+                </span>
+              </div>
+            )}
+          </div>
         )}
         {documentTypes.map(type => (
           <DocumentTypeRow
@@ -362,6 +425,7 @@ export default function NodeChecklistCard({
             type={type}
             canReview={canReviewTypes}
             busy={reviewingTypeId === type.id}
+            isHighlighted={Boolean(highlightedDocumentTypeId && String(type.id) === String(highlightedDocumentTypeId))}
             onOpen={onOpenDocument}
             onApprove={onApproveType}
             onReject={onRejectType}

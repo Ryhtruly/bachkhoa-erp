@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ExcelGridTable } from './SharedFinanceUI';
@@ -99,6 +100,51 @@ describe('finance select migration phase 1', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tiền mặt' }));
     fireEvent.click(screen.getByRole('option', { name: 'Chuyển khoản' }));
     expect(screen.getByRole('button', { name: 'Chuyển khoản' })).toBeInTheDocument();
+  });
+
+  it('restores page scroll after cancelling a completed voucher', async () => {
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('/api/finance/cashflow/') && !url.endsWith('/void')) {
+        return Promise.resolve({
+          id: 'PC-08/2026-002',
+          type: 'Chi',
+          category: 'Chi khác',
+          partner: 'Hồ Thị Mỹ Hằng',
+          payment_method: 'BANK_TRANSFER',
+          amount: 550000,
+          transaction_date: '2026-08-22',
+          description: 'Chi phí khác',
+          status: 'Hoàn thành',
+        });
+      }
+      if (url.endsWith('/void')) return Promise.resolve({ ok: true });
+      if (url.includes('/api/finance/contracts')) return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return (
+        <CashflowDetailModal
+          open={open}
+          transactionId="PC-08/2026-002"
+          isDirector
+          user={{ username: 'director' }}
+          onClose={() => setOpen(false)}
+          onSuccess={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Hủy phiếu' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Hủy phiếu' }));
+    fireEvent.change(screen.getByPlaceholderText('Nhập lý do hủy bỏ chứng từ này...'), {
+      target: { value: 'Điều chỉnh chứng từ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Xác nhận hủy phiếu' }));
+
+    await waitFor(() => expect(document.body.style.overflow).toBe(''));
   });
 
   it('does not leave native selects in PrintVoucherScreen', () => {

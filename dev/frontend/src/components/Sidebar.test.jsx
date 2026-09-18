@@ -60,4 +60,30 @@ describe('Sidebar responsive navigation', () => {
     expect(props.onRequestClose).toHaveBeenCalledOnce()
     expect(props.setActiveTab).not.toHaveBeenCalled()
   })
+
+  it('renders Đào Tạo & ISO tab for accountants in management mode without showing Nhân Sự', () => {
+    renderSidebar({ roleName: 'accountant', isDirector: false, permissions: { wiki: true, finance: true } })
+
+    expect(screen.getByRole('button', { name: 'Đào Tạo & ISO' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nhân Sự & Đào Tạo' })).not.toBeInTheDocument()
+  })
+
+  it('renders Nhân Sự & Đào Tạo tab for HR roles in management mode', () => {
+    renderSidebar({ roleName: 'hr_manager', isDirector: false, permissions: { hr: true } })
+
+    expect(screen.getByRole('button', { name: 'Nhân Sự & Đào Tạo' })).toBeInTheDocument()
+  })
+
+  it('hides the tab when neither HR nor wiki permission is present', () => {
+    renderSidebar({ roleName: 'accountant', isDirector: false, permissions: { finance: true } })
+
+    expect(screen.queryByRole('button', { name: 'Nhân Sự & Đào Tạo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Đào Tạo & ISO' })).not.toBeInTheDocument()
+  })
+
+  it('renders Đào Tạo & ISO in employee mode when wiki permission is present', () => {
+    renderSidebar({ mode: 'employee', permissions: { wiki: true } })
+
+    expect(screen.getByRole('button', { name: 'Đào Tạo & ISO' })).toBeInTheDocument()
+  })
 })

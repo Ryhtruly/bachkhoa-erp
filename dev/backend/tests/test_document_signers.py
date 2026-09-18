@@ -104,7 +104,7 @@ def test_document_signer_snapshot_keeps_transaction_people_at_capture_time():
     assert snapshot["recipient_department"] == "Phòng Đo vẽ"
 
 
-def test_approved_cashflow_stores_signer_snapshot_and_serializes_it(client, finance_clerk_user, db):
+def test_approved_cashflow_stores_signer_snapshot_and_serializes_it(client, finance_clerk_user, admin_user, admin_headers, db):
     user, headers = finance_clerk_user
     db.merge(SystemSetting(
         key="finance.document_signers",
@@ -121,14 +121,14 @@ def test_approved_cashflow_stores_signer_snapshot_and_serializes_it(client, fina
     created = client.post(
         "/api/finance/cashflow/create",
         json={
-            "type": "Chi",
+            "type": "EXPENSE",
             "amount": 1000,
             "category": "Test snapshot",
             "payer_payee": "Đối tác snapshot",
-            "payment_method": "Chuyển khoản",
+            "payment_method": "BANK_TRANSFER",
             "transaction_date": "2026-08-23",
             "description": "Kiểm tra snapshot người ký",
-            "scope": "Công ty",
+            "scope": "COMPANY",
         },
         headers=headers,
     )
@@ -138,7 +138,7 @@ def test_approved_cashflow_stores_signer_snapshot_and_serializes_it(client, fina
     pending = db.query(CashflowTransaction).filter(CashflowTransaction.id == voucher_id).first()
     assert pending.signer_snapshot is None
 
-    approved = client.post(f"/api/finance/cashflow/{voucher_id}/approve", headers=headers)
+    approved = client.post(f"/api/finance/cashflow/{voucher_id}/approve", headers=admin_headers)
     assert approved.status_code == 200, approved.text
 
     db.expire_all()
@@ -146,7 +146,7 @@ def test_approved_cashflow_stores_signer_snapshot_and_serializes_it(client, fina
     assert transaction.signer_snapshot["director_name"] == "Lê Văn Sáu"
     assert transaction.signer_snapshot["accountant_name"] == "Nguyễn Kế Toán"
     assert transaction.signer_snapshot["accountant_role"] == "Kế toán phụ trách"
-    assert transaction.signer_snapshot["captured_by"] == user.id
+    assert transaction.signer_snapshot["captured_by"] == admin_user.id
 
     detail = client.get(f"/api/finance/cashflow/{voucher_id}", headers=headers)
     assert detail.status_code == 200

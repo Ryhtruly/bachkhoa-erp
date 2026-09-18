@@ -4,7 +4,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { apiFetch } from '../../lib/api'
 import EmployeePortalDashboard from './EmployeePortalDashboard'
 
-vi.mock('../../lib/api', () => ({ apiFetch: vi.fn(), getAccessToken: vi.fn(() => null) }))
+vi.mock('../../lib/api', () => ({
+  apiFetch: vi.fn(),
+  getAccessToken: vi.fn(() => null),
+  peekApiCache: vi.fn(() => null),
+  prefetchApi: vi.fn(),
+  markLocalMutation: vi.fn(),
+}))
 vi.mock('@fullcalendar/react', () => ({
   default: (props) => <div
     data-testid="calendar"

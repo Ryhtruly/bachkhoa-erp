@@ -17,6 +17,8 @@ if str(BACKEND_DIR) not in sys.path:
 from src.core import doc_generator
 from src.routes import routes_contracts
 
+DIRECT_CALL_USER = SimpleNamespace(id="admin", username="admin", is_active=True)
+
 
 def _current_document_db(contract_template_id, template_rows):
     current_rows = {
@@ -113,7 +115,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         original_reader = getattr(routes_contracts, 'get_contract_document_file', None)
         routes_contracts.get_contract_document_file = lambda _key: {'Body': io.BytesIO(b'PK-stored')}
         try:
-            response = routes_contracts.get_contract_document('2004/BK-2026', db, None)
+            response = routes_contracts.get_contract_document('2004/BK-2026', db, DIRECT_CALL_USER)
         finally:
             if original_reader is None:
                 del routes_contracts.get_contract_document_file
@@ -181,7 +183,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         routes_contracts.doc_generator.render_contract_document = lambda data, version, template_bytes=None: rendered.update(data) or b"PK-docx"
         try:
             with patch.dict(os.environ, {"ENV": "development", "OBJECT_STORAGE_ENDPOINT": ""}):
-                response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+                response = routes_contracts.get_contract_document("2004/BK-2026", db, DIRECT_CALL_USER)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
 
@@ -244,7 +246,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         routes_contracts.doc_generator.render_contract_document = lambda data, version, template_bytes=None: rendered.update(template_bytes=template_bytes) or b"PK-docx"
         routes_contracts.get_contract_template = lambda key: requested_template_keys.append(key) or b"PK-private-template"
         try:
-            response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+            response = routes_contracts.get_contract_document("2004/BK-2026", db, DIRECT_CALL_USER)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
             if original_reader is None:
@@ -312,7 +314,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         routes_contracts.doc_generator.render_contract_document = lambda _data, _version, template_bytes=None: b"PK-docx"
         routes_contracts.get_contract_template = lambda key: requested_template_keys.append(key) or b"PK-private-template"
         try:
-            response = routes_contracts.get_contract_document("2004/BK-2026", db, None)
+            response = routes_contracts.get_contract_document("2004/BK-2026", db, DIRECT_CALL_USER)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
             routes_contracts.get_contract_template = original_reader
@@ -339,7 +341,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         routes_contracts.get_contract_template = lambda _key: b"PK-private-template"
         try:
             with self.assertRaises(HTTPException) as raised:
-                routes_contracts.get_contract_document("2004/BK-2026", db, None)
+                routes_contracts.get_contract_document("2004/BK-2026", db, DIRECT_CALL_USER)
         finally:
             routes_contracts.doc_generator.render_contract_document = original_renderer
             routes_contracts.get_contract_template = original_reader
@@ -361,7 +363,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         )
 
         with self.assertRaises(HTTPException) as raised:
-            routes_contracts.get_contract_document("2004/BK-2026", db, None)
+            routes_contracts.get_contract_document("2004/BK-2026", db, DIRECT_CALL_USER)
 
         self.assertEqual(raised.exception.status_code, 409)
 
@@ -380,7 +382,7 @@ class ContractDocumentRendererTests(unittest.TestCase):
         )
 
         with self.assertRaises(HTTPException) as raised:
-            routes_contracts.get_contract_document("2004/BK-2026", db, None)
+            routes_contracts.get_contract_document("2004/BK-2026", db, DIRECT_CALL_USER)
 
         self.assertEqual(raised.exception.status_code, 409)
 

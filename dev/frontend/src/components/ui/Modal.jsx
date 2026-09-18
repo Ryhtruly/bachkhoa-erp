@@ -2,6 +2,27 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
+let bodyScrollLockCount = 0;
+let bodyOverflowBeforeModal = '';
+
+function lockBodyScroll() {
+  if (bodyScrollLockCount === 0) {
+    bodyOverflowBeforeModal = document.body.style.overflow;
+  }
+  bodyScrollLockCount += 1;
+  document.body.style.overflow = 'hidden';
+}
+
+function unlockBodyScroll() {
+  bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+  if (bodyScrollLockCount === 0) {
+    document.body.style.overflow = bodyOverflowBeforeModal;
+    bodyOverflowBeforeModal = '';
+    return;
+  }
+  document.body.style.overflow = 'hidden';
+}
+
 /**
  * Modal — Hộp thoại dùng chung (Portaled to document.body)
  *
@@ -50,13 +71,12 @@ export default function Modal({
     restoreFocusRef.current = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    lockBodyScroll();
 
     closeButtonRef.current?.focus();
 
     return () => {
-      document.body.style.overflow = previousOverflow;
+      unlockBodyScroll();
       restoreFocusRef.current?.focus?.();
       restoreFocusRef.current = null;
     };
@@ -82,7 +102,7 @@ export default function Modal({
       >
         {/* Header */}
         {(title || !hideClose) && (
-          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             {title && (
               <h2 id={`${modalId}-title`} style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>
                 {title}

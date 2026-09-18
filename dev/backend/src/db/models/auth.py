@@ -21,9 +21,11 @@ class User(Base):
     password_hash = Column(String)
     email = Column(String, unique=True, index=True, nullable=True)
     is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True, server_default=text("true"))
     invite_token_hash = Column(String, nullable=True)
     invite_token_expires_at = Column(DateTime(timezone=True), nullable=True)
     email_verified = Column(Boolean, nullable=False, default=False)
+    email_verified = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
@@ -35,6 +37,8 @@ class Role(Base):
     description = Column(Text, nullable=True)
     is_system = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    is_system = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
@@ -113,6 +117,31 @@ class AuthToken(Base):
     user_id = Column(String, ForeignKey("users.id"))
     expires_at = Column(DateTime(timezone=True))
     user_agent = Column(String, nullable=True)
+
+
+class RefreshSession(Base):
+    """Opaque refresh-token session; the raw token is never persisted."""
+
+    __tablename__ = "auth_refresh_sessions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    family_id = Column(String(36), nullable=False, index=True)
+    remember_me = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    last_used_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    idle_expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    replaced_by_id = Column(
+        String(36),
+        ForeignKey("auth_refresh_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    user_agent = Column(Text, nullable=True)
+    ip_address = Column(String(45), nullable=True)
 
 class AuditLog(Base):
     __tablename__ = "audit_log"

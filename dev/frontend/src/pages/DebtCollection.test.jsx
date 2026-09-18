@@ -104,6 +104,9 @@ describe('DebtCollection override warning', () => {
     expect(await screen.findByText('Khách cần nhận hồ sơ gấp')).toBeInTheDocument()
     expect(container.querySelector('.debt__card.is-override-alert')).toBeInTheDocument()
     expect(screen.getByText(/Đã duyệt giao khi còn nợ/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ghi nhận thanh toán/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Xóa nợ \/ Miễn giảm/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Chuyển nợ sang HĐ mới/i })).toBeInTheDocument()
   })
 
   it('turns the same approved-override card green only after accounting settles the real balance', async () => {

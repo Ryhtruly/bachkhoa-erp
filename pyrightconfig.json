@@ -1,0 +1,14 @@
+{
+  "venvPath": "dev/backend",
+  "venv": "venv",
+  "extraPaths": [
+    "dev/backend",
+    "dev/backend/src"
+  ],
+  "include": [
+    "dev/backend"
+  ],
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "none",
+  "reportArgumentType": "none"
+}

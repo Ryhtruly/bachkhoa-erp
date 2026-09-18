@@ -21,14 +21,19 @@ env/
 .pytest_cache/
 /.pytest-tmp*/
 /dev/backend/.pytest-tmp*/
+/.pytest_temp*/
+/dev/backend/.pytest_temp*/
 
-# OS
+# OS & DB
 .DS_Store
 Thumbs.db
+*.db
+*.sqlite*
 
 # Project specifics
 dev/backend/static/contracts/
 dev/backend/static/generated_contracts/
+dev/backend/private/generated_docs/
 /.agents
 /.claude
 /mdfiles
@@ -37,5 +42,19 @@ CLAUDE.md
 AGENTS.md
 
 # Ảnh chụp và log do công cụ trình duyệt sinh ra khi kiểm chứng UI.
-# Không phải mã nguồn, và đầy lên rất nhanh (102 file chỉ sau vài lượt).
 .playwright-mcp/
+
+# Tài liệu cá nhân & scratch scripts kiểm toán
+docs/thuc-tap-doanh-nghiep/
+dev/backend/scripts/
+
+# Backup binaries and sample business documents
+backups/*.xlsx
+backups/backup_v1/static/generated_contracts/*.docx
+backups/backup_v1/static/*.pdf
+backups/backup_v1/static/*.png
+backups/backup_v1/templates/*.docx
+
+# Migration and operational data dumps
+dev/backend/backups/
+**/backup_pre_migration_*.json

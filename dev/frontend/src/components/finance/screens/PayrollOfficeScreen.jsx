@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Lock, CheckCircle2, Printer } from 'lucide-react';
+import { Users, Lock, CheckCircle2, Printer, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { Badge, DataTable, DatePicker, SensitiveActionModal } from '../../ui';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
 import { useToast } from '../../../contexts/ToastContext';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, downloadFile } from '../../../lib/api';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
@@ -17,6 +17,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [sensitiveModal, setSensitiveModal] = useState(null); // null | 'lock' | 'pay'
   const [submitting, setSubmitting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { addToast } = useToast();
 
   const load = useCallback(async () => {
@@ -63,7 +64,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
     setSubmitting(true);
     try {
       await apiFetch(`${API}/api/finance/payroll/periods/${targetId}/mark-paid`, { method: 'POST' });
-      addToast(`Đã đánh dấu chi trả bảng lương tháng ${month}!`, 'success');
+      addToast(`Đã xác nhận chi trả ngoài Sổ quỹ cho bảng lương tháng ${month}!`, 'success');
       setSensitiveModal(null);
       await load();
     } catch (err) {
@@ -82,17 +83,17 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
   const payrollMonthLabel = periodYear && periodMonth
     ? `Tháng ${Number(periodMonth)}/${periodYear}`
     : month;
-  const payrollStatusLabel = isPaid ? 'Đã chi trả' : isLocked ? 'Đã chốt' : 'Đang mở';
+  const payrollStatusLabel = isPaid ? 'Đã xác nhận chi trả ngoài sổ' : isLocked ? 'Đã chốt' : 'Đang mở';
 
   const printColumns = [
-    { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
-    { key: 'full_name', label: 'Họ và tên nhân sự', width: '160px', align: 'left', render: value => value || 'Chưa cập nhật' },
-    { key: 'department', label: 'Phòng ban', width: '120px', align: 'left', render: value => value || 'Công ty' },
-    { key: 'job_title', label: 'Chức danh / Vị trí', width: '130px', align: 'left', render: value => value || 'Nhân viên' },
-    { key: 'base_salary', label: 'Lương CB (VNĐ)', width: '105px', align: 'right', nowrap: true, render: value => fmt(value || 0) },
-    { key: 'bonus', label: 'KPI & Thưởng (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => fmt(value || 0) },
-    { key: 'sales_commission', label: 'Hoa hồng BĐS (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => fmt(value || 0) },
-    { key: 'total_salary', label: 'Thực nhận (VNĐ)', width: '115px', align: 'right', nowrap: true, render: value => <strong>{fmt(value || 0)}</strong> },
+    { key: 'index', label: 'STT', width: '4%', align: 'center', nowrap: true, headerNowrap: true, render: (_, __, index) => index + 1 },
+    { key: 'full_name', label: 'Họ và tên nhân sự', width: '18%', align: 'left', render: value => value || 'Chưa cập nhật' },
+    { key: 'department', label: 'Phòng ban', width: '13%', align: 'left', render: value => value || 'Công ty' },
+    { key: 'job_title', label: 'Chức danh / Vị trí', width: '14%', align: 'left', render: value => value || 'Nhân viên' },
+    { key: 'base_salary', label: 'Lương CB (VNĐ)', width: '12%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value || 0) },
+    { key: 'bonus', label: 'KPI & Thưởng (VNĐ)', width: '12%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value || 0) },
+    { key: 'sales_commission', label: 'Hoa hồng BĐS (VNĐ)', width: '13%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value || 0) },
+    { key: 'total_salary', label: 'Thực nhận (VNĐ)', width: '14%', align: 'right', nowrap: true, headerNowrap: true, render: value => <strong>{fmt(value || 0)}</strong> },
   ];
 
   const printFooterRow = {
@@ -113,6 +114,21 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
       styles: financeReportPrintStyles,
       onError: message => addToast(message, 'error'),
     });
+  };
+
+  const handleExportPayroll = async () => {
+    setExporting(true);
+    try {
+      const filename = await downloadFile(
+        `${API}/api/finance/export/office-payroll-excel?month=${encodeURIComponent(month)}`,
+        `Bang_Luong_Van_Phong_${month}.xlsx`,
+      );
+      if (filename) addToast(`Đã xuất ${filename} thành công`, 'success');
+    } catch (err) {
+      addToast(err.message || 'Xuất bảng lương văn phòng thất bại', 'error');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const cols = [
@@ -154,7 +170,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
           </div>
 
           <Badge variant={isPaid ? 'success' : isLocked ? 'warning' : 'neutral'} dot>
-            Kỳ lương: {isPaid ? 'Đã chi trả' : isLocked ? 'Đã chốt sổ' : 'Đang mở · Chưa chốt'}
+            Kỳ lương: {isPaid ? 'Đã xác nhận chi trả ngoài sổ' : isLocked ? 'Đã chốt sổ' : 'Đang mở · Chưa chốt'}
           </Badge>
 
           <button
@@ -164,6 +180,15 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
             disabled={loading || data.length === 0}
           >
             <Printer size={15} /> In bảng lương
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleExportPayroll}
+            disabled={exporting || loading || data.length === 0}
+          >
+            {exporting ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} color="#10b981" />}
+            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
           </button>
 
           {isDirector && isLocked && !isPaid && (
@@ -187,6 +212,26 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
           )}
         </div>
       </div>
+
+      {isPaid && (
+        <div style={{
+          fontSize: '0.8rem',
+          color: 'var(--blue-700, #1d4ed8)',
+          background: 'rgba(59, 130, 246, 0.08)',
+          border: '1px solid rgba(59, 130, 246, 0.25)',
+          borderRadius: 8,
+          padding: '8px 14px',
+          margin: '0 0 14px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          <span style={{ fontSize: '1rem' }}>ℹ️</span>
+          <span>
+            <strong>Đã xác nhận chi trả ngoài sổ:</strong> trạng thái này ghi nhận việc thanh toán bên ngoài hệ thống; chưa tạo phiếu Chi trong Sổ quỹ.
+          </span>
+        </div>
+      )}
 
       {!isPaid && (
         <div style={{
@@ -257,6 +302,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
             <span className="payroll-print-title">
               <span className="payroll-print-title__main">Bảng lương văn phòng</span>
               <span className="payroll-print-title__secondary">Và hoa hồng Sales</span>
+              <span className="payroll-print-title__status">{payrollStatusLabel}</span>
             </span>
           )}
           subtitle={`Kỳ trả lương: ${payrollMonthLabel} · Trạng thái: ${payrollStatusLabel}`}
@@ -283,7 +329,7 @@ export default function PayrollOfficeScreen({ isDirector = false, user }) {
         onClose={() => setSensitiveModal(null)}
         onConfirm={sensitiveModal === 'lock' ? handleLockPayroll : handlePayPayroll}
         title={sensitiveModal === 'lock' ? `Xác nhận chốt bảng lương tháng ${month}` : `Xác nhận đã chi trả lương tháng ${month}`}
-        description={sensitiveModal === 'lock' ? 'Sau khi chốt sổ, các chính sách lương và hoa hồng trong tháng sẽ được khóa cố định để kế toán thực hiện chi trả.' : 'Hành động này xác nhận doanh nghiệp đã hoàn tất chuyển tiền/thanh toán lương cho toàn bộ CBNV trong tháng.'}
+      description={sensitiveModal === 'lock' ? 'Sau khi chốt sổ, các chính sách lương và hoa hồng trong tháng sẽ được khóa cố định để kế toán thực hiện chi trả.' : 'Hành động này chỉ xác nhận doanh nghiệp đã hoàn tất thanh toán bên ngoài hệ thống; hệ thống không tự tạo phiếu Chi trong Sổ quỹ.'}
         requireReason={false}
         actionLabel={sensitiveModal === 'lock' ? 'Chốt sổ lương' : 'Đánh dấu đã trả'}
         isLoading={submitting}

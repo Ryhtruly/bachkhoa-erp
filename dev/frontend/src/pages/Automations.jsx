@@ -113,7 +113,7 @@ export default function Automations() {
               <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Hanet Client ID</label>
               <input type="text" value="hanet-bk-2026-client" readOnly style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', color: '#64748b', marginBottom: '8px' }} />
               <label style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: '4px' }}>Webhook URL nhận chấm công</label>
-              <input type="text" value="https://api.nhadatbachkhoa.com/webhook/hanet" readOnly style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', color: '#64748b' }} />
+              <input type="text" value={`${(typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/+$/, '')}/webhook/hanet`} readOnly style={{ width: '100%', padding: '6px 8px', fontSize: '0.8rem', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '4px', color: '#64748b' }} />
             </div>
           )}
         </div>

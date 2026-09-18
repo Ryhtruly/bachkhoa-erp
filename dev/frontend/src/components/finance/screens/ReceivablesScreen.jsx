@@ -4,13 +4,19 @@ import { DataTable, StatusBadge, SensitiveActionModal, FilterBar } from '../../u
 import { fmt } from '../utils';
 import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
-import { DollarSign, Printer, AlertTriangle, FileText, CheckCircle2, RotateCcw } from 'lucide-react';
-import { apiFetch } from '../../../lib/api';
+import { DollarSign, Printer, FileSpreadsheet, Loader2, AlertTriangle, FileText, CheckCircle2, RotateCcw } from 'lucide-react';
+import { apiFetch, downloadFile } from '../../../lib/api';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 
-export default function ReceivablesScreen({ user }) {
+export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) {
+  const isDirector = isDirectorProp ?? (
+    user?.role === 'director' ||
+    user?.role === 'admin' ||
+    user?.role === 'system_admin' ||
+    user?.role === 'giam_doc'
+  );
   const printDocumentRef = useRef(null);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +31,7 @@ export default function ReceivablesScreen({ user }) {
   });
   const [month, setMonth] = useState('');
   const [sort, setSort] = useState('due_asc');
+  const [exporting, setExporting] = useState(false);
   const { addToast } = useToast();
 
   const load = useCallback(async () => {
@@ -101,8 +108,21 @@ export default function ReceivablesScreen({ user }) {
 
       return true;
     }).sort((a, b) => {
+      if (sort === 'payment_desc') {
+        const pDiff = (b.last_payment_date || '').localeCompare(a.last_payment_date || '');
+        if (pDiff !== 0) return pDiff;
+        return (b.contract_id || '').localeCompare(a.contract_id || '');
+      }
       if (sort === 'due_asc') {
-        return (a.due_date || '9999').localeCompare(b.due_date || '9999');
+        const aActive = (a.remaining_amount > 0 || a.is_overpaid) ? 1 : 0;
+        const bActive = (b.remaining_amount > 0 || b.is_overpaid) ? 1 : 0;
+        if (aActive !== bActive) return bActive - aActive;
+
+        const cmp = (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31');
+        if (cmp !== 0) return cmp;
+        const pDiff = (b.last_payment_date || '').localeCompare(a.last_payment_date || '');
+        if (pDiff !== 0) return pDiff;
+        return (b.contract_id || '').localeCompare(a.contract_id || '');
       }
       if (sort === 'due_desc') {
         return (b.due_date || '').localeCompare(a.due_date || '');
@@ -135,7 +155,13 @@ export default function ReceivablesScreen({ user }) {
           reason: reason || `Chi hoàn trả tiền nộp thừa cho HĐ ${refundModal.contract_id}`
         })
       });
-      addToast(res.message || `Đã tạo phiếu chi hoàn tiền thừa ${fmt(refundModal.excess_amount)} (Chờ Giám đốc duyệt)`, 'success');
+      addToast(
+        res.message ||
+          (isDirector
+            ? `Đã duyệt và hoàn tiền thừa ${fmt(refundModal.excess_amount)} thành công`
+            : `Đã tạo phiếu chi hoàn tiền thừa ${fmt(refundModal.excess_amount)} (Chờ Giám đốc duyệt)`),
+        'success'
+      );
       setRefundModal(null);
       await load();
     } catch (err) {
@@ -147,21 +173,28 @@ export default function ReceivablesScreen({ user }) {
 
   const overdueCount = data.filter(r => r.overdue).length;
   const overpaidCount = data.filter(r => r.is_overpaid || r.status === 'overpaid').length;
-  const totalRemaining = data.reduce((s, r) => s + (r.remaining_amount || 0), 0);
+  const totalRemaining = data.reduce((s, r) => s + (r.is_overpaid ? 0 : (r.remaining_amount || 0)), 0);
   const totalExcess = data.reduce((s, r) => s + (r.excess_amount || 0), 0);
   const totalValueSum = data.reduce((s, r) => s + (r.total_value || 0), 0);
   const totalPaidSum = data.reduce((s, r) => s + (r.paid_amount || 0), 0);
+  const printTotalRemaining = filteredData.reduce(
+    (sum, row) => sum + (row.is_overpaid ? 0 : row.remaining_amount || 0),
+    0
+  );
+  const printTotalExcess = filteredData.reduce((s, r) => s + (r.excess_amount || 0), 0);
+  const printTotalValueSum = filteredData.reduce((s, r) => s + (r.total_value || 0), 0);
+  const printTotalPaidSum = filteredData.reduce((s, r) => s + (r.paid_amount || 0), 0);
 
   const printColumns = [
-    { key: 'index', label: 'STT', width: '38px', align: 'center', nowrap: true, render: (_, __, index) => index + 1 },
-    { key: 'contract_id', label: 'Mã hợp đồng', width: '120px', align: 'center', nowrap: true, render: v => <strong>{v}</strong> },
-    { key: 'customer_name', label: 'Khách hàng / Đối tác', align: 'left', render: (value, row) => value || row.customer || '—' },
-    { key: 'total_value', label: 'Giá trị HĐ (VNĐ)', width: '115px', align: 'right', nowrap: true, render: value => fmt(value) },
-    { key: 'paid_amount', label: 'Đã thu (VNĐ)', width: '115px', align: 'right', nowrap: true, render: value => fmt(value) },
-    { key: 'remaining_amount', label: 'Còn phải thu (VNĐ)', width: '120px', align: 'right', nowrap: true, render: (value, row) => row.is_overpaid ? '0₫' : fmt(value) },
-    { key: 'excess_amount', label: 'Nộp thừa (VNĐ)', width: '110px', align: 'right', nowrap: true, render: value => value > 0 ? fmt(value) : '—' },
-    { key: 'due_date', label: 'Hạn thu', width: '85px', align: 'center', nowrap: true },
-    { key: 'status', label: 'Trạng thái', width: '105px', align: 'center', nowrap: true, render: (_, row) => (
+    { key: 'index', label: 'STT', width: '4%', align: 'center', nowrap: true, headerNowrap: true, render: (_, __, index) => index + 1 },
+    { key: 'contract_id', label: 'Mã hợp đồng', width: '11%', align: 'center', nowrap: true, headerNowrap: true, render: v => <strong>{v}</strong> },
+    { key: 'customer_name', label: 'Khách hàng / Đối tác', width: '23%', align: 'left', render: (value, row) => value || row.customer || '—' },
+    { key: 'total_value', label: 'Giá trị HĐ (VNĐ)', width: '11%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value) },
+    { key: 'paid_amount', label: 'Đã thu (VNĐ)', width: '10%', align: 'right', nowrap: true, headerNowrap: true, render: value => fmt(value) },
+    { key: 'remaining_amount', label: 'Còn phải thu (VNĐ)', width: '11%', align: 'right', nowrap: true, headerNowrap: true, render: (value, row) => row.is_overpaid ? '0₫' : fmt(value) },
+    { key: 'excess_amount', label: 'Nộp thừa (VNĐ)', width: '10%', align: 'right', nowrap: true, headerNowrap: true, render: value => value > 0 ? fmt(value) : '—' },
+    { key: 'due_date', label: 'Hạn thu', width: '9%', align: 'center', nowrap: true, headerNowrap: true },
+    { key: 'status', label: 'Trạng thái', width: '11%', align: 'center', nowrap: true, headerNowrap: true, render: (_, row) => (
       row.is_overpaid ? 'Nộp thừa' :
       row.status === 'written_off' ? 'Đã miễn giảm/xóa' :
       row.status === 'refunded' ? 'Đã hoàn tiền' :
@@ -175,10 +208,10 @@ export default function ReceivablesScreen({ user }) {
     index: '',
     contract_id: '',
     customer_name: 'Tổng cộng',
-    total_value: fmt(totalValueSum),
-    paid_amount: fmt(totalPaidSum),
-    remaining_amount: fmt(totalRemaining),
-    excess_amount: totalExcess > 0 ? fmt(totalExcess) : '—',
+    total_value: fmt(printTotalValueSum),
+    paid_amount: fmt(printTotalPaidSum),
+    remaining_amount: fmt(printTotalRemaining),
+    excess_amount: printTotalExcess > 0 ? fmt(printTotalExcess) : '—',
     due_date: '',
     status: ''
   };
@@ -192,15 +225,43 @@ export default function ReceivablesScreen({ user }) {
     });
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        search,
+        status: filters.status,
+        aging: filters.aging,
+        amount_range: filters.amount_range,
+        month,
+        sort,
+      });
+      const filename = await downloadFile(
+        `${API}/api/finance/export/receivables-excel?${params.toString()}`,
+        `So_Cong_No_Phai_Thu_${month || 'Tat_Ca'}.xlsx`,
+      );
+      if (filename) addToast(`Đã xuất ${filename} thành công`, 'success');
+    } catch (err) {
+      addToast(err.message || 'Xuất sổ công nợ thất bại', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const cols = [
     { key: 'contract_id', label: 'Mã HĐ', width: 130, render: v => <strong style={{ fontFamily: 'var(--font-mono)' }}>{v}</strong> },
     { key: 'customer_name', label: 'Khách hàng', width: 160, render: (v, row) => <span>{v || row.customer || '—'}</span> },
     { key: 'total_value', label: 'Giá trị HĐ', width: 130, align: 'right', render: v => <span style={{ fontFamily: 'var(--font-mono)' }}>{fmt(v)}</span> },
-    { key: 'paid_amount', label: 'Đã thu', width: 130, align: 'right', render: (v, row) => (
+    { key: 'paid_amount', label: 'Đã thu', width: 135, align: 'right', render: (v, row) => (
       <div>
         <span style={{ fontFamily: 'var(--font-mono)', color: '#10b981', fontWeight: 600 }}>+{fmt(v)}</span>
         {row.excess_amount > 0 && (
           <div style={{ fontSize: '0.72rem', color: '#9333ea', fontWeight: 700 }}>Thừa +{fmt(row.excess_amount)}</div>
+        )}
+        {row.last_payment_date && (
+          <div style={{ fontSize: '0.70rem', color: 'var(--text-tertiary, #94a3b8)', marginTop: 1 }} title={`Thời gian thu gần nhất: ${row.last_payment_date}`}>
+            Mới thu: {row.last_payment_date.slice(0, 10).split('-').reverse().join('/')}
+          </div>
         )}
       </div>
     )},
@@ -280,9 +341,15 @@ export default function ReceivablesScreen({ user }) {
         title="Công nợ phải thu & dư nợ khách hàng"
         onRefresh={load}
         actions={
-          <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Printer size={15} /> In sổ công nợ
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary no-print" onClick={handlePrintReport} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Printer size={15} /> In sổ công nợ
+            </button>
+            <button className="btn btn-secondary no-print" onClick={handleExport} disabled={exporting || loading} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {exporting ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} color="#10b981" />}
+              {exporting ? 'Đang xuất...' : 'Xuất Excel'}
+            </button>
+          </div>
         }
         subtitle="Quản lý chi tiết dư nợ theo từng hợp đồng, theo dõi tuổi nợ và xử lý khoản nộp thừa"
       />
@@ -403,7 +470,8 @@ export default function ReceivablesScreen({ user }) {
         sort={sort}
         onSortChange={setSort}
         sortOptions={[
-          { value: 'due_asc', label: 'Hạn thu gần nhất' },
+          { value: 'due_asc', label: 'Hạn thu gần nhất (Sắp đến hạn)' },
+          { value: 'payment_desc', label: 'Khoản thu gần nhất (Mới thu)' },
           { value: 'due_desc', label: 'Hạn thu xa nhất' },
           { value: 'debt_desc', label: 'Còn nợ nhiều nhất' },
           { value: 'debt_asc', label: 'Còn nợ ít nhất' },
@@ -432,13 +500,13 @@ export default function ReceivablesScreen({ user }) {
           title="Sổ Công Nợ Phải Thu"
           subtitle="Tổng hợp công nợ theo hợp đồng khách hàng"
           summary={[
-            { label: 'Số hợp đồng', value: data.length.toLocaleString('vi-VN') },
-            { label: 'Còn phải thu', value: fmt(totalRemaining) },
-            { label: 'Nợ quá hạn', value: overdueCount.toLocaleString('vi-VN') },
-            { label: 'Khách nộp thừa', value: fmt(totalExcess) },
+            { label: 'Số hợp đồng', value: filteredData.length.toLocaleString('vi-VN') },
+            { label: 'Còn phải thu', value: fmt(printTotalRemaining) },
+            { label: 'Nợ quá hạn', value: filteredData.filter(r => r.overdue).length.toLocaleString('vi-VN') },
+            { label: 'Khách nộp thừa', value: fmt(printTotalExcess) },
           ]}
           columns={printColumns}
-          rows={data}
+          rows={filteredData}
           footerRow={footerRow}
           signers={[
             { role: 'Người lập biểu', name: user?.full_name || user?.username || '', note: '(Ký, họ tên)' },
@@ -454,14 +522,22 @@ export default function ReceivablesScreen({ user }) {
         isOpen={Boolean(refundModal)}
         onClose={() => setRefundModal(null)}
         onConfirm={handleRefundExcess}
-        title={`Lập phiếu hoàn tiền thừa cho HĐ ${refundModal?.contract_id}`}
+        title={
+          isDirector
+            ? `Hoàn tiền nộp thừa cho HĐ ${refundModal?.contract_id}`
+            : `Lập phiếu hoàn tiền thừa cho HĐ ${refundModal?.contract_id}`
+        }
         description={
           <div>
             Khách hàng đã nộp thừa <strong style={{ color: '#9333ea' }}>{fmt(refundModal?.excess_amount)}</strong> so với giá trị hợp đồng ({fmt(refundModal?.total_value)}).
-            Hệ thống sẽ tạo <strong>Phiếu Chi (PC)</strong> ở trạng thái <em>Chờ duyệt</em> để trình Giám đốc phê duyệt xuất quỹ.
+            {isDirector ? (
+              <> Khoản chi hoàn trả này sẽ được <strong>duyệt và trừ trực tiếp vào công nợ ngay lập tức</strong>.</>
+            ) : (
+              <> Hệ thống sẽ tạo <strong>Phiếu Chi (PC)</strong> ở trạng thái <em>Chờ duyệt</em> để trình Giám đốc phê duyệt xuất quỹ.</>
+            )}
           </div>
         }
-        actionLabel="Lập Phiếu Chi Hoàn Tiền"
+        actionLabel={isDirector ? "Duyệt & Hoàn Tiền" : "Lập Phiếu Chi Hoàn Tiền"}
         actionVariant="purple"
         requireReason={true}
         placeholderReason="Nhập ghi chú / số tài khoản nhận tiền hoàn của khách..."

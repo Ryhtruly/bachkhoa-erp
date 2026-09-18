@@ -4,6 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../lib/api', () => ({
   apiFetch: vi.fn(async () => ({})),
   getAccessToken: vi.fn(() => 'token'),
+  prefetchApi: vi.fn(),
+  peekApiCache: vi.fn(),
+  markLocalMutation: vi.fn(),
 }))
 vi.mock('../legal-dossier/LegalDossierNodePanel', () => ({
   default: () => <div data-testid="legal-dossier-panel" />,
@@ -329,7 +332,7 @@ describe('EmployeeWorkspaceCalendar', () => {
 
     const textarea = screen.getByPlaceholderText(/Nhập lý do hoàn thành checklist chưa có loại giấy/)
     fireEvent.change(textarea, { target: { value: 'Đã hoàn tất lưu kho và khoá hồ sơ' } })
-    expect(nutNop).toBeEnabled()
+    await vi.waitFor(() => expect(nutNop).toBeEnabled())
 
     fireEvent.click(nutNop)
 
@@ -548,6 +551,70 @@ describe('EmployeeWorkspaceCalendar', () => {
       const button = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
       expect(button).toBeDisabled()
       expect(button).toHaveAttribute('title', 'Còn tờ bị trả lại.')
+    })
+
+    it('phản ứng tức thì 0ms: nộp nghiệm thu sạch chuyển trạng thái optimistic và toast ngay không chờ mạng', async () => {
+      let submitResolver
+      const submitPromise = new Promise(resolve => { submitResolver = resolve })
+      apiFetch.mockImplementation(async (url) => {
+        if (String(url).includes('/submit')) return submitPromise
+        return {}
+      })
+
+      const onOptimistic = vi.fn()
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{ id: 'k01', node_code: 'K01', status: 'in_progress', checklist: [] }}
+            gate={{ can_submit: true, blockers: [], data: [] }}
+            onChanged={vi.fn()}
+            onOptimisticStatusChange={onOptimistic}
+          />
+        </ToastProvider>,
+      )
+
+      const nut = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+      expect(nut).toBeEnabled()
+      fireEvent.click(nut)
+
+      // 0ms Synchronous: ngay lập tức chuyển optimisticSubmitted và gọi onOptimisticStatusChange
+      expect(onOptimistic).toHaveBeenCalledWith('submitted')
+      expect(screen.getByText('Đang chờ quản lý duyệt')).toBeInTheDocument()
+      expect(screen.getByText('Đã nộp nghiệm thu — chờ Giám đốc duyệt')).toBeInTheDocument()
+
+      // Resolve background submit
+      submitResolver({})
+      await vi.waitFor(() => {
+        expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/submit')).length).toBe(1)
+      })
+    })
+
+    it('phản ứng tức thì 0ms: phát hiện thiếu tài liệu từ gate mở Modal xác nhận ngay lập tức', () => {
+      render(
+        <ToastProvider>
+          <NodeActionBar
+            task={{ id: 'k01', node_code: 'K01', status: 'in_progress', checklist: [] }}
+            gate={{
+              can_submit: false,
+              blockers: [{ kind: 'missing_documents', message: 'Còn thiếu giấy tờ' }],
+              data: [{
+                checklist_result_id: 'cr-1',
+                checklist_name: 'Khảo sát',
+                thieu: [{ name: 'Biên bản mốc', can: 1, da_co: 0, con_thieu: 1 }],
+              }],
+            }}
+            onChanged={vi.fn()}
+          />
+        </ToastProvider>,
+      )
+
+      const nut = screen.getByRole('button', { name: /Nộp nghiệm thu/i })
+      fireEvent.click(nut)
+
+      // Ngay lập tức mở Modal không qua round-trip /shortage
+      expect(screen.getByText(/Hồ sơ còn thiếu tài liệu/)).toBeInTheDocument()
+      expect(screen.getByText(/Biên bản mốc/)).toBeInTheDocument()
+      expect(apiFetch.mock.calls.filter(([u]) => String(u).includes('/shortage'))).toHaveLength(0)
     })
   })
 

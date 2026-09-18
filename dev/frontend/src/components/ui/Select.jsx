@@ -274,11 +274,12 @@ export function Select({
               tabIndex={-1}
               aria-selected={index === selectedIndex}
               aria-disabled={option.disabled || undefined}
+              title={String(option.label ?? '')}
               className={`ui-select__option ${index === activeIndex ? 'is-active' : ''} ${index === selectedIndex ? 'is-selected' : ''}`.trim()}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => selectOption(option)}
             >
-              <span className="ui-select__option-label">{option.label}</span>
+              <span className="ui-select__option-label" title={String(option.label ?? '')}>{option.label}</span>
               {index === selectedIndex && <Check aria-hidden="true" size={16} className="ui-select__check" />}
             </div>
           )) : (
