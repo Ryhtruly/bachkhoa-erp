@@ -348,7 +348,9 @@ def request_otp_route(
             }
         raise
 
-    background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp)
+    employee = db.query(Employee).filter(Employee.user_id == user.id).first()
+    full_name = employee.full_name if employee and employee.full_name else user.username
+    background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp, full_name)
     return {
         "success": True,
         "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
