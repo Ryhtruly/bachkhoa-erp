@@ -91,8 +91,9 @@ def default_source_for_node(db: Session, task_node_id: str) -> str:
     return "CONG_TY"
 
 
-# Trạng thái đề xuất mà tài liệu bên trong CHƯA phải tài liệu chính thức.
-_TRANG_THAI_CHUA_DUYET = ("draft", "pending", "rejected", "needs_more")
+# Unapproved request statuses where files are not yet official dossier documents.
+_UNAPPROVED_STATUSES = ("draft", "pending", "rejected", "needs_more")
+_TRANG_THAI_CHUA_DUYET = _UNAPPROVED_STATUSES
 
 
 def assert_document_not_reserved(db: Session, document_id: str) -> None:
@@ -113,10 +114,10 @@ def assert_document_not_reserved(db: Session, document_id: str) -> None:
             from public.document_slot_creation_request_documents rd
             join public.document_slot_creation_requests r on r.id = rd.request_id
             where rd.document_id = :document_id
-              and r.status = any(:trang_thai)
+              and r.status = any(:statuses)
             limit 1
         """),
-        {"document_id": document_id, "trang_thai": list(_TRANG_THAI_CHUA_DUYET)},
+        {"document_id": document_id, "statuses": list(_UNAPPROVED_STATUSES)},
     ).mappings().first()
     if row:
         nhan = {
@@ -380,14 +381,14 @@ def submit_request(db: Session, request_id: str, *, actor_id: str) -> dict[str, 
 
     # Đếm cho cả hai loại — con số này đi vào payload trả về. Chỉ RIÊNG việc ép
     # buộc là khác nhau: OUTPUT không tệp thì Giám đốc không có gì để xem.
-    so_tep = int(db.execute(
+    file_count = int(db.execute(
         text("""
             select count(*) from public.document_slot_creation_request_documents
             where request_id = :id
         """),
         {"id": request_id},
     ).scalar() or 0)
-    if (request.get("kind") or "OUTPUT") == "OUTPUT" and not so_tep:
+    if (request.get("kind") or "OUTPUT") == "OUTPUT" and not file_count:
         raise HTTPException(status_code=422, detail="Tải lên ít nhất một tệp rồi hãy gửi duyệt.")
 
     _audit(db, request_id, "DOCUMENT_SLOT_REQUEST_SUBMITTED", actor_id, None)
@@ -404,10 +405,10 @@ def submit_request(db: Session, request_id: str, *, actor_id: str) -> dict[str, 
         """),
         {"id": request_id},
     )
-    return {"id": request_id, "status": "pending", "file_count": int(so_tep)}
+    return {"id": request_id, "status": "pending", "file_count": int(file_count)}
 
 
-_PROMOTION_SCOPES = ("HANG_MUC_NAY", "TASK_TYPE", "PACKAGE", "GLOBAL")
+_PROMOTION_SCOPES = ("HANG_MUC_NAY", "SERVICE_LINE", "TASK_TYPE", "PACKAGE", "GLOBAL")
 
 
 def _compare_template_configuration(
@@ -603,23 +604,41 @@ def promote_template_for_combo(
         needs_original=False,
         reject_conflicting_same_name=False,
     )
-    db.execute(
+    existing_app = db.execute(
         text("""
-            insert into public.document_template_applicabilities
-                (template_id, applicability_type, service_package_id, task_type_id,
-                 node_code, is_default, created_by)
-            values (:template_id, 'COMBO', :service_package_id, :task_type_id,
-                    :node_code, true, :actor_id)
-            on conflict do nothing
+            select 1 from public.document_template_applicabilities
+            where template_id = :template_id
+              and applicability_type = 'COMBO'
+              and service_package_id = :service_package_id
+              and task_type_id = :task_type_id
+              and node_code = :node_code
+            limit 1
         """),
         {
             "template_id": template_id,
             "service_package_id": service_package_id,
             "task_type_id": task_type_id,
             "node_code": normalized_node,
-            "actor_id": actor_id,
         },
-    )
+    ).scalar()
+    if not existing_app:
+        db.execute(
+            text("""
+                insert into public.document_template_applicabilities
+                    (template_id, applicability_type, service_package_id, task_type_id,
+                     node_code, is_default, created_by)
+                values (:template_id, 'COMBO', :service_package_id, :task_type_id,
+                        :node_code, true, :actor_id)
+                on conflict do nothing
+            """),
+            {
+                "template_id": template_id,
+                "service_package_id": service_package_id,
+                "task_type_id": task_type_id,
+                "node_code": normalized_node,
+                "actor_id": actor_id,
+            },
+        )
     return template_id
 
 
@@ -641,7 +660,7 @@ def _promote_template_by_scope(
     ``None`` hoặc ``HANG_MUC_NAY`` — không ghi gì. Ô runtime đã tạo là đủ; loại
     giấy này chỉ tồn tại trong đúng hồ sơ đã phát sinh ra nó.
     """
-    if promotion_scope in (None, "HANG_MUC_NAY"):
+    if promotion_scope in (None, "HANG_MUC_NAY", "SERVICE_LINE"):
         return
     from src.dossiers.register import SOURCE_LABELS
 

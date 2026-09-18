@@ -10,7 +10,7 @@ import unittest
 
 from sqlalchemy import text
 
-from tests.fixtures_so_giay_to import (
+from tests.fixtures_document_register import (
     build_test_context, assign_node, create_test_user, insert_k01_node, insert_template,
     insert_checklist_item_with_document, insert_document, insert_document_slot,
     get_missing_documents,

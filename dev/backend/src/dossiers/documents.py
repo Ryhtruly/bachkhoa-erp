@@ -158,24 +158,24 @@ def list_documents(db: Session, dossier_id: str) -> dict[str, Any]:
     # vào đây; không chỗ nào phải nhớ lọc.
     rows = db.execute(
         text("""
-            with ho_so as (
+            with dossier_cte as (
                 select id, service_line_id from public.legal_dossiers where id = :dossier_id
             ),
-            tai_lieu as (
+            doc_cte as (
                 select l.document_id as id
-                from ho_so h
+                from dossier_cte h
                 join public.dossier_document_slots s on s.service_line_id = h.service_line_id
                 join public.dossier_document_links l
                   on l.slot_id = s.id and l.link_status = 'DANG_DUNG'
                 union   -- UNION, không ALL: một tệp nối nhiều ô vẫn là một dòng
                 select d.id
-                from public.dossier_documents d, ho_so h
+                from public.dossier_documents d, dossier_cte h
                 where d.dossier_id = h.id
             )
             select distinct d.id, d.stage, d.slot_key, d.task_node_id, d.object_key,
                    d.file_name, d.content_type, d.size_bytes, d.note,
                    d.uploaded_at, u.username as uploaded_by_name
-            from tai_lieu t
+            from doc_cte t
             join public.dossier_documents d on d.id = t.id
             left join public.users u on u.id = d.uploaded_by
             where d.doc_status = 'DANG_DUNG'
@@ -459,7 +459,7 @@ _CHECKLIST_OUTPUT_CONFIG_QUERY = text("""
 
 
 _CHECKLIST_OUTPUT_COUNT_QUERY = text("""
-    with hang_muc as (
+    with service_line_cte as (
         -- Hạng mục suy từ chính mục checklist. KHÔNG nhận từ client, và KHÔNG
         -- lấy theo hợp đồng: một hợp đồng có nhiều Hạng mục dùng chung template,
         -- đếm theo hợp đồng là checklist của Hạng mục A đủ điều kiện nhờ tệp
@@ -470,7 +470,7 @@ _CHECKLIST_OUTPUT_COUNT_QUERY = text("""
         join public.workflow_instances wi on wi.id = n.workflow_instance_id
         where r.id = :checklist_result_id
     ),
-    tai_lieu as (
+    doc_cte as (
         -- Đường CHÍNH: qua bảng nối tài liệu ↔ ô giấy. Một tệp phục vụ nhiều ô
         -- nên không đọc được bằng cột dossier_documents.slot_id.
         select l.document_id, dl.slot_id
@@ -479,7 +479,7 @@ _CHECKLIST_OUTPUT_COUNT_QUERY = text("""
         join public.dossier_document_links dl
           on dl.document_id = d.id and dl.link_status = 'DANG_DUNG'
         join public.dossier_document_slots s on s.id = dl.slot_id
-        cross join hang_muc hm
+        cross join service_line_cte hm
         where l.checklist_result_id = :checklist_result_id
           and d.doc_status = 'DANG_DUNG'
           and s.scope = 'SERVICE_LINE'
@@ -493,7 +493,7 @@ _CHECKLIST_OUTPUT_COUNT_QUERY = text("""
         from public.checklist_result_document_links l
         join public.dossier_documents d on d.id = l.document_id
         join public.dossier_document_slots s on s.id = d.slot_id
-        cross join hang_muc hm
+        cross join service_line_cte hm
         where l.checklist_result_id = :checklist_result_id
           and d.doc_status = 'DANG_DUNG'
           and d.slot_id is not null
@@ -503,8 +503,9 @@ _CHECKLIST_OUTPUT_COUNT_QUERY = text("""
     select s.template_id, s.name as slot_name,
            -- distinct theo document_id: một tệp nối vào cùng một ô bằng cả hai
            -- đường vẫn chỉ là MỘT bản.
-           count(distinct t.document_id) as so_ban
-    from tai_lieu t
+           count(distinct t.document_id) as so_ban,
+           count(distinct t.document_id) as copy_count
+    from doc_cte t
     join public.dossier_document_slots s on s.id = t.slot_id
     group by s.template_id, s.name
 """)
@@ -548,7 +549,7 @@ def checklist_output_status(db: Session, checklist_result_id: str) -> dict[str, 
     for config in output_config:
         template_id = config.get("template_id")
         existing = existing_by_template.get(template_id) or {}
-        current_count = int(existing.get("so_ban") or 0)
+        current_count = int(existing.get("copy_count") or existing.get("so_ban") or 0)
         required_count = int(config.get("min_count") or 1)
         resolved_name = existing.get("slot_name")
         if not resolved_name:
@@ -595,6 +596,8 @@ _NODE_OUTPUT_STATE_QUERY = text("""
            coalesce(cr_graph.item->'output_documents', '[]'::jsonb) as output_documents,
            coalesce(jsonb_object_agg(s.template_id, cnt.so_ban)
                     filter (where s.template_id is not null), '{}'::jsonb) as dang_co,
+           coalesce(jsonb_object_agg(s.template_id, cnt.so_ban)
+                    filter (where s.template_id is not null), '{}'::jsonb) as existing_counts,
            -- Phán quyết của Giám đốc cho tờ mới nhất ở mỗi loại giấy. Giao diện
            -- đọc cái này để bày "đã duyệt" / "đã từ chối kèm lý do" thay vì để
            -- nút Duyệt sáng lên trên một tờ đã xử rồi.
@@ -678,7 +681,8 @@ def node_output_document_blockers(db: Session, task_node_id: str) -> list[str]:
     for row in db.execute(
         _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
     ).mappings().all():
-        existing_counts = dict(row["dang_co"] or {})
+        existing_counts = dict(row.get("existing_counts") or row.get("dang_co") or {})
+        missing_messages: list[str] = []
         for config in list(row["output_documents"] or []):
             required_count = int(config.get("min_count") or 1)
             current_count = int(existing_counts.get(config.get("template_id")) or 0)
@@ -743,7 +747,7 @@ def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]
     for row in db.execute(
         _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
     ).mappings().all():
-        existing_counts = dict(row["dang_co"] or {})
+        existing_counts = dict(row.get("existing_counts") or row.get("dang_co") or {})
         missing_items = []
         for config in list(row["output_documents"] or []):
             # required_before_submit=false nghĩa là loại này không bắt buộc lúc

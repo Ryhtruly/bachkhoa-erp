@@ -70,7 +70,7 @@ import {
   removeChecklistDefinition,
 } from './workflowChecklistState';
 import DebtReviewCard from '../../features/handover/DebtReviewCard';
-import ThieuTaiLieuKhiNop from '../../features/document-register/ThieuTaiLieuKhiNop';
+import MissingDocumentsOnSubmit from '../../features/document-register/MissingDocumentsOnSubmit';
 import NodeChecklistCard from './NodeChecklistCard';
 import LegalDossierNodePanel from '../../features/legal-dossier/LegalDossierNodePanel';
 import NodeAgencyPanel from './NodeAgencyPanel';
@@ -4415,7 +4415,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                             </div>
                           </div>
                           <div className="workflow-review-card workflow-review-card--inbox">
-                            <ThieuTaiLieuKhiNop danhSach={item.pendingMissing || []} />
+                            <MissingDocumentsOnSubmit items={item.pendingMissing || []} />
                             <label>
                               Kết quả xử lý
                               <select
