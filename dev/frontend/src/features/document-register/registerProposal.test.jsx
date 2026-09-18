@@ -11,7 +11,7 @@ vi.mock('../employee-portal/SlotRequestModal', () => ({
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-const so = (version) => ({
+const mockRegister = (version) => ({
   contract_id: 'HD-1',
   service_line_id: 'SL-1',
   register_version: version,
@@ -32,12 +32,10 @@ const mockApi = (version) => {
     if (url.includes('/meta')) return { statuses: [], sources: [], copy_types: [] }
     if (url.includes('/source-documents')) return { data: [], unclassified: 0 }
     if (url.includes('/k01-status')) return { data: { can_submit: true, required_missing: [] } }
-    return so(version)
+    return mockRegister(version)
   })
 }
 
-// Mô hình V2: loại giấy mới phải qua Giám đốc duyệt. Thêm thẳng như mô hình cũ
-// là để nhân viên tự quyết cấu trúc hồ sơ, Giám đốc chỉ biết khi đã rồi.
 it('V2 có checklist thì hiện nút Đề xuất loại tài liệu', async () => {
   mockApi(2)
   render(<DocumentRegister contractId="HD-1" serviceLineId="SL-1"
@@ -47,13 +45,6 @@ it('V2 có checklist thì hiện nút Đề xuất loại tài liệu', async ()
   expect(screen.queryByRole('button', { name: /Thêm loại giấy tờ phát sinh/ })).not.toBeInTheDocument()
 })
 
-// ĐÃ SỬA CHỦ ĐÍCH: bản trước chốt rằng V1 cũng không có nút xin miễn. Chốt như
-// vậy là sai nghiệp vụ — mọi Hạng mục đang chạy trên live đều là V1, nên nhân
-// viên gặp giấy khách không có thật thì K01 bị khoá vĩnh viễn, không còn đường
-// nào ngoài nhét đại một tệp cho qua cổng. Phiếu miễn neo theo (ô giấy, Hạng
-// mục) và mọi truy vấn đọc đều lọc theo service_line_id nên V1 vẫn an toàn.
-// Chỉ ĐỀ XUẤT loại giấy mới là còn giữ riêng cho V2, vì nó cần neo vào sổ của
-// Hạng mục mới có chỗ đặt ô giấy sinh ra.
 it('V1 vẫn thêm giấy theo đường cũ và VẪN xin miễn được', async () => {
   mockApi(1)
   render(<DocumentRegister contractId="HD-1" serviceLineId="SL-1"

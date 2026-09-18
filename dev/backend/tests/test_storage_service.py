@@ -88,6 +88,44 @@ def test_bucket_setup_does_not_mutate_managed_production_storage(monkeypatch):
     assert calls == []
 
 
+def test_ensure_bucket_suppresses_forbidden_head_bucket_error(monkeypatch):
+    class FakeS3:
+        def head_bucket(self, **kwargs):
+            raise ClientError({"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadBucket")
+
+        def create_bucket(self, **kwargs):
+            pytest.fail("create_bucket should not be called when head_bucket returns 403")
+
+    monkeypatch.setattr(
+        storage_service,
+        "_storage_config",
+        replace(storage_service._storage_config, create_buckets=True),
+    )
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+
+    # Should not raise exception
+    storage_service.ensure_bucket()
+
+
+def test_ensure_bucket_suppresses_bucket_already_owned_error_on_create(monkeypatch):
+    class FakeS3:
+        def head_bucket(self, **kwargs):
+            raise ClientError({"Error": {"Code": "404", "Message": "Not Found"}}, "HeadBucket")
+
+        def create_bucket(self, **kwargs):
+            raise ClientError({"Error": {"Code": "BucketAlreadyOwnedByYou", "Message": "Owned"}}, "CreateBucket")
+
+    monkeypatch.setattr(
+        storage_service,
+        "_storage_config",
+        replace(storage_service._storage_config, create_buckets=True),
+    )
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+
+    # Should safely swallow BucketAlreadyOwnedByYou
+    storage_service.ensure_bucket()
+
+
 def test_public_policy_is_disabled_for_managed_production_storage(monkeypatch):
     calls = []
 

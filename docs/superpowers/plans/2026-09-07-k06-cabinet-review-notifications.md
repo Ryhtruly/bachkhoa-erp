@@ -424,7 +424,7 @@ Expected: PASS; success happens after response, with one upload and one scoped r
 
 - [ ] **Step 5: Run the complete regression suite for touched areas**
 
-Run: `cd dev/backend && pytest -q tests/test_handover_override_gate_unittest.py tests/test_checklist_document_type_routes.py tests/test_checklist_document_types_unittest.py tests/test_dossier_documents_unittest.py tests/test_notification_feed.py tests/test_review_batch_notification.py tests/test_nop_nghiem_thu_thieu_tai_lieu.py`
+Run: `cd dev/backend && pytest -q tests/test_handover_override_gate_unittest.py tests/test_checklist_document_type_routes.py tests/test_checklist_document_types_unittest.py tests/test_dossier_documents_unittest.py tests/test_notification_feed.py tests/test_review_batch_notification.py tests/test_submit_acceptance_missing_docs.py`
 
 Run: `cd dev/frontend && npm test -- --run src/features/employee-portal/EmployeeItemWorkspace.test.jsx src/features/employee-portal/EmployeeWorkspaceCalendar.test.jsx src/features/employee-portal/NodeOutputList.test.jsx src/features/employee-portal/NodeDocumentCabinet.test.jsx src/features/employee-portal/PriorDocumentsDrawer.test.jsx src/features/handover/HandoverPanel.test.jsx src/features/handover/DebtRequestAction.test.jsx src/features/handover/DebtReviewCard.test.jsx src/features/document-cabinet/ChecklistCabinetTree.test.jsx src/features/contracts/DocumentCabinet.test.jsx src/components/NotificationBell.test.jsx src/components/contracts/ContractWorkspace.test.jsx src/components/contracts/ContractWorkflowDesigner.test.jsx src/components/contracts/NodeChecklistCard.test.jsx src/pages/Contracts.test.jsx`
 

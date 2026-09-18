@@ -449,7 +449,7 @@ Lưu ý:
 - **Chỉ đọc live.** Không `pg_restore`, không ghi ngược
 - `conftest.py` đã được sửa: **không** `drop_all` khi phát hiện schema dựng từ dump
   (nếu không, teardown chết vì phụ thuộc FK và che mất kết quả cả phiên)
-- `dev/backend/scripts/dung_schema_test.py` chạy migration theo vòng lặp — **không đủ**,
+- `dev/backend/scripts/setup_test_schema.py` chạy migration theo vòng lặp — **không đủ**,
   giữ lại để tham khảo; đường dump ở trên mới là đường dùng được
 
 ### Lệnh chạy (Docker)
@@ -491,15 +491,15 @@ Hai `ImportError` là drift giữa test và model, **không** phải schema — 
 | File | Loại |
 |---|---|
 | `tests/test_schema_gate_v2.py` (27) | mock — cổng 503, quyền WAIVE, giao thức mode, giao dịch 422 |
-| `tests/test_de_xuat_input_va_promotion.py` (19) | mock — guard kind, promotion phạm vi, so cấu hình mẫu |
-| `tests/test_mien_giay_to.py` (8) | **DB thật**, tự dò schema → hiện đang **SKIP** (thiếu bảng) |
+| `tests/test_slot_request_input_and_promotion.py` (19) | mock — guard kind, promotion phạm vi, so cấu hình mẫu |
+| `tests/test_document_waiver.py` (8) | **DB thật**, tự dò schema → hiện đang **SKIP** (thiếu bảng) |
 | `tests/test_dossier_documents_unittest.py` (bổ sung) | mock — k01 theo version, ô miễn |
 | `src/lib/schemaV2.test.js` (3) | frontend |
-| `src/features/document-register/trangThaiGiay.test.js` (7) | frontend |
+| `src/features/document-register/documentStatus.test.js` (7) | frontend |
 | `src/features/contracts/ContractComposer.test.jsx` (bổ sung 4) | frontend |
 
 ### 5 test DB thật — ĐÃ XONG
-`dev/backend/tests/test_so_giay_to_db_that.py` (8 ca, **chạy thật, không skip**):
+`dev/backend/tests/test_document_register_live_db.py` (8 ca, **chạy thật, không skip**):
 1. ✅ Materialize đúng danh sách chọn · `[]` → 0 slot và **vẫn là V2** · sentinel chỉ lấy `is_default=true`
 2. ✅ Materialize lỗi → rollback, không để lại ô nào
 3. ✅ Sửa mẫu sau đó **không** đổi Hạng mục V2 đã materialize (ô runtime đã đóng băng)
@@ -507,10 +507,10 @@ Hai `ImportError` là drift giữa test và model, **không** phải schema — 
 5. ✅ WAIVE Hạng mục A **không** ảnh hưởng Hạng mục B (ô cấp Hợp đồng dùng chung), và B vẫn xin riêng được
 + chống xin miễn trùng cho cùng Hạng mục
 
-`dev/backend/tests/test_mien_giay_to.py` (8 ca) **cũng đã hết skip** — setUp tự
+`dev/backend/tests/test_document_waiver.py` (8 ca) **cũng đã hết skip** — setUp tự
 dựng dữ liệu thay vì đi tìm dữ liệu có sẵn.
 
-Fixture dùng chung: `dev/backend/tests/fixtures_so_giay_to.py` — mỗi test tự dựng
+Fixture dùng chung: `dev/backend/tests/fixtures_document_register.py` — mỗi test tự dựng
 hợp đồng/Hạng mục/mẫu/ô/tệp rồi rollback, chạy được trên DB trống.
 
 ---

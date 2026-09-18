@@ -26,7 +26,7 @@ export default function ApprovalQueue() {
   const [rollbacks, setRollbacks] = useState([])
   const [documentChanges, setDocumentChanges] = useState([])
   const [slotRequests, setSlotRequests] = useState([])
-  const [sua, setSua] = useState({})
+  const [adjustments, setAdjustments] = useState({})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [warnings, setWarnings] = useState([])
@@ -115,8 +115,8 @@ export default function ApprovalQueue() {
   const submitReview = async () => {
     if (!reviewDialog) return
     const note = reviewNote.trim()
-    const batBuocLyDo = ['rejected', 'needs_more'].includes(reviewDialog.decision)
-    if (batBuocLyDo && !note) {
+    const requiresReason = ['rejected', 'needs_more'].includes(reviewDialog.decision)
+    if (requiresReason && !note) {
       setReviewError(reviewDialog.decision === 'needs_more'
         ? 'Nhập nội dung cần bổ sung.'
         : 'Nhập lý do từ chối.')
@@ -135,16 +135,16 @@ export default function ApprovalQueue() {
       } else if (kind === 'waiver') {
         url = `/api/document-register/waivers/${row.id}/review`
       } else {
-        const chinh = sua[row.id] || {}
+        const adjustment = adjustments[row.id] || {}
         url = `/api/slot-requests/${row.id}/review`
         body = {
           ...body,
-          approved_name: chinh.name ?? row.proposed_name,
-          approved_quantity: Number(chinh.quantity ?? row.quantity) || 1,
-          approved_source: chinh.source || null,
-          required_before_submit: Boolean(chinh.required ?? row.required_before_submit),
-          needs_director_approval: Boolean(chinh.needsApproval ?? row.needs_director_approval),
-          promotion_scope: chinh.promotionScope ?? 'HANG_MUC_NAY',
+          approved_name: adjustment.name ?? row.proposed_name,
+          approved_quantity: Number(adjustment.quantity ?? row.quantity) || 1,
+          approved_source: adjustment.source || null,
+          required_before_submit: Boolean(adjustment.required ?? row.required_before_submit),
+          needs_director_approval: Boolean(adjustment.needsApproval ?? row.needs_director_approval),
+          promotion_scope: adjustment.promotionScope ?? 'HANG_MUC_NAY',
         }
       }
       await apiFetch(url, {
@@ -228,7 +228,7 @@ export default function ApprovalQueue() {
     {slotRequests.length > 0 && <div className="aq-group">
       <h3><FilePlus2 size={15} /> Đề xuất loại tài liệu phát sinh · {slotRequests.length}</h3>
       {slotRequests.map(row => {
-        const chinh = sua[row.id] || {}
+        const adjustment = adjustments[row.id] || {}
         return <article key={row.id} className="aq-card is-slot-request">
           <div className="aq-card__top">
             <strong>{row.proposed_name}</strong>
@@ -253,24 +253,24 @@ export default function ApprovalQueue() {
               Tên chính thức
               <input
                 className="form-control"
-                value={chinh.name ?? row.proposed_name}
-                onChange={(e) => setSua({ ...sua, [row.id]: { ...chinh, name: e.target.value } })}
+                value={adjustment.name ?? row.proposed_name}
+                onChange={(e) => setAdjustments({ ...adjustments, [row.id]: { ...adjustment, name: e.target.value } })}
               />
             </label>
             <label>
               Số lượng
               <input
                 type="number" min={1} className="form-control"
-                value={chinh.quantity ?? row.quantity}
-                onChange={(e) => setSua({ ...sua, [row.id]: { ...chinh, quantity: e.target.value } })}
+                value={adjustment.quantity ?? row.quantity}
+                onChange={(e) => setAdjustments({ ...adjustments, [row.id]: { ...adjustment, quantity: e.target.value } })}
               />
             </label>
             <label>
               Nguồn chính thức
               <select
                 className="form-control"
-                value={chinh.source ?? ''}
-                onChange={(e) => setSua({ ...sua, [row.id]: { ...chinh, source: e.target.value } })}
+                value={adjustment.source ?? ''}
+                onChange={(e) => setAdjustments({ ...adjustments, [row.id]: { ...adjustment, source: e.target.value } })}
               >
                 <option value="">Tự suy theo bước</option>
                 <option value="CONG_TY">Công ty soạn/lập</option>
@@ -283,10 +283,10 @@ export default function ApprovalQueue() {
               <select
                 aria-label="Phạm vi áp dụng"
                 className="form-control"
-                value={chinh.promotionScope ?? 'HANG_MUC_NAY'}
-                onChange={(e) => setSua(current => ({
+                value={adjustment.promotionScope ?? 'HANG_MUC_NAY'}
+                onChange={(e) => setAdjustments(current => ({
                   ...current,
-                  [row.id]: { ...chinh, promotionScope: e.target.value },
+                  [row.id]: { ...adjustment, promotionScope: e.target.value },
                 }))}
               >
                 <option value="HANG_MUC_NAY">Chỉ Hạng mục này</option>
@@ -297,15 +297,15 @@ export default function ApprovalQueue() {
             </label>
             <label className="aq-adjust__check">
               <input
-                type="checkbox" checked={Boolean(chinh.required ?? row.required_before_submit)}
-                onChange={(e) => setSua({ ...sua, [row.id]: { ...chinh, required: e.target.checked } })}
+                type="checkbox" checked={Boolean(adjustment.required ?? row.required_before_submit)}
+                onChange={(e) => setAdjustments({ ...adjustments, [row.id]: { ...adjustment, required: e.target.checked } })}
               />
               Bắt buộc trước khi nộp
             </label>
             <label className="aq-adjust__check">
               <input
-                type="checkbox" checked={Boolean(chinh.needsApproval ?? row.needs_director_approval)}
-                onChange={(e) => setSua({ ...sua, [row.id]: { ...chinh, needsApproval: e.target.checked } })}
+                type="checkbox" checked={Boolean(adjustment.needsApproval ?? row.needs_director_approval)}
+                onChange={(e) => setAdjustments({ ...adjustments, [row.id]: { ...adjustment, needsApproval: e.target.checked } })}
               />
               Cần Giám đốc duyệt
             </label>

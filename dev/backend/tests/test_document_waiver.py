@@ -25,7 +25,7 @@ class MienGiayToTests(unittest.TestCase):
     def setUp(self):
         from src.db.database import SessionLocal
 
-        from tests.fixtures_so_giay_to import (
+        from tests.fixtures_document_register import (
             build_test_context, create_test_user, insert_document_slot, get_missing_documents,
         )
 
@@ -35,7 +35,7 @@ class MienGiayToTests(unittest.TestCase):
             self.db.close()
             self.skipTest(
                 "DB đang dùng thiếu bảng: " + ", ".join(thieu)
-                + ". Chạy dev/backend/scripts/dung_schema_test.py trước."
+                + ". Chạy dev/backend/scripts/setup_test_schema.py trước."
             )
 
         # Tự dựng bối cảnh thay vì đi tìm dữ liệu có sẵn: mượn dữ liệu môi
