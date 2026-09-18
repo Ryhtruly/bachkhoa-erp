@@ -145,8 +145,31 @@ def ensure_bucket():
     client = _get_client()
     try:
         client.head_bucket(Bucket=BUCKET)
-    except Exception:
-        client.create_bucket(Bucket=BUCKET)
+    except ClientError as e:
+        error_code = str(e.response.get("Error", {}).get("Code", ""))
+        # If forbidden or unauthorized, the bucket exists or is managed with restricted bucket-level permissions
+        if error_code in {"403", "Forbidden", "AccessDenied"}:
+            return
+        try:
+            client.create_bucket(Bucket=BUCKET)
+        except ClientError as create_err:
+            create_code = str(create_err.response.get("Error", {}).get("Code", ""))
+            if create_code in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                return
+            raise
+        except Exception as create_exc:
+            if create_exc.__class__.__name__ in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                return
+            raise
+    except Exception as exc:
+        if exc.__class__.__name__ in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+            return
+        try:
+            client.create_bucket(Bucket=BUCKET)
+        except Exception as create_exc:
+            if create_exc.__class__.__name__ in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                return
+            raise
 
 def ensure_finance_bucket():
     """Create the private finance bucket without granting a public policy."""
