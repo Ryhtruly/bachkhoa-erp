@@ -18,7 +18,8 @@
   padding: 10px 18px;
   background: var(--bg-card, #ffffff);
   border-bottom: 1px solid var(--border-subtle, #e2e8f0);
-  z-index: 20;
+  /* Keep open combo menus above the canvas toolbar below it. */
+  z-index: 60;
   flex-shrink: 0;
 }
 
@@ -98,6 +99,10 @@
 
 .mws-task-type-group .mws-custom-select {
   width: 220px;
+}
+
+.mws-package-select {
+  width: 210px;
 }
 
 .mws-add-catalog-btn {
@@ -645,6 +650,23 @@
   color: #d97706;
 }
 
+.mws-capability-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--orange-600, #ea580c);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mws-capability-link:hover {
+  color: var(--orange-700, #c2410c);
+}
+
 /* ── Zero-Config Role Auto-Derivation Badge ── */
 .mws-auto-role-badge {
   display: inline-flex;
@@ -696,6 +718,3 @@
   color: #fff;
   border-color: var(--orange-500, #ea580c);
 }
-
-
-

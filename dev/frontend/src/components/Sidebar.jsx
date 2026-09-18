@@ -91,6 +91,7 @@ export default function Sidebar({
   // (lọc theo quyền, nên đo vẽ không thấy pháp lý và ngược lại), tài liệu đào tạo/ISO và lương cá nhân.
   const employeeMenuItems = [
     { id: 'employee-dashboard', label: 'Lịch trình', icon: LayoutDashboard },
+    { id: 'crm', label: 'CRM Bán Hàng', icon: Filter, permission: 'crm' },
     { id: 'tasks', label: 'Hồ Sơ Đo Vẽ', icon: FolderKanban, permission: 'survey_record' },
     { id: 'legal', label: 'Hồ Sơ Pháp Lý', icon: FileCheck, permission: 'legal_submission' },
     { id: 'wiki', label: 'Đào Tạo & ISO', icon: BookOpen, permission: 'wiki' },

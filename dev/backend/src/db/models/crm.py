@@ -85,6 +85,8 @@ class Contract(Base):
     service_area = Column(Numeric, nullable=True)
     sale_id = Column(String, nullable=True)
     service_package = Column(String, nullable=True)
+    commission_rate_snapshot = Column(Numeric(5, 2), nullable=True)
+    commission_locked_at = Column(DateTime(timezone=True), nullable=True)
     document_type = Column(String, nullable=True)
     has_technical = Column(String, nullable=True)
     addons = Column(JSONB, nullable=True)

@@ -378,8 +378,8 @@ class SoGiayToDbThatTests(unittest.TestCase):
                         service_line_id=sl, name="Giấy hôn nhân chuông")
         self.db.execute(
             text("""insert into public.task_node_acceptances
-                    (task_node_id, attempt_no, status, submitted_by)
-                    values (:n, 1, 'pending', :u)"""),
+                    (task_node_id, attempt_no, status, submitted_by, submitted_at)
+                    values (:n, 1, 'pending', :u, now())"""),
             {"n": node, "u": nv},
         )
 

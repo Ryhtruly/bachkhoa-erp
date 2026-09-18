@@ -17,7 +17,10 @@ import {
   Maximize2,
   MessageCircle,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Settings,
+  UserCircle,
+  UserCheck
 } from 'lucide-react';
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
 import { apiFetch } from '../lib/api';
@@ -87,8 +90,11 @@ function parseLeadRequirements(reqStr = '') {
   return { serviceType, scaleInfo, propertyAddress, notes, packageType };
 }
 
-export default function CRM() {
+export default function CRM({ user, isDirector = false, employeeMode = false }) {
   const { addToast } = useToast();
+  const managerView = !employeeMode;
+  const canConfigure = Boolean(isDirector || user?.role_name === 'accountant' || user?.role_name === 'admin');
+  const leadScope = employeeMode ? 'mine' : 'all';
   const [leads, setLeads] = useState([]);
   const [stats, setStats] = useState({ total_leads: 0, won_leads: 0, in_progress: 0, win_rate: 0 });
   const [loading, setLoading] = useState(true);
@@ -101,6 +107,16 @@ export default function CRM() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [qrCustomUrl, setQrCustomUrl] = useState('');
   const [qrCopied, setQrCopied] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('commission');
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [crmPolicy, setCrmPolicy] = useState({
+    commission_rate_percent: 0,
+    max_workload_points: 15,
+    warning_workload_ratio: 0.8,
+    max_open_leads: 20,
+    stage_weights: { 'Tiếp cận': 1, 'Báo giá': 2, 'Đàm phán': 3 }
+  });
 
   // Drag & drop state
   const [draggingLeadId, setDraggingLeadId] = useState(null);
@@ -116,8 +132,8 @@ export default function CRM() {
     try {
       if (!isSilent) setRefreshing(true);
       const [leadsData, statsData] = await Promise.all([
-        apiFetch('/api/crm/leads'),
-        apiFetch('/api/crm/stats')
+        apiFetch(`/api/crm/leads?scope=${leadScope}`),
+        apiFetch(`/api/crm/stats?scope=${leadScope}`)
       ]);
 
       setLeads(leadsData?.data || []);
@@ -128,7 +144,54 @@ export default function CRM() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [leadScope]);
+
+  const openSettings = async () => {
+    try {
+      const response = await apiFetch('/api/crm/settings');
+      setCrmPolicy(response?.data || crmPolicy);
+      setSettingsOpen(true);
+    } catch (err) {
+      addToast(err?.message || 'Unable to load CRM settings', 'error');
+    }
+  };
+
+  const saveSettings = async (event) => {
+    event.preventDefault();
+    setSettingsSaving(true);
+    try {
+      const response = await apiFetch('/api/crm/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          commission_rate_percent: Number(crmPolicy.commission_rate_percent),
+          max_workload_points: Number(crmPolicy.max_workload_points),
+          warning_workload_ratio: Number(crmPolicy.warning_workload_ratio),
+          max_open_leads: Number(crmPolicy.max_open_leads),
+          contact_weight: Number(crmPolicy.stage_weights['Tiếp cận']),
+          quote_weight: Number(crmPolicy.stage_weights['Báo giá']),
+          negotiation_weight: Number(crmPolicy.stage_weights['Đàm phán'])
+        })
+      });
+      setCrmPolicy(response?.data || crmPolicy);
+      setSettingsOpen(false);
+      addToast('CRM settings saved', 'success');
+    } catch (err) {
+      addToast(err?.message || 'Unable to save CRM settings', 'error');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const handleClaim = async (lead) => {
+    try {
+      await apiFetch(`/api/crm/leads/${lead.id}/claim`, { method: 'POST' });
+      await fetchData(true);
+      addToast('Lead assigned to you', 'success');
+    } catch (err) {
+      addToast(err?.message || 'Unable to claim lead', 'error');
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -318,6 +381,17 @@ export default function CRM() {
               <RotateCw size={14} className={refreshing ? 'spinning' : ''} /> Làm Mới
             </button>
 
+            {canConfigure && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={openSettings}
+                title="Configure CRM commission and workload rules"
+              >
+                <Settings size={14} /> Thiết lập CRM
+              </button>
+            )}
+
             {/* Nút Copy Link Form Zalo */}
             <button
               type="button"
@@ -435,6 +509,17 @@ export default function CRM() {
                           {lead.customer_name}
                         </h4>
 
+                        {managerView && lead.assigned_to && (
+                          <div className="lead-owner-badge" title="Sale phụ trách">
+                            {lead.assigned_to_avatar_url ? (
+                              <img src={lead.assigned_to_avatar_url} alt="" className="lead-owner-avatar" />
+                            ) : (
+                              <UserCircle size={16} />
+                            )}
+                            <span>{lead.assigned_to_name || 'Sale phụ trách'}</span>
+                          </div>
+                        )}
+
                         {/* Badge Dịch vụ (nếu có) */}
                         {parsed.serviceType && (
                           <div className={`lead-service-pill lead-service-pill--${parsed.packageType}`}>
@@ -497,10 +582,20 @@ export default function CRM() {
 
                         {/* Hộp chọn di chuyển cột */}
                         <div className="lead-move-footer">
+                          {!managerView && !lead.assigned_to && lead.status !== 'Chốt' && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm lead-claim-button"
+                              onClick={() => handleClaim(lead)}
+                            >
+                              <UserCheck size={14} /> Nhận lead này
+                            </button>
+                          )}
                           <select
                             className="lead-move-select"
                             value={lead.status}
                             onChange={(e) => handleStatusChange(lead, e.target.value)}
+                            disabled={!managerView && !lead.assigned_to}
                             title="Chọn cột để chuyển trạng thái (hoặc kéo thả thẻ)"
                           >
                             {columns.map(opt => (
@@ -749,6 +844,55 @@ export default function CRM() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={<span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Settings size={20} color="var(--orange-500)" /> Thiết lập CRM</span>}
+        size="lg"
+      >
+        <form onSubmit={saveSettings} className="crm-settings-form">
+          <div className="crm-settings-tabs" role="tablist" aria-label="CRM settings">
+            <button type="button" className={`crm-settings-tab ${settingsTab === 'commission' ? 'crm-settings-tab--active' : ''}`} onClick={() => setSettingsTab('commission')}>Hoa hồng Sale</button>
+            <button type="button" className={`crm-settings-tab ${settingsTab === 'workload' ? 'crm-settings-tab--active' : ''}`} onClick={() => setSettingsTab('workload')}>Giới hạn tải Sale</button>
+          </div>
+          {settingsTab === 'commission' && <div className="crm-settings-grid">
+            <label>
+              Tỷ lệ hoa hồng chung (%)
+              <input className="form-control" type="number" min="0" max="100" step="0.01" value={crmPolicy.commission_rate_percent} onChange={(event) => setCrmPolicy({ ...crmPolicy, commission_rate_percent: event.target.value })} />
+              <small>Chỉ áp dụng cho hợp đồng chốt sau khi lưu. Hợp đồng cũ giữ nguyên snapshot.</small>
+            </label>
+          </div>}
+          {settingsTab === 'workload' && <>
+            <div className="crm-settings-grid">
+              <label>
+                Điểm tải tối đa
+                <input className="form-control" type="number" min="1" step="1" value={crmPolicy.max_workload_points} onChange={(event) => setCrmPolicy({ ...crmPolicy, max_workload_points: event.target.value })} />
+              </label>
+              <label>
+                Ngưỡng cảnh báo (%)
+                <input className="form-control" type="number" min="1" max="100" step="1" value={Number(crmPolicy.warning_workload_ratio) * 100} onChange={(event) => setCrmPolicy({ ...crmPolicy, warning_workload_ratio: Number(event.target.value) / 100 })} />
+              </label>
+              <label>
+                Số lead mở tối đa
+                <input className="form-control" type="number" min="1" step="1" value={crmPolicy.max_open_leads} onChange={(event) => setCrmPolicy({ ...crmPolicy, max_open_leads: event.target.value })} />
+              </label>
+            </div>
+          </>}
+          {settingsTab === 'workload' && <div className="crm-settings-weight-grid">
+            {['Tiếp cận', 'Báo giá', 'Đàm phán'].map((stage) => (
+              <label key={stage}>
+                {stage} (điểm)
+                <input className="form-control" type="number" min="1" step="1" value={crmPolicy.stage_weights[stage]} onChange={(event) => setCrmPolicy({ ...crmPolicy, stage_weights: { ...crmPolicy.stage_weights, [stage]: event.target.value } })} />
+              </label>
+            ))}
+          </div>}
+          <div className="modal-footer crm-settings-footer">
+            <button type="button" className="btn btn-secondary" onClick={() => setSettingsOpen(false)}>Hủy</button>
+            <button type="submit" className="btn btn-primary" disabled={settingsSaving}>{settingsSaving ? 'Đang lưu...' : 'Lưu thiết lập'}</button>
+          </div>
+        </form>
       </Modal>
     </section>
   );

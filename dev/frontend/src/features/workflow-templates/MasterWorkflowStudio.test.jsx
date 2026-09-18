@@ -191,7 +191,7 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
   it('tải danh mục combo, chọn sẵn gói đầu và nạp mẫu quy trình mặc định', async () => {
     render(<MasterWorkflowStudio />)
 
-    expect(await screen.findByRole('tab', { name: 'Đo Vẽ', selected: true })).toBeInTheDocument()
+    expect(await screen.findByRole('combobox', { name: /gói dịch vụ/i })).toHaveValue('sp_001')
     expect(screen.getByRole('combobox', { name: /hạng mục/i })).toHaveValue('tt_001')
 
     // Tên mẫu mặc định hiển thị trên dropdown mẫu
@@ -204,6 +204,22 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     // Node trên canvas hiển thị
     expect(screen.getByText('Tiếp nhận hồ sơ')).toBeInTheDocument()
     expect(screen.getByText('Khảo sát thực địa')).toBeInTheDocument()
+  })
+
+  it('đổi gói dịch vụ bằng dropdown và đồng bộ lại hạng mục', async () => {
+    render(<MasterWorkflowStudio />)
+
+    const packageSelect = await screen.findByRole('combobox', { name: /gói dịch vụ/i })
+    expect(packageSelect).toHaveValue('sp_001')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Đo Vẽ' }))
+    const menu = await screen.findByRole('listbox')
+    fireEvent.click(within(menu).getByRole('option', { name: 'Pháp Lý' }))
+
+    await waitFor(() => {
+      expect(packageSelect).toHaveValue('sp_002')
+      expect(screen.getByRole('combobox', { name: /hạng mục/i })).toHaveValue('tt_010')
+    })
   })
 
   it('hiển thị ghi chú định hướng "Quy trình này dùng cho..." khi rê chuột vào dòng tên quy trình trong dropdown', async () => {
@@ -525,8 +541,13 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     const nodeK01 = screen.getByTestId('flow-node-k01')
     fireEvent.click(nodeK01)
 
-    // Kiểm tra hiển thị 6 thẻ năng lực trong Inspector
+    // Tab Node chỉ hiển thị năng lực hiện tại dạng badge, không kéo dài cả lưới card.
     const inspector = document.querySelector('.mws-inspector')
+    expect(within(inspector).getByText('Tác nghiệp tiêu chuẩn')).toBeInTheDocument()
+    expect(within(inspector).getByRole('button', { name: /đổi năng lực/i })).toBeInTheDocument()
+
+    // Lưới 6 thẻ năng lực chỉ hiện trong tab Năng lực.
+    fireEvent.click(within(inspector).getByRole('button', { name: 'Năng lực' }))
     expect(await within(inspector).findByText('Tác nghiệp tiêu chuẩn')).toBeInTheDocument()
     expect(within(inspector).getByText('Khảo sát & Đo thực địa')).toBeInTheDocument()
     expect(within(inspector).getByText('Biên tập bản vẽ CAD')).toBeInTheDocument()
@@ -541,8 +562,9 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     // Thẻ được active
     expect(surveyFieldCard).toHaveClass('is-selected')
 
-    // Phòng ban tự động gợi ý sang Phòng Đo vẽ
-    const deptSelect = within(inspector).getByRole('combobox', { name: /phòng ban phụ trách/i })
+    // Phòng ban tự động gợi ý sang Phòng Đo vẽ trong tab Phân công
+    fireEvent.click(within(inspector).getByRole('button', { name: 'Phân công' }))
+    const deptSelect = within(inspector).getByRole('combobox', { name: /phòng ban nhận việc/i })
     expect(deptSelect).toHaveValue('SURVEY')
   })
 

@@ -714,16 +714,38 @@ class FinanceRepository:
                 and effective_date >= period.start_date
                 and effective_date < period.end_date
               group by employee_id
+            ), commission as (
+              select c.sale_id as user_id,
+                     coalesce(sum(
+                       case
+                         when t.transaction_type = 'INCOME' then t.amount
+                         when t.transaction_type = 'EXPENSE'
+                              and lower(coalesce(t.category_code, '') || ' ' || coalesce(t.description, ''))
+                                  similar to '%(hoàn|refund|trả lại)%'
+                           then -t.amount
+                         else 0
+                       end * coalesce(c.commission_rate_snapshot, 0) / 100
+                     ), 0) as sales_commission
+              from public.contracts c
+              join public.cashflow_transactions t on t.contract_id = c.id
+              cross join period
+              where c.sale_id is not null
+                and t.status in ('COMPLETED', 'SETTLED')
+                and coalesce(t.transaction_date, t.created_at::date) >= period.start_date
+                and coalesce(t.transaction_date, t.created_at::date) < period.end_date
+              group by c.sale_id
             )
-            select e.id, e.full_name, e.department,
+            select e.id, e.full_name, e.department, e.user_id,
                    coalesce(b.base_salary, e.base_salary, 0) as base_salary,
                    coalesce(p.piece_amount, 0) as piece_amount,
                    coalesce(a.adjustment_amount, 0) as adjustment_amount,
-                   coalesce(p.tasks_completed, 0) as tasks_completed
+                   coalesce(p.tasks_completed, 0) as tasks_completed,
+                   coalesce(c.sales_commission, 0) as sales_commission
             from public.employees e
             left join base b on b.employee_id = e.id
             left join piece p on p.employee_id = e.id
             left join adjustments a on a.employee_id = e.id
+            left join commission c on c.user_id = e.user_id
             where coalesce(e.is_active, true)
             order by e.full_name
         """), {"period_month": period_month}).mappings().all()
@@ -734,7 +756,8 @@ class FinanceRepository:
             "base_salary": float(row["base_salary"] or 0),
             "kpi_score": 0,
             "bonus": float(row["piece_amount"] or 0) + float(row["adjustment_amount"] or 0),
-            "total_salary": float(row["base_salary"] or 0) + float(row["piece_amount"] or 0) + float(row["adjustment_amount"] or 0),
+            "sales_commission": float(row["sales_commission"] or 0),
+            "total_salary": float(row["base_salary"] or 0) + float(row["piece_amount"] or 0) + float(row["adjustment_amount"] or 0) + float(row["sales_commission"] or 0),
             "month": period_month.strftime("%Y-%m"),
             "tasks_completed": int(row["tasks_completed"] or 0),
         } for row in rows]

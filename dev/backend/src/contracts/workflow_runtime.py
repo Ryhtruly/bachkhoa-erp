@@ -4505,9 +4505,9 @@ def submit_task_node_for_acceptance(
     acceptance_id = db.execute(
         text("""
             insert into public.task_node_acceptances
-                (task_node_id, attempt_no, status, submitted_by, submission_payload)
+                (task_node_id, attempt_no, status, submitted_by, submitted_at, submission_payload)
             values
-                (:task_node_id, :attempt_no, 'pending', :actor_id, cast(:payload as jsonb))
+                (:task_node_id, :attempt_no, 'pending', :actor_id, now(), cast(:payload as jsonb))
             returning id
         """),
         {
@@ -5652,8 +5652,8 @@ def auto_finalize_node_if_ready(db: Session, *, task_node_id: str, actor_id: str
         text(
             """
             insert into public.task_node_acceptances
-                (task_node_id, attempt_no, status, submitted_by, submission_payload)
-            values (:i, :a, 'pending', :actor, cast(:p as jsonb))
+                (task_node_id, attempt_no, status, submitted_by, submitted_at, submission_payload)
+            values (:i, :a, 'pending', :actor, now(), cast(:p as jsonb))
             returning id
             """
         ),

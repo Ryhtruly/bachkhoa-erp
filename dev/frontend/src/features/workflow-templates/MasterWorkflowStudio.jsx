@@ -1327,51 +1327,37 @@ export default function MasterWorkflowStudio() {
             {/* Gói dịch vụ */}
             <div className="mws-combo-group">
               <span className="mws-group-label">Gói Dịch Vụ:</span>
-              <div className="mws-pkg-tabs" role="tablist">
-                {packageTree.map((pkg) => (
-                  <button
-                    key={pkg.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={selectedPackageId === pkg.id}
-                    className={`mws-pkg-tab${selectedPackageId === pkg.id ? ' is-active' : ''}`}
-                    onClick={() => handleSelectPackage(pkg.id)}
-                  >
-                    <span
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        backgroundColor: pkg.color || '#3b82f6',
-                        display: 'inline-block',
-                        marginRight: 6,
-                        verticalAlign: 'middle',
-                      }}
-                    />
-                    {pkg.name}
-                  </button>
-                ))}
+              <CustomSelect
+                aria-label="Gói dịch vụ"
+                className="mws-custom-select mws-package-select"
+                value={selectedPackageId}
+                options={packageTree.map((pkg) => ({
+                  value: pkg.id,
+                  label: pkg.name,
+                }))}
+                onChange={handleSelectPackage}
+                placeholder="— Chọn gói dịch vụ —"
+              />
+              <button
+                type="button"
+                className="mws-add-catalog-btn"
+                title="Thêm Gói dịch vụ mới"
+                aria-label="Thêm Gói dịch vụ mới"
+                onClick={() => openCatalogModal('PACKAGE', 'create')}
+              >
+                <Plus size={13} /> Thêm Gói
+              </button>
+              {currentPackage && (
                 <button
                   type="button"
-                  className="mws-add-catalog-btn"
-                  title="Thêm Gói dịch vụ mới"
-                  aria-label="Thêm Gói dịch vụ mới"
-                  onClick={() => openCatalogModal('PACKAGE', 'create')}
+                  className="mws-edit-catalog-btn"
+                  title={`Chỉnh sửa Gói: ${currentPackage.name}`}
+                  aria-label={`Chỉnh sửa Gói: ${currentPackage.name}`}
+                  onClick={() => openCatalogModal('PACKAGE', 'edit', currentPackage)}
                 >
-                  <Plus size={13} /> Thêm Gói
+                  <Pencil size={13} />
                 </button>
-                {currentPackage && (
-                  <button
-                    type="button"
-                    className="mws-edit-catalog-btn"
-                    title={`Chỉnh sửa Gói: ${currentPackage.name}`}
-                    aria-label={`Chỉnh sửa Gói: ${currentPackage.name}`}
-                    onClick={() => openCatalogModal('PACKAGE', 'edit', currentPackage)}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                )}
-              </div>
+              )}
             </div>
 
             <div className="mws-divider-vertical" />
@@ -1614,27 +1600,17 @@ export default function MasterWorkflowStudio() {
 
                   <div className="wf-node-grid__row">
                     <span className="wf-node-grid__label">Năng lực bước</span>
-                    <div className="wf-node-grid__value">
-                      <div className="mws-capability-grid">
-                        {CAPABILITIES.map((cap) => {
-                          const Icon = cap.icon
-                          const isSelected = (selectedNode.data.capability || 'STANDARD') === cap.code
-                          return (
-                            <button
-                              type="button"
-                              key={cap.code}
-                              className={`mws-capability-card${isSelected ? ' is-selected' : ''}`}
-                              onClick={() => handleSelectCapability(cap.code)}
-                            >
-                              <div className="mws-capability-card__header">
-                                <Icon size={14} color={isSelected ? '#ea580c' : cap.color} />
-                                <span>{cap.label}</span>
-                              </div>
-                              <span className="mws-capability-card__desc">{cap.desc}</span>
-                            </button>
-                          )
-                        })}
-                      </div>
+                    <div className="wf-node-grid__value" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className={`workflow-node__cap-tag workflow-node__cap-tag--${(selectedNode.data.capability || 'STANDARD').toLowerCase().replace(/_/g, '-')}`}>
+                        {capabilityMeta(selectedNode.data.capability).label}
+                      </span>
+                      <button
+                        type="button"
+                        className="mws-capability-link"
+                        onClick={() => setInspectorTab('capability')}
+                      >
+                        Đổi năng lực →
+                      </button>
                     </div>
                   </div>
 

@@ -418,6 +418,7 @@ function App() {
   // Nhân viên dùng bộ tab riêng: lịch trình, hồ sơ của phòng mình, tài liệu đào tạo/ISO và lương cá nhân.
   const EMPLOYEE_TABS = [
     { key: 'employee-dashboard', Component: EmployeePortalDashboard },
+    { key: 'crm', Component: CRM, permission: 'crm', props: { user: profile, isDirector, employeeMode: true } },
     { key: 'tasks', Component: Tasks, permission: 'survey_record' },
     { key: 'legal', Component: LegalSubmissions, permission: 'legal_submission' },
     { key: 'wiki', Component: Wiki, permission: 'wiki', props: { user: profile, isDirector } },
