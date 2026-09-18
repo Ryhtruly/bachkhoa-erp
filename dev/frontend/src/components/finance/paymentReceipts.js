@@ -49,3 +49,75 @@ export const buildPaymentFormData = (form, receiptFiles) => {
   receiptFiles.forEach((file) => data.append('receipt_files', file, file.name))
   return data
 }
+
+export const compressReceiptImage = async (file) => {
+  if (!file || !file.type || !file.type.startsWith('image/')) {
+    return file
+  }
+  // File dưới 600KB thì giữ nguyên
+  if (file.size <= 600 * 1024) {
+    return file
+  }
+  // Nếu môi trường không hỗ trợ Image / Canvas (JSDOM/SSR)
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !window.Image) {
+    return file
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      try {
+        let { width, height } = img
+        const maxDim = 1600
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width)
+            width = maxDim
+          } else {
+            width = Math.round((width * maxDim) / height)
+            height = maxDim
+          }
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(file)
+          return
+        }
+        ctx.drawImage(img, 0, 0, width, height)
+
+        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+        canvas.toBlob(
+          (blob) => {
+            if (!blob || blob.size >= file.size) {
+              resolve(file)
+            } else {
+              const compressedFile = new File([blob], file.name, {
+                type: blob.type || outputType,
+                lastModified: Date.now(),
+              })
+              resolve(compressedFile)
+            }
+          },
+          outputType,
+          0.82
+        )
+      } catch {
+        resolve(file)
+      }
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(file)
+    }
+
+    img.src = url
+  })
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildPaymentFormData,
+  compressReceiptImage,
   MAX_RECEIPT_BYTES,
   validateReceiptSelection,
 } from './paymentReceipts'
@@ -29,5 +30,22 @@ describe('payment receipt selection', () => {
     expect(data.get('payment_method')).toBe('Chuyển khoản')
     expect(data.get('note')).toBe('Đợt 1')
     expect(data.getAll('receipt_files')).toHaveLength(1)
+  })
+
+  it('keeps non-image files such as PDF untouched', async () => {
+    const pdf = file('invoice.pdf', 'application/pdf', 1024 * 1024)
+    const result = await compressReceiptImage(pdf)
+    expect(result).toBe(pdf)
+  })
+
+  it('keeps small images under 600KB untouched', async () => {
+    const smallImg = file('receipt.jpg', 'image/jpeg', 200 * 1024)
+    const result = await compressReceiptImage(smallImg)
+    expect(result).toBe(smallImg)
+  })
+
+  it('handles null/undefined gracefully', async () => {
+    expect(await compressReceiptImage(null)).toBeNull()
+    expect(await compressReceiptImage(undefined)).toBeUndefined()
   })
 })
