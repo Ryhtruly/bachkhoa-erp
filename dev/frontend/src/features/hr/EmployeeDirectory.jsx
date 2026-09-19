@@ -74,7 +74,11 @@ function Field({ label, value }) {
 
 function CreateAccountModal({ employee, departments = [], onClose, onCreated }) {
   const { addToast } = useToast();
-  const defaultRole = defaultAccountRoleForDepartment(employee?.department_id);
+  const departmentName =
+    departments?.find((d) => d.id === employee?.department_id)?.name ||
+    employee?.department ||
+    'phòng ban hiện tại';
+  const defaultRole = defaultAccountRoleForDepartment(employee?.department_id, departmentName);
   const [form, setForm] = useState({
     username: '',
     email: employee?.email || '',
@@ -83,11 +87,7 @@ function CreateAccountModal({ employee, departments = [], onClose, onCreated }) 
   const [saving, setSaving] = useState(false);
   const [overrideConfirmed, setOverrideConfirmed] = useState(false);
 
-  const isMismatched = isRoleMismatchedWithDepartment(form.role_name, employee?.department_id);
-  const departmentName =
-    departments?.find((d) => d.id === employee?.department_id)?.name ||
-    employee?.department ||
-    'phòng ban hiện tại';
+  const isMismatched = isRoleMismatchedWithDepartment(form.role_name, employee?.department_id, departmentName);
   const selectedRoleLabel = getAccountRoleLabel(form.role_name);
   const defaultRoleLabel = getAccountRoleLabel(defaultRole);
 

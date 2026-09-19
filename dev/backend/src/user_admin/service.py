@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import BackgroundTasks, HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -94,11 +95,31 @@ def create_employee_account(
     email: str,
     role_name: str,
     background_tasks: Optional[BackgroundTasks] = None,
+    creator_user: Optional[User] = None,
 ) -> dict:
     try:
         role_name = validate_assignable_role_name(role_name)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if role_name.lower() == "admin" and creator_user is not None:
+        is_caller_admin = (
+            creator_user.username == "admin"
+            or db.query(Role)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .filter(
+                UserRole.user_id == creator_user.id,
+                Role.is_active.is_(True),
+                func.lower(Role.role_name) == "admin",
+            )
+            .first()
+            is not None
+        )
+        if not is_caller_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Chỉ Quản trị viên mới được phép gán quyền admin.",
+            )
 
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
@@ -249,19 +270,23 @@ def set_user_active_status(db: Session, user_id: str, is_active: bool) -> dict:
     return {"user_id": user.id, "username": user.username, "is_active": user.is_active}
 
 
-def _send_reset_otp_email_task(user_email: str, username: str, otp: str) -> None:
+def _send_reset_otp_email_task(user_email: str, username: str, otp: str, full_name: str | None = None) -> None:
     try:
+        display_name = full_name or username
         html = f"""
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff;">
-            <h2 style="color: #E86832; margin-top: 0;">Mã xác thực đặt lại mật khẩu</h2>
-            <p>Xin chào <strong>{username}</strong>,</p>
+            <h2 style="color: #E86832; margin-top: 0;">Đặt lại mật khẩu Bách Khoa ERP</h2>
+            <p>Xin chào <strong>{display_name}</strong>,</p>
             <p>Bạn vừa yêu cầu đặt lại mật khẩu cho tài khoản trên hệ thống <strong>Bách Khoa ERP</strong>.</p>
-            <p>Mã OTP xác thực của bạn là:</p>
-            <div style="text-align: center; margin: 24px 0;">
-                <span style="display: inline-block; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #172033; background: #f1f5f9; padding: 12px 24px; border-radius: 8px; border: 1px dashed #cbd5e1;">{otp}</span>
+            <p>Tên đăng nhập: <strong>{username}</strong></p>
+            <p>Sử dụng mã OTP dưới đây để xác thực và đặt lại mật khẩu của bạn (mã hết hạn sau {OTP_TTL_MINUTES} phút):</p>
+            <div style="text-align: center; margin: 20px 0;">
+                <div style="display: inline-block; background-color: #fff7ed; border: 2px dashed #E86832; border-radius: 6px; padding: 12px 32px;">
+                    <span style="font-family: 'Courier New', Courier, monospace, sans-serif; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #E86832;">{otp}</span>
+                </div>
             </div>
-            <p style="color: #64748b; font-size: 14px;">Mã này có hiệu lực trong vòng <strong>{OTP_TTL_MINUTES} phút</strong>. Tuyệt đối không chia sẻ mã này cho bất kỳ ai.</p>
-            <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email hoặc liên hệ quản trị viên.</p>
+            <p style="color: #64748b; font-size: 13px;">Tuyệt đối không chia sẻ mã xác thực này cho bất kỳ ai để đảm bảo an toàn cho tài khoản của bạn.</p>
+            <p style="color: #94a3b8; font-size: 13px; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 12px;">Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
         </div>
         """
         send_email(to=user_email, subject="Mã OTP đặt lại mật khẩu Bách Khoa ERP", html=html)
@@ -269,8 +294,8 @@ def _send_reset_otp_email_task(user_email: str, username: str, otp: str) -> None
         logger.warning("Không thể gửi email OTP đặt lại mật khẩu cho %s: %s", user_email, exc)
 
 
-def _send_reset_otp_email(user: User, otp: str) -> None:
-    _send_reset_otp_email_task(user.email, user.username, otp)
+def _send_reset_otp_email(user: User, otp: str, full_name: str | None = None) -> None:
+    _send_reset_otp_email_task(user.email, user.username, otp, full_name)
 
 
 def prepare_password_reset_otp(db: Session, identifier: str) -> tuple[dict, User, str]:
@@ -326,11 +351,13 @@ def request_password_reset_otp(
     background_tasks: Optional[BackgroundTasks] = None,
 ) -> dict:
     response_data, user, otp = prepare_password_reset_otp(db, identifier)
+    employee = db.query(Employee).filter(Employee.user_id == user.id).first()
+    full_name = employee.full_name if employee and employee.full_name else user.username
     if background_tasks is not None:
-        background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp)
+        background_tasks.add_task(_send_reset_otp_email_task, user.email, user.username, otp, full_name)
     else:
         try:
-            _send_reset_otp_email(user, otp)
+            _send_reset_otp_email(user, otp, full_name)
         except EmailSendError:
             response_data["email_sent"] = False
     return response_data

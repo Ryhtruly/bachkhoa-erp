@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import quote
 
+from src.files.content_disposition import build_content_disposition_header
+
 from fastapi import APIRouter, File, HTTPException, Depends, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -138,7 +140,10 @@ def render_current_contract_document(db: Session, contract_id: str) -> Response:
         return Response(
             content=content,
             media_type=DOCX_MEDIA_TYPE,
-            headers={'Content-Disposition': f"inline; filename*=UTF-8''{quote(filename)}"},
+            headers={
+                'Content-Disposition': build_content_disposition_header(filename, disposition="inline"),
+                'Access-Control-Expose-Headers': 'Content-Disposition',
+            },
         )
 
     document_data, filename = build_current_contract_document_data(db, contract_id)
@@ -200,7 +205,10 @@ def render_current_contract_document(db: Session, contract_id: str) -> Response:
     return Response(
         content=document_bytes,
         media_type=DOCX_MEDIA_TYPE,
-        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}"},
+        headers={
+            "Content-Disposition": build_content_disposition_header(filename, disposition="inline"),
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
     )
 
 

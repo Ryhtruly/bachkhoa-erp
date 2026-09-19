@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 # Add app directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -225,6 +226,7 @@ app.mount(
     name="static",
 )
 
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,

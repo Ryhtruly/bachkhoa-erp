@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   UserPlus,
   Phone,
@@ -23,6 +23,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
+import AvatarImage from '../components/AvatarImage';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import './crm.css';
@@ -118,12 +119,18 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     stage_weights: { 'Tiếp cận': 1, 'Báo giá': 2, 'Đàm phán': 3 }
   });
 
+  // Tùy chọn tạo mã QR theo gói và hạng mục
+  const [intakePackages, setIntakePackages] = useState([]);
+  const [selectedQrPackage, setSelectedQrPackage] = useState('');
+  const [selectedQrService, setSelectedQrService] = useState('');
+
   // Drag & drop state
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
 
   // Advanced filters state
   const [filterSource, setFilterSource] = useState('All');
+  const [filterSale, setFilterSale] = useState('All');
   const [formData, setFormData] = useState({ name: '', phone: '', source: 'Facebook', notes: '' });
 
   const columns = ['Tiếp cận', 'Báo giá', 'Đàm phán', 'Chốt'];
@@ -196,6 +203,37 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    fetch('/api/intake/services')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.data && Array.isArray(d.data)) {
+          setIntakePackages(d.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isQrModalOpen) return;
+    let url = `${window.location.origin}/intake`;
+    const params = [];
+    if (selectedQrPackage) params.push(`package=${encodeURIComponent(selectedQrPackage)}`);
+    if (selectedQrService) params.push(`service=${encodeURIComponent(selectedQrService)}`);
+    if (params.length > 0) url += `?${params.join('&')}`;
+    setQrCustomUrl(url);
+  }, [isQrModalOpen, selectedQrPackage, selectedQrService]);
+
+  const salesOptions = useMemo(() => {
+    const map = new Map();
+    leads.forEach((l) => {
+      if (l.assigned_to && l.assigned_to_name) {
+        map.set(l.assigned_to, l.assigned_to_name);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ value: id, label: name }));
+  }, [leads]);
 
   const handleStatusChange = async (lead, newStatus) => {
     if (newStatus === 'Chốt' && lead.status !== 'Chốt') {
@@ -290,7 +328,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     if (dragOverCol === col) setDragOverCol(null);
   };
 
-  const handleDrop = (e, targetCol) => {
+  const handleDrop = async (e, targetCol) => {
     e.preventDefault();
     setDragOverCol(null);
     const leadId = e.dataTransfer.getData('text/plain') || draggingLeadId;
@@ -299,17 +337,31 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === targetCol) return;
 
+    // Nếu Sale kéo thẻ chưa ai nhận -> tự động nhận trước khi chuyển trạng thái
+    if (!managerView && !lead.assigned_to) {
+      try {
+        await apiFetch(`/api/crm/leads/${lead.id}/claim`, { method: 'POST' });
+        addToast('Đã tự động nhận lead này vào danh sách phụ trách', 'success');
+      } catch (err) {
+        addToast(err?.message || 'Không thể nhận lead', 'error');
+        return;
+      }
+    }
+
     handleStatusChange(lead, targetCol);
   };
 
   const filteredLeads = leads.filter(l => {
     const matchSearch = (l.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (l.phone || '').includes(searchTerm) ||
-      (l.requirements || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (l.requirements || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (l.assigned_to_name || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchSource = filterSource === 'All' || l.source === filterSource;
+    const matchSale = !managerView || filterSale === 'All' ||
+      (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
 
-    return matchSearch && matchSource;
+    return matchSearch && matchSource && matchSale;
   });
 
   return (
@@ -317,7 +369,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
       {/* Stats Header */}
       <StatsGrid>
         <StatCard
-          label="Tổng Lead Tiếp Nhận"
+          label={employeeMode ? "Lead Của Tôi" : "Tổng Lead Tiếp Nhận"}
           value={stats.total_leads || 0}
           icon={<Target size={24} />}
           iconVariant="purple"
@@ -335,10 +387,10 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
           iconVariant="green"
         />
         <StatCard
-          label="Tỉ Lệ Chốt Thầu"
-          value={`${stats.win_rate || 0}%`}
-          icon={<Percent size={24} />}
-          iconVariant="red"
+          label={employeeMode ? "Tỷ Lệ Hoa Hồng" : "Tỉ Lệ Chốt Thầu"}
+          value={employeeMode ? `${crmPolicy.commission_rate_percent || 0}%` : `${stats.win_rate || 0}%`}
+          icon={employeeMode ? <Sparkles size={24} /> : <Percent size={24} />}
+          iconVariant={employeeMode ? "orange" : "red"}
         />
       </StatsGrid>
 
@@ -362,13 +414,25 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
               { value: 'Giới thiệu', label: 'Khách giới thiệu' },
               { value: 'Khác', label: 'Khác' }
             ]
-          }
+          },
+          ...(managerView && salesOptions.length > 0 ? [{
+            key: 'sale',
+            label: 'Sale phụ trách',
+            type: 'select',
+            width: 200,
+            options: [
+              { value: 'All', label: 'Tất cả Sale phụ trách' },
+              { value: 'Unassigned', label: 'Chưa có người phụ trách' },
+              ...salesOptions
+            ]
+          }] : [])
         ]}
-        values={{ source: filterSource }}
+        values={{ source: filterSource, sale: filterSale }}
         onFilterChange={(key, value) => {
           if (key === 'source') setFilterSource(value);
+          if (key === 'sale') setFilterSale(value);
         }}
-        onReset={() => { setSearchTerm(''); setFilterSource('All'); }}
+        onReset={() => { setSearchTerm(''); setFilterSource('All'); setFilterSale('All'); }}
         actions={
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {/* Nút Làm Mới (Refresh) */}
@@ -510,13 +574,13 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                         </h4>
 
                         {managerView && lead.assigned_to && (
-                          <div className="lead-owner-badge" title="Sale phụ trách">
-                            {lead.assigned_to_avatar_url ? (
-                              <img src={lead.assigned_to_avatar_url} alt="" className="lead-owner-avatar" />
-                            ) : (
-                              <UserCircle size={16} />
-                            )}
-                            <span>{lead.assigned_to_name || 'Sale phụ trách'}</span>
+                          <div className="lead-owner-badge" title={`Sale phụ trách: ${lead.assigned_to_name || 'Sale'}`}>
+                            <AvatarImage
+                              src={lead.assigned_to_avatar_url}
+                              name={lead.assigned_to_name || 'Sale'}
+                              className="lead-owner-avatar"
+                            />
+                            <span className="lead-owner-name">{lead.assigned_to_name || 'Sale phụ trách'}</span>
                           </div>
                         )}
 
@@ -709,9 +773,28 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                   </div>
                 )}
                 {closingData.price && Number(closingData.price) > 0 && (
-                  <div className="currency-live-preview">
-                    <span>Số tiền hiển thị:</span>
-                    <span>{new Intl.NumberFormat('vi-VN').format(Number(closingData.price))} VNĐ</span>
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div className="currency-live-preview">
+                      <span>Số tiền hiển thị:</span>
+                      <span>{new Intl.NumberFormat('vi-VN').format(Number(closingData.price))} VNĐ</span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '8px 12px',
+                      background: 'rgba(34, 197, 94, 0.08)',
+                      border: '1px solid rgba(34, 197, 94, 0.25)',
+                      borderRadius: 8,
+                      fontSize: '0.82rem'
+                    }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        Hoa hồng Sale áp dụng ({crmPolicy.commission_rate_percent || 0}%):
+                      </span>
+                      <strong style={{ color: 'var(--green-600, #16a34a)', fontSize: '0.9rem' }}>
+                        +{new Intl.NumberFormat('vi-VN').format(Math.round(Number(closingData.price) * (Number(crmPolicy.commission_rate_percent || 0) / 100)))} VNĐ
+                      </strong>
+                    </div>
                   </div>
                 )}
               </div>
@@ -787,6 +870,47 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
             />
             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--orange-600)', letterSpacing: '0.04em' }}>
               BÁCH KHOA • QUÉT BẰNG ZALO HOẶC CAMERA
+            </div>
+          </div>
+
+          {/* Lựa chọn gói và hạng mục chuyên biệt để gửi khách */}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+              Chọn Gói Dịch Vụ & Hạng Mục Cho Mã QR:
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Gói dịch vụ:</label>
+                <select
+                  className="form-control"
+                  style={{ fontSize: '0.82rem', height: '34px' }}
+                  value={selectedQrPackage}
+                  onChange={(e) => {
+                    setSelectedQrPackage(e.target.value);
+                    setSelectedQrService('');
+                  }}
+                >
+                  <option value="">— Tất cả dịch vụ (Mặc định) —</option>
+                  {intakePackages.map(pkg => (
+                    <option key={pkg.id} value={pkg.id}>{pkg.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Hạng mục chi tiết:</label>
+                <select
+                  className="form-control"
+                  style={{ fontSize: '0.82rem', height: '34px' }}
+                  value={selectedQrService}
+                  onChange={(e) => setSelectedQrService(e.target.value)}
+                  disabled={!selectedQrPackage}
+                >
+                  <option value="">— Toàn bộ hạng mục trong gói —</option>
+                  {(intakePackages.find(p => p.id === selectedQrPackage)?.services || []).map(svc => (
+                    <option key={svc.id} value={svc.id}>{svc.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

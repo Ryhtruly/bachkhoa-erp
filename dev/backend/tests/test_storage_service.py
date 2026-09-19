@@ -408,3 +408,31 @@ def test_local_minio_uses_one_bucket_for_all_storage_domains(monkeypatch):
     assert len({configured.BUCKET, configured.FINANCE_BUCKET, configured.CONTRACT_TEMPLATE_BUCKET, configured.CONTRACT_DOCUMENT_BUCKET}) == 1
 
     importlib.reload(storage_service)
+
+
+def test_ensure_bucket_caches_verification_on_client(monkeypatch):
+    calls = []
+
+    class FakeS3:
+        def head_bucket(self, **kwargs):
+            calls.append(kwargs)
+
+    fake_client = FakeS3()
+    monkeypatch.setattr(storage_service, "_s3", fake_client)
+    monkeypatch.setattr(
+        storage_service,
+        "_storage_config",
+        replace(storage_service._storage_config, create_buckets=True),
+    )
+
+    storage_service.ensure_bucket()
+    assert len(calls) == 1
+    assert getattr(fake_client, "_bucket_verified") is True
+
+    # Subsequent call should be a cached no-op and NOT call head_bucket again
+    storage_service.ensure_bucket()
+    assert len(calls) == 1
+
+    # Force call should verify again
+    storage_service.ensure_bucket(force=True)
+    assert len(calls) == 2

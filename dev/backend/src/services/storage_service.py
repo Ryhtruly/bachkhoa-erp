@@ -119,6 +119,10 @@ def _require_contract_object_key(object_name: str) -> str:
 
 def _require_prefix(object_name: str, prefixes: tuple[str, ...]) -> str:
     normalized = object_name.lstrip("/")
+    if ".." in normalized.split("/") or "\\" in normalized:
+        if normalized.startswith("contracts/"):
+            raise ValueError("Contract object key contains invalid path traversal segments")
+        raise ValueError("Object key contains invalid path traversal segments")
     if not any(normalized.startswith(prefix) for prefix in prefixes):
         expected = ", ".join(prefixes)
         raise ValueError(f"Object key must use an allowed prefix: {expected}")
@@ -139,35 +143,45 @@ def _get_client():
         )
     return _s3
 
-def ensure_bucket():
+def ensure_bucket(force: bool = False):
     if not _storage_config.create_buckets:
         return
     client = _get_client()
+    if not force and getattr(client, "_bucket_verified", False):
+        return
     try:
         client.head_bucket(Bucket=BUCKET)
+        setattr(client, "_bucket_verified", True)
     except ClientError as e:
         error_code = str(e.response.get("Error", {}).get("Code", ""))
         # If forbidden or unauthorized, the bucket exists or is managed with restricted bucket-level permissions
         if error_code in {"403", "Forbidden", "AccessDenied"}:
+            setattr(client, "_bucket_verified", True)
             return
         try:
             client.create_bucket(Bucket=BUCKET)
+            setattr(client, "_bucket_verified", True)
         except ClientError as create_err:
             create_code = str(create_err.response.get("Error", {}).get("Code", ""))
             if create_code in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                setattr(client, "_bucket_verified", True)
                 return
             raise
         except Exception as create_exc:
             if create_exc.__class__.__name__ in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                setattr(client, "_bucket_verified", True)
                 return
             raise
     except Exception as exc:
         if exc.__class__.__name__ in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+            setattr(client, "_bucket_verified", True)
             return
         try:
             client.create_bucket(Bucket=BUCKET)
+            setattr(client, "_bucket_verified", True)
         except Exception as create_exc:
             if create_exc.__class__.__name__ in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                setattr(client, "_bucket_verified", True)
                 return
             raise
 

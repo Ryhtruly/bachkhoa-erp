@@ -72,7 +72,7 @@ vi.mock('./components/TopHeader', () => ({
     </div>
   ),
 }))
-vi.mock('./components/ChatWidget', () => ({ default: () => null }))
+vi.mock('./components/ChatWidget', () => ({ default: () => <div data-testid="chat-widget">Chat Widget</div> }))
 vi.mock('./pages/Dashboard', () => ({
   default: () => {
     dashboardRendered()
@@ -447,5 +447,18 @@ describe('App sidebar preference', () => {
     expect(cashflowNavigationReceived).toHaveBeenCalledWith(
       expect.objectContaining({ voucherId: 'voucher-43' }),
     )
+  })
+
+  it('renders ChatWidget in employee workspace', async () => {
+    apiFetch.mockResolvedValue({
+      username: 'field_staff',
+      full_name: 'Nhân viên đo đạc',
+      default_workspace: 'employee',
+      permissions: { survey_record: true },
+    })
+
+    render(<App />)
+    expect(await screen.findByText('Employee dashboard screen')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-widget')).toBeInTheDocument()
   })
 })

@@ -59,7 +59,6 @@ export const STANDARD_DEPARTMENTS = [
   { value: 'SURVEY', label: 'Phòng Đo vẽ' },
   { value: 'LEGAL', label: 'Phòng Pháp lý' },
   { value: 'ACCOUNTING', label: 'Phòng Kế toán' },
-  { value: 'ADMIN', label: 'Ban Giám đốc' },
 ]
 
 export const POOL_DEPARTMENTS = [
@@ -67,7 +66,6 @@ export const POOL_DEPARTMENTS = [
   ['SURVEY', 'Phòng Đo vẽ'],
   ['LEGAL', 'Phòng Pháp lý'],
   ['ACCOUNTING', 'Phòng Kế toán'],
-  ['ADMIN', 'Ban Giám đốc'],
 ]
 
 export const ASSIGNMENT_ROLES = [

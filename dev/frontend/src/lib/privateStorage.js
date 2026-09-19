@@ -36,25 +36,28 @@ export function isPrivateObjectKey(value) {
   return extractPrivateKey(value) !== null
 }
 
-export function privateObjectEndpoint(objectKey) {
-  return `/api/employee-portal/file?object_key=${encodeURIComponent(objectKey)}`
+export function privateObjectEndpoint(objectKey, filename = null, download = false) {
+  let url = `/api/employee-portal/file?object_key=${encodeURIComponent(objectKey)}`
+  if (filename) url += `&filename=${encodeURIComponent(filename)}`
+  if (download) url += '&download=true'
+  return url
 }
 
-export async function fetchPrivateObjectBlob(objectKey) {
+export async function fetchPrivateObjectBlob(objectKey, filename = null) {
   const extracted = extractPrivateKey(objectKey)
   if (!extracted) throw new Error('Đường dẫn tệp nội bộ không hợp lệ')
   const token = getAccessToken()
-  const response = await fetch(privateObjectEndpoint(extracted), {
+  const response = await fetch(privateObjectEndpoint(extracted, filename), {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!response.ok) throw new Error('Không thể mở tệp nội bộ')
   return response.blob()
 }
 
-export async function openPrivateObject(objectKey) {
+export async function openPrivateObject(objectKey, filename = null) {
   const viewer = window.open('', '_blank', 'noopener,noreferrer')
   try {
-    const blob = await fetchPrivateObjectBlob(objectKey)
+    const blob = await fetchPrivateObjectBlob(objectKey, filename)
     const objectUrl = URL.createObjectURL(blob)
     if (viewer) viewer.location.href = objectUrl
     else window.open(objectUrl, '_blank', 'noopener,noreferrer')

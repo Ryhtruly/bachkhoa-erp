@@ -514,7 +514,7 @@ function App() {
             )}
           </main>
         </div>
-        {!employeeMode && <ChatWidget />}
+        <ChatWidget />
       </div>
     </ToastProvider>
   );

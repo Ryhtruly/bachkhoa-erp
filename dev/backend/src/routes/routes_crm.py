@@ -255,7 +255,7 @@ def get_leads(
         if manager_view and l.assigned_to:
             owner = (
                 db.query(Employee)
-                .filter(Employee.user_id == l.assigned_to)
+                .filter(or_(Employee.user_id == l.assigned_to, Employee.id == l.assigned_to))
                 .first()
             )
             row["assigned_to_name"] = owner.full_name if owner else ""
@@ -324,10 +324,10 @@ def update_lead_status(
         # Validate before changing the lead or creating any finance/dossier row.
         issued_total = parse_issued_money(body.price)
 
-    if not _is_crm_manager(db, user) and lead.assigned_to != user.id:
-        raise HTTPException(status_code=403, detail="Only the assigned Sale can update this lead")
     if not lead.assigned_to:
         raise HTTPException(status_code=409, detail="Claim the lead before changing its status")
+    if not _is_crm_manager(db, user) and lead.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned Sale can update this lead")
 
     lead.status = body.new_status
     contract_created = False

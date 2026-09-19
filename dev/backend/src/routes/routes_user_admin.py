@@ -1,11 +1,12 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.core.auth import require_permission
 from src.core.roles import validate_assignable_role_name
 from src.db.database import get_db
-from src.db.models import User
+from src.db.models import Role, User, UserRole
 from src.user_admin.service import create_employee_account, resend_invite, set_user_active_status
 
 router = APIRouter(prefix="/api/user-admin", tags=["01. Authentication & Security"])
@@ -46,6 +47,24 @@ def create_account_for_employee(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("user_admin", "create")),
 ):
+    if payload.role_name.lower() == "admin":
+        is_caller_admin = (
+            user.username == "admin"
+            or db.query(Role)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .filter(
+                UserRole.user_id == user.id,
+                Role.is_active.is_(True),
+                func.lower(Role.role_name) == "admin",
+            )
+            .first()
+            is not None
+        )
+        if not is_caller_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Chỉ Quản trị viên mới được phép gán quyền admin.",
+            )
     return create_employee_account(
         db,
         employee_id,
@@ -53,6 +72,7 @@ def create_account_for_employee(
         payload.email,
         role_name=payload.role_name,
         background_tasks=background_tasks,
+        creator_user=user,
     )
 
 

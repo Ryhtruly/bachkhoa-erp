@@ -287,10 +287,12 @@ describe('DocumentTemplateSettings — Bố cục 2 vùng Enterprise', () => {
     const page2Btn = screen.getByRole('button', { name: 'Trang 2' })
     fireEvent.click(page2Btn)
 
-    expect(screen.queryByText('Tài liệu thứ 1')).not.toBeInTheDocument()
-    expect(screen.getByText('Tài liệu thứ 13')).toBeInTheDocument()
-    expect(screen.getByText('Tài liệu thứ 15')).toBeInTheDocument()
-    expect(footer).toHaveTextContent('13–15 / 15 loại giấy tờ')
+    await waitFor(() => {
+      expect(screen.queryByText('Tài liệu thứ 1')).not.toBeInTheDocument()
+      expect(screen.getByText('Tài liệu thứ 13')).toBeInTheDocument()
+      expect(screen.getByText('Tài liệu thứ 15')).toBeInTheDocument()
+      expect(footer).toHaveTextContent('13–15 / 15 loại giấy tờ')
+    })
   })
 })
 

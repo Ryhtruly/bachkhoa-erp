@@ -39,6 +39,7 @@ from src.finance import AdvanceRequestIn, FinanceService
 from src.employee_portal.service import EmployeePortalService
 from src.dossiers.actor_guard import assert_can_view_node
 from src.dossiers.checklist_document_types import node_type_review_summary
+from src.files.content_disposition import build_content_disposition_header
 from src.files.references import FileReference
 from src.services.storage_service import AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX, delete_file, ensure_bucket, get_file, upload_file
 from src.services.timeline_realtime import employee_task_event_stream, publish_timeline_change
@@ -81,9 +82,15 @@ def read_private_file(
     object_key: str = Query(..., min_length=1),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    filename: str | None = Query(None),
+    download: bool = Query(False),
 ):
     """Stream avatar/workflow objects without exposing the private bucket."""
-    if not object_key.startswith((AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX)):
+    if (
+        not object_key.startswith((AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX))
+        or ".." in object_key.split("/")
+        or "\\" in object_key
+    ):
         raise HTTPException(status_code=400, detail="Đường dẫn tệp nội bộ không hợp lệ.")
     if object_key.startswith(WORKFLOW_EVIDENCE_PREFIX):
         match = re.fullmatch(
@@ -122,10 +129,30 @@ def read_private_file(
             raise HTTPException(status_code=403, detail="Không đủ quyền xem file minh chứng này.")
     try:
         stored = get_file(object_key)
+        if isinstance(filename, str) and filename.strip():
+            display_name = filename.strip()
+        else:
+            raw_basename = object_key.rsplit("/", 1)[-1]
+            clean = re.sub(r"^(?:evidence-|document-)?[0-9a-fA-F]{8,36}[-_]?", "", raw_basename)
+            clean = re.sub(r"^[0-9a-fA-F]{8,36}[-_]?", "", clean)
+            display_name = clean or raw_basename
+
+        if "." not in display_name and "." in object_key:
+            ext = object_key.rsplit(".", 1)[-1]
+            display_name = f"{display_name}.{ext}"
+
+        disposition = "attachment" if download else "inline"
+        content_disposition = build_content_disposition_header(
+            display_name, disposition=disposition, fallback="tai-lieu"
+        )
         return Response(
             content=stored["Body"].read(),
             media_type=stored.get("ContentType") or "application/octet-stream",
-            headers={"Cache-Control": "private, max-age=300"},
+            headers={
+                "Content-Disposition": content_disposition,
+                "Access-Control-Expose-Headers": "Content-Disposition",
+                "Cache-Control": "private, max-age=300",
+            },
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Đường dẫn tệp nội bộ không hợp lệ.") from exc
@@ -1130,7 +1157,10 @@ def download_prior_document(
         content=body,
         media_type=row.get("content_type") or "application/octet-stream",
         headers={
-            "Content-Disposition": f'inline; filename*=UTF-8\'\'{quote(row.get("file_name", "tai-lieu"))}',
+            "Content-Disposition": build_content_disposition_header(
+                row.get("file_name", "tai-lieu"), disposition="inline"
+            ),
+            "Access-Control-Expose-Headers": "Content-Disposition",
             "Cache-Control": "private, max-age=60",
         },
     )

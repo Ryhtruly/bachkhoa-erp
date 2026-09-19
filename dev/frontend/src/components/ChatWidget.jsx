@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Bot, Trash2 } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 const CHAT_BUTTON_SIZE = 56;
 const CHAT_WINDOW_SIZE = { width: 360, height: 500 };
@@ -79,7 +80,7 @@ export default function ChatWidget() {
   }, []);
 
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
+    if (messagesEndRef.current && typeof messagesEndRef.current.scrollIntoView === 'function') {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
@@ -116,21 +117,22 @@ export default function ChatWidget() {
         content: msg.content
       }));
 
-      const res = await fetch('/api/ai/chat', {
+      const data = await apiFetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: apiHistory })
+        body: JSON.stringify({ history: apiHistory }),
+        timeout: 45000,
       });
 
-      const data = await res.json();
-      
-      if (res.ok && data.status === 'success') {
+      if (data?.status === 'success') {
         setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: 'Xin lỗi, đã xảy ra lỗi hệ thống hoặc chưa cấu hình API Key.' }]);
       }
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Lỗi kết nối tới máy chủ. Vui lòng kiểm tra mạng.' }]);
+    } catch (error) {
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: error?.message || 'Lỗi kết nối tới máy chủ. Vui lòng kiểm tra mạng.' }
+      ]);
     } finally {
       setIsLoading(false);
     }

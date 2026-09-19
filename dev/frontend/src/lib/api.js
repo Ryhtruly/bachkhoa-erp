@@ -413,6 +413,27 @@ async function requestOnce(path, options = {}) {
   }
 }
 
+export function extractFilenameFromHeader(disposition, defaultFilename = 'download.xlsx') {
+  if (!disposition) return defaultFilename;
+  // 1. RFC 5987 / RFC 6266: filename*=UTF-8''... has higher precedence
+  const utf8Match = disposition.match(/filename\*=(?:UTF-8|utf-8)''([^;]+)/i);
+  if (utf8Match && utf8Match[1]) {
+    try {
+      const decoded = decodeURIComponent(utf8Match[1].trim().replace(/^["']|["']$/g, ''));
+      if (decoded) return decoded;
+    } catch {
+      // fallback to regular filename
+    }
+  }
+  // 2. Standard filename="..." or filename=...
+  const regularMatch = disposition.match(/filename=(?:["']([^"']+)["']|([^;\s]+))/i);
+  if (regularMatch) {
+    const name = (regularMatch[1] || regularMatch[2] || '').trim();
+    if (name) return name;
+  }
+  return defaultFilename;
+}
+
 export async function downloadFile(path, defaultFilename = 'download.xlsx') {
   const token = getAccessToken();
   const headers = {};
@@ -429,15 +450,9 @@ export async function downloadFile(path, defaultFilename = 'download.xlsx') {
     );
   }
 
-  // Extract filename from header if available
-  let filename = defaultFilename;
+  // Extract filename from header if available (supports both UTF-8 filename* and fallback filename)
   const disposition = response.headers.get('Content-Disposition');
-  if (disposition && disposition.includes('filename=')) {
-    const match = disposition.match(/filename="?([^";]+)"?/);
-    if (match && match[1]) {
-      filename = match[1].trim();
-    }
-  }
+  const filename = extractFilenameFromHeader(disposition, defaultFilename);
 
   const blob = await response.blob();
 

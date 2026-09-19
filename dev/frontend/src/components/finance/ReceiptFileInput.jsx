@@ -1,6 +1,7 @@
 import { FileImage, FileText, Plus, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import {
+  compressReceiptImage,
   formatFileSize,
   MAX_RECEIPT_FILES,
   validateReceiptSelection,
@@ -11,8 +12,10 @@ export default function ReceiptFileInput({ files, onChange, disabled = false }) 
   const inputRef = useRef(null)
   const [errors, setErrors] = useState([])
 
-  const selectFiles = (event) => {
-    const result = validateReceiptSelection(files, Array.from(event.target.files || []))
+  const selectFiles = async (event) => {
+    const rawFiles = Array.from(event.target.files || [])
+    const processedFiles = await Promise.all(rawFiles.map(compressReceiptImage))
+    const result = validateReceiptSelection(files, processedFiles)
     onChange(result.files)
     setErrors(result.errors)
     event.target.value = ''

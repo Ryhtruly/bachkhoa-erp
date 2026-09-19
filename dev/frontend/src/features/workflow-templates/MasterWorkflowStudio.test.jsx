@@ -411,7 +411,7 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     const nodeK01 = screen.getByTestId('flow-node-k01')
     fireEvent.click(nodeK01)
 
-    // Kiểm tra dropdown phòng ban có đủ 5 phòng ban chuẩn
+    // Kiểm tra dropdown phòng ban gồm 4 phòng ban nghiệp vụ chuẩn, không chứa Ban Giám đốc
     const deptSelect = screen.getByRole('combobox', { name: /phòng ban phụ trách/i })
     expect(deptSelect).toBeInTheDocument()
     const deptOptions = Array.from(deptSelect.querySelectorAll('option')).map((o) => o.textContent)
@@ -419,7 +419,7 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(deptOptions).toContain('Phòng Đo vẽ')
     expect(deptOptions).toContain('Phòng Pháp lý')
     expect(deptOptions).toContain('Phòng Kế toán')
-    expect(deptOptions).toContain('Ban Giám đốc')
+    expect(deptOptions).not.toContain('Ban Giám đốc')
 
     // Bấm nút + tròn xanh của checklist để mở modal tài liệu đầu ra
     const addDocBtn = screen.getByTitle('Thêm giấy tờ đầu ra cho mục này')

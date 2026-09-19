@@ -461,7 +461,6 @@ const POOL_DEPARTMENTS = [
   ['SURVEY', 'Phòng Đo vẽ'],
   ['LEGAL', 'Phòng Pháp lý'],
   ['ACCOUNTING', 'Phòng Kế toán'],
-  ['ADMIN', 'Ban Giám đốc'],
 ];
 
 const DEFAULT_POOL_BY_NODE_CODE = {
@@ -1070,7 +1069,7 @@ export default function ContractWorkflowDesigner({
     if (!isPrivateObjectKey(file.url)) return;
     event.preventDefault();
     try {
-      await openPrivateObject(file.url);
+      await openPrivateObject(file.url, file.name);
     } catch (error) {
       addToast?.(error.message || 'Không thể mở file minh chứng', 'error');
     }

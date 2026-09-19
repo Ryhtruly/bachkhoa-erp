@@ -57,8 +57,8 @@ describe('ReceiptLinks', () => {
     expect(screen.getByText('bill_thu_tien.webp')).toBeInTheDocument()
 
     // Press Escape to close
-    fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => {
+      fireEvent.keyDown(window, { key: 'Escape' })
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     }, { timeout: 3000 })
   })

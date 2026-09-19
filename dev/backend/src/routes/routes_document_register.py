@@ -4,6 +4,8 @@ from typing import Optional
 
 from urllib.parse import quote
 
+from src.files.content_disposition import build_content_disposition_header
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -690,7 +692,8 @@ def download_slot_scan(
         content=body,
         media_type=row["content_type"] or "application/octet-stream",
         headers={
-            "Content-Disposition": f'inline; filename*=UTF-8\'\'{quote(row["file_name"])}',
+            "Content-Disposition": build_content_disposition_header(row["file_name"], disposition="inline"),
+            "Access-Control-Expose-Headers": "Content-Disposition",
             "Cache-Control": "private, max-age=60",
         },
     )

@@ -28,6 +28,7 @@ from src.files.payment_receipts import (
     build_receipt_metadata,
     validate_receipt,
 )
+from src.files.content_disposition import build_content_disposition_header
 from src.services.timeline_realtime import publish_timeline_change
 from src.core.redis_utils import (
     redis_distributed_lock, get_cached_json, set_cached_json,
@@ -246,7 +247,8 @@ def view_debt_commitment(
         iter_body(),
         media_type=content_type,
         headers={
-            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "Content-Disposition": build_content_disposition_header(filename, disposition=disposition),
+            "Access-Control-Expose-Headers": "Content-Disposition",
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
@@ -323,7 +325,8 @@ def view_payment_receipt(
         iter_body(),
         media_type=content_type,
         headers={
-            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(filename)}",
+            "Content-Disposition": build_content_disposition_header(filename, disposition=disposition),
+            "Access-Control-Expose-Headers": "Content-Disposition",
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
@@ -417,7 +420,10 @@ def download_handover_package(
     return StreamingResponse(
         buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(zip_filename)}"},
+        headers={
+            "Content-Disposition": build_content_disposition_header(zip_filename, disposition="attachment"),
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
     )
 
 
