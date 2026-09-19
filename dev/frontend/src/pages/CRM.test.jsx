@@ -220,4 +220,40 @@ describe('CRM Component — Sales and Director views', () => {
     const pkgSelect = screen.getByDisplayValue('— Tất cả dịch vụ (Mặc định) —');
     expect(pkgSelect).toBeInTheDocument();
   });
+
+  it('auto-claims unassigned lead when user changes column directly from select dropdown', async () => {
+    apiFetch.mockImplementation((url, options = {}) => {
+      if (url.includes('/claim')) {
+        return Promise.resolve({ status: 'success', data: { id: 'lead-002', assigned_to: 'user-sale-1' } });
+      }
+      if (url.includes('/status')) {
+        return Promise.resolve({ status: 'success', data: { id: 'lead-002', status: 'Báo giá' } });
+      }
+      if (url.includes('/api/crm/leads')) {
+        return Promise.resolve({ status: 'success', data: mockLeads });
+      }
+      if (url.includes('/api/crm/stats')) {
+        return Promise.resolve({ status: 'success', data: mockStats });
+      }
+      return Promise.resolve({ status: 'success', data: {} });
+    });
+
+    renderCRM({
+      user: { id: 'user-sale-1', username: 'sale1', role_name: 'sales' },
+      isDirector: false,
+      employeeMode: true,
+    });
+
+    await screen.findByText('Trần Thị Khách 2');
+
+    // Change status of second lead (lead-002 which is unassigned)
+    const selectInputs = screen.getAllByTitle(/chọn cột để chuyển trạng thái/i);
+    fireEvent.change(selectInputs[1], { target: { value: 'Báo giá' } });
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith('/api/crm/leads/lead-002/claim', { method: 'POST' });
+      expect(apiFetch).toHaveBeenCalledWith('/api/crm/leads/lead-002/status', expect.objectContaining({ method: 'PUT' }));
+    });
+  });
 });
+

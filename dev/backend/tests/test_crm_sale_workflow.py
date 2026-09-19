@@ -261,3 +261,32 @@ def test_non_manager_cannot_access_settings(client, admin_headers, db):
     res_admin = client.get("/api/crm/settings", headers=admin_headers)
     assert res_admin.status_code == 200
     assert "commission_rate_percent" in res_admin.json()["data"]
+
+
+def test_manager_update_status_unassigned_lead_auto_assigns_and_succeeds(client, admin_headers, admin_user, db):
+    """Giám đốc/quản lý chuyển trạng thái lead chưa có người nhận thì hệ thống tự động gán cho Giám đốc và không bị lỗi 409."""
+    cust = Customer(id=str(uuid.uuid4()), full_name="Khách Manager Auto Assign", phone="0909888999")
+    db.add(cust)
+    db.commit()
+
+    lead = LeadPipeline(
+        id=f"LEAD-MGR-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Tiếp cận",
+        assigned_to=None,
+    )
+    db.add(lead)
+    db.commit()
+
+    res = client.put(
+        f"/api/crm/leads/{lead.id}/status",
+        json={"new_status": "Báo giá"},
+        headers=admin_headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["status"] == "success"
+
+    db.refresh(lead)
+    assert lead.status == "Báo giá"
+    assert lead.assigned_to == admin_user.id
+

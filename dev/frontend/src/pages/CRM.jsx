@@ -236,6 +236,24 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   }, [leads]);
 
   const handleStatusChange = async (lead, newStatus) => {
+    // Nếu lead chưa có người phụ trách, tự động nhận trước khi chuyển trạng thái
+    if (!lead.assigned_to) {
+      try {
+        await apiFetch(`/api/crm/leads/${lead.id}/claim`, { method: 'POST' });
+        lead.assigned_to = user?.id;
+        lead.assigned_to_name = user?.username || 'Bạn';
+        addToast(
+          managerView
+            ? 'Đã tự động gán bạn phụ trách lead này'
+            : 'Đã tự động nhận lead này vào danh sách phụ trách',
+          'success'
+        );
+      } catch (err) {
+        addToast(err?.message || 'Vui lòng nhận lead trước khi chuyển trạng thái', 'error');
+        return;
+      }
+    }
+
     if (newStatus === 'Chốt' && lead.status !== 'Chốt') {
       const parsed = parseLeadRequirements(lead.requirements);
       setClosingLead(lead);
@@ -337,18 +355,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === targetCol) return;
 
-    // Nếu Sale kéo thẻ chưa ai nhận -> tự động nhận trước khi chuyển trạng thái
-    if (!managerView && !lead.assigned_to) {
-      try {
-        await apiFetch(`/api/crm/leads/${lead.id}/claim`, { method: 'POST' });
-        addToast('Đã tự động nhận lead này vào danh sách phụ trách', 'success');
-      } catch (err) {
-        addToast(err?.message || 'Không thể nhận lead', 'error');
-        return;
-      }
-    }
-
-    handleStatusChange(lead, targetCol);
+    await handleStatusChange(lead, targetCol);
   };
 
   const filteredLeads = leads.filter(l => {
@@ -646,11 +653,12 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
 
                         {/* Hộp chọn di chuyển cột */}
                         <div className="lead-move-footer">
-                          {!managerView && !lead.assigned_to && lead.status !== 'Chốt' && (
+                          {!lead.assigned_to && lead.status !== 'Chốt' && (
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm lead-claim-button"
                               onClick={() => handleClaim(lead)}
+                              title="Nhận lead này vào danh sách phụ trách"
                             >
                               <UserCheck size={14} /> Nhận lead này
                             </button>
@@ -659,7 +667,6 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                             className="lead-move-select"
                             value={lead.status}
                             onChange={(e) => handleStatusChange(lead, e.target.value)}
-                            disabled={!managerView && !lead.assigned_to}
                             title="Chọn cột để chuyển trạng thái (hoặc kéo thả thẻ)"
                           >
                             {columns.map(opt => (
