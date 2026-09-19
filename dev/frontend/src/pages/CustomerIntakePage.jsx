@@ -81,40 +81,88 @@ export default function CustomerIntakePage() {
   const [submittedData, setSubmittedData] = useState(null);
   const [showQr, setShowQr] = useState(false);
 
-  // Tải danh mục dịch vụ thực tế từ API nếu có
+  // Đọc query parameters ban đầu nếu khách mở link chuyên biệt
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const pkgParam = searchParams.get('package') || searchParams.get('pkg');
+      const svcParam = searchParams.get('service') || searchParams.get('svc');
+      if (pkgParam) setSelectedPackageId(pkgParam);
+      if (svcParam) setSelectedServiceId(svcParam);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Tải toàn bộ danh mục dịch vụ thực tế từ API (bao gồm cả các gói và hạng mục mới thêm)
   useEffect(() => {
     fetch('/api/intake/services')
       .then(res => res.json())
       .then(res => {
         if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
-          const merged = DEFAULT_PACKAGES.map(pkg => {
-            const apiPkg = res.data.find(p => p.id === pkg.id);
-            if (apiPkg && apiPkg.services?.length > 0) {
+          const colorPalette = ['orange', 'blue', 'emerald', 'purple', 'teal'];
+          const loadedPackages = res.data.map((apiPkg, idx) => {
+            const matchedPkg = DEFAULT_PACKAGES.find(p => p.id === apiPkg.id || p.name.toLowerCase() === (apiPkg.name || '').toLowerCase());
+            const services = (apiPkg.services || []).map(s => {
+              const matchedSvc = matchedPkg?.services?.find(ds => ds.id === s.id || ds.name.toLowerCase() === (s.name || '').toLowerCase());
               return {
-                ...pkg,
-                services: apiPkg.services.map(s => {
-                  const matched = pkg.services.find(ds => ds.id === s.id || ds.name === s.name);
-                  return {
-                    id: s.id,
-                    name: s.name,
-                    fieldType: matched?.fieldType || 'text',
-                    label: matched?.label || 'Quy mô / Thông số',
-                    placeholder: matched?.placeholder || 'Nhập quy mô cụ thể',
-                    hint: matched?.hint || ''
-                  };
-                })
+                id: s.id,
+                name: s.name,
+                code: s.code,
+                fieldType: matchedSvc?.fieldType || 'text',
+                label: matchedSvc?.label || 'Quy mô / Chi tiết yêu cầu',
+                placeholder: matchedSvc?.placeholder || 'Nhập quy mô cụ thể (ví dụ: diện tích, số lượng, địa chỉ...)',
+                hint: matchedSvc?.hint || 'Mô tả chi tiết để kỹ sư Bách Khoa chuẩn bị chu đáo',
               };
-            }
-            return pkg;
+            });
+
+            return {
+              id: apiPkg.id,
+              name: apiPkg.name,
+              icon: matchedPkg?.icon || Sparkles,
+              badge: matchedPkg?.badge || 'Dịch vụ trọn gói',
+              color: matchedPkg?.color || colorPalette[idx % colorPalette.length],
+              services: services.length > 0 ? services : (matchedPkg?.services || [
+                { id: `svc_${apiPkg.id}_default`, name: apiPkg.name, fieldType: 'text', label: 'Quy mô / Chi tiết yêu cầu', placeholder: 'Nhập thông tin yêu cầu...', hint: '' }
+              ]),
+            };
           });
-          setPackages(merged);
+
+          // Bổ sung các gói mẫu mặc định nếu API chưa có
+          DEFAULT_PACKAGES.forEach(defPkg => {
+            if (!loadedPackages.some(lp => lp.id === defPkg.id || lp.name.toLowerCase() === defPkg.name.toLowerCase())) {
+              loadedPackages.push(defPkg);
+            }
+          });
+
+          setPackages(loadedPackages);
+
+          const searchParams = new URLSearchParams(window.location.search);
+          const pkgParam = searchParams.get('package') || searchParams.get('pkg');
+          const svcParam = searchParams.get('service') || searchParams.get('svc');
+
+          const activePkg = loadedPackages.find(p => p.id === pkgParam || p.id === selectedPackageId) || loadedPackages[0];
+          if (activePkg) {
+            setSelectedPackageId(activePkg.id);
+            const activeSvc = activePkg.services.find(s => s.id === svcParam || s.id === selectedServiceId) || activePkg.services[0];
+            if (activeSvc) {
+              setSelectedServiceId(activeSvc.id);
+            }
+          }
         }
       })
       .catch(() => {});
-  }, []);
+  }, [selectedPackageId, selectedServiceId]);
 
   const currentPackage = packages.find(p => p.id === selectedPackageId) || packages[0];
-  const currentService = currentPackage.services.find(s => s.id === selectedServiceId) || currentPackage.services[0];
+  const currentService = currentPackage?.services?.find(s => s.id === selectedServiceId) || currentPackage?.services?.[0] || {
+    id: 'default',
+    name: 'Yêu cầu tư vấn',
+    fieldType: 'text',
+    label: 'Quy mô / Thông số',
+    placeholder: 'Nhập quy mô cụ thể',
+    hint: ''
+  };
 
   const handlePackageSelect = (pkgId) => {
     setSelectedPackageId(pkgId);

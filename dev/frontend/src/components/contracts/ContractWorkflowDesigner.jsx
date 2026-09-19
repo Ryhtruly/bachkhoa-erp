@@ -461,7 +461,6 @@ const POOL_DEPARTMENTS = [
   ['SURVEY', 'Phòng Đo vẽ'],
   ['LEGAL', 'Phòng Pháp lý'],
   ['ACCOUNTING', 'Phòng Kế toán'],
-  ['ADMIN', 'Ban Giám đốc'],
 ];
 
 const DEFAULT_POOL_BY_NODE_CODE = {

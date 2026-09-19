@@ -338,3 +338,89 @@ def test_delete_employee_with_payroll_or_attendance_raises_409(db):
     assert restored_user is not None
     assert restored_user.is_active is True
     assert restored_user.email == user_email
+
+
+def test_non_admin_cannot_create_admin_account(db):
+    """Người dùng không phải admin không thể cấp quyền admin khi tạo tài khoản nhân sự."""
+    _ensure_role(db, "admin")
+    _ensure_role(db, "sales")
+
+    hr_user = User(
+        id=str(uuid.uuid4()),
+        username=f"hr_{uuid.uuid4().hex[:6]}",
+        email=f"hr_{uuid.uuid4().hex[:6]}@test.local",
+        is_active=True,
+    )
+    db.add(hr_user)
+    db.commit()
+
+    emp = Employee(
+        id=f"emp_{uuid.uuid4().hex[:10]}",
+        full_name="Nhân Sự Cần Cấp Admin",
+        is_active=True,
+    )
+    db.add(emp)
+    db.commit()
+
+    # HR user attempts to provision an admin account
+    with pytest.raises(HTTPException) as exc_info:
+        create_employee_account(
+            db,
+            employee_id=emp.id,
+            username=f"newadmin_{uuid.uuid4().hex[:6]}",
+            email=f"newadmin_{uuid.uuid4().hex[:6]}@test.local",
+            role_name="admin",
+            creator_user=hr_user,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "Quản trị viên" in exc_info.value.detail
+
+
+def test_admin_can_create_admin_account(db):
+    """Admin có quyền cấp tài khoản mang vai trò admin."""
+    _ensure_role(db, "admin")
+
+    admin_user = User(
+        id=str(uuid.uuid4()),
+        username="admin",
+        email="admin@test.local",
+        is_active=True,
+    )
+    db.add(admin_user)
+    db.commit()
+
+    emp = Employee(
+        id=f"emp_{uuid.uuid4().hex[:10]}",
+        full_name="Nhân Sự Được Admin Cấp Quyền",
+        is_active=True,
+    )
+    db.add(emp)
+    db.commit()
+
+    res = create_employee_account(
+        db,
+        employee_id=emp.id,
+        username=f"legit_admin_{uuid.uuid4().hex[:6]}",
+        email=f"legit_{uuid.uuid4().hex[:6]}@test.local",
+        role_name="admin",
+        creator_user=admin_user,
+    )
+
+    assert res["user_id"] is not None
+    assert res["role"] == "admin"
+
+
+def test_storage_service_rejects_path_traversal():
+    """storage_service._require_prefix từ chối các chuỗi chứa path traversal dot-segments."""
+    from src.services.storage_service import _require_prefix, AVATAR_PREFIX
+
+    with pytest.raises(ValueError, match="path traversal"):
+        _require_prefix("avatars/../finance/secret.png", (AVATAR_PREFIX,))
+
+    with pytest.raises(ValueError, match="path traversal"):
+        _require_prefix("avatars\\..\\secret.png", (AVATAR_PREFIX,))
+
+    # Hợp lệ
+    valid = _require_prefix("avatars/valid-user-123.png", (AVATAR_PREFIX,))
+    assert valid == "avatars/valid-user-123.png"

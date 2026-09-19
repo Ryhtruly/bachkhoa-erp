@@ -31,4 +31,4 @@ USER app
 EXPOSE 8080
 STOPSIGNAL SIGTERM
 
-CMD ["uvicorn", "src.index:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "src.index:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]

@@ -119,6 +119,10 @@ def _require_contract_object_key(object_name: str) -> str:
 
 def _require_prefix(object_name: str, prefixes: tuple[str, ...]) -> str:
     normalized = object_name.lstrip("/")
+    if ".." in normalized.split("/") or "\\" in normalized:
+        if normalized.startswith("contracts/"):
+            raise ValueError("Contract object key contains invalid path traversal segments")
+        raise ValueError("Object key contains invalid path traversal segments")
     if not any(normalized.startswith(prefix) for prefix in prefixes):
         expected = ", ".join(prefixes)
         raise ValueError(f"Object key must use an allowed prefix: {expected}")

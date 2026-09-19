@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import BackgroundTasks, HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -94,11 +95,31 @@ def create_employee_account(
     email: str,
     role_name: str,
     background_tasks: Optional[BackgroundTasks] = None,
+    creator_user: Optional[User] = None,
 ) -> dict:
     try:
         role_name = validate_assignable_role_name(role_name)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if role_name.lower() == "admin" and creator_user is not None:
+        is_caller_admin = (
+            creator_user.username == "admin"
+            or db.query(Role)
+            .join(UserRole, UserRole.role_id == Role.id)
+            .filter(
+                UserRole.user_id == creator_user.id,
+                Role.is_active.is_(True),
+                func.lower(Role.role_name) == "admin",
+            )
+            .first()
+            is not None
+        )
+        if not is_caller_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Chỉ Quản trị viên mới được phép gán quyền admin.",
+            )
 
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:

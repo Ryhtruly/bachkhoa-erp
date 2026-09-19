@@ -344,7 +344,6 @@ def request_otp_route(
             return {
                 "success": True,
                 "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
-                "email_sent": False,
             }
         raise
 
@@ -354,7 +353,6 @@ def request_otp_route(
     return {
         "success": True,
         "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
-        "email_sent": True,
     }
 
 

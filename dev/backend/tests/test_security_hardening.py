@@ -125,7 +125,6 @@ def test_password_reset_request_does_not_disclose_account_state(monkeypatch):
     assert result == {
         "success": True,
         "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
-        "email_sent": False,
     }
 
 

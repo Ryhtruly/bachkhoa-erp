@@ -22,6 +22,17 @@ describe('account role provisioning', () => {
     expect(defaultAccountRoleForDepartment('dept_unknown')).toBe('');
   });
 
+  it.each([
+    ['custom-uuid-1', 'Phòng Sale / CSKH', 'sales'],
+    ['custom-uuid-2', 'Phòng Đo vẽ & Bản đồ', 'survey_staff'],
+    ['custom-uuid-3', 'Phòng Pháp lý', 'legal_staff'],
+    ['custom-uuid-4', 'Phòng Kế toán', 'accountant'],
+    ['custom-uuid-5', 'Ban Giám đốc', 'admin'],
+  ])('infers role %s from department name "%s"', (deptId, deptName, expectedRole) => {
+    expect(defaultAccountRoleForDepartment(deptId, deptName)).toBe(expectedRole);
+    expect(isRoleMismatchedWithDepartment(expectedRole, deptId, deptName)).toBe(false);
+  });
+
   it('exposes only assignable canonical roles', () => {
     expect(ACCOUNT_ROLE_OPTIONS.map((option) => option.value)).toEqual([
       'sales',

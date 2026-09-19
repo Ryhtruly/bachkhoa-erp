@@ -288,6 +288,13 @@ export default function MyPayroll({ isModal = false }) {
                   {adjustment > 0 ? 'Đã duyệt thưởng' : adjustment < 0 ? 'Khoản khấu trừ' : 'Không phát sinh'}
                 </small>
               </div>
+              {Number(payroll.sales_commission || 0) > 0 && (
+                <div className="my-payroll__breakdown-item">
+                  <span className="my-payroll__breakdown-label">Hoa hồng BĐS</span>
+                  <strong className="is-positive">+{formatVND(payroll.sales_commission)}</strong>
+                  <small>Hoa hồng chốt hợp đồng</small>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -337,6 +344,7 @@ export default function MyPayroll({ isModal = false }) {
                   <th>Kỳ lương</th>
                   <th className="is-num">Lương CB</th>
                   <th className="is-num">Khoán việc</th>
+                  <th className="is-num">Hoa hồng</th>
                   <th className="is-num">Điều chỉnh</th>
                   <th className="is-num">Tổng lương</th>
                   <th className="is-action"></th>
@@ -385,6 +393,13 @@ export default function MyPayroll({ isModal = false }) {
                             {formatVND(h.piece_amount)}
                             <small className="my-payroll__task-count"> ({h.tasks_completed}v)</small>
                           </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="is-num">
+                        {Number(h.sales_commission) > 0 ? (
+                          <span className="is-positive">+{formatVND(h.sales_commission)}</span>
                         ) : (
                           '—'
                         )}

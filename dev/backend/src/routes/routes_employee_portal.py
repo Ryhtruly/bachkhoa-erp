@@ -86,7 +86,11 @@ def read_private_file(
     download: bool = Query(False),
 ):
     """Stream avatar/workflow objects without exposing the private bucket."""
-    if not object_key.startswith((AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX)):
+    if (
+        not object_key.startswith((AVATAR_PREFIX, WORKFLOW_EVIDENCE_PREFIX))
+        or ".." in object_key.split("/")
+        or "\\" in object_key
+    ):
         raise HTTPException(status_code=400, detail="Đường dẫn tệp nội bộ không hợp lệ.")
     if object_key.startswith(WORKFLOW_EVIDENCE_PREFIX):
         match = re.fullmatch(

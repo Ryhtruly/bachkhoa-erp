@@ -20,6 +20,7 @@ def clear_process_local_rate_limits(monkeypatch):
     redis_utils._fallback_store.clear()
 
 
+
 @pytest.fixture
 def test_user(db):
     uid = uuid.uuid4().hex[:8]
@@ -45,7 +46,7 @@ def test_forgot_password_request_otp_success(client, db, test_user):
         assert res.status_code == 200
         data = res.json()
         assert data["success"] is True
-        assert data["email_sent"] is True
+        assert "email_sent" not in data
 
         cached_otp = get_cached_json(f"bachkhoa:auth:otp:{test_user.id}")
         assert cached_otp is not None
@@ -72,7 +73,6 @@ def test_forgot_password_request_otp_not_found(client):
     assert res.json() == {
         "success": True,
         "message": "Nếu thông tin hợp lệ, mã OTP sẽ được gửi đến email đã đăng ký.",
-        "email_sent": False,
     }
 
 
@@ -92,7 +92,8 @@ def test_forgot_password_request_otp_inactive_user(client, db):
         json={"identifier": user.username},
     )
     assert res.status_code == 200
-    assert res.json()["email_sent"] is False
+    assert res.json()["success"] is True
+    assert "email_sent" not in res.json()
 
 
 def test_forgot_password_request_otp_no_email(client, db):
@@ -111,7 +112,8 @@ def test_forgot_password_request_otp_no_email(client, db):
         json={"identifier": user.username},
     )
     assert res.status_code == 200
-    assert res.json()["email_sent"] is False
+    assert res.json()["success"] is True
+    assert "email_sent" not in res.json()
 
 
 def test_forgot_password_resend_is_throttled(client, db, test_user, monkeypatch):
