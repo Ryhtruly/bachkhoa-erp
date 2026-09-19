@@ -325,7 +325,16 @@ def update_lead_status(
         issued_total = parse_issued_money(body.price)
 
     if not lead.assigned_to:
-        raise HTTPException(status_code=409, detail="Claim the lead before changing its status")
+        if _is_crm_manager(db, user):
+            lead.assigned_to = user.id
+            db.add(AuditLog(
+                actor_id=user.id,
+                action="ASSIGN",
+                object_type="LeadPipeline",
+                payload_json={"id": lead_id, "assigned_to": user.id, "auto_assigned_by_manager": True},
+            ))
+        else:
+            raise HTTPException(status_code=409, detail="Claim the lead before changing its status")
     if not _is_crm_manager(db, user) and lead.assigned_to != user.id:
         raise HTTPException(status_code=403, detail="Only the assigned Sale can update this lead")
 
