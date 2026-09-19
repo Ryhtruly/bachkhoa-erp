@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ import tempfile
 from docxtpl import DocxTemplate
 
 from src.db.database import get_db
-from src.db.models import LeadPipeline, Customer, ServiceLine, Contract, AuditLog
+from src.db.models import LeadPipeline, Customer, ServiceLine, Contract, AuditLog, Employee, FinanceSetting
 from src.db.models.crm import ContractTemplate, CustomerIntakeSubmission, ContractGeneratedDocument
 from src.db.models.finance import Receivable
 from src.db.models.operations import TaskType, ServicePackage
@@ -21,7 +21,8 @@ from src.contracts import sync_contract_read_model_after_write
 from src.contracts.services import ContractService, _create_initial_service_line, resolve_document_selection, telegram_service
 from src.services.storage_service import upload_contract_document, CONTRACT_TEMPLATE_CONTENT_TYPE
 from src.files.references import DossierFileReference
-from src.core.auth import require_permission, User
+from src.core.auth import require_permission, User, is_payroll_all_user
+from src.crm.commission import can_claim_lead, normalize_policy, workload_score
 from src.core.finance_validation import parse_issued_money
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,141 @@ class LeadStatusUpdate(BaseModel):
     tax_id: Optional[str] = None
     area: Optional[str] = None
 
+
+class CrmSettingsPayload(BaseModel):
+    commission_rate_percent: Optional[float] = None
+    max_workload_points: Optional[int] = None
+    warning_workload_ratio: Optional[float] = None
+    max_open_leads: Optional[int] = None
+    contact_weight: Optional[int] = None
+    quote_weight: Optional[int] = None
+    negotiation_weight: Optional[int] = None
+
+
+CRM_SETTING_KEYS = {
+    "commission_rate_percent": "crm_commission_rate_percent",
+    "max_workload_points": "crm_max_workload_points",
+    "warning_workload_ratio": "crm_warning_workload_ratio",
+    "max_open_leads": "crm_max_open_leads",
+    "contact_weight": "crm_weight_contact",
+    "quote_weight": "crm_weight_quote",
+    "negotiation_weight": "crm_weight_negotiation",
+}
+
+
+def _assert_crm_manager(db: Session, user: User) -> None:
+    try:
+        manager = is_payroll_all_user(db, user)
+    except AttributeError:
+        manager = False
+    if not manager:
+        raise HTTPException(status_code=403, detail="CRM settings require director or accountant access")
+
+
+def _crm_policy(db: Session) -> dict:
+    stored = {
+        row.key: row.value
+        for row in db.query(FinanceSetting).filter(FinanceSetting.key.in_(CRM_SETTING_KEYS.values())).all()
+    }
+    raw = {
+        "commission_rate_percent": stored.get("crm_commission_rate_percent", 0),
+        "max_workload_points": stored.get("crm_max_workload_points", 15),
+        "warning_workload_ratio": stored.get("crm_warning_workload_ratio", 0.8),
+        "max_open_leads": stored.get("crm_max_open_leads", 20),
+        "stage_weights": {
+            "Tiếp cận": stored.get("crm_weight_contact", 1),
+            "Báo giá": stored.get("crm_weight_quote", 2),
+            "Đàm phán": stored.get("crm_weight_negotiation", 3),
+        },
+    }
+    return normalize_policy(raw)
+
+
+def _serialize_crm_policy(policy: dict) -> dict:
+    return {
+        "commission_rate_percent": float(policy["commission_rate_percent"]),
+        "max_workload_points": policy["max_workload_points"],
+        "warning_workload_ratio": float(policy["warning_workload_ratio"]),
+        "max_open_leads": policy["max_open_leads"],
+        "stage_weights": dict(policy["stage_weights"]),
+    }
+
+
+def _is_crm_manager(db: Session, user: User) -> bool:
+    try:
+        return is_payroll_all_user(db, user)
+    except AttributeError:
+        return False
+
+
+@router.get("/settings")
+def get_crm_settings(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "read")),
+):
+    _assert_crm_manager(db, user)
+    return {"status": "success", "data": _serialize_crm_policy(_crm_policy(db))}
+
+
+@router.put("/settings")
+def update_crm_settings(
+    payload: CrmSettingsPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "update")),
+):
+    _assert_crm_manager(db, user)
+    current = _serialize_crm_policy(_crm_policy(db))
+    incoming = payload.model_dump(exclude_none=True)
+    candidate = {
+        "commission_rate_percent": incoming.get("commission_rate_percent", current["commission_rate_percent"]),
+        "max_workload_points": incoming.get("max_workload_points", current["max_workload_points"]),
+        "warning_workload_ratio": incoming.get("warning_workload_ratio", current["warning_workload_ratio"]),
+        "max_open_leads": incoming.get("max_open_leads", current["max_open_leads"]),
+        "stage_weights": {
+            "Tiếp cận": incoming.get("contact_weight", current["stage_weights"]["Tiếp cận"]),
+            "Báo giá": incoming.get("quote_weight", current["stage_weights"]["Báo giá"]),
+            "Đàm phán": incoming.get("negotiation_weight", current["stage_weights"]["Đàm phán"]),
+        },
+    }
+    normalized = normalize_policy(candidate)
+    values = {
+        "crm_commission_rate_percent": normalized["commission_rate_percent"],
+        "crm_max_workload_points": normalized["max_workload_points"],
+        "crm_warning_workload_ratio": normalized["warning_workload_ratio"],
+        "crm_max_open_leads": normalized["max_open_leads"],
+        "crm_weight_contact": normalized["stage_weights"]["Tiếp cận"],
+        "crm_weight_quote": normalized["stage_weights"]["Báo giá"],
+        "crm_weight_negotiation": normalized["stage_weights"]["Đàm phán"],
+    }
+    for key, value in values.items():
+        row = db.query(FinanceSetting).filter(FinanceSetting.key == key).first()
+        if row:
+            row.value = value
+        else:
+            db.add(FinanceSetting(key=key, value=value))
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="UPDATE",
+        object_type="CrmSettings",
+        payload_json={"values": {key: str(value) for key, value in values.items()}},
+    ))
+    db.commit()
+    return {"status": "success", "data": _serialize_crm_policy(normalized)}
+
 @router.get("/stats")
 def get_crm_stats(
+    scope: str = Query("all"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("crm", "read"))
 ):
-    total = db.query(LeadPipeline).count()
-    won = db.query(LeadPipeline).filter(LeadPipeline.status == "Chốt").count()
-    in_progress = db.query(LeadPipeline).filter(LeadPipeline.status.in_(["Tiếp cận", "Báo giá", "Đàm phán"])).count()
+    query = db.query(LeadPipeline)
+    if scope == "mine":
+        query = query.filter(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+    elif scope != "all":
+        raise HTTPException(status_code=422, detail="scope must be all or mine")
+    total = query.count()
+    won = query.filter(LeadPipeline.status == "Chốt").count()
+    in_progress = query.filter(LeadPipeline.status.in_(["Tiếp cận", "Báo giá", "Đàm phán"])).count()
     win_rate = round((won / total * 100) if total > 0 else 0, 1)
     
     return {
@@ -100,24 +228,84 @@ def create_lead(
 
 @router.get("/leads")
 def get_leads(
+    scope: str = Query("all"),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("crm", "read"))
 ):
-    leads = db.query(LeadPipeline).order_by(LeadPipeline.created_at.desc()).all()
+    manager_view = _is_crm_manager(db, user)
+    query = db.query(LeadPipeline)
+    if scope == "mine":
+        query = query.filter(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+    elif scope != "all":
+        raise HTTPException(status_code=422, detail="scope must be all or mine")
+    leads = query.order_by(LeadPipeline.created_at.desc()).all()
     results = []
     for l in leads:
         cust = db.query(Customer).filter(Customer.id == l.customer_id).first()
-        results.append({
+        row = {
             "id": l.id,
             "customer_name": cust.full_name if cust else "Unknown",
             "phone": cust.phone if cust else "",
             "source": l.source,
             "requirements": l.requirements,
             "status": l.status,
-            "assigned_to": l.assigned_to,
+            "assigned_to": l.assigned_to if manager_view or l.assigned_to == user.id else None,
             "created_at": l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else ""
-        })
+        }
+        if manager_view and l.assigned_to:
+            owner = (
+                db.query(Employee)
+                .filter(Employee.user_id == l.assigned_to)
+                .first()
+            )
+            row["assigned_to_name"] = owner.full_name if owner else ""
+            row["assigned_to_avatar_url"] = owner.avatar_url if owner else None
+        results.append(row)
     return {"status": "success", "data": results}
+
+
+@router.post("/leads/{lead_id}/claim")
+def claim_lead(
+    lead_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("crm", "update")),
+):
+    lead = (
+        db.query(LeadPipeline)
+        .filter(LeadPipeline.id == lead_id)
+        .with_for_update()
+        .first()
+    )
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.assigned_to and lead.assigned_to != user.id:
+        raise HTTPException(status_code=409, detail="Lead is already assigned")
+    if lead.status not in ("Tiếp cận", "Báo giá", "Đàm phán"):
+        raise HTTPException(status_code=409, detail="Only active leads can be claimed")
+
+    if not _is_crm_manager(db, user):
+        policy = _crm_policy(db)
+        owned = (
+            db.query(LeadPipeline)
+            .filter(
+                LeadPipeline.assigned_to == user.id,
+                LeadPipeline.status.in_(["Tiếp cận", "Báo giá", "Đàm phán"]),
+            )
+            .all()
+        )
+        current_workload = workload_score((item.status for item in owned), policy["stage_weights"])
+        if not can_claim_lead(current_workload, len(owned), policy):
+            raise HTTPException(status_code=409, detail="Sale workload limit reached")
+
+    lead.assigned_to = user.id
+    db.add(AuditLog(
+        actor_id=user.id,
+        action="CLAIM",
+        object_type="LeadPipeline",
+        payload_json={"id": lead_id, "assigned_to": user.id},
+    ))
+    db.commit()
+    return {"status": "success", "data": {"id": lead.id, "assigned_to": lead.assigned_to}}
 
 @router.put("/leads/{lead_id}/status")
 def update_lead_status(
@@ -129,12 +317,17 @@ def update_lead_status(
     lead = db.query(LeadPipeline).filter(LeadPipeline.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     old_status = lead.status
     issued_total = None
     if body.new_status == "Chốt" and old_status != "Chốt":
         # Validate before changing the lead or creating any finance/dossier row.
         issued_total = parse_issued_money(body.price)
+
+    if not _is_crm_manager(db, user) and lead.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned Sale can update this lead")
+    if not lead.assigned_to:
+        raise HTTPException(status_code=409, detail="Claim the lead before changing its status")
 
     lead.status = body.new_status
     contract_created = False
@@ -241,6 +434,7 @@ def update_lead_status(
                 logger.warning("Không render được file docx: %s", doc_err)
 
         # 7. Khởi tạo Contract
+        commission_policy = _crm_policy(db)
         new_contract = Contract(
             id=contract_id,
             customer_id=lead.customer_id,
@@ -252,7 +446,10 @@ def update_lead_status(
             service_location=customer.address if customer else None,
             service_area=numeric_area,
             file_link=file_link,
-            status="Chờ thực hiện"
+            status="Chờ thực hiện",
+            sale_id=lead.assigned_to,
+            commission_rate_snapshot=commission_policy["commission_rate_percent"],
+            commission_locked_at=datetime.datetime.now(datetime.timezone.utc),
         )
         db.add(new_contract)
 

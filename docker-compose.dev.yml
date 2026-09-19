@@ -40,6 +40,7 @@ services:
     environment:
       REDIS_URL: redis://redis-contracts:6379/0
       WATCHFILES_FORCE_POLLING: "true"
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@pg-test:5432/bachkhoa_test
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: wiki-files
       MINIO_PUBLIC_URL: http://localhost:9000
@@ -55,6 +56,7 @@ services:
       # Mount cả tests: không mount thì mỗi lần sửa test phải `docker cp` lại,
       # và quên copy một lần là chạy nhầm bản cũ rồi tưởng đã xanh.
       - ./dev/backend/tests:/app/tests
+      - ./dev/backend/pytest.ini:/app/pytest.ini:ro
       - ./dev/backend/requirements.txt:/app/requirements.txt:ro
       - ./dev/backend/requirements-dev.txt:/app/requirements-dev.txt:ro
       # Hai thứ bộ test đọc tới nhưng KHÔNG phải mã chạy: file migration (test

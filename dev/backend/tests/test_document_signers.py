@@ -40,22 +40,26 @@ def test_document_signers_reject_unknown_role_and_decode_invalid_json_safely():
     assert decode_document_signers("not-json") == DEFAULT_DOCUMENT_SIGNERS
 
 
-def test_document_signers_endpoint_is_readable_and_writable_with_finance_approval(client, finance_clerk_user):
-    user, headers = finance_clerk_user
+def test_document_signers_endpoint_is_readable_and_writable_with_finance_approval(
+    client, finance_clerk_user
+):
+    _, headers = finance_clerk_user
 
     get_response = client.get("/api/finance/document-signers", headers=headers)
     assert get_response.status_code == 200
     assert get_response.json()["director_name"] == "Lê Văn Sáu"
 
+    payload = {
+        "director_name": "Lê Văn Sáu",
+        "accountant_name": "",
+        "accountant_role": "Kế toán trưởng",
+        "cashier_name": "",
+        "payroll_accountant_name": "",
+    }
+
     save_response = client.post(
         "/api/finance/document-signers",
-        json={
-            "director_name": "Lê Văn Sáu",
-            "accountant_name": "",
-            "accountant_role": "Kế toán trưởng",
-            "cashier_name": "",
-            "payroll_accountant_name": "",
-        },
+        json=payload,
         headers=headers,
     )
     assert save_response.status_code == 200

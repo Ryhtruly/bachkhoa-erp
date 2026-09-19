@@ -1506,7 +1506,23 @@ class FinanceService:
                        count(case when wpe.status in ('eligible', 'approved', 'locked') then wpe.id end) as tasks_completed,
                        coalesce((select sum(a.amount) from employee_pay_adjustments a
                                  where a.employee_id = e.id and a.status in ('approved', 'locked')
-                                   and a.effective_date >= :period_month and a.effective_date < :next_month), 0) as adjustment_amount
+                                   and a.effective_date >= :period_month and a.effective_date < :next_month), 0) as adjustment_amount,
+                       coalesce((select sum(
+                           case
+                               when t.transaction_type = 'INCOME' then t.amount
+                               when t.transaction_type = 'EXPENSE'
+                                    and lower(coalesce(t.category_code, '') || ' ' || coalesce(t.description, ''))
+                                        similar to '%(hoàn|refund|trả lại)%'
+                                 then -t.amount
+                               else 0
+                           end * coalesce(c.commission_rate_snapshot, 0) / 100
+                       )
+                       from public.contracts c
+                       join public.cashflow_transactions t on t.contract_id = c.id
+                       where c.sale_id = e.user_id
+                         and t.status in ('COMPLETED', 'SETTLED')
+                         and coalesce(t.transaction_date, t.created_at::date) >= :period_month
+                         and coalesce(t.transaction_date, t.created_at::date) < :next_month), 0) as sales_commission
                 from employees e
                 left join work_pay_entitlements wpe
                   on wpe.employee_id = e.id
@@ -1523,6 +1539,7 @@ class FinanceService:
                     "piece_amount": float(row["piece_amount"] or 0),
                     "tasks_completed": int(row["tasks_completed"] or 0),
                     "adjustment_amount": float(row["adjustment_amount"] or 0),
+                    "sales_commission": float(row["sales_commission"] or 0),
                 }
                 for row in snapshot_rows
             }

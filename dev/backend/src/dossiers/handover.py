@@ -911,8 +911,8 @@ def submit_handover_for_acceptance(
     acceptance_id = db.execute(
         text("""
             insert into public.task_node_acceptances
-                (task_node_id, attempt_no, status, submitted_by, submission_payload)
-            values (:n, :attempt, 'pending', :actor, cast(:payload as jsonb))
+                (task_node_id, attempt_no, status, submitted_by, submitted_at, submission_payload)
+            values (:n, :attempt, 'pending', :actor, now(), cast(:payload as jsonb))
             returning id
         """),
         {

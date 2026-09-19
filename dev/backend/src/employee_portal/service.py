@@ -222,6 +222,7 @@ _MY_ITEMS_QUERY = text(
       wi.service_line_id,
       sl.contract_id,
       sl.priority,
+      coalesce(r_act.graph, '{}'::jsonb) as workflow_graph,
       -- Tiền hợp đồng cho thanh công nợ ở K06. Bước bàn giao chỉ đóng được khi
       -- đã thu đủ hoặc có đơn nợ được duyệt, nên con số này phải thấy ngay tại
       -- chỗ làm việc thay vì bắt mở sang màn Thu chi.
@@ -246,6 +247,7 @@ _MY_ITEMS_QUERY = text(
             n2.occurrence_no,
             jsonb_build_object(
               'id', n2.id,
+              'node_key', n2.node_key,
               'node_code', n2.node_code,
               'status', n2.status,
               'name', coalesce(
@@ -321,6 +323,7 @@ _COMPLETED_ITEMS_QUERY = text(
       wi.id as workflow_instance_id,
       wi.service_line_id,
       sl.contract_id,
+      coalesce(r_act.graph, '{}'::jsonb) as workflow_graph,
       coalesce(tt.name, sl.service_type, 'Hạng mục') as service_line_name,
       coalesce(cu.full_name, 'Khách hàng') as customer_name,
       coalesce(w.name, nullif(sl.property_address, '')) as location_label,
@@ -340,6 +343,7 @@ _COMPLETED_ITEMS_QUERY = text(
             n2.occurrence_no,
             jsonb_build_object(
               'id', n2.id,
+              'node_key', n2.node_key,
               'node_code', n2.node_code,
               'status', n2.status,
               'accepted_at', n2.accepted_at,
@@ -799,6 +803,47 @@ def _number_value(value):
     return float(value) if isinstance(value, Decimal) else value
 
 
+def _workflow_node_order(graph: dict) -> dict[str, int]:
+    """Return stable node positions by walking the saved workflow transitions."""
+    graph_nodes = graph.get("nodes", {}) if isinstance(graph, dict) else {}
+    if not isinstance(graph_nodes, dict):
+        return {}
+
+    queue = [graph.get("start_node")]
+    ordered_keys: list[str] = []
+    visited: set[str] = set()
+    while queue:
+        node_key = queue.pop(0)
+        if not node_key or node_key in visited or node_key not in graph_nodes:
+            continue
+        visited.add(node_key)
+        ordered_keys.append(node_key)
+        definition = graph_nodes.get(node_key, {})
+        transitions = definition.get("transitions", {}) if isinstance(definition, dict) else {}
+        if isinstance(transitions, dict):
+            queue.extend(target for target in transitions.values() if isinstance(target, str))
+
+    remaining = [key for key in graph_nodes if key not in visited]
+    remaining.sort(key=lambda key: (
+        str(graph_nodes.get(key, {}).get("task_code", "999")),
+        key,
+    ))
+    return {key: index for index, key in enumerate([*ordered_keys, *remaining])}
+
+
+def _order_nodes_by_workflow(nodes: list[dict], graph: dict) -> list[dict]:
+    """Order portal nodes by the workflow graph, with a deterministic fallback."""
+    positions = _workflow_node_order(graph)
+    return sorted(
+        nodes,
+        key=lambda node: (
+            positions.get(node.get("node_key"), len(positions)),
+            str(node.get("node_code") or "999"),
+            int(node.get("occurrence_no") or 0),
+        ),
+    )
+
+
 def checklist_submission_state(
     *, deadline_at: datetime | None, submitted_at: datetime, late_reason: str | None
 ) -> tuple[str, bool, str | None]:
@@ -876,7 +921,10 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
         # Hệ số ưu tiên đọc O(1) từ dict bộ nhớ, không bắn query SQL nào trong vòng lặp
         he_so_uu_tien = active_multipliers.get(row["priority"], 1.0)
         nodes = []
-        for node in list(row["nodes"] or []):
+        ordered_nodes = _order_nodes_by_workflow(
+            list(row["nodes"] or []), row.get("workflow_graph") or {}
+        )
+        for node in ordered_nodes:
             detail = detail_by_node.get(node["id"], {})
             nodes.append({
                 **node,
@@ -1512,7 +1560,9 @@ class EmployeePortalService:
         items: list[dict] = []
         my_node_ids: list[str] = []
         for row in rows:
-            nodes = list(row["nodes"] or [])
+            nodes = _order_nodes_by_workflow(
+                list(row["nodes"] or []), row.get("workflow_graph") or {}
+            )
             for node in nodes:
                 node["checklist"] = []
                 if node.get("mine") and node.get("id"):
@@ -1584,6 +1634,29 @@ class EmployeePortalService:
         """), {"emp_id": employee.id}).mappings().all()
         adj_map = {r["m_start"]: r for r in adj_rows}
 
+        commission_rows = []
+        employee_user_id = getattr(employee, "user_id", None)
+        if employee_user_id:
+            commission_rows = db.execute(text("""
+            select date_trunc('month', coalesce(t.transaction_date, t.created_at::date))::date as m_start,
+                   coalesce(sum(
+                       case
+                           when t.transaction_type = 'INCOME' then t.amount
+                           when t.transaction_type = 'EXPENSE'
+                                and lower(coalesce(t.category_code, '') || ' ' || coalesce(t.description, ''))
+                                    similar to '%(hoàn|refund|trả lại)%'
+                             then -t.amount
+                           else 0
+                       end * coalesce(c.commission_rate_snapshot, 0) / 100
+                   ), 0) as sales_commission
+            from public.contracts c
+            join public.cashflow_transactions t on t.contract_id = c.id
+            where c.sale_id = :user_id
+              and t.status in ('COMPLETED', 'SETTLED')
+            group by date_trunc('month', coalesce(t.transaction_date, t.created_at::date))
+            """), {"user_id": employee_user_id}).mappings().all()
+        commission_map = {r["m_start"]: r for r in commission_rows}
+
         # 3. Fetch locked/paid payroll periods from payroll_periods table
         pp_rows = db.execute(text("""
             select period_month, status, locked_at, paid_at, snapshot
@@ -1634,6 +1707,8 @@ class EmployeePortalService:
             valid_period_dates.add(p_month)
         for p_month in adj_map.keys():
             valid_period_dates.add(p_month)
+        for p_month in commission_map.keys():
+            valid_period_dates.add(p_month)
 
         period_dates = sorted(list(valid_period_dates), reverse=True)
 
@@ -1648,6 +1723,8 @@ class EmployeePortalService:
             p_amount = float(p_data["piece_amount"]) if p_data else 0.0
             t_count = int(p_data["tasks_completed"]) if p_data else 0
             adj_amount = float(a_data["adjustment_amount"]) if a_data else 0.0
+            commission_data = commission_map.get(p_date)
+            sales_commission = float(commission_data["sales_commission"]) if commission_data else 0.0
 
             pp_info = period_status_map.get(p_date)
             period_status = (
@@ -1663,6 +1740,7 @@ class EmployeePortalService:
                 p_amount = float(employee_snapshot.get("piece_amount") or 0)
                 t_count = int(employee_snapshot.get("tasks_completed") or 0)
                 adj_amount = float(employee_snapshot.get("adjustment_amount") or 0)
+                sales_commission = float(employee_snapshot.get("sales_commission") or 0)
 
             formatted = {
                 "month": p_date.isoformat(),
@@ -1671,8 +1749,9 @@ class EmployeePortalService:
                 "base_salary": b_salary,
                 "piece_amount": p_amount,
                 "adjustment_amount": adj_amount,
+                "sales_commission": sales_commission,
                 "bonus": p_amount + adj_amount,
-                "total_salary": b_salary + p_amount + adj_amount,
+                "total_salary": b_salary + p_amount + adj_amount + sales_commission,
                 "is_current": (p_date == current_period_start),
                 "is_locked": (period_status == "Locked"),
                 "is_paid": (period_status == "Paid"),

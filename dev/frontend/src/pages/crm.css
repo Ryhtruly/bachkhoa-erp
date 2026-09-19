@@ -149,6 +149,95 @@
   cursor: grabbing;
 }
 
+.lead-owner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.lead-owner-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-default);
+}
+
+.lead-claim-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.crm-settings-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: 20px;
+}
+
+.crm-settings-tab {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  border-bottom: 2px solid transparent;
+}
+
+.crm-settings-tab--active {
+  color: var(--orange-600);
+  border-bottom-color: var(--orange-500);
+}
+
+.crm-settings-grid,
+.crm-settings-weight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.crm-settings-weight-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.crm-settings-grid label,
+.crm-settings-weight-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.crm-settings-grid small {
+  color: var(--text-tertiary);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.crm-settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+}
+
+@media (max-width: 640px) {
+  .crm-settings-grid,
+  .crm-settings-weight-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Top: Nguồn + Ngày */
 .lead-card-header {
   display: flex;
