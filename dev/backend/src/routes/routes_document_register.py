@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.core.auth import check_user_permission, get_current_user, require_permission
+from src.core.auth import check_user_permission, get_current_user, require_permission, require_authenticated_user
 from src.db.database import get_db
 from src.db.models import User
 from src.dossiers import register
@@ -857,7 +857,10 @@ def list_templates(
 
 
 @router.get("/package-tree")
-def get_package_tree_alias(db: Session = Depends(get_db)):
+def get_package_tree_alias(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_authenticated_user),
+):
     """Tương thích ngược cho các lời gọi prefetch / API cũ."""
     from src.routes.routes_catalog import catalog_tree
     return {"status": "success", "data": catalog_tree(db)}
