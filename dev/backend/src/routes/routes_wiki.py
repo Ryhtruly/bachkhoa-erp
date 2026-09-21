@@ -78,6 +78,7 @@ def list_documents(
                 "title": d.title,
                 "category": d.category,
                 "link": d.link,
+                "file_name": os.path.basename(d.link) if d.link else None,
                 "description": d.description,
                 "version": d.version,
                 "created_at": d.created_at.isoformat() if d.created_at else None
@@ -226,7 +227,10 @@ def download_document(
         return StreamingResponse(
             _stream_storage_body(stored["Body"]),
             media_type=content_type,
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
         )
     except Exception as exc:
         raise HTTPException(status_code=404, detail="File không tồn tại trên object storage.") from exc

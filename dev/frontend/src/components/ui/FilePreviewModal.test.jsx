@@ -77,4 +77,18 @@ it('PDF vẫn dùng iframe sẵn có, không đụng tới docx-preview', async 
 
   expect(await screen.findByTitle(/Xem trước SoDo.pdf/)).toBeInTheDocument()
   expect(renderAsync).not.toHaveBeenCalled()
+  expect(screen.getByRole('link', { name: /Mở trong tab mới/i })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Tải xuống/i })).toHaveAttribute('download', 'SoDo.pdf')
 })
+
+it('DOCX không hiện nút "Mở trong tab mới" để tránh trình duyệt tải blob UUID không đuôi', async () => {
+  const blob = new Blob(['x'], { type: DOCX_MIME })
+  gaFetch(Promise.resolve({ blob: () => Promise.resolve(blob) }))
+
+  render(<FilePreviewModal open fileName="BieuMau.docx" mimeType={DOCX_MIME} url="blob:abc" onClose={() => {}} />)
+
+  await waitFor(() => expect(renderAsync).toHaveBeenCalled())
+  expect(screen.queryByRole('link', { name: /Mở trong tab mới/i })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: /Tải xuống/i })).toHaveAttribute('download', 'BieuMau.docx')
+})
+
