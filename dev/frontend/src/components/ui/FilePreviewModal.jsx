@@ -18,6 +18,18 @@ export default function FilePreviewModal({ open, fileName = '', mimeType = '', u
   const isPdf = normalizedType === 'application/pdf' || PDF_EXTENSION.test(fileName)
   const isDocx = normalizedType === DOCX_MIME || DOCX_EXTENSION.test(fileName)
 
+  const downloadName = (() => {
+    const base = fileName || 'tai-lieu'
+    if (/\.[a-zA-Z0-9]{2,6}$/.test(base)) return base
+    if (isDocx) return `${base}.docx`
+    if (isPdf) return `${base}.pdf`
+    if (normalizedType.includes('png')) return `${base}.png`
+    if (normalizedType.includes('jpeg') || normalizedType.includes('jpg')) return `${base}.jpg`
+    if (normalizedType.includes('webp')) return `${base}.webp`
+    if (normalizedType.includes('svg')) return `${base}.svg`
+    return base
+  })()
+
   const docxSurfaceRef = useRef(null)
   const [docxState, setDocxState] = useState('idle')
 
@@ -104,10 +116,12 @@ export default function FilePreviewModal({ open, fileName = '', mimeType = '', u
 
         {url && (
           <div className="file-preview__actions">
-            <a href={url} target="_blank" rel="noreferrer">
-              <ExternalLink size={16} /> Mở trong tab mới
-            </a>
-            <a href={url} download={fileName}>
+            {(isPdf || isImage) && (
+              <a href={url} target="_blank" rel="noreferrer">
+                <ExternalLink size={16} /> Mở trong tab mới
+              </a>
+            )}
+            <a href={url} download={downloadName}>
               <Download size={16} /> Tải xuống
             </a>
           </div>

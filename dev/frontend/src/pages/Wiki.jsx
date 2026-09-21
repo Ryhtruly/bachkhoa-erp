@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle } from 'lucide-react';
+import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle, Download } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow, CustomSelect, FilePreviewModal } from '../components/ui';
 import { apiFetch, getAccessToken } from '../lib/api';
-import { fetchProtectedDocumentBlob } from '../lib/fileSave';
+import { fetchProtectedDocumentFile, downloadBlob, resolveDocumentFileName } from '../lib/fileSave';
 
 export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
   const [currentUser, setCurrentUser] = useState(propUser || null);
@@ -125,6 +125,8 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
   };
 
   const [preview, setPreview] = useState(null);
+  const [openingDocId, setOpeningDocId] = useState(null);
+  const [downloadingDocId, setDownloadingDocId] = useState(null);
   const objectUrlRef = useRef(null);
 
   const closePreview = () => {
@@ -133,42 +135,60 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
     setPreview(null);
   };
 
-  const handleOpenDocument = async (docId, docTitle) => {
-    let viewer = null;
-    try {
-      // Mở cửa sổ đồng bộ để tránh bị browser popup blocker chặn.
-      // Không truyền 'noopener' vì noopener làm window.open trả về null và không điều hướng được.
-      viewer = window.open('', '_blank');
-      if (viewer && !viewer.closed) {
-        viewer.document?.write?.('<p style="font-family:sans-serif;padding:24px;color:#64748b;">Đang tải tài liệu...</p>');
-      }
-    } catch {
-      viewer = null;
-    }
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
+  const handleOpenDocument = async (docOrId, docTitle) => {
+    const doc = typeof docOrId === 'object' && docOrId !== null
+      ? docOrId
+      : { id: docOrId, title: docTitle };
+
+    setOpeningDocId(doc.id);
     try {
-      const blob = await fetchProtectedDocumentBlob(
-        `/api/wiki/download/${encodeURIComponent(docId)}`,
+      const { blob, fileName: headerFileName, mimeType } = await fetchProtectedDocumentFile(
+        `/api/wiki/download/${encodeURIComponent(doc.id)}`,
         getAccessToken(),
       );
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
       const objectUrl = URL.createObjectURL(blob);
       objectUrlRef.current = objectUrl;
 
-      if (viewer && !viewer.closed) {
-        viewer.location.href = objectUrl;
-      } else {
-        setPreview({
-          fileName: docTitle || docId,
-          mimeType: blob.type,
-          url: objectUrl,
-          blob,
-        });
-      }
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      const resolvedFileName = resolveDocumentFileName(doc, headerFileName, mimeType || blob.type);
+
+      setPreview({
+        fileName: resolvedFileName,
+        mimeType: mimeType || blob.type,
+        url: objectUrl,
+        blob,
+      });
     } catch (err) {
-      viewer?.close();
       showMessage(err?.message || 'Không thể mở tài liệu Wiki', 'error');
+    } finally {
+      setOpeningDocId(null);
+    }
+  };
+
+  const handleDownloadDocument = async (docOrId, docTitle) => {
+    const doc = typeof docOrId === 'object' && docOrId !== null
+      ? docOrId
+      : { id: docOrId, title: docTitle };
+
+    setDownloadingDocId(doc.id);
+    try {
+      const { blob, fileName: headerFileName, mimeType } = await fetchProtectedDocumentFile(
+        `/api/wiki/download/${encodeURIComponent(doc.id)}`,
+        getAccessToken(),
+      );
+
+      const resolvedFileName = resolveDocumentFileName(doc, headerFileName, mimeType || blob.type);
+      downloadBlob(blob, resolvedFileName);
+    } catch (err) {
+      showMessage(err?.message || 'Không thể tải tài liệu', 'error');
+    } finally {
+      setDownloadingDocId(null);
     }
   };
 
@@ -246,9 +266,27 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <button type="button" onClick={() => handleOpenDocument(doc.id, doc.title)} className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <FileText size={14} /> Mở file
-                    </button>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDocument(doc)}
+                        disabled={openingDocId === doc.id}
+                        className="btn btn-secondary btn-sm"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <FileText size={14} /> {openingDocId === doc.id ? 'Đang mở…' : 'Mở file'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadDocument(doc)}
+                        disabled={downloadingDocId === doc.id}
+                        className="btn btn-secondary btn-sm"
+                        title="Tải tệp về máy tính"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Download size={14} /> {downloadingDocId === doc.id ? 'Đang tải…' : 'Tải về'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
