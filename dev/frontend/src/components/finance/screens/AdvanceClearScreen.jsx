@@ -6,6 +6,7 @@ import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API, CF_COLS } from '../financeConstants';
 import { CheckCircle2, Printer } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
@@ -52,11 +53,12 @@ export default function AdvanceClearScreen({ month: propMonth, setMonth: propSet
     return advances
       .filter(item => {
         // 1. Bộ lọc ô tìm kiếm (Mã phiếu, đối tác, diễn giải)
-        const matchSearch = search.trim() === '' ||
-          item.id?.toLowerCase().includes(search.toLowerCase()) ||
-          item.payer_payee?.toLowerCase().includes(search.toLowerCase()) ||
-          item.partner?.toLowerCase().includes(search.toLowerCase()) ||
-          (item.description || '')?.toLowerCase().includes(search.toLowerCase());
+        const q = normalizeVietnamese(search.trim());
+        const matchSearch = !q ||
+          normalizeVietnamese(item.id || '').includes(q) ||
+          normalizeVietnamese(item.payer_payee || '').includes(q) ||
+          normalizeVietnamese(item.partner || '').includes(q) ||
+          normalizeVietnamese(item.description || '').includes(q);
 
         // 2. Bộ lọc hình thức thanh toán
         const matchMethod = filters.payment_method === 'All' || item.payment_method === filters.payment_method || item.payment_method_label === filters.payment_method || item['Hình thức'] === filters.payment_method;

@@ -18,6 +18,7 @@ import {
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch, clearApiCache, peekApiCache, prefetchApi } from '../../lib/api'
+import { normalizeVietnamese } from '../../lib/vietnamese'
 import { safeViewTransition } from '../../lib/viewTransition'
 import MasterWorkflowStudio from '../workflow-templates/MasterWorkflowStudio'
 import CatalogManageModal from '../../components/catalog/CatalogManageModal'
@@ -204,10 +205,10 @@ export default function DocumentTemplateSettings({ initialTab = 'docs' }) {
   const displayTemplates = useMemo(() => {
     let list = visibleTemplates
     if (searchTerm.trim()) {
-      const q = searchTerm.toLowerCase().trim()
+      const q = normalizeVietnamese(searchTerm.trim())
       list = list.filter(t =>
-        t.name?.toLowerCase().includes(q) ||
-        t.note?.toLowerCase().includes(q)
+        normalizeVietnamese(t.name || '').includes(q) ||
+        normalizeVietnamese(t.note || '').includes(q)
       )
     }
     if (recentlyAddedId) {
@@ -532,11 +533,12 @@ export default function DocumentTemplateSettings({ initialTab = 'docs' }) {
                 <div className="dtr-panel-catalog__body" role="tablist" aria-label="Cây Gói và Hạng mục">
                   {packageTree.map(pkg => {
                     const isExpanded = expandedPackages[pkg.id] !== false
+                    const qTaskType = normalizeVietnamese(taskTypeSearch.trim())
                     const filteredTaskTypes = (pkg.task_types || []).filter(t =>
-                      !taskTypeSearch.trim() || t.name.toLowerCase().includes(taskTypeSearch.toLowerCase().trim())
+                      !qTaskType || normalizeVietnamese(t.name || '').includes(qTaskType)
                     )
 
-                    if (taskTypeSearch.trim() && filteredTaskTypes.length === 0) {
+                    if (qTaskType && filteredTaskTypes.length === 0) {
                       return null
                     }
 

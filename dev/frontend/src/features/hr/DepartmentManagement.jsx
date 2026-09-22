@@ -1,13 +1,23 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Building2, Check, CheckCircle2, ListOrdered, Pencil, Power, Search, Tag, Users, XCircle,
+  AlertTriangle, ArrowRight, Building2, Check, CheckCircle2, ListOrdered, Pencil, Power, Search, Tag, Users, XCircle,
 } from 'lucide-react';
 import { Badge, Modal } from '../../components/ui';
 import { useToast } from '../../contexts/ToastContext';
 import { apiFetch } from '../../lib/api';
+import { normalizeVietnamese } from '../../lib/vietnamese';
 import './DepartmentManagement.css';
 
-export default function DepartmentManagement({ isDirector = false }) {
+const sanitizeCode = (val) =>
+  (val || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'D')
+    .toUpperCase()
+    .replace(/[^A-Z0-9_]/g, '_')
+    .slice(0, 30);
+
+export default function DepartmentManagement({ isDirector = false, onNavigateToEmployees }) {
   const toast = useToast();
   const addToastRef = useRef(toast?.addToast);
   addToastRef.current = toast?.addToast;
@@ -26,6 +36,8 @@ export default function DepartmentManagement({ isDirector = false }) {
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
 
+  const totalDepts = Math.max(1, departments.length);
+
   const loadDepartments = useCallback(async () => {
     setLoading(true);
     try {
@@ -43,11 +55,11 @@ export default function DepartmentManagement({ isDirector = false }) {
   }, [loadDepartments]);
 
   const filteredDepartments = useMemo(() => {
-    if (!search.trim()) return departments;
-    const q = search.trim().toLowerCase();
+    const q = normalizeVietnamese(search);
+    if (!q) return departments;
     return departments.filter(
-      d => (d.name && d.name.toLowerCase().includes(q)) ||
-           (d.code && d.code.toLowerCase().includes(q))
+      d => (d.name && normalizeVietnamese(d.name).includes(q)) ||
+           (d.code && normalizeVietnamese(d.code).includes(q))
     );
   }, [departments, search]);
 
@@ -69,7 +81,7 @@ export default function DepartmentManagement({ isDirector = false }) {
   const handleSaveEdit = async (e) => {
     e?.preventDefault?.();
     if (!editingDept) return;
-    const cleanCode = editForm.code.trim().toUpperCase();
+    const cleanCode = sanitizeCode(editForm.code);
     if (!cleanCode) {
       addToast('Mã phòng ban không được để trống', 'error');
       return;
@@ -84,6 +96,11 @@ export default function DepartmentManagement({ isDirector = false }) {
       return;
     }
 
+    const rawOrder = Number(editForm.display_order) || 1;
+    const cleanOrder = (rawOrder === editingDept?.display_order)
+      ? rawOrder
+      : Math.min(Math.max(1, rawOrder), totalDepts);
+
     setSaving(true);
     try {
       const res = await apiFetch(`/api/finance/departments/manage/${editingDept.id}`, {
@@ -92,7 +109,7 @@ export default function DepartmentManagement({ isDirector = false }) {
         body: JSON.stringify({
           code: cleanCode,
           name: cleanName,
-          display_order: Number(editForm.display_order) || 100,
+          display_order: cleanOrder,
           is_active: editForm.is_active,
         }),
       });
@@ -206,10 +223,24 @@ export default function DepartmentManagement({ isDirector = false }) {
                       <strong style={{ fontSize: '0.92rem' }}>{dept.name}</strong>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <span className="dept-mgmt__emp-count">
-                        <Users size={14} color="#64748b" />
-                        {dept.employee_count || 0}
-                      </span>
+                      {onNavigateToEmployees ? (
+                        <button
+                          type="button"
+                          className="dept-mgmt__emp-link-btn"
+                          onClick={() => onNavigateToEmployees(dept.id)}
+                          title={`Xem ${dept.employee_count || 0} nhân sự thuộc ${dept.name}`}
+                          aria-label={`Xem danh sách ${dept.employee_count || 0} nhân sự phòng ban ${dept.name}`}
+                        >
+                          <Users size={14} className="dept-mgmt__emp-link-icon" />
+                          <span className="dept-mgmt__emp-count-num">{dept.employee_count || 0}</span>
+                          <ArrowRight size={12} className="dept-mgmt__emp-link-arrow" />
+                        </button>
+                      ) : (
+                        <span className="dept-mgmt__emp-count">
+                          <Users size={14} color="#64748b" />
+                          {dept.employee_count || 0}
+                        </span>
+                      )}
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <Badge variant={dept.is_active ? 'success' : 'neutral'}>
@@ -271,6 +302,30 @@ export default function DepartmentManagement({ isDirector = false }) {
           size="md"
         >
           <form className="dept-form" onSubmit={handleSaveEdit}>
+            <div className="dept-form__emp-card">
+              <div className="dept-form__emp-info">
+                <Users size={16} className="dept-form__emp-icon" />
+                <span>
+                  Nhân sự trực thuộc: <strong>{editingDept.employee_count || 0} người</strong>
+                </span>
+              </div>
+              {onNavigateToEmployees && (editingDept.employee_count > 0) && (
+                <button
+                  type="button"
+                  className="dept-form__emp-nav-btn"
+                  data-testid="modal-nav-employees-btn"
+                  aria-label="Xem danh sách nhân sự trực thuộc"
+                  onClick={() => {
+                    setEditingDept(null);
+                    onNavigateToEmployees(editingDept.id);
+                  }}
+                  title="Chuyển sang tab Nhân sự và lọc theo phòng ban này"
+                >
+                  Xem danh sách <ArrowRight size={13} />
+                </button>
+              )}
+            </div>
+
             <div className="dept-form__grid-2">
               <div className="dept-form__field">
                 <label className="dept-form__label" htmlFor="dept-code-input">
@@ -283,7 +338,7 @@ export default function DepartmentManagement({ isDirector = false }) {
                     id="dept-code-input"
                     className="dept-form__input dept-form__input--with-icon dept-form__input--code"
                     value={editForm.code}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, code: sanitizeCode(e.target.value) }))}
                     placeholder="VD: TECH, LEGAL..."
                     required
                     aria-label="Mã phòng ban"
@@ -294,7 +349,7 @@ export default function DepartmentManagement({ isDirector = false }) {
               <div className="dept-form__field">
                 <label className="dept-form__label" htmlFor="dept-order-input">
                   <span>Thứ tự hiển thị</span>
-                  <span className="dept-form__label-hint">Số nhỏ xếp trước</span>
+                  <span className="dept-form__label-hint">Từ 1 đến {totalDepts}</span>
                 </label>
                 <div className="dept-form__input-wrapper">
                   <ListOrdered size={15} className="dept-form__input-icon" />
@@ -305,10 +360,13 @@ export default function DepartmentManagement({ isDirector = false }) {
                     value={editForm.display_order}
                     onChange={(e) => setEditForm(prev => ({ ...prev, display_order: e.target.value }))}
                     min={1}
-                    max={999}
+                    max={Math.max(totalDepts, Number(editingDept?.display_order) || 1)}
                     aria-label="Thứ tự hiển thị"
                   />
                 </div>
+                <span className="dept-form__order-hint">
+                  Vị trí: <strong>#{editForm.display_order || 1}</strong> trên tổng {totalDepts} phòng ban
+                </span>
               </div>
             </div>
 
@@ -356,6 +414,15 @@ export default function DepartmentManagement({ isDirector = false }) {
                 <span className="dept-switch__slider" />
               </label>
             </div>
+
+            {!editForm.is_active && (editingDept.employee_count > 0) && (
+              <div className="dept-form__deactivate-warning">
+                <AlertTriangle size={16} className="dept-form__warning-icon" />
+                <span>
+                  Phòng ban đang có <strong>{editingDept.employee_count}</strong> nhân sự trực thuộc. Khi tạm ngừng hoạt động, hãy kiểm tra và điều chuyển nhân sự sang phòng ban phù hợp.
+                </span>
+              </div>
+            )}
 
             <div className="dept-form__footer">
               <button

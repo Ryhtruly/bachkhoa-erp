@@ -142,4 +142,71 @@ describe('DepartmentManagement component', () => {
     expect(screen.queryByText('Phòng Kỹ thuật')).not.toBeInTheDocument();
     expect(screen.getByText('Phòng Pháp lý')).toBeInTheDocument();
   });
+
+  it('triggers onNavigateToEmployees when clicking employee count in table and modal', async () => {
+    apiFetch.mockResolvedValue(mockDepartments);
+    const mockNavigate = vi.fn();
+
+    render(<DepartmentManagement isDirector={true} onNavigateToEmployees={mockNavigate} />);
+
+    await screen.findByText('Phòng Kỹ thuật');
+
+    // Click employee count button in table
+    const tableEmpBtn = screen.getByLabelText('Xem danh sách 5 nhân sự phòng ban Phòng Kỹ thuật');
+    expect(tableEmpBtn).toBeInTheDocument();
+    fireEvent.click(tableEmpBtn);
+    expect(mockNavigate).toHaveBeenCalledWith('dept_tech');
+
+    // Open edit modal and click navigate from inside modal
+    const editBtn = screen.getByLabelText('Sửa phòng ban Phòng Kỹ thuật');
+    fireEvent.click(editBtn);
+
+    const modalNavBtn = screen.getByTestId('modal-nav-employees-btn');
+    expect(modalNavBtn).toBeInTheDocument();
+    fireEvent.click(modalNavBtn);
+    expect(mockNavigate).toHaveBeenCalledWith('dept_tech');
+  });
+
+  it('displays order range and warns when deactivating department with employees', async () => {
+    apiFetch.mockResolvedValue(mockDepartments);
+
+    render(<DepartmentManagement isDirector={true} />);
+
+    await screen.findByText('Phòng Kỹ thuật');
+    const editBtn = screen.getByLabelText('Sửa phòng ban Phòng Kỹ thuật');
+    fireEvent.click(editBtn);
+
+    // Total departments is 2, range hint should show "Từ 1 đến 2"
+    expect(screen.getByText('Từ 1 đến 2')).toBeInTheDocument();
+
+    // Toggle active status to false in modal
+    const toggleSwitch = screen.getByLabelText('Bật tắt trạng thái hoạt động').querySelector('input');
+    expect(toggleSwitch).toBeChecked();
+    fireEvent.click(toggleSwitch);
+    expect(toggleSwitch).not.toBeChecked();
+
+    // Warning banner should show up because dept_tech has 5 employees
+    expect(screen.getByText(/Phòng ban đang có/i)).toBeInTheDocument();
+  });
+
+  it('filters departments using accent-insensitive search', async () => {
+    apiFetch.mockResolvedValue(mockDepartments);
+
+    render(<DepartmentManagement isDirector={false} />);
+
+    await screen.findByText('Phòng Kỹ thuật');
+    expect(screen.getByText('Phòng Pháp lý')).toBeInTheDocument();
+
+    const searchInput = screen.getByPlaceholderText('Tìm theo tên hoặc mã phòng ban...');
+    // Search with unaccented "ky thuat"
+    fireEvent.change(searchInput, { target: { value: 'ky thuat' } });
+    expect(screen.getByText('Phòng Kỹ thuật')).toBeInTheDocument();
+    expect(screen.queryByText('Phòng Pháp lý')).not.toBeInTheDocument();
+
+    // Search with unaccented "phap ly"
+    fireEvent.change(searchInput, { target: { value: 'phap ly' } });
+    expect(screen.queryByText('Phòng Kỹ thuật')).not.toBeInTheDocument();
+    expect(screen.getByText('Phòng Pháp lý')).toBeInTheDocument();
+  });
 });
+

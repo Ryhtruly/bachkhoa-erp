@@ -5,6 +5,7 @@ import { useToast } from '../../../contexts/ToastContext';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import './PieceRatePricingScreen.css';
 
 // Role labels for display: main / assistant / submitter
@@ -49,12 +50,12 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeVietnamese(search.trim());
     if (!q) return rows;
     return rows.filter(r =>
-      (r.name || '').toLowerCase().includes(q) ||
-      (r.code || '').toLowerCase().includes(q) ||
-      (r.department_name || '').toLowerCase().includes(q)
+      normalizeVietnamese(r.name || '').includes(q) ||
+      normalizeVietnamese(r.code || '').includes(q) ||
+      normalizeVietnamese(r.department_name || '').includes(q)
     );
   }, [rows, search]);
 

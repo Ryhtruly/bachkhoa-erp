@@ -23,6 +23,7 @@ import {
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
 import AvatarImage from '../components/AvatarImage';
 import { apiFetch } from '../lib/api';
+import { normalizeVietnamese } from '../lib/vietnamese';
 import { useToast } from '../contexts/ToastContext';
 import './crm.css';
 
@@ -385,18 +386,22 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     await handleStatusChange(lead, targetCol);
   };
 
-  const filteredLeads = leads.filter(l => {
-    const matchSearch = (l.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (l.phone || '').includes(searchTerm) ||
-      (l.requirements || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (l.assigned_to_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredLeads = useMemo(() => {
+    const q = normalizeVietnamese(searchTerm);
+    return leads.filter(l => {
+      const matchSearch = !q ||
+        normalizeVietnamese(l.customer_name).includes(q) ||
+        (l.phone || '').includes(searchTerm.trim()) ||
+        normalizeVietnamese(l.requirements).includes(q) ||
+        normalizeVietnamese(l.assigned_to_name).includes(q);
 
-    const matchSource = filterSource === 'All' || l.source === filterSource;
-    const matchSale = !managerView || filterSale === 'All' ||
-      (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
+      const matchSource = filterSource === 'All' || l.source === filterSource;
+      const matchSale = !managerView || filterSale === 'All' ||
+        (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
 
-    return matchSearch && matchSource && matchSale;
-  });
+      return matchSearch && matchSource && matchSale;
+    });
+  }, [leads, searchTerm, filterSource, filterSale, managerView]);
 
   return (
     <section className="tab-pane active crm-container" id="tab-crm">

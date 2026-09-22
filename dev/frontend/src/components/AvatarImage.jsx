@@ -12,6 +12,8 @@ export default function AvatarImage({
   fallbackStyle,
   title,
   fallback,
+  loading = 'lazy',
+  ...restProps
 }) {
   const safeSrc = avatarUrlFor(src)
   const privateKey = extractPrivateKey(src)
@@ -44,7 +46,7 @@ export default function AvatarImage({
   const resolvedSrc = privateKey ? privateSrc : safeSrc
 
   if (resolvedSrc && !imageFailed) {
-    return <img className={className} src={resolvedSrc} alt={name} title={title} style={style} onError={() => setImageFailed(true)} />
+    return <img className={className} src={resolvedSrc} alt={name} title={title} style={style} loading={loading} onError={() => setImageFailed(true)} {...restProps} />
   }
 
   if (fallback) return fallback

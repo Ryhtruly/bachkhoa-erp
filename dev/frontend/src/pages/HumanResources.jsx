@@ -25,6 +25,12 @@ export default function HumanResources({ user }) {
 
   const defaultTab = canViewHr ? 'employees' : (canViewWiki ? 'wiki' : (isDirector ? 'departments' : 'employees'));
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState('All');
+
+  const handleNavigateToEmployees = (deptId) => {
+    setSelectedDepartmentFilter(deptId);
+    setActiveTab('employees');
+  };
 
   const currentTab = visibleTabs.some(t => t.id === activeTab)
     ? activeTab
@@ -42,9 +48,18 @@ export default function HumanResources({ user }) {
         <SubTabs active={currentTab} onChange={setActiveTab} tabs={visibleTabs} />
       </div>
       <div className="hr-page__content">
-        {currentTab === 'employees' && canViewHr && <EmployeeDirectory />}
+        {currentTab === 'employees' && canViewHr && (
+          <EmployeeDirectory
+            initialDepartmentFilter={selectedDepartmentFilter}
+            onDepartmentFilterChange={setSelectedDepartmentFilter}
+          />
+        )}
         {currentTab === 'departments' && (canViewHr || isDirector) && (
-          <DepartmentManagement user={user} isDirector={isDirector} />
+          <DepartmentManagement
+            user={user}
+            isDirector={isDirector}
+            onNavigateToEmployees={handleNavigateToEmployees}
+          />
         )}
         {currentTab === 'wiki' && canViewWiki && <Wiki user={user} isDirector={isDirector} />}
       </div>
