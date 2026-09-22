@@ -94,7 +94,7 @@ describe('PieceRatePricingScreen catalog controls', () => {
     expect(screen.getAllByRole('spinbutton')).toHaveLength(3)
   })
 
-  it('left-aligns the catalog action groups consistently', async () => {
+  it('centers the catalog action groups consistently', async () => {
     apiFetchMock.mockResolvedValueOnce({
       data: [
         item,
@@ -109,23 +109,29 @@ describe('PieceRatePricingScreen catalog controls', () => {
     expect(actionGroups).toHaveLength(2)
     actionGroups.forEach((group) => {
       expect(group).toHaveClass('piece-rate-pricing__actions')
+      expect(group).toHaveClass('piece-rate-actions-cell')
     })
 
     const actionsHeader = screen.getByText('Thao tác')
-    expect(actionsHeader.closest('th')).toHaveStyle({ textAlign: 'left' })
+    expect(actionsHeader.closest('th')).toHaveStyle({ textAlign: 'center' })
   })
 
-  it('updates metadata without sending an editable code', async () => {
+  it('updates metadata including editable code and unit', async () => {
     apiFetchMock
       .mockResolvedValueOnce({ data: [item] })
-      .mockResolvedValueOnce({ data: { ...item, name: 'Tên đã sửa' } })
+      .mockResolvedValueOnce({ data: { ...item, name: 'Tên đã sửa', code: 'SURVEY_NEW', default_unit: 'lần' } })
       .mockResolvedValueOnce({ data: [item] })
 
     render(<PieceRatePricingScreen isDirector />)
     await screen.findByText('Đo đạc hiện trạng')
     fireEvent.click(screen.getByTestId('piece-rate-edit-metadata-wi_1'))
-    expect(screen.getByLabelText('Đơn vị tính')).toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Đơn vị tính')).not.toHaveAttribute('readonly')
     expect(screen.getByLabelText('Đơn vị tính')).toHaveValue('hồ sơ')
+    expect(screen.getByLabelText('Mã hạng mục')).not.toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Mã hạng mục')).toHaveValue('K01')
+
+    fireEvent.change(screen.getByLabelText('Mã hạng mục'), { target: { value: 'SURVEY_NEW' } })
+    fireEvent.change(screen.getByLabelText('Đơn vị tính'), { target: { value: 'lần' } })
     fireEvent.change(screen.getByLabelText('Tên hạng mục'), { target: { value: 'Tên đã sửa' } })
     fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }))
 
@@ -133,8 +139,11 @@ describe('PieceRatePricingScreen catalog controls', () => {
     const [, options] = apiFetchMock.mock.calls[1]
     expect(options.method).toBe('PATCH')
     const body = JSON.parse(options.body)
-    expect(body).toEqual({ name: 'Tên đã sửa' })
-    expect(body).not.toHaveProperty('code')
+    expect(body).toEqual({
+      code: 'SURVEY_NEW',
+      name: 'Tên đã sửa',
+      default_unit: 'lần',
+    })
   })
 
   it('asks for confirmation before deactivating an item', async () => {
@@ -147,4 +156,111 @@ describe('PieceRatePricingScreen catalog controls', () => {
     expect(screen.getByText('Ngừng sử dụng hạng mục')).toBeInTheDocument()
     expect(apiFetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
   })
+
+  it('lets a director assign a department when creating a work item', async () => {
+    const departments = [
+      { id: 'dept_1', name: 'Phòng Pháp lý', code: 'LEGAL' },
+      { id: 'dept_2', name: 'Phòng Kỹ thuật', code: 'TECH' },
+    ]
+    apiFetchMock
+      .mockResolvedValueOnce({ data: [], departments })
+      .mockResolvedValueOnce({ data: { work_item_id: 'wi_dept' } })
+      .mockResolvedValueOnce({ data: [], departments })
+
+    render(<PieceRatePricingScreen isDirector />)
+    await screen.findByText('Không tìm thấy hạng mục khoán')
+    fireEvent.click(screen.getByTestId('piece-rate-add-item'))
+
+    fireEvent.change(screen.getByLabelText('Mã hạng mục'), { target: { value: 'LEGAL_ITEM' } })
+    fireEvent.change(screen.getByLabelText('Tên hạng mục'), { target: { value: 'Xin phép xây dựng' } })
+    fireEvent.change(screen.getByLabelText('Đơn vị tính'), { target: { value: 'bộ' } })
+
+    const deptTrigger = screen.getByRole('button', { name: 'Phòng ban phụ trách' })
+    fireEvent.click(deptTrigger)
+    fireEvent.click(screen.getByRole('option', { name: 'Phòng Pháp lý' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tạo hạng mục' }))
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(3))
+    const [, options] = apiFetchMock.mock.calls[1]
+    expect(options.method).toBe('POST')
+    expect(JSON.parse(options.body)).toMatchObject({
+      code: 'LEGAL_ITEM',
+      name: 'Xin phép xây dựng',
+      default_unit: 'bộ',
+      department_id: 'dept_1',
+    })
+  })
+
+  it('lets a director change the assigned department of an existing work item', async () => {
+    const departments = [
+      { id: 'dept_1', name: 'Phòng Pháp lý', code: 'LEGAL' },
+      { id: 'dept_2', name: 'Phòng Đo đạc', code: 'SURVEY' },
+    ]
+    const itemWithDept = {
+      ...item,
+      department_id: 'dept_1',
+      department_name: 'Phòng Pháp lý',
+    }
+    apiFetchMock
+      .mockResolvedValueOnce({ data: [itemWithDept], departments })
+      .mockResolvedValueOnce({ data: { ...itemWithDept, department_id: 'dept_2', department_name: 'Phòng Đo đạc' } })
+      .mockResolvedValueOnce({ data: [itemWithDept], departments })
+
+    render(<PieceRatePricingScreen isDirector />)
+    await screen.findByText('Đo đạc hiện trạng')
+    expect(screen.getByText('Phòng Pháp lý')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('piece-rate-edit-metadata-wi_1'))
+
+    const deptTrigger = screen.getByRole('button', { name: 'Phòng ban phụ trách' })
+    fireEvent.click(deptTrigger)
+    fireEvent.click(screen.getByRole('option', { name: 'Phòng Đo đạc' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Lưu thông tin' }))
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(3))
+    const [, options] = apiFetchMock.mock.calls[1]
+    expect(options.method).toBe('PATCH')
+    expect(JSON.parse(options.body)).toEqual({
+      department_id: 'dept_2',
+    })
+  })
+
+  it('displays "Chưa gán" when work item has no department assigned', async () => {
+    const unassignedItem = { ...item, department_id: null, department_name: null }
+    apiFetchMock.mockResolvedValue({ data: [unassignedItem] })
+
+    render(<PieceRatePricingScreen isDirector={false} />)
+    await screen.findByText('Đo đạc hiện trạng')
+    expect(screen.getByText('Chưa gán')).toBeInTheDocument()
+  })
+
+  it('shows all rate roles when editing an item that only had a main rate initially', async () => {
+    apiFetchMock
+      .mockResolvedValueOnce({ data: [item] })
+      .mockResolvedValueOnce({ data: {} })
+      .mockResolvedValueOnce({ data: [item] })
+
+    render(<PieceRatePricingScreen isDirector />)
+    await screen.findByText('Đo đạc hiện trạng')
+
+    fireEvent.click(screen.getByTitle('Sửa đơn giá'))
+    expect(screen.getByLabelText('Đơn giá chính (VNĐ)')).toHaveValue(1000000)
+    expect(screen.getByLabelText('Phụ đo / hỗ trợ (VNĐ)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Người đi nộp (VNĐ)')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Phụ đo / hỗ trợ (VNĐ)'), { target: { value: '250000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cập nhật & áp dụng' }))
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(3))
+    const [, options] = apiFetchMock.mock.calls[1]
+    expect(options.method).toBe('POST')
+    expect(JSON.parse(options.body)).toEqual({
+      work_item_id: 'wi_1',
+      role_code: 'ASSISTANT',
+      amount: 250000,
+    })
+  })
 })
+
