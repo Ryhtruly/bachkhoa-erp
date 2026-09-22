@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Check, Eye, EyeOff, Palette, Plus, Save, Trash2, X } from 'lucide-react'
+import { Check, Plus, Save, Trash2 } from 'lucide-react'
 
 import ConfirmationModal from '../ui/ConfirmationModal'
 import CustomSelect from '../ui/CustomSelect'

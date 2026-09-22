@@ -7,7 +7,7 @@ import { AlertTriangle, BriefcaseBusiness, CalendarDays, ChevronLeft, ChevronRig
 import { useToast } from '../../contexts/ToastContext'
 import ChecklistOutputDocuments from './ChecklistOutputDocuments'
 import MissingDocumentsModal from './MissingDocumentsModal'
-import { apiFetch, getAccessToken, markLocalMutation, peekApiCache, prefetchApi } from '../../lib/api'
+import { apiFetch, markLocalMutation, peekApiCache, prefetchApi } from '../../lib/api'
 import AvatarImage from '../../components/AvatarImage'
 import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage'
 import { groupConcurrentCalendarEvents, mapTasksToCalendarEvents } from './employeePortalMappers'
@@ -29,10 +29,6 @@ const CHECKLIST_STATUS = Object.freeze({
   REJECTED: 'failed',
   NOT_APPLICABLE: 'not_applicable',
 })
-
-// Đúng bộ trạng thái mà máy chủ chấp nhận khi nộp nghiệm thu — xem
-// submit_task_node_for_acceptance trong contracts/workflow_runtime.py.
-const CHECKLIST_PASSED_STATUSES = new Set(['approved', 'late_approved', 'not_applicable'])
 
 // Nhãn TRẠNG THÁI CHUẨN BỊ của từng mục checklist.
 //
@@ -919,9 +915,6 @@ export default function EmployeeWorkspaceCalendar({
   isDirector = false,
   hidePool = false,
 }) {
-  // Bối cảnh Toast có thể vắng mặt (ví dụ trong test dựng component đơn lẻ),
-  // nên không phá vỡ cả màn hình chỉ vì thiếu một hàm báo lỗi.
-  const { addToast } = useToast() || {}
   const calendarRef = useRef(null)
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [weekLabel, setWeekLabel] = useState('')

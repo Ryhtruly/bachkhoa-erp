@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 import Modal from '../../components/ui/Modal'
@@ -20,15 +20,19 @@ export default function MissingDocumentsModal({
   onXacNhan,
 }) {
   const [reason, setReason] = useState('')
+  const [prevOpen, setPrevOpen] = useState(open)
+
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) {
+      setReason('')
+    }
+  }
 
   const list = items.length ? items : (danhSach || [])
   const submitting = isSubmitting || Boolean(dangGui)
   const handleCancel = onCancel || onHuy
   const handleConfirm = onConfirm || onXacNhan
-
-  useEffect(() => {
-    if (open) setReason('')
-  }, [open])
 
   const totalMissing = list.reduce(
     (total, group) => total + (group.missing || group.thieu || []).reduce((sub, item) => sub + (item.remaining || item.con_thieu || 0), 0),

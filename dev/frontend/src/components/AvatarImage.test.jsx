@@ -88,7 +88,7 @@ describe('AvatarImage', () => {
 
   it('revokes replaced object URLs when src changes', async () => {
     const revokeMock = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-    const createMock = vi.spyOn(URL, 'createObjectURL')
+    vi.spyOn(URL, 'createObjectURL')
       .mockReturnValueOnce('blob:first')
       .mockReturnValueOnce('blob:second')
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob() })

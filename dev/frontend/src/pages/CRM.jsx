@@ -16,10 +16,8 @@ import {
   MapPin,
   Maximize2,
   MessageCircle,
-  HelpCircle,
   Sparkles,
   Settings,
-  UserCircle,
   UserCheck
 } from 'lucide-react';
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';

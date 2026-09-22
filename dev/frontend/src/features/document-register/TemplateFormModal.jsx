@@ -1,5 +1,4 @@
-import { useState } from 'react'
-import { ChevronDown, ChevronRight, Lock, Save, Plus, FileText, Settings, Layers, AlertCircle } from 'lucide-react'
+import { Lock, Save, Plus, FileText, Settings, Layers, AlertCircle } from 'lucide-react'
 
 import Modal from '../../components/ui/Modal'
 import CustomSelect from '../../components/ui/CustomSelect'
@@ -19,7 +18,7 @@ const SOURCE_OPTIONS = [
 ]
 
 export default function TemplateFormModal({
-  open, mode, value, packageTree, nodes, lockedScopeLabel, saving, onChange, onSubmit, onClose,
+  open, mode, value, packageTree, _nodes, lockedScopeLabel, saving, onChange, onSubmit, onClose,
 }) {
   if (!open) return null
 
