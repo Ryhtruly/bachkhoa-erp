@@ -86,10 +86,15 @@ def _build_user_profile(user: User, db: Session) -> dict:
     sorted_roles = sorted(user_roles, key=lambda r: (0 if r.role_name == "admin" else 1, r.id))
     role_row = sorted_roles[0] if sorted_roles else None
 
+    perm_cache = {}
+
     def check_perm(resource: str, action: str) -> bool:
         if is_admin:
             return True
-        return check_user_permission(db, user, resource, action)
+        key = (resource, action)
+        if key not in perm_cache:
+            perm_cache[key] = check_user_permission(db, user, resource, action)
+        return perm_cache[key]
 
     is_management_user = check_perm("hr", "read") or check_perm("finance", "read") or is_admin
     default_workspace = "management" if is_management_user else "employee"

@@ -24,7 +24,7 @@ def send_telegram_message(message: str):
     }
     
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=3.5)
         response.raise_for_status()
         return True
     except Exception as e:

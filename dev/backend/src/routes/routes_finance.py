@@ -6,7 +6,7 @@ import uuid
 
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
@@ -15,7 +15,7 @@ from src.db.models import AdvanceRequest, AuditLog, SystemSetting, Department, E
 from src.core.auth import require_permission, require_any_permission, require_payroll_all, require_accountant, get_current_user, User
 from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.services.timeline_realtime import publish_timeline_change
-from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json
+from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json, invalidate_cache
 from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
@@ -477,8 +477,22 @@ def list_employee_departments(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("hr", "read"))
 ):
+    cache_key = "bachkhoa:finance:employees_departments"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     departments = FinanceRepository.list_employee_departments(db)
-    return [{"id": department.id, "name": department.name} for department in departments]
+    result = [
+        {
+            "id": department.id,
+            "name": department.name,
+            "is_active": bool(department.is_active if department.is_active is not None else True),
+        }
+        for department in departments
+    ]
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
 
 @router.get("/departments")
 def list_departments(
@@ -495,24 +509,34 @@ def list_departments_manage(
     user: User = Depends(require_permission("hr", "read"))
 ):
     """Danh sách toàn bộ phòng ban kèm thông tin chi tiết và số nhân sự."""
-    departments = db.query(Department).order_by(Department.display_order.asc(), Department.name.asc()).all()
-    emp_counts = dict(
-        db.query(Employee.department_id, func.count(Employee.id))
-        .filter(Employee.is_active == True)
-        .group_by(Employee.department_id)
+    cache_key = "bachkhoa:finance:departments_manage"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    rows = (
+        db.query(
+            Department,
+            func.count(case((Employee.is_active == True, Employee.id))).label("employee_count"),
+        )
+        .outerjoin(Employee, Employee.department_id == Department.id)
+        .group_by(Department.id)
+        .order_by(Department.display_order.asc(), Department.name.asc())
         .all()
     )
-    return [
+    result = [
         {
             "id": d.id,
             "code": d.code,
             "name": d.name,
             "is_active": bool(d.is_active if d.is_active is not None else True),
             "display_order": d.display_order or 100,
-            "employee_count": emp_counts.get(d.id, 0),
+            "employee_count": int(count or 0),
         }
-        for d in departments
+        for d, count in rows
     ]
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
 
 
 @router.patch("/departments/manage/{department_id}")
@@ -580,6 +604,9 @@ def update_department_manage(
         .filter(Employee.department_id == dept.id, Employee.is_active == True)
         .scalar() or 0
     )
+
+    invalidate_cache("bachkhoa:finance:departments_manage")
+    invalidate_cache("bachkhoa:finance:employees_departments")
 
     return {
         "status": "success",

@@ -199,7 +199,6 @@ def rotate_refresh_session(
     current.replaced_by_id = replacement.id
     current.last_used_at = now
     db.commit()
-    db.refresh(replacement)
     return raw_replacement, replacement
 
 

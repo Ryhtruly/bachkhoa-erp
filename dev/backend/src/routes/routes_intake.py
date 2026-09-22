@@ -15,7 +15,7 @@ from src.db.database import get_db
 from src.db.models.crm import Customer, CustomerIntakeSubmission, LeadPipeline
 from src.db.models.auth import Notification, User, Role, UserRole
 from src.services import telegram_service
-from src.core.redis_utils import consume_rate_limit
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json
 
 router = APIRouter(prefix="/api/intake", tags=["12. Public Customer Intake"])
 
@@ -46,6 +46,11 @@ def _normalize_phone(raw_phone: str) -> str:
 @router.get("/services")
 def get_intake_service_options(db: Session = Depends(get_db)):
     """Trả về danh mục Gói dịch vụ & Hạng mục công khai để hiển thị trên form cho khách chọn."""
+    cache_key = "bachkhoa:intake:services"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         rows = db.execute(
             text("""
@@ -74,9 +79,10 @@ def get_intake_service_options(db: Session = Depends(get_db)):
                     "name": r["task_type_name"],
                 })
 
-        return {"status": "success", "data": list(packages_map.values())}
+        result = {"status": "success", "data": list(packages_map.values())}
+        set_cached_json(cache_key, result, ttl_seconds=900)
+        return result
     except Exception as exc:
-        # Fallback danh mục chuẩn nếu có lỗi kết nối tạm thời
         return {
             "status": "success",
             "data": [

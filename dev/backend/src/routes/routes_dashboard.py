@@ -31,13 +31,14 @@ def get_dashboard(
 
     try:
         total_tasks = db.execute(text("select count(*) from public.service_lines")).scalar_one()
-        completed = db.execute(text(
-            "select count(*) from public.workflow_instances where status = 'completed'"
-        )).scalar_one()
-        in_progress = db.execute(text(
-            "select count(*) from public.workflow_instances "
-            "where status in ('not_started', 'running', 'paused')"
-        )).scalar_one()
+        wf_stats = db.execute(text("""
+            select
+                sum(case when status = 'completed' then 1 else 0 end) as completed,
+                sum(case when status in ('not_started', 'running', 'paused') then 1 else 0 end) as in_progress
+            from public.workflow_instances
+        """)).mappings().one()
+        completed = int(wf_stats["completed"] or 0)
+        in_progress = int(wf_stats["in_progress"] or 0)
         overdue = db.execute(text("""
             select count(*)
             from public.task_nodes
