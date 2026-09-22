@@ -6,11 +6,12 @@ import uuid
 
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
-from src.db.models import AdvanceRequest, AuditLog, SystemSetting
+from src.db.models import AdvanceRequest, AuditLog, SystemSetting, Department, Employee
 from src.core.auth import require_permission, require_any_permission, require_payroll_all, require_accountant, get_current_user, User
 from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.services.timeline_realtime import publish_timeline_change
@@ -20,6 +21,7 @@ from src.finance import (
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
     AdvanceCreateIn, AdvanceClearIn, FundCloseIn,
     EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
+    DepartmentPatchIn,
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee,
     TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
     APPROVED_STATUS_SET,
@@ -485,6 +487,111 @@ def list_departments(
 ):
     departments = FinanceRepository.list_employee_departments(db)
     return [{"id": department.id, "name": department.name} for department in departments]
+
+
+@router.get("/departments/manage")
+def list_departments_manage(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "read"))
+):
+    """Danh sách toàn bộ phòng ban kèm thông tin chi tiết và số nhân sự."""
+    departments = db.query(Department).order_by(Department.display_order.asc(), Department.name.asc()).all()
+    emp_counts = dict(
+        db.query(Employee.department_id, func.count(Employee.id))
+        .filter(Employee.is_active == True)
+        .group_by(Employee.department_id)
+        .all()
+    )
+    return [
+        {
+            "id": d.id,
+            "code": d.code,
+            "name": d.name,
+            "is_active": bool(d.is_active if d.is_active is not None else True),
+            "display_order": d.display_order or 100,
+            "employee_count": emp_counts.get(d.id, 0),
+        }
+        for d in departments
+    ]
+
+
+@router.patch("/departments/manage/{department_id}")
+def update_department_manage(
+    department_id: str,
+    payload: DepartmentPatchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Giám đốc sửa tên phòng ban, kích hoạt / tắt phòng ban."""
+    assert_director(db, user, detail="Chỉ Giám đốc mới có quyền chỉnh sửa phòng ban.")
+
+    dept = db.get(Department, department_id)
+    if not dept:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phòng ban.")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "code" in changes:
+        new_code = changes["code"]
+        if not new_code:
+            raise HTTPException(status_code=422, detail="Mã phòng ban không được để trống.")
+        if not re.match(r"^[A-Z0-9_]{2,30}$", new_code):
+            raise HTTPException(
+                status_code=422,
+                detail="Mã phòng ban chỉ gồm chữ hoa không dấu, chữ số và gạch dưới (2-30 ký tự).",
+            )
+        if new_code != dept.code:
+            existing = (
+                db.query(Department.id)
+                .filter(Department.code == new_code, Department.id != dept.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="Mã phòng ban đã tồn tại.")
+            dept.code = new_code
+
+    if "name" in changes:
+        new_name = changes["name"]
+        if not new_name:
+            raise HTTPException(status_code=422, detail="Tên phòng ban không được để trống.")
+        if new_name != dept.name:
+            existing = (
+                db.query(Department.id)
+                .filter(Department.name == new_name, Department.id != dept.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="Tên phòng ban đã tồn tại.")
+            db.query(Employee).filter(Employee.department_id == dept.id).update(
+                {Employee.department: new_name}, synchronize_session=False
+            )
+            dept.name = new_name
+
+    if "is_active" in changes and changes["is_active"] is not None:
+        dept.is_active = bool(changes["is_active"])
+
+    if "display_order" in changes and changes["display_order"] is not None:
+        dept.display_order = changes["display_order"]
+
+    db.commit()
+    db.refresh(dept)
+
+    emp_count = (
+        db.query(func.count(Employee.id))
+        .filter(Employee.department_id == dept.id, Employee.is_active == True)
+        .scalar() or 0
+    )
+
+    return {
+        "status": "success",
+        "data": {
+            "id": dept.id,
+            "code": dept.code,
+            "name": dept.name,
+            "is_active": bool(dept.is_active if dept.is_active is not None else True),
+            "display_order": dept.display_order or 100,
+            "employee_count": emp_count,
+        }
+    }
 
 @router.get("/employees")
 def list_employees(

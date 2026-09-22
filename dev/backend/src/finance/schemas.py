@@ -230,3 +230,26 @@ class RefundExcessIn(BaseModel):
     amount: Optional[float] = None
     reason: Optional[str] = None
 
+
+class DepartmentPatchIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    code: Optional[str] = Field(default=None, min_length=2, max_length=30)
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def clean_name(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s if s else None
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def clean_code(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip().upper()
+        return s if s else None
+
