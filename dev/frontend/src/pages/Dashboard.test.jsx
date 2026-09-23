@@ -104,6 +104,15 @@ describe('Dashboard greeting', () => {
           ],
         });
       }
+      if (url.includes('/charts')) {
+        return Promise.resolve({
+          lineData: [],
+          barData: [],
+          pieStatusData: [],
+          pieExpenseData: [],
+          topDebtors: [],
+        });
+      }
       return Promise.resolve({});
     });
 
