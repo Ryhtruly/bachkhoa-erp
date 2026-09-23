@@ -20,6 +20,11 @@ export default function MissingDocumentsModal({
   onXacNhan,
 }) {
   const [reason, setReason] = useState('')
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) setReason('')
+  }
 
   const list = items.length ? items : (danhSach || [])
   const submitting = isSubmitting || Boolean(dangGui)

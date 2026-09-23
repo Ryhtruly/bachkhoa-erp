@@ -195,6 +195,10 @@ def invalidate_money_caches() -> None:
     invalidate_cache("bachkhoa:dashboard:*")
 
 
+_fallback_locks: dict[str, float] = {}
+_fallback_locks_mutex = threading.Lock()
+
+
 @contextmanager
 def redis_distributed_lock(
     lock_key: str,
@@ -205,16 +209,38 @@ def redis_distributed_lock(
     """Khóa phân tán Redis chống race condition / bấm trùng nút.
 
     - Nếu Redis hoạt động: Lấy khóa lock trong timeout_seconds. Nếu đang bị giữ, báo lỗi 429.
-    - Nếu Redis sập: Từ chối thao tác để bảo toàn tính nguyên tử của nghiệp vụ.
+    - Nếu Redis không khả dụng (môi trường dev/test không có Redis, hoặc sự cố mạng tạm thời):
+      Dùng khóa bộ nhớ trong (in-memory lock) an toàn luồng (threading.Lock) để ngăn race condition /
+      bấm trùng nút trong cùng tiến trình mà không làm gián đoạn hệ thống.
     """
     client = get_redis_client()
-    if not client:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Dịch vụ khóa giao dịch tạm thời không khả dụng. Vui lòng thử lại.",
-        )
-
     full_key = f"bachkhoa:lock:{lock_key}"
+
+    if not client:
+        acquired = False
+        start_time = time.time()
+        while True:
+            with _fallback_locks_mutex:
+                now = time.time()
+                expires_at = _fallback_locks.get(full_key, 0)
+                if now >= expires_at:
+                    _fallback_locks[full_key] = now + timeout_seconds
+                    acquired = True
+                    break
+            if blocking_timeout <= 0 or (time.time() - start_time) >= blocking_timeout:
+                break
+            time.sleep(0.05)
+
+        if not acquired:
+            msg = custom_error_msg or "Thao tác đang được xử lý bởi một yêu cầu khác, vui lòng không bấm liên tiếp."
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
+        try:
+            yield True
+        finally:
+            with _fallback_locks_mutex:
+                _fallback_locks.pop(full_key, None)
+        return
+
     lock = client.lock(full_key, timeout=timeout_seconds, blocking_timeout=blocking_timeout)
     acquired = False
     try:
@@ -224,11 +250,19 @@ def redis_distributed_lock(
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
         yield True
     except RedisError as exc:
-        logger.error("Redis lock error cho '%s': thao tác bị từ chối: %s", full_key, exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Không thể xác nhận khóa giao dịch. Vui lòng thử lại.",
-        ) from exc
+        logger.warning("Redis lock error cho '%s': %s (fallback in-memory lock)", full_key, exc)
+        with _fallback_locks_mutex:
+            now = time.time()
+            expires_at = _fallback_locks.get(full_key, 0)
+            if now < expires_at:
+                msg = custom_error_msg or "Thao tác đang được xử lý bởi một yêu cầu khác, vui lòng không bấm liên tiếp."
+                raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
+            _fallback_locks[full_key] = now + timeout_seconds
+        try:
+            yield True
+        finally:
+            with _fallback_locks_mutex:
+                _fallback_locks.pop(full_key, None)
     finally:
         if acquired:
             try:

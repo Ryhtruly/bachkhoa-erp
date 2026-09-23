@@ -34,6 +34,11 @@ from src.finance.access import (
     is_income_transaction,
     restrict_cashflow_rows,
 )
+from src.services.employee_handover_service import (
+    get_employee_workload,
+    execute_employee_handover,
+    EmployeeHandoverIn,
+)
 
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
@@ -529,6 +534,23 @@ def delete_employee(
     user: User = Depends(require_permission("hr", "delete"))
 ):
     return FinanceService.delete_employee(db, employee_id, actor_id=user.id)
+
+@router.get("/employees/{employee_id}/workload")
+def get_employee_workload_route(
+    employee_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_permission(("hr", "read"), ("hr", "update")))
+):
+    return get_employee_workload(db, employee_id)
+
+@router.post("/employees/{employee_id}/handover")
+def execute_employee_handover_route(
+    employee_id: str,
+    payload: EmployeeHandoverIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "update"))
+):
+    return execute_employee_handover(db, employee_id, payload, actor_id=user.id)
 
 @router.post("/employees/{employee_id}/avatar")
 async def upload_employee_avatar(

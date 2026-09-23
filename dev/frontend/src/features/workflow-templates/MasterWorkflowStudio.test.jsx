@@ -10,6 +10,11 @@ vi.mock('../../lib/api', () => ({
   peekApiCache: vi.fn(),
 }))
 
+const mockAddToast = vi.fn()
+vi.mock('../../contexts/ToastContext', () => ({
+  useToast: () => ({ addToast: mockAddToast }),
+}))
+
 vi.mock('@xyflow/react', () => ({
   addEdge: (_connection, edges) => edges,
   Background: () => null,
@@ -18,8 +23,17 @@ vi.mock('@xyflow/react', () => ({
   MiniMap: () => null,
   MarkerType: { ArrowClosed: 'arrowclosed' },
   Position: { Left: 'left', Right: 'right' },
-  ReactFlow: ({ children, nodes = [], nodeTypes = {}, onNodeClick }) => (
+  ReactFlow: ({ children, nodes = [], nodeTypes = {}, onNodeClick, onConnect, isValidConnection }) => (
     <div data-testid="react-flow-canvas">
+      <button
+        type="button"
+        data-testid="mock-mws-connect-btn"
+        onClick={() => {
+          if (typeof window !== 'undefined' && window.__testMwsConnectHook) {
+            window.__testMwsConnectHook({ onConnect, isValidConnection })
+          }
+        }}
+      />
       {nodes.map((node) => {
         const NodeComponent = nodeTypes[node.type]
         return (
@@ -552,7 +566,8 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
     expect(within(inspector).getByText('Khảo sát & Đo thực địa')).toBeInTheDocument()
     expect(within(inspector).getByText('Biên tập bản vẽ CAD')).toBeInTheDocument()
     expect(within(inspector).getByText('Soạn thảo hồ sơ pháp lý')).toBeInTheDocument()
-    expect(within(inspector).getByText('Nộp & Theo dõi Một Cửa')).toBeInTheDocument()
+    expect(within(inspector).getByText('Nộp hồ sơ & nhập biên nhận')).toBeInTheDocument()
+    expect(within(inspector).getByText('Theo dõi hồ sơ Một cửa')).toBeInTheDocument()
     expect(within(inspector).getByText('Bàn giao & Quyết toán')).toBeInTheDocument()
 
     // Bấm chọn năng lực "Khảo sát & Đo thực địa"
@@ -625,5 +640,43 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
         })
       )
     })
+  })
+
+  it('MasterWorkflowStudio cấm nối quá 1 đường mỗi đầu và chặn kéo sai quy tắc tuần tự', async () => {
+    let capturedProps = null
+    window.__testMwsConnectHook = (props) => {
+      capturedProps = props
+    }
+
+    render(<MasterWorkflowStudio />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.workflow-template-select .custom-select-value')).toHaveTextContent(
+        /Quy trình Tách thửa chuẩn - V1/
+      )
+    })
+
+    fireEvent.click(screen.getByTestId('mock-mws-connect-btn'))
+    expect(capturedProps).not.toBeNull()
+    const { onConnect, isValidConnection } = capturedProps
+
+    // 1. Cấm tự nối vào chính mình
+    expect(isValidConnection({ source: 'k01', target: 'k01' })).toBe(false)
+    onConnect({ source: 'k01', target: 'k01' })
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.stringContaining('Không thể nối bước với chính nó'),
+      'warning'
+    )
+
+    // 2. k01 đã có đường ra tới k02. Thử nối thêm đường thứ 2 từ k01
+    expect(isValidConnection({ source: 'k01', target: 'k03' })).toBe(false)
+    mockAddToast.mockClear()
+    onConnect({ source: 'k01', target: 'k03' })
+    expect(mockAddToast).toHaveBeenCalledWith(
+      expect.stringContaining('Đầu ra của bước này đã có đường nối'),
+      'warning'
+    )
+
+    delete window.__testMwsConnectHook
   })
 })

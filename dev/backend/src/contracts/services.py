@@ -472,13 +472,46 @@ class ContractService:
                 db.add(customer)
                 db.flush()
                 
+            loyalty_pct = getattr(payload, "loyalty_discount_percent", None)
+            loyalty_amt = getattr(payload, "loyalty_discount_amount", None)
+            orig_val = getattr(payload, "original_value", None)
+            loyalty_tier_id = getattr(payload, "loyalty_tier_id", None)
+            loyalty_tier_name = getattr(payload, "loyalty_tier_name", None)
+
+            # Đảm bảo tính nhất quán tài chính: nếu có chiết khấu và giá gốc
+            if loyalty_pct and orig_val and orig_val > 0:
+                expected_discount = int(round(float(orig_val) * float(loyalty_pct) / 100.0 + 1e-9))
+                loyalty_amt = int(loyalty_amt) if loyalty_amt is not None else expected_discount
+                # Nếu payload gửi contract_value bằng giá gốc (chưa trừ), server tự động trừ
+                if abs(contract_val - orig_val) < 1.0:
+                    contract_val = max(0.0, float(orig_val - loyalty_amt))
+
+            loyalty_addons = None
+            if loyalty_pct:
+                loyalty_addons = {
+                    "loyalty_discount": {
+                        "tier_id": loyalty_tier_id,
+                        "tier_name": loyalty_tier_name,
+                        "discount_percent": loyalty_pct,
+                        "discount_amount": loyalty_amt,
+                        "original_value": orig_val or contract_val,
+                        "final_value": contract_val,
+                    }
+                }
+
             new_hd = Contract(
                 id=contract_id,
                 customer_id=customer.id,
                 service_type=service_type,
                 total_value=contract_val,
+                original_value=orig_val,
+                loyalty_tier_id=loyalty_tier_id,
+                loyalty_tier_name=loyalty_tier_name,
+                loyalty_discount_percent=loyalty_pct,
+                loyalty_discount_amount=loyalty_amt,
                 date_signed=datetime.now().date(),
                 contract_template_id=template.id,
+                addons=loyalty_addons,
             )
             db.add(new_hd)
 
@@ -667,14 +700,47 @@ class ContractService:
             except Exception:
                 d_signed = datetime.now().date()
                 
+            loyalty_pct = getattr(payload, "loyalty_discount_percent", None)
+            loyalty_amt = getattr(payload, "loyalty_discount_amount", None)
+            orig_val = getattr(payload, "original_value", None)
+            loyalty_tier_id = getattr(payload, "loyalty_tier_id", None)
+            loyalty_tier_name = getattr(payload, "loyalty_tier_name", None)
+
+            # Đảm bảo tính nhất quán tài chính: nếu có chiết khấu và giá gốc
+            if loyalty_pct and orig_val and orig_val > 0:
+                expected_discount = int(round(float(orig_val) * float(loyalty_pct) / 100.0 + 1e-9))
+                loyalty_amt = int(loyalty_amt) if loyalty_amt is not None else expected_discount
+                # Nếu payload gửi contract_value bằng giá gốc (chưa trừ), server tự động trừ
+                if abs(contract_val - orig_val) < 1.0:
+                    contract_val = max(0.0, float(orig_val - loyalty_amt))
+
+            loyalty_addons = None
+            if loyalty_pct:
+                loyalty_addons = {
+                    "loyalty_discount": {
+                        "tier_id": loyalty_tier_id,
+                        "tier_name": loyalty_tier_name,
+                        "discount_percent": loyalty_pct,
+                        "discount_amount": loyalty_amt,
+                        "original_value": orig_val or contract_val,
+                        "final_value": contract_val,
+                    }
+                }
+
             new_hd = Contract(
                 id=contract_id,
                 customer_id=customer.id,
                 service_type=service_type,
                 total_value=contract_val,
+                original_value=orig_val,
+                loyalty_tier_id=loyalty_tier_id,
+                loyalty_tier_name=loyalty_tier_name,
+                loyalty_discount_percent=loyalty_pct,
+                loyalty_discount_amount=loyalty_amt,
                 date_signed=d_signed,
                 file_link=document_route,
                 contract_template_id=template.id,
+                addons=loyalty_addons,
             )
             db.add(new_hd)
 

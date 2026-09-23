@@ -107,6 +107,12 @@ class Contract(Base):
     completion_override_by = Column(String, ForeignKey("users.id"), nullable=True)
     completion_override_reason = Column(Text, nullable=True)
     completion_override_at = Column(DateTime(timezone=True), nullable=True)
+    # Loyalty / Priority discount — ghi nhận khi khách hàng đạt bậc ưu đãi
+    loyalty_tier_id = Column(String, nullable=True)
+    loyalty_tier_name = Column(String, nullable=True)
+    loyalty_discount_percent = Column(Numeric(5, 2), nullable=True)
+    loyalty_discount_amount = Column(Numeric, nullable=True)
+    original_value = Column(Numeric, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
@@ -118,6 +124,20 @@ class ZaloInteraction(Base):
     message_content = Column(Text, nullable=True)
     intent = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
+
+
+class CustomerLoyaltyTier(Base):
+    """Bậc ưu đãi khách hàng thân thiết — cấu hình bởi giám đốc/quản lý."""
+    __tablename__ = "customer_loyalty_tiers"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    tier_name = Column(String(100), nullable=False, unique=True)
+    min_contracts = Column(Integer, nullable=False, unique=True)
+    discount_percent = Column(Numeric(5, 2), nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
 
 class ServiceLine(Base):
     __tablename__ = "service_lines"

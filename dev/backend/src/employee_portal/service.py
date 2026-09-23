@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.core.redis_utils import get_cached_json, set_cached_json
+from src.core.redis_utils import get_cached_json, invalidate_cache, set_cached_json
 from src.finance.repository import priority_multiplier
 from src.contracts.workflow_runtime import (
     WIP_ITEM_LIMIT,
@@ -18,6 +19,9 @@ from src.contracts.workflow_runtime import (
     task_pool_department_code,
     task_pool_departments,
     task_pool_roles,
+    node_cluster_code,
+    government_submission_mode,
+    GOV_SUBMISSION_MODE_TRACK_TO_COMPLETION,
 )
 from src.db.models import (
     Attendance,
@@ -49,9 +53,51 @@ class ChecklistStatus(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
+DEPARTMENT_LABELS: dict[str, str] = {
+    "SURVEY": "Phòng Đo vẽ",
+    "LEGAL": "Phòng Pháp lý",
+    "SALES": "Phòng Sale/CSKH",
+    "ACCOUNTING": "Phòng Kế toán",
+}
+
+_PRIMARY_TASK_ROLES = frozenset({"MAIN", "SUBMITTER"})
+
+
+def available_task_pool_roles(
+    claim_roles: list[str] | tuple[str, ...] | None,
+    occupied_assignments: list[dict] | tuple[dict, ...] | None,
+) -> list[str]:
+    """Return roles that still have a valid button in the task pool.
+
+    ``SUBMITTER`` is the business label for a legal submission worker, but it
+    occupies the same single primary slot as ``MAIN``.  The old mapper only
+    removed the exact occupied role, so a node claimed as SUBMITTER still
+    advertised a second MAIN button and failed later at the database guard.
+    """
+    roles = [str(role or "").strip().upper() for role in (claim_roles or ())]
+    roles = [role for role in roles if role]
+    assignments = occupied_assignments or ()
+    occupied_codes = {
+        str(item.get("role_code") or "").strip().upper()
+        for item in assignments
+        if isinstance(item, dict)
+    }
+    primary_occupied = any(
+        isinstance(item, dict)
+        and (
+            bool(item.get("is_primary"))
+            or str(item.get("role_code") or "").strip().upper() in _PRIMARY_TASK_ROLES
+        )
+        for item in assignments
+    )
+    if primary_occupied:
+        return [role for role in roles if role not in _PRIMARY_TASK_ROLES]
+    return [role for role in roles if role not in occupied_codes]
+
+
 _TASKS_QUERY = text(
     """
-    select n.id, n.node_key, n.node_code, n.occurrence_no,
+    select n.id, n.node_key, n.node_code, n.capability_code, n.occurrence_no,
            -- Tên và mô tả phải là thứ giám đốc đặt trong QUY TRÌNH này, không
            -- phải tên chung trong danh mục. Đặt tên bước là "Bàn giao kết quả"
            -- mà nhân viên vẫn thấy "Nhận kết quả & bàn giao" thì hai bên nói về
@@ -84,7 +130,8 @@ _TASKS_QUERY = text(
            n.status, n.outcome, n.started_at, n.submitted_at, n.deadline_at,
            n.is_overdue, n.completed_at,
            n.execution_data,
-           a.role_code, a.is_primary, wi.service_line_id, sl.contract_id, sl.priority
+           a.role_code, a.is_primary, wi.id as workflow_instance_id,
+           wi.service_line_id, sl.contract_id, sl.priority
     from public.task_node_assignments a
     join public.task_nodes n on n.id = a.task_node_id
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
@@ -94,6 +141,8 @@ _TASKS_QUERY = text(
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where a.employee_id = :employee_id
       and a.assignment_status not in ('replaced', 'declined')
+      and a.assignment_status not in ('replaced', 'declined', 'cancelled')
+      and a.assignment_status in ('proposed', 'assigned', 'accepted')
     order by n.deadline_at asc nulls last, n.updated_at desc
     """
 )
@@ -101,6 +150,10 @@ _TASKS_QUERY = text(
 _TASK_POOL_QUERY = text(
     """
     select n.id, n.node_key, n.node_code, n.status, n.deadline_at, n.execution_data,
+           coalesce(
+             nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'cluster_code', ''),
+             wn.cluster_code
+           ) as cluster_code,
            wi.id as workflow_instance_id, wi.service_line_id, sl.contract_id, sl.priority,
            coalesce(w.name, nullif(sl.property_address, '')) as location_label,
            coalesce(tt.name, sl.service_type, n.node_code) as service_line_name,
@@ -121,7 +174,8 @@ _TASK_POOL_QUERY = text(
            ), '[]'::jsonb) as occupied_roles,
            coalesce((
              select jsonb_agg(jsonb_build_object(
-                 'role_code', a.role_code, 'employee_id', a.employee_id
+                 'role_code', a.role_code, 'employee_id', a.employee_id,
+                 'is_primary', a.is_primary
              ) order by a.created_at)
              from public.task_node_assignments a
              where a.task_node_id = n.id
@@ -255,6 +309,14 @@ _MY_ITEMS_QUERY = text(
                 nullif(n2.name, ''),
                 wn2.name,
                 n2.node_code
+              ),
+              'pool_department_code', coalesce(
+                coalesce(r_act.graph, r_def2.graph)->'nodes'->n2.node_key->>'pool_department_code',
+                (
+                  select (wn_dept.allowed_departments)[1]
+                  from public.workflow_nodes wn_dept
+                  where wn_dept.code = n2.node_code
+                )
               ),
               'mine', exists (
                 select 1 from public.task_node_assignments a2
@@ -495,8 +557,15 @@ _ITEM_NODE_DETAIL_QUERY = text(
 # phải biết cả những bước CHƯA nằm trong Bể việc (bước sau sẽ tự về tay người nhận).
 _POOL_CHAIN_QUERY = text(
     """
-    select n.workflow_instance_id, n.id as task_node_id, n.node_code, n.status, n.occurrence_no,
+    select n.workflow_instance_id, n.id as task_node_id, n.node_key, n.node_code, n.status, n.occurrence_no,
+           coalesce(
+             nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
+             nullif(n.name, ''),
+             wn.name,
+             n.node_code
+           ) as node_name,
            coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key as node_definition,
+           coalesce(r_act.graph, '{}'::jsonb) as workflow_graph,
            (
              select count(*) from public.task_node_checklist_results r
              where r.task_node_id = n.id and coalesce(r.is_required, true)
@@ -511,10 +580,33 @@ _POOL_CHAIN_QUERY = text(
            ), 0) as main_amount
     from public.task_nodes n
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
+    left join public.workflow_nodes wn on wn.code = n.node_code
     left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
     left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
     where n.workflow_instance_id = any(:instance_ids)
       and n.status not in ('cancelled', 'skipped', 'accepted', 'completed')
+    order by n.node_code, n.occurrence_no
+    """
+)
+
+_POOL_ALL_NODES_QUERY = text(
+    """
+    select n.workflow_instance_id, n.id as task_node_id, n.node_key, n.node_code, n.status, n.occurrence_no,
+           coalesce(
+             nullif(coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key->>'name', ''),
+             nullif(n.name, ''),
+             wn.name,
+             n.node_code
+           ) as node_name,
+           coalesce(r_act.graph, r_def.graph)->'nodes'->n.node_key as node_definition,
+           coalesce(r_act.graph, '{}'::jsonb) as workflow_graph
+    from public.task_nodes n
+    join public.workflow_instances wi on wi.id = n.workflow_instance_id
+    left join public.workflow_nodes wn on wn.code = n.node_code
+    left join public.workflow_instance_revisions r_act on r_act.id = wi.active_revision_id
+    left join public.workflow_instance_revisions r_def on r_def.id = n.defined_by_revision_id
+    where n.workflow_instance_id = any(:instance_ids)
+      and n.status not in ('cancelled', 'skipped')
     order by n.node_code, n.occurrence_no
     """
 )
@@ -837,7 +929,7 @@ def _order_nodes_by_workflow(nodes: list[dict], graph: dict) -> list[dict]:
     return sorted(
         nodes,
         key=lambda node: (
-            positions.get(node.get("node_key"), len(positions)),
+            positions.get(str(node.get("node_key") or ""), len(positions)),
             str(node.get("node_code") or "999"),
             int(node.get("occurrence_no") or 0),
         ),
@@ -899,6 +991,17 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
         ).mappings().all()
     }
 
+    emp_row = db.execute(
+        text("""
+            select coalesce(d.code, e.department) as dept_code
+            from public.employees e
+            left join public.departments d on d.id = e.department_id
+            where e.id = :emp_id
+        """),
+        {"emp_id": employee_id}
+    ).first()
+    employee_dept_code = str(emp_row[0] or "").strip().upper() if emp_row else ""
+
     items = []
     # Khử N+1: Đọc một lượt duy nhất toàn bộ bảng hệ số còn hiệu lực vào bộ nhớ
     priorities_needed = {row["priority"] for row in rows if row.get("priority") in ("HIGH", "URGENT")}
@@ -926,8 +1029,17 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
         )
         for node in ordered_nodes:
             detail = detail_by_node.get(node["id"], {})
+            node_dept = str(node.get("pool_department_code") or "").strip().upper()
+            if not node_dept:
+                node_dept = str(task_pool_department_code(node.get("node_code")) or "").strip().upper()
+            is_my_dept = bool(not node_dept or not employee_dept_code or node_dept == employee_dept_code)
+            dept_name = DEPARTMENT_LABELS.get(node_dept, node_dept or "")
             nodes.append({
                 **node,
+                "pool_department_code": node_dept,
+                "department_name": dept_name,
+                "is_my_department": is_my_dept,
+                "mine": bool(node.get("mine") and is_my_dept),
                 # Đã nghiệm thu thì lấy SỐ ĐÃ CHỐT; chưa thì lấy bảng giá hôm
                 # nay làm ước tính. Giao diện đọc `amount_is_settled` để biết ghi
                 # "dự kiến" hay không — bày số trần lúc bước còn chạy là hứa một
@@ -989,8 +1101,13 @@ def _held_items(db: Session, employee_id: str) -> list[dict]:
 class EmployeePortalService:
     @staticmethod
     def build_profile(db: Session, employee: Employee) -> dict:
+        cache_key = f"employee_portal:profile:{employee.id}"
+        cached = get_cached_json(cache_key)
+        if cached is not None:
+            return cached
+
         department = None
-        if employee.department_id:
+        if employee.department_id is not None:
             department = db.query(Department).filter(Department.id == employee.department_id).first()
         user = db.query(User).filter(User.id == employee.user_id).first()
         tasks = db.execute(_TASKS_QUERY, {"employee_id": employee.id}).mappings().all()
@@ -1149,7 +1266,14 @@ class EmployeePortalService:
             {"employee_id": employee.id, "period_start": period_start},
         ).mappings().first()
 
-        return {
+        def task_government_mode(task):
+            return government_submission_mode(
+                node_code=task["node_code"],
+                capability=task.get("capability_code"),
+                requires_gov_submission=bool(task["requires_gov_submission"]),
+            )
+
+        result = {
             "employee": {
                 "id": employee.id,
                 "full_name": employee.full_name,
@@ -1164,8 +1288,12 @@ class EmployeePortalService:
             "tasks": [
                 {
                     "id": task["id"],
+                    "workflow_instance_id": task["workflow_instance_id"],
                     "node_code": task["node_code"],
                     "node_key": task["node_key"],
+                    "capability_code": task.get("capability_code"),
+                    "capability": task.get("capability_code"),
+                    "submission_mode": task_government_mode(task),
                     "service_line_id": task["service_line_id"],
                     "priority": task["priority"] or "NORMAL",
                     "contract_id": task["contract_id"],
@@ -1181,8 +1309,11 @@ class EmployeePortalService:
                     "submitted_at": _date_value(task["submitted_at"]),
                     "deadline_at": _date_value(task["deadline_at"]),
                     "deadline": _date_value(task["deadline_at"]),
-                    "allow_pause": bool(task["allow_pause"]),
-                    "allow_gov_tracking": bool(task["allow_gov_tracking"]),
+                    "allow_pause": bool(task["allow_pause"] or task_government_mode(task)),
+                    "allow_gov_tracking": bool(
+                        task["allow_gov_tracking"]
+                        or task_government_mode(task) == GOV_SUBMISSION_MODE_TRACK_TO_COMPLETION
+                    ),
                     "cluster_code": task["cluster_code"],
                     "pause_reason_type": task["pause_reason_type"],
                     "paused_at": _date_value(task["paused_at"]),
@@ -1225,6 +1356,8 @@ class EmployeePortalService:
             ],
             "latest_payroll": EmployeePortalService._format_payroll_row(period_start, payroll_row),
         }
+        set_cached_json(cache_key, result, ttl_seconds=30)
+        return result
 
     @staticmethod
     def get_task_pool(db: Session, employee: Employee) -> dict:
@@ -1236,7 +1369,7 @@ class EmployeePortalService:
         # đó mời người ta nhận một việc đã trả về chủ cũ.
         expire_stale_help_requests(db)
         department = None
-        if employee.department_id:
+        if employee.department_id is not None:
             department = db.query(Department).filter(Department.id == employee.department_id).first()
         department_code = str((department.code if department else employee.department) or "").upper()
         cache_key = f"task_pool:{employee.department_id or department_code.lower()}"
@@ -1263,12 +1396,14 @@ class EmployeePortalService:
             chain_by_instance: dict[str, dict] = {}
             instance_ids = list({row["workflow_instance_id"] for row in rows})
             if instance_ids:
-                for chain_row in db.execute(
+                chain_rows = db.execute(
                     _POOL_CHAIN_QUERY, {"instance_ids": instance_ids}
-                ).mappings().all():
+                ).mappings().all()
+
+                for chain_row in chain_rows:
                     bucket = chain_by_instance.setdefault(
                         chain_row["workflow_instance_id"],
-                        {"codes": [], "steps": 0, "outputs": 0, "amount": 0.0},
+                        {"codes": [], "steps": 0, "outputs": 0, "amount": 0.0, "chain_nodes": []},
                     )
                     bucket["steps"] += 1
                     node_department = task_pool_department_code(
@@ -1282,6 +1417,40 @@ class EmployeePortalService:
                         bucket["outputs"] += int(chain_row["output_count"] or 0)
                         bucket["amount"] += float(chain_row["main_amount"] or 0)
 
+                all_nodes_rows = db.execute(
+                    _POOL_ALL_NODES_QUERY, {"instance_ids": instance_ids}
+                ).mappings().all()
+
+                rows_by_instance: dict[str, list] = {}
+                graph_by_instance: dict[str, dict] = {}
+                for cr in all_nodes_rows:
+                    rows_by_instance.setdefault(cr["workflow_instance_id"], []).append(dict(cr))
+                    if cr.get("workflow_graph") and cr["workflow_instance_id"] not in graph_by_instance:
+                        graph_by_instance[cr["workflow_instance_id"]] = cr["workflow_graph"]
+
+                for inst_id, c_rows in rows_by_instance.items():
+                    ordered = _order_nodes_by_workflow(c_rows, graph_by_instance.get(inst_id) or {})
+                    bucket = chain_by_instance.setdefault(
+                        inst_id,
+                        {"codes": [], "steps": 0, "outputs": 0, "amount": 0.0, "chain_nodes": []},
+                    )
+                    for chain_row in ordered:
+                        node_department = task_pool_department_code(
+                            chain_row["node_code"], chain_row["node_definition"] or {}
+                        )
+                        is_my_dept = bool(node_department == department_code)
+                        dept_key = str(node_department or "")
+                        dept_name = DEPARTMENT_LABELS.get(dept_key, dept_key)
+                        bucket["chain_nodes"].append({
+                            "task_node_id": chain_row["task_node_id"],
+                            "node_code": chain_row["node_code"],
+                            "name": chain_row["node_name"],
+                            "status": chain_row["status"],
+                            "department_code": node_department,
+                            "department_name": dept_name,
+                            "is_my_department": is_my_dept,
+                        })
+
             cached = []
             for row in rows:
                 chain = chain_by_instance.get(row["workflow_instance_id"], {})
@@ -1290,9 +1459,14 @@ class EmployeePortalService:
                     "node_key": row["node_key"],
                     "node_code": row["node_code"],
                     "status": row["status"],
+                    "cluster_code": (
+                        node_cluster_code(row["node_code"], row["node_definition"] or {})
+                        or (str(row.get("cluster_code") or "").strip().upper() if row.get("cluster_code") else None)
+                    ),
                     "name": row["node_name"],
                     "description": row["node_description"],
                     "service_line_id": row["service_line_id"],
+                    "workflow_instance_id": row["workflow_instance_id"],
                     "service_line_name": row["service_line_name"],
                     "contract_id": row["contract_id"],
                     "customer_name": row["customer_name"],
@@ -1312,6 +1486,7 @@ class EmployeePortalService:
                     "inherited_files": (row["execution_data"] or {}).get("inherited_files", []),
                     "field_started_at": (row["execution_data"] or {}).get("field_started_at"),
                     "location_label": row["location_label"],
+                    "chain_nodes": list(chain.get("chain_nodes") or []),
                     "chain_codes": list(chain.get("codes") or []),
                     "step_count": int(chain.get("steps") or 0),
                     "output_count": int(chain.get("outputs") or 0),
@@ -1330,11 +1505,10 @@ class EmployeePortalService:
                 for assignment in row.get("occupied_assignments", [])
             ):
                 continue
-            occupied = set(row.get("occupied_roles", []))
-            available_roles = [
-                role for role in row.get("claim_roles", task_pool_roles(row["node_code"]))
-                if role not in occupied
-            ]
+            available_roles = available_task_pool_roles(
+                row.get("claim_roles", task_pool_roles(row["node_code"])),
+                row.get("occupied_assignments", []),
+            )
             # Thợ chính đã ra hiện trường bấm bắt đầu đo thì suất thợ phụ đóng lại:
             # người nhận sau không còn hỗ trợ được gì mà công ty vẫn mất 100.000đ.
             if row.get("field_started_at"):
@@ -1371,7 +1545,7 @@ class EmployeePortalService:
                 ),
                 "preference_seconds_remaining": max(
                     0, int((preference_until - now).total_seconds())
-                ) if preference_active else 0,
+                ) if (preference_active and preference_until is not None) else 0,
             })
         items.sort(
             key=lambda item: (
@@ -1453,7 +1627,7 @@ class EmployeePortalService:
             raise LookupError("Công việc không tồn tại hoặc quy trình không còn vận hành")
 
         department = None
-        if employee.department_id:
+        if employee.department_id is not None:
             department = db.query(Department).filter(Department.id == employee.department_id).first()
         department_code = str((department.code if department else employee.department) or "").upper()
 
@@ -1553,6 +1727,11 @@ class EmployeePortalService:
         Nhân viên bấm vào con số "đã hoàn thành" là để xem lại mình đã làm gì, nên
         đưa mỗi con số mà không có đường mở ra xem thì bằng không.
         """
+        cache_key = f"employee_completed_items:{employee.id}"
+        cached = get_cached_json(cache_key)
+        if cached is not None:
+            return cached
+
         rows = db.execute(
             _COMPLETED_ITEMS_QUERY, {"employee_id": employee.id}
         ).mappings().all()
@@ -1601,7 +1780,20 @@ class EmployeePortalService:
                 for node in item["nodes"]:
                     node["checklist"] = by_node.get(node.get("id"), [])
 
-        return {"count": len(items), "items": items}
+        payload = {"count": len(items), "items": items}
+        set_cached_json(cache_key, payload, ttl_seconds=60)
+        return payload
+
+    @staticmethod
+    def invalidate_employee_caches(employee_id: str | int | None = None) -> None:
+        if employee_id:
+            invalidate_cache(f"employee_portal:profile:{employee_id}*")
+            invalidate_cache(f"employee_completed_items:{employee_id}*")
+            invalidate_cache(f"employee_daily_summary:{employee_id}*")
+        else:
+            invalidate_cache("employee_portal:profile:*")
+            invalidate_cache("employee_completed_items:*")
+            invalidate_cache("employee_daily_summary:*")
 
     @staticmethod
     def _calculate_payroll_history(
@@ -1698,7 +1890,7 @@ class EmployeePortalService:
         if target_month_date:
             valid_period_dates.add(target_month_date)
 
-        join_first = employee.join_date.replace(day=1) if employee.join_date else None
+        join_first = employee.join_date.replace(day=1) if employee.join_date is not None else None
         for p_month in period_status_map.keys():
             if join_first is None or p_month >= join_first:
                 valid_period_dates.add(p_month)
@@ -1778,7 +1970,7 @@ class EmployeePortalService:
                 return cached
 
         department = None
-        if employee.department_id:
+        if employee.department_id is not None:
             department = db.query(Department).filter(Department.id == employee.department_id).first()
 
         target_month_date = None

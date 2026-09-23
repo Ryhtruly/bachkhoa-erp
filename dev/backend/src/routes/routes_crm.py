@@ -24,6 +24,7 @@ from src.files.references import DossierFileReference
 from src.core.auth import require_permission, User, is_payroll_all_user
 from src.crm.commission import can_claim_lead, normalize_policy, workload_score
 from src.core.finance_validation import parse_issued_money
+from src.routes.routes_customers import check_loyalty_eligibility
 
 logger = logging.getLogger(__name__)
 
@@ -390,18 +391,51 @@ def update_lead_status(
             .first()
         )
 
-        # 6. Chuẩn bị file Word (.docx) và Render thông tin
+        # 6. Kiểm tra ưu đãi khách hàng thân thiết (Loyalty Discount) TRƯỚC KHI sinh chứng từ
+        loyalty_info = check_loyalty_eligibility(db, lead.customer_id, numeric_total_value)
+        final_contract_value = numeric_total_value
+        loyalty_discount_percent = None
+        loyalty_discount_amount = None
+        original_value_for_contract = None
+        loyalty_tier_id = None
+        loyalty_tier_name = None
+        loyalty_addons = None
+
+        if loyalty_info.get("eligible"):
+            original_value_for_contract = numeric_total_value
+            loyalty_discount_percent = loyalty_info["discount_percent"]
+            loyalty_discount_amount = loyalty_info["discount_amount"]
+            final_contract_value = loyalty_info["final_value"]
+            loyalty_tier_id = loyalty_info["tier"]["id"]
+            loyalty_tier_name = loyalty_info["tier"]["tier_name"]
+            loyalty_addons = {
+                "loyalty_discount": {
+                    "tier_name": loyalty_tier_name,
+                    "tier_id": loyalty_tier_id,
+                    "contract_count": loyalty_info["contract_count"],
+                    "discount_percent": loyalty_discount_percent,
+                    "discount_amount": loyalty_discount_amount,
+                    "original_value": numeric_total_value,
+                    "final_value": final_contract_value,
+                }
+            }
+            logger.info(
+                "Áp dụng ưu đãi khách thân thiết cho HĐ %s: %s%% (-%s)",
+                contract_id, loyalty_discount_percent, loyalty_discount_amount,
+            )
+
+        # 6b. Chuẩn bị file Word (.docx) và Render thông tin với GIÁ TRỊ HỢP ĐỒNG THỰC TẾ
         template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "Mau_Hop_Dong_Do_Dac_Bach_Khoa.docx")
         safe_id = contract_id.replace("/", "_").replace("\\", "_")
         safe_cust = re.sub(r'[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]', '_', customer.full_name if customer else 'KhachHang')
         output_filename = f"HopDong_{safe_id}_{safe_cust}.docx"
 
-        formatted_price = f"{int(numeric_total_value):,}".replace(",", ".") + " VNĐ" if numeric_total_value > 0 else "Chưa báo giá"
+        formatted_price = f"{int(final_contract_value):,}".replace(",", ".") + " VNĐ" if final_contract_value > 0 else "Chưa báo giá"
         price_text = "Chưa báo giá"
-        if numeric_total_value > 0:
+        if final_contract_value > 0:
             try:
                 from num2words import num2words
-                price_text = num2words(int(numeric_total_value), lang='vi').capitalize() + " đồng"
+                price_text = num2words(int(final_contract_value), lang='vi').capitalize() + " đồng"
             except Exception:
                 pass
 
@@ -416,7 +450,10 @@ def update_lead_status(
             "service_location": customer.address or "Tại hiện trường",
             "service_area": body.area or "Cập nhật sau",
             "total_amount": formatted_price,
-            "total_amount_text": price_text
+            "total_amount_text": price_text,
+            "original_amount": f"{int(numeric_total_value):,}".replace(",", ".") + " VNĐ" if numeric_total_value > 0 else formatted_price,
+            "discount_percent": loyalty_discount_percent or 0,
+            "discount_amount": f"{int(loyalty_discount_amount):,}".replace(",", ".") + " VNĐ" if loyalty_discount_amount else "0 VNĐ",
         }
 
         file_link = None
@@ -450,7 +487,12 @@ def update_lead_status(
             lead_id=lead.id,
             contract_template_id=published_template.id if published_template else None,
             service_type=final_service_name,
-            total_value=numeric_total_value,
+            total_value=final_contract_value,
+            original_value=original_value_for_contract,
+            loyalty_tier_id=loyalty_tier_id,
+            loyalty_tier_name=loyalty_tier_name,
+            loyalty_discount_percent=loyalty_discount_percent,
+            loyalty_discount_amount=loyalty_discount_amount,
             date_signed=datetime.datetime.now(datetime.timezone.utc).date(),
             service_location=customer.address if customer else None,
             service_area=numeric_area,
@@ -459,6 +501,7 @@ def update_lead_status(
             sale_id=lead.assigned_to,
             commission_rate_snapshot=commission_policy["commission_rate_percent"],
             commission_locked_at=datetime.datetime.now(datetime.timezone.utc),
+            addons=loyalty_addons,
         )
         db.add(new_contract)
 
@@ -467,7 +510,7 @@ def update_lead_status(
             db,
             contract_id=contract_id,
             service_type=final_service_name,
-            price=numeric_total_value,
+            price=final_contract_value,
             address=customer.address if customer else None,
             task_type_id=task_type.id if task_type else None,
             checklist_template_ids=resolve_document_selection("DEFAULT", None),
@@ -481,7 +524,7 @@ def update_lead_status(
             id=str(uuid.uuid4()),
             contract_id=contract_id,
             paid_amount=0.0,
-            remaining_amount=numeric_total_value,
+            remaining_amount=final_contract_value,
         )
         db.add(rec)
 

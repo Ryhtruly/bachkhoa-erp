@@ -381,14 +381,16 @@ def test_admin_can_create_admin_account(db):
     """Admin có quyền cấp tài khoản mang vai trò admin."""
     _ensure_role(db, "admin")
 
-    admin_user = User(
-        id=str(uuid.uuid4()),
-        username="admin",
-        email="admin@test.local",
-        is_active=True,
-    )
-    db.add(admin_user)
-    db.commit()
+    admin_user = db.query(User).filter(User.username == "admin").first()
+    if not admin_user:
+        admin_user = User(
+            id=str(uuid.uuid4()),
+            username="admin",
+            email="admin@test.local",
+            is_active=True,
+        )
+        db.add(admin_user)
+        db.commit()
 
     emp = Employee(
         id=f"emp_{uuid.uuid4().hex[:10]}",

@@ -33,6 +33,22 @@ class Employee(Base):
     date_of_birth = Column(Date, nullable=True)
     place_of_birth = Column(String, nullable=True)
     avatar_url = Column(Text, nullable=True)
+    citizen_id = Column(String(30), nullable=True)
+    citizen_id_date = Column(Date, nullable=True)
+    citizen_id_place = Column(String(255), nullable=True)
+    hometown = Column(String(255), nullable=True)
+    ethnicity = Column(String(50), nullable=True)
+    marital_status = Column(String(50), nullable=True)
+    personal_email = Column(String(255), nullable=True)
+    permanent_address = Column(Text, nullable=True)
+    current_address = Column(Text, nullable=True)
+    emergency_contact_name = Column(String(255), nullable=True)
+    emergency_contact_phone = Column(String(30), nullable=True)
+    bank_account_no = Column(String(50), nullable=True)
+    bank_name = Column(String(255), nullable=True)
+    bank_branch = Column(String(255), nullable=True)
+    tax_code = Column(String(50), nullable=True)
+    social_insurance_no = Column(String(50), nullable=True)
 
 
 class PayrollPeriod(Base):

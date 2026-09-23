@@ -189,4 +189,65 @@ describe('NodeChain', () => {
       expect(buttons[3].className).toContain('is-idle')
     })
   })
+
+  describe('node thuộc phòng ban khác (prohibited)', () => {
+    const MIXED_NODES = [
+      { id: 'n1', node_code: 'K01', name: 'Đo hiện trường', status: 'completed', is_my_department: true },
+      { id: 'n2', node_code: 'K02', name: 'Chuẩn hoá', status: 'in_progress', is_my_department: true },
+      {
+        id: 'n3',
+        node_code: 'K03',
+        name: 'Soạn hồ sơ',
+        status: 'pending',
+        is_my_department: false,
+        pool_department_code: 'LEGAL',
+        department_name: 'Phòng Pháp lý',
+      },
+      {
+        id: 'n4',
+        node_code: 'K04',
+        name: 'Thẩm định',
+        status: 'pending',
+        is_my_department: false,
+        pool_department_code: 'LEGAL',
+        department_name: 'Phòng Pháp lý',
+      },
+    ]
+
+    it('hiển thị nhãn phòng ban phụ trách trên bước bị cấm', () => {
+      render(<NodeChain nodes={MIXED_NODES} />)
+
+      expect(screen.getAllByText('THUỘC PHÁP LÝ')).toHaveLength(2)
+    })
+
+    it('gắn class is-prohibited và icon Ban trên bước bị cấm', () => {
+      const { container } = render(<NodeChain nodes={MIXED_NODES} />)
+
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[2].className).toContain('is-prohibited')
+      expect(buttons[3].className).toContain('is-prohibited')
+
+      const prohibitIcons = container.querySelectorAll('.eiw-step__prohibit-icon')
+      expect(prohibitIcons).toHaveLength(2)
+    })
+
+    it('bước bị cấm luôn bị disabled và không gọi onSelect kể cả khi có trong openableIds', () => {
+      const onSelect = vi.fn()
+      render(<NodeChain nodes={MIXED_NODES} openableIds={['n1', 'n2', 'n3']} onSelect={onSelect} />)
+
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[2]).toBeDisabled()
+
+      fireEvent.click(buttons[2])
+      expect(onSelect).not.toHaveBeenCalled()
+    })
+
+    it('tooltip của bước bị cấm thông báo rõ quyền hạn và phòng ban', () => {
+      render(<NodeChain nodes={MIXED_NODES} />)
+
+      const buttons = screen.getAllByRole('button')
+      expect(buttons[2].getAttribute('title')).toContain('Thuộc Phòng Pháp lý (Bạn không có quyền thao tác)')
+    })
+  })
 })
+

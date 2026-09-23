@@ -620,6 +620,22 @@
   letter-spacing: 0.03em;
 }
 
+.wf-node-grid .workflow-node__cap-tag {
+  font-size: 13.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-top: 0;
+  padding: 0;
+  background: transparent !important;
+  color: var(--text-primary, #0f172a);
+}
+
+[data-theme='dark'] .wf-node-grid .workflow-node__cap-tag {
+  color: var(--text-primary, #f8fafc);
+  background: transparent !important;
+}
+
 .workflow-node__cap-tag--standard {
   background: #eff6ff;
   color: #2563eb;

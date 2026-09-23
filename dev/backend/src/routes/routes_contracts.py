@@ -28,7 +28,7 @@ from src.contracts import (
 from src.finance.repository import priority_multiplier
 from src.dossiers.checklist_document_types import SOURCE_LABELS, review_type, runtime_schema_ready
 from src.contracts.workflow_runtime import (
-    NODES_SUBMITTED_TO_AGENCY,
+    tracks_agency_submission,
     TaskClaimConflict,
     WorkflowActivationReadinessError,
     WorkflowValidationError,
@@ -337,7 +337,7 @@ def _timeline_node_type(node_code: str | None, definition: dict) -> str:
     cap = str(definition.get("capability") or definition.get("capability_code") or "").upper()
     if definition.get("is_handover") or cap == "HANDOVER":
         return "shared"
-    if definition.get("requires_gov_submission") or cap in ("GOV_SUBMISSION", "LEGAL_PREP"):
+    if definition.get("requires_gov_submission") or cap in ("GOV_SUBMIT", "GOV_TRACKING", "GOV_SUBMISSION", "LEGAL_PREP"):
         return "legal"
     if definition.get("creates_survey_record") or cap in ("SURVEY_FIELD", "SURVEY_CAD"):
         return "survey"
@@ -977,7 +977,7 @@ def get_contract_workspace(
             execution_nodes = [dict(row) for row in db.execute(
                 text(
                     """
-                    select n.id, n.node_key, n.node_code, n.occurrence_no, n.status, n.outcome,
+                    select n.id, n.node_key, n.node_code, n.capability_code, n.occurrence_no, n.status, n.outcome,
                            n.started_at, n.deadline_at, n.is_overdue, n.submitted_at,
                            n.accepted_at, n.completed_at, n.blocked_reason,
                            n.execution_data,
@@ -1036,6 +1036,7 @@ def get_contract_workspace(
                     left join public.departments d on d.id = e.department_id
                     where n.workflow_instance_id = :workflow_instance_id
                       and a.assignment_status not in ('replaced', 'declined')
+                      and a.assignment_status not in ('replaced', 'declined', 'cancelled')
                     order by a.is_primary desc, a.created_at asc
                     """
                 ),
@@ -1184,7 +1185,13 @@ def get_contract_workspace(
         if workflow_row:
             agency_nodes = [
                 node for node in execution_nodes
-                if node["node_code"] in NODES_SUBMITTED_TO_AGENCY
+                if (
+                    node["node_code"] in {"K06", "HANDOVER"}
+                    or tracks_agency_submission(
+                        node_code=node["node_code"],
+                        capability=node.get("capability_code"),
+                    )
+                )
                 and (
                     node["status"] in {"in_progress", "submitted", "accepted"}
                     or node["started_at"] is not None
@@ -1281,7 +1288,7 @@ def get_contract_workspace(
                 select code, name, description, checklist_template
                 from public.workflow_nodes
                 where coalesce(is_active, true)
-                  and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMISSION', 'HANDOVER')
+                  and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMIT', 'GOV_TRACKING', 'GOV_SUBMISSION', 'HANDOVER')
                 order by code
                 """
             )
@@ -1832,6 +1839,8 @@ def activate_service_line_workflow(
         invalidate_cache("bachkhoa:contracts:*")
         invalidate_cache("task_pool:*")
         invalidate_cache("employee_daily_summary:*")
+        invalidate_cache("employee_portal:profile:*")
+        invalidate_cache("employee_completed_items:*")
         publish_timeline_change("workflow_revision_activated", entity_id=service_line_id)
         return {"message": "Đã kích hoạt workflow", **result}
     except WorkflowActivationReadinessError as exc:
@@ -2177,6 +2186,8 @@ def review_checklist_evidence(
         invalidate_money_caches()
         invalidate_cache("task_pool:*")
         invalidate_cache("employee_daily_summary:*")
+        invalidate_cache("employee_portal:profile:*")
+        invalidate_cache("employee_completed_items:*")
         publish_timeline_change("node_acceptance_reviewed", entity_id=auto.get("task_node_id"))
     elif auto.get("submitted"):
         # Bàn giao / rẽ nhánh: đã tự nộp, vào hàng chờ giám đốc nghiệm thu.
@@ -2228,9 +2239,11 @@ def review_checklist_document_type(
     invalidate_cache("bachkhoa:contract_workspace:*")
     invalidate_cache("bachkhoa:notifications:summary:*")
     invalidate_cache("task_pool:*")
-    if result.get("node_finalized"):
+    if result.get("node_finalized") or result.get("node_status") == "rework_required":
         invalidate_money_caches()
         invalidate_cache("employee_daily_summary:*")
+        invalidate_cache("employee_portal:profile:*")
+        invalidate_cache("employee_completed_items:*")
     publish_timeline_change("document_type_reviewed", entity_id=type_id)
     if result.get("node_status") == "rework_required":
         publish_timeline_change("node_review_completed", entity_id=result.get("task_node_id"))
@@ -2290,6 +2303,9 @@ def flush_review_batch(
             invalidate_cache("bachkhoa:contract_workspace:*")
             invalidate_cache("bachkhoa:notifications:summary:*")
             invalidate_cache("task_pool:*")
+            invalidate_cache("employee_daily_summary:*")
+            invalidate_cache("employee_portal:profile:*")
+            invalidate_cache("employee_completed_items:*")
             publish_timeline_change("node_review_completed", entity_id=task_node_id)
         return {"flushed": bool(result), **(result or {})}
     except WorkflowValidationError as exc:
@@ -2322,6 +2338,8 @@ def review_node_acceptance(
         invalidate_cache("bachkhoa:contracts:*")
         invalidate_cache("task_pool:*")
         invalidate_cache("employee_daily_summary:*")
+        invalidate_cache("employee_portal:profile:*")
+        invalidate_cache("employee_completed_items:*")
         publish_timeline_change("TASK_ACCEPTED", entity_id=acceptance_id)
         return result
     except WorkflowValidationError as exc:
@@ -3164,4 +3182,3 @@ def delete_contract_endpoint(
         "message": f"Đã xoá vĩnh viễn hợp đồng {contract_id} và các dữ liệu liên quan thành công",
         "contract_id": contract_id
     }
-

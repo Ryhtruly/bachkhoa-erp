@@ -20,7 +20,8 @@ import {
   Sparkles,
   Settings,
   UserCircle,
-  UserCheck
+  UserCheck,
+  Award,
 } from 'lucide-react';
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
 import AvatarImage from '../components/AvatarImage';
@@ -103,6 +104,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [closingLead, setClosingLead] = useState(null);
   const [closingData, setClosingData] = useState({ price: '', tax_id: '', area: '' });
+  const [loyaltyInfo, setLoyaltyInfo] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -263,6 +265,13 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
         tax_id: '',
         area: parsed.scaleInfo || ''
       });
+      // Kiểm tra ưu đãi khách hàng thân thiết
+      setLoyaltyInfo(null);
+      if (lead.customer_id) {
+        apiFetch(`/api/customers/loyalty-eligibility?customer_id=${encodeURIComponent(lead.customer_id)}`)
+          .then(res => { if (res?.data?.eligible) setLoyaltyInfo(res.data); })
+          .catch(() => {});
+      }
       return;
     }
     await submitStatusChange(lead.id, newStatus, {});
@@ -758,9 +767,36 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                 </p>
               </div>
 
+              {loyaltyInfo?.eligible && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 14px',
+                  background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12), rgba(245, 158, 11, 0.05))',
+                  border: '1px solid rgba(234, 179, 8, 0.35)',
+                  borderRadius: '8px',
+                }}>
+                  <Award size={22} color="var(--orange-500, #f59e0b)" />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '0.85rem', color: '#b45309' }}>
+                        ⭐ Khách hàng ưu tiên: {loyaltyInfo.tier?.tier_name}
+                      </strong>
+                      <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '1px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                        Đã làm {loyaltyInfo.contract_count} hợp đồng
+                      </span>
+                    </div>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      Tự động áp dụng chiết khấu <strong>{loyaltyInfo.discount_percent}%</strong> cho hợp đồng lần này.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
-                  Giá trị Hợp Đồng (VNĐ) <span style={{ color: 'red' }}>*</span>
+                  Giá trị Hợp Đồng gốc (VNĐ) <span style={{ color: 'red' }}>*</span>
                 </label>
                 <input
                   required
@@ -782,9 +818,40 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                 {closingData.price && Number(closingData.price) > 0 && (
                   <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div className="currency-live-preview">
-                      <span>Số tiền hiển thị:</span>
+                      <span>Số tiền gốc:</span>
                       <span>{new Intl.NumberFormat('vi-VN').format(Number(closingData.price))} VNĐ</span>
                     </div>
+
+                    {loyaltyInfo?.eligible && (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 4,
+                        padding: '10px 12px',
+                        background: 'rgba(234, 179, 8, 0.08)',
+                        border: '1px solid rgba(234, 179, 8, 0.25)',
+                        borderRadius: 8,
+                        fontSize: '0.82rem'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            Ưu đãi VIP ({loyaltyInfo.discount_percent}%):
+                          </span>
+                          <strong style={{ color: '#d97706' }}>
+                            -{new Intl.NumberFormat('vi-VN').format(Math.round(Number(closingData.price) * (Number(loyaltyInfo.discount_percent) / 100)))} VNĐ
+                          </strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed rgba(234, 179, 8, 0.3)', paddingTop: 4 }}>
+                          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                            Giá trị hợp đồng thực tế (sau giảm):
+                          </span>
+                          <strong style={{ color: 'var(--green-600, #16a34a)', fontSize: '0.95rem' }}>
+                            {new Intl.NumberFormat('vi-VN').format(Math.round(Number(closingData.price) * (1 - Number(loyaltyInfo.discount_percent) / 100)))} VNĐ
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',

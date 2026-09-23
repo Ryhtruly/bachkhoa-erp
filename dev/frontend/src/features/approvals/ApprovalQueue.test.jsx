@@ -28,10 +28,24 @@ const WAIVER = {
   created_at: '2026-08-26T08:00:00Z',
 }
 
-const setupApi = ({ slots = [], changes = [], rejected = {} } = {}) => {
+const ROLLBACK_REQUEST = {
+  id: 'RB-1',
+  reason: 'Khách hàng yêu cầu đo đạc lại hiện trạng',
+  created_at: '2026-08-26T08:00:00Z',
+  workflow_instance_id: 'WI-1',
+  node_code: 'N02',
+  node_name: 'Đo đạc hiện trạng',
+  contract_id: '003/BK-2026',
+  service_line_name: 'Đo vẽ địa chính',
+  customer_name: 'Nguyễn Văn B',
+  requested_by_name: 'Trần Văn C',
+  affected_count: 2,
+}
+
+const setupApi = ({ rollbacks = [], slots = [], changes = [], rejected = {} } = {}) => {
   apiFetch.mockImplementation((url, options) => {
     if (rejected[url]) return Promise.reject(rejected[url])
-    if (url === '/api/contracts/workflow/rollback-requests') return Promise.resolve({ data: [] })
+    if (url === '/api/contracts/workflow/rollback-requests') return Promise.resolve({ data: rollbacks })
     if (url === '/api/document-register/change-requests') return Promise.resolve({ data: changes })
     if (url === '/api/slot-requests?status=pending') return Promise.resolve({ data: slots })
     if (options?.method === 'POST') return Promise.resolve({ status: 'success', data: {} })
@@ -138,4 +152,26 @@ it('lỗi schema 503 hiện tiếng Việt nhưng hàng chờ khác vẫn hiển
 
   expect(await screen.findByText(/Tính năng sổ tài liệu V2 chưa được kích hoạt/)).toBeInTheDocument()
   expect(screen.getByText('Bản kỹ thuật đo hiện trường')).toBeInTheDocument()
+})
+
+it('phiếu quay lại bước có id định danh và nhận sự kiện mở nổi bật từ chuông', async () => {
+  const scrollMock = vi.fn()
+  Element.prototype.scrollIntoView = scrollMock
+
+  setupApi({ rollbacks: [ROLLBACK_REQUEST] })
+  render(<ApprovalQueue />)
+
+  expect(await screen.findByText(/Xin quay lại bước · 1/)).toBeInTheDocument()
+  const card = document.getElementById('rollback-RB-1')
+  expect(card).toBeInTheDocument()
+  expect(card).toHaveClass('is-rollback')
+
+  window.dispatchEvent(new CustomEvent('bachkhoa:open-approval-item', {
+    detail: { requestId: 'RB-1', type: 'rollback' },
+  }))
+
+  await waitFor(() => {
+    expect(card).toHaveClass('aq-card--highlight')
+    expect(scrollMock).toHaveBeenCalled()
+  })
 })

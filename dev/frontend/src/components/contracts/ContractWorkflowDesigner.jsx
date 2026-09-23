@@ -15,6 +15,7 @@ import {
   useUpdateNodeInternals,
 } from '@xyflow/react';
 import {
+  AlertCircle,
   AlignHorizontalSpaceAround,
   Ban,
   Banknote,
@@ -30,6 +31,7 @@ import {
   ExternalLink,
   FileCheck2,
   GitBranch,
+  Info,
   Landmark,
   ListChecks,
   LoaderCircle,
@@ -78,7 +80,19 @@ import {
   calculateWorkflowProgress,
   formatWorkflowDuration,
 } from './workflowProgress';
-import { neoTuyenVaoHandle, pathMidpoint } from './workflowEdgeRouting';
+import {
+  checkSequentialConnection,
+  hasCyclePath,
+  neoTuyenVaoHandle,
+  pathMidpoint,
+} from './workflowEdgeRouting';
+import {
+  GOV_SUBMIT_CAPABILITY,
+  GOV_TRACKING_CAPABILITY,
+  LEGACY_GOV_SUBMISSION_CAPABILITY,
+  isGovernmentCapability,
+  normalizeGovernmentCapability,
+} from './governmentCapability';
 
 function resolveWorkflowLabels(graph) {
   return {
@@ -100,7 +114,7 @@ const NODE_COLORS = {
   cancelled: '#64748b',
 };
 
-// ── 6 Năng Lực Chuẩn Bách Khoa ERP (Combo-First Architecture) ──
+// ── Các Năng Lực Chuẩn Bách Khoa ERP (Combo-First Architecture) ──
 export const CAPABILITIES = [
   {
     code: 'STANDARD',
@@ -135,9 +149,17 @@ export const CAPABILITIES = [
     suggestDept: 'LEGAL',
   },
   {
-    code: 'GOV_SUBMISSION',
-    label: 'Nộp & Theo dõi Một Cửa',
-    desc: 'Tự động tạo Sổ Một Cửa, theo dõi biên nhận',
+    code: GOV_SUBMIT_CAPABILITY,
+    label: 'Nộp hồ sơ & nhập biên nhận',
+    desc: 'Lưu số biên nhận và bằng chứng đã nộp, không theo dõi vòng đời',
+    icon: Landmark,
+    color: '#ea580c',
+    suggestDept: 'LEGAL',
+  },
+  {
+    code: GOV_TRACKING_CAPABILITY,
+    label: 'Theo dõi hồ sơ Một cửa',
+    desc: 'Theo dõi trạng thái hồ sơ đến khi hoàn thành',
     icon: Landmark,
     color: '#ea580c',
     suggestDept: 'LEGAL',
@@ -237,12 +259,23 @@ const formatShortDateTime = value => {
   const month = d.getMonth() + 1;
   return `${hours}:${minutes} · ${day}/${month}`;
 };
+const isInactiveAssignment = item => ['cancelled', 'replaced', 'declined'].includes(item?.assignment_status);
+
 const visibleNodeAssignments = (data = {}) => {
-  const runtimeAssignments = Array.isArray(data.runtimeAssignments) ? data.runtimeAssignments : [];
+  const runtimeAssignments = (Array.isArray(data.runtimeAssignments) ? data.runtimeAssignments : []).filter(item => !isInactiveAssignment(item));
   if (runtimeAssignments.length) return runtimeAssignments;
-  const visibleAssignments = Array.isArray(data.visibleAssignments) ? data.visibleAssignments : [];
+  const visibleAssignments = (Array.isArray(data.visibleAssignments) ? data.visibleAssignments : []).filter(item => !isInactiveAssignment(item));
   if (visibleAssignments.length) return visibleAssignments;
-  return Array.isArray(data.assignments) ? data.assignments : [];
+  return (Array.isArray(data.assignments) ? data.assignments : []).filter(item => !isInactiveAssignment(item));
+  const getActive = list => (Array.isArray(list) ? list : []).filter(item => !isInactiveAssignment(item));
+  let result = getActive(data.runtimeAssignments);
+  if (!result.length) result = getActive(data.visibleAssignments);
+  if (!result.length) result = getActive(data.assignments);
+  return [...result].sort((a, b) => {
+    const aMain = (a.role_code === 'MAIN' || a.is_primary) ? 1 : 0;
+    const bMain = (b.role_code === 'MAIN' || b.is_primary) ? 1 : 0;
+    return bMain - aMain;
+  });
 };
 
 function WorkflowElapsed({ startedAt, completedAt, actualDurationSeconds, status }) {
@@ -644,7 +677,7 @@ function graphToFlow(graph, catalog, executionNodes = [], options = {}) {
     const catalogItem = catalog.find(item => item.code === value.task_code);
     const execution = executionByKey.get(key);
     const definitionAssignments = Array.isArray(value.assignments) ? value.assignments : [];
-    const runtimeAssignments = Array.isArray(execution?.assignments) ? execution.assignments : [];
+    const runtimeAssignments = (Array.isArray(execution?.assignments) ? execution.assignments : []).filter(item => !isInactiveAssignment(item));
     const assignments = options.preferDefinitionAssignments
       ? definitionAssignments
       : (runtimeAssignments.length ? runtimeAssignments : definitionAssignments);
@@ -698,19 +731,21 @@ function graphToFlow(graph, catalog, executionNodes = [], options = {}) {
           ? value.claim_roles
           : poolDefaults(value.task_code).roles,
         taskNodeId: execution?.id || null,
-        capability: value.capability || value.capability_code || (
+        capability: normalizeGovernmentCapability(value.capability || value.capability_code || (
           value.creates_survey_record || value.task_code === 'K02' ? 'SURVEY_FIELD'
-          : value.requires_gov_submission || value.task_code === 'K05B' ? 'GOV_SUBMISSION'
+          : value.requires_gov_submission || value.task_code === 'K05B' ? GOV_TRACKING_CAPABILITY
           : value.is_handover || value.task_code === 'K06' ? 'HANDOVER'
           : value.task_code === 'K03' ? 'SURVEY_CAD'
           : value.task_code === 'K04' ? 'LEGAL_PREP'
           : 'STANDARD'
-        ),
-        capability_code: value.capability_code || value.capability || 'STANDARD',
+        )),
+        capability_code: normalizeGovernmentCapability(value.capability_code || value.capability || 'STANDARD'),
         requiresGovSubmission: Boolean(
           value.requires_gov_submission
-          || value.capability === 'GOV_SUBMISSION'
-          || value.capability_code === 'GOV_SUBMISSION'
+          || value.capability === GOV_TRACKING_CAPABILITY
+          || value.capability === LEGACY_GOV_SUBMISSION_CAPABILITY
+          || value.capability_code === GOV_TRACKING_CAPABILITY
+          || value.capability_code === LEGACY_GOV_SUBMISSION_CAPABILITY
           || value.task_code === 'K05B'
         ),
         createsSurveyRecord: Boolean(
@@ -780,7 +815,11 @@ function flowToGraph(nodes, edges, startNode, labels = DEFAULT_WORKFLOW_LABELS) 
       capability: node.data.capability || 'STANDARD',
       capability_code: node.data.capability || 'STANDARD',
       description: node.data.description || '',
-      requires_gov_submission: Boolean(node.data.requiresGovSubmission || node.data.capability === 'GOV_SUBMISSION'),
+      requires_gov_submission: Boolean(
+        node.data.requiresGovSubmission
+        || node.data.capability === GOV_TRACKING_CAPABILITY
+        || node.data.capability === LEGACY_GOV_SUBMISSION_CAPABILITY
+      ),
       creates_survey_record: Boolean(node.data.createsSurveyRecord || node.data.capability === 'SURVEY_FIELD'),
       is_handover: Boolean(node.data.isHandover || node.data.capability === 'HANDOVER'),
       duration_days: Number(node.data.durationDays) || 0,
@@ -913,8 +952,7 @@ export const isAgencyNode = (node) => {
   return AGENCY_PANEL_NODE_CODES.has(data.code)
     || Boolean(data.requiresGovSubmission)
     || Boolean(data.requires_gov_submission)
-    || data.capability === 'GOV_SUBMISSION'
-    || data.capability_code === 'GOV_SUBMISSION';
+    || isGovernmentCapability(data);
 };
 
 export const isSurveyFieldNode = (node) => {
@@ -941,6 +979,79 @@ export const isLegalPrepNode = (node) => {
   return data.code === 'K04'
     || data.capability === 'LEGAL_PREP'
     || data.capability_code === 'LEGAL_PREP';
+};
+
+export const getCapabilityBanner = (node) => {
+  if (!node) return null;
+  const data = node.data || node;
+  const normalizedCapability = normalizeGovernmentCapability(
+    data.capability || data.capability_code || (
+      data.code === 'K05a' ? GOV_SUBMIT_CAPABILITY
+        : data.code === 'K05b' ? GOV_TRACKING_CAPABILITY
+          : 'STANDARD'
+    )
+  );
+  if (isLegalPrepNode(node)) {
+    return {
+      type: 'legal_prep',
+      theme: 'legal',
+      icon: <Scale size={15} />,
+      title: 'Soạn thảo hồ sơ pháp lý & Rà quy hoạch',
+      description: 'Bước này tập trung rà soát quy hoạch, thẩm định điều kiện cấp đổi/chuyển nhượng và lập bộ tờ trình, đơn từ hoàn chỉnh.',
+    };
+  }
+  if (isSurveyCadNode(node)) {
+    return {
+      type: 'survey_cad',
+      theme: 'cad',
+      icon: <Monitor size={15} />,
+      title: 'Nội nghiệp biên tập bản vẽ CAD & GIS',
+      description: 'Bước này kế thừa dữ liệu tọa độ từ máy RTK GPS hoặc sổ đo hiện trường để hoàn thiện hồ sơ kỹ thuật thửa đất, bản vẽ trích lục.',
+    };
+  }
+  if (isSurveyFieldNode(node)) {
+    return {
+      type: 'survey_field',
+      theme: 'survey',
+      icon: <Compass size={15} />,
+      title: 'Nghiệp vụ đo đạc & Biên bản hiện trạng',
+      description: 'Bước này liên kết máy đo RTK GPS, tọa độ mốc ranh và xuất Biên bản đo đạc hiện trạng có chữ ký các bên.',
+    };
+  }
+  if (normalizedCapability === GOV_SUBMIT_CAPABILITY) {
+    return {
+      type: 'gov_submit',
+      theme: 'submit',
+      icon: <Landmark size={15} />,
+      title: 'Nộp hồ sơ & nhập biên nhận',
+      description: 'Ghi nhận việc đã nộp, nhập số biên nhận và lưu bằng chứng tại bước này.',
+    };
+  }
+  if (normalizedCapability === GOV_TRACKING_CAPABILITY || normalizedCapability === LEGACY_GOV_SUBMISSION_CAPABILITY) {
+    return {
+      type: 'gov_tracking',
+      theme: 'tracking',
+      icon: <Landmark size={15} />,
+      title: 'Theo dõi hồ sơ Một cửa',
+      description: 'Theo dõi trạng thái hồ sơ với cơ quan đến khi hồ sơ hoàn thành.',
+    };
+  }
+  if (isHandoverNode(node)) {
+    return {
+      type: 'handover',
+      theme: 'handover',
+      icon: <ShieldCheck size={15} />,
+      title: 'Cổng kiểm soát công nợ & Bàn giao',
+      description: 'Bước bàn giao nghiệm thu yêu cầu thu đủ 100% tiền hợp đồng hoặc có phiếu phê duyệt công nợ từ Ban Giám Đốc mới được mở cổng hoàn thành.',
+    };
+  }
+  return {
+    type: 'standard',
+    theme: 'standard',
+    icon: <CheckCircle2 size={15} />,
+    title: 'Tác nghiệp tiêu chuẩn',
+    description: 'Thực hiện checklist, bổ sung minh chứng và hoàn tất các yêu cầu của bước này.',
+  };
 };
 
 const hasRuntimeDocumentTypes = item => Object.hasOwn(item?.runtime || {}, 'document_types');
@@ -1358,6 +1469,36 @@ export default function ContractWorkflowDesigner({
 
   const getNodeReviewEligibility = useCallback((node) => {
     if (!node?.data) return { canApprove: false, reason: 'Không có dữ liệu Node' };
+
+    // Kiểm tra tất cả các bước tiền nhiệm (predecessors): nếu có bước nào chưa đạt thì không được duyệt bước này
+    const incomingSources = new Set();
+    const queue = [node.id];
+    const visited = new Set();
+    while (queue.length > 0) {
+      const curr = queue.shift();
+      if (!visited.has(curr)) {
+        visited.add(curr);
+        edges.forEach(edge => {
+          if (edge.target === curr && !visited.has(edge.source)) {
+            incomingSources.add(edge.source);
+            queue.push(edge.source);
+          }
+        });
+      }
+    }
+    for (const sourceId of incomingSources) {
+      const predNode = nodes.find(n => n.id === sourceId);
+      const st = predNode?.data?.executionStatus;
+      if (st && !['accepted', 'completed', 'skipped'].includes(st)) {
+        const predLabel = predNode?.data?.label || predNode?.data?.code || sourceId;
+        const statusLabel = predNode?.data?.executionStatusLabel || st;
+        return {
+          canApprove: false,
+          reason: `Bước trước [${predLabel}] chưa được nghiệm thu đạt (${statusLabel})`,
+        };
+      }
+    }
+
     const checklist = node.data.checklist || [];
 
     let pendingDocTypesCount = 0;
@@ -1403,9 +1544,17 @@ export default function ContractWorkflowDesigner({
     }
 
     return { canApprove: true, reason: '' };
-  }, []);
+  }, [edges, nodes]);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) || null;
+  const capabilityBanner = useMemo(() => getCapabilityBanner(selectedNode), [selectedNode]);
+  const [showCapabilityModal, setShowCapabilityModal] = useState(true);
+
+  useEffect(() => {
+    if (capabilityBanner) {
+      setShowCapabilityModal(true);
+    }
+  }, [selectedNode?.id, capabilityBanner?.type]);
   const selectedAssignmentsForDisplay = visibleNodeAssignments(selectedNode?.data);
   const selectedHasRuntimeOnlyAssignments = Boolean(
     selectedNode?.data?.runtimeAssignments?.length
@@ -1460,23 +1609,73 @@ export default function ContractWorkflowDesigner({
     onNodesChange(changes);
   }, [onNodesChange, setEdges]);
 
+  const isValidConnection = useCallback((connection) => {
+    if (!structureEditable) return false;
+    return checkSequentialConnection(connection, edges).ok;
+  }, [edges, structureEditable]);
+
+  const connectingNodeRef = useRef(null);
+
+  const onConnectStart = useCallback((event, { nodeId, handleType }) => {
+    connectingNodeRef.current = { nodeId, handleType };
+    if (!structureEditable) return;
+    if (handleType === 'source') {
+      const alreadyHasOutgoing = edges.some(e => e.source === nodeId);
+      if (alreadyHasOutgoing) {
+        addToast?.('Đầu ra của bước này đã có đường nối. Mỗi đầu chỉ được phép có 1 đường nối duy nhất!', 'warning');
+      }
+    } else if (handleType === 'target') {
+      const alreadyHasIncoming = edges.some(e => e.target === nodeId);
+      if (alreadyHasIncoming) {
+        addToast?.('Đầu vào của bước này đã có đường nối. Mỗi đầu chỉ được phép có 1 đường nối duy nhất!', 'warning');
+      }
+    }
+  }, [addToast, edges, structureEditable]);
+
+  const onConnectEnd = useCallback((event) => {
+    const startInfo = connectingNodeRef.current;
+    connectingNodeRef.current = null;
+    if (!startInfo || !structureEditable) return;
+    if (!event || typeof document === 'undefined') return;
+
+    const clientX = event.clientX ?? event.changedTouches?.[0]?.clientX;
+    const clientY = event.clientY ?? event.changedTouches?.[0]?.clientY;
+    if (clientX == null || clientY == null) return;
+
+    const targetEl = document.elementFromPoint(clientX, clientY);
+    const nodeEl = targetEl?.closest('.react-flow__node');
+    if (!nodeEl) return;
+
+    const targetNodeId = nodeEl.getAttribute('data-id');
+    if (!targetNodeId) return;
+
+    const check = startInfo.handleType === 'target'
+      ? checkSequentialConnection({ source: targetNodeId, target: startInfo.nodeId }, edges)
+      : checkSequentialConnection({ source: startInfo.nodeId, target: targetNodeId }, edges);
+
+    if (!check.ok) {
+      addToast?.(check.message, 'warning');
+    }
+  }, [addToast, edges, structureEditable]);
+
   const onConnect = useCallback((connection) => {
     if (!structureEditable) return;
+    const validation = checkSequentialConnection(connection, edges);
+    if (!validation.ok) {
+      addToast?.(validation.message, 'warning');
+      return;
+    }
     const connectionKey = `${connection.source}:${connection.target}:${Date.now()}`;
     const sourceHandle = `out:${connectionKey}`;
     const targetHandle = `in:${connectionKey}`;
-    const usedOutcomes = new Set(
-      edges.filter(edge => edge.source === connection.source).map(edge => edge.data?.outcomeCode)
-    );
-    const outcomeCode = Object.keys(workflowLabels.outcomes).find(code => !usedOutcomes.has(code))
-      || `COMPLETED_${usedOutcomes.size + 1}`;
+    const outcomeCode = 'COMPLETED';
     setNodes(current => current.map(node => {
       if (node.id === connection.source) {
         return {
           ...node,
           data: {
             ...node.data,
-            outgoingHandles: [...(node.data.outgoingHandles || []), { id: sourceHandle }],
+            outgoingHandles: [{ id: sourceHandle }],
           },
         };
       }
@@ -1485,7 +1684,7 @@ export default function ContractWorkflowDesigner({
           ...node,
           data: {
             ...node.data,
-            incomingHandles: [...(node.data.incomingHandles || []), { id: targetHandle }],
+            incomingHandles: [{ id: targetHandle }],
           },
         };
       }
@@ -1502,7 +1701,7 @@ export default function ContractWorkflowDesigner({
       markerEnd: { type: MarkerType.ArrowClosed },
       style: { strokeWidth: 2 },
     }, current));
-  }, [edges, setEdges, setNodes, structureEditable, workflowLabels.outcomes]);
+  }, [addToast, edges, setEdges, setNodes, structureEditable, workflowLabels.outcomes]);
 
   const updateTransitionOutcome = useCallback((edgeId, outcomeCode) => {
     const targetEdge = edges.find(edge => edge.id === edgeId);
@@ -1566,7 +1765,7 @@ export default function ContractWorkflowDesigner({
           item.code === 'K02' ? 'SURVEY_FIELD'
           : item.code === 'K03' ? 'SURVEY_CAD'
           : item.code === 'K04' ? 'LEGAL_PREP'
-          : item.code === 'K05B' ? 'GOV_SUBMISSION'
+          : item.code === 'K05B' ? GOV_TRACKING_CAPABILITY
           : item.code === 'K06' ? 'HANDOVER'
           : 'STANDARD'
         ),
@@ -1574,7 +1773,7 @@ export default function ContractWorkflowDesigner({
           item.code === 'K02' ? 'SURVEY_FIELD'
           : item.code === 'K03' ? 'SURVEY_CAD'
           : item.code === 'K04' ? 'LEGAL_PREP'
-          : item.code === 'K05B' ? 'GOV_SUBMISSION'
+          : item.code === 'K05B' ? GOV_TRACKING_CAPABILITY
           : item.code === 'K06' ? 'HANDOVER'
           : 'STANDARD'
         ),
@@ -2466,9 +2665,29 @@ export default function ContractWorkflowDesigner({
 
   const updateAssignment = (index, patch) => {
     if (!selectedNode) return;
+    const isBecomingMain = patch.role_code === 'MAIN' || patch.is_primary === true;
     const assignments = (selectedNode.data.assignments || []).map((item, itemIndex) => {
       if (itemIndex !== index) return patch.is_primary ? { ...item, is_primary: false } : item;
+      if (itemIndex !== index) {
+        if (isBecomingMain) {
+          return {
+            ...item,
+            is_primary: false,
+            role_code: item.role_code === 'MAIN' ? 'ASSISTANT' : (item.role_code || 'ASSISTANT'),
+          };
+        }
+        return item;
+      }
       const next = { ...item, ...patch };
+      if (patch.role_code === 'MAIN') {
+        next.is_primary = true;
+      } else if (patch.role_code && patch.role_code !== 'MAIN') {
+        next.is_primary = false;
+      } else if (patch.is_primary === true) {
+        next.role_code = 'MAIN';
+      } else if (patch.is_primary === false && next.role_code === 'MAIN') {
+        next.role_code = 'ASSISTANT';
+      }
       if (patch.employee_id) {
         const employee = employees.find(candidate => candidate.id === patch.employee_id);
         next.full_name = employee?.full_name || next.full_name;
@@ -3191,6 +3410,9 @@ title="Lưu quy trình hiện tại thành mẫu"
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            isValidConnection={isValidConnection}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
             onInit={setFlowInstance}
             onNodeClick={(_, node) => {
               setSelectedNodeId(node.id);
@@ -3272,24 +3494,52 @@ title="Lưu quy trình hiện tại thành mẫu"
             </div>
           ) : (
           <>
-          <div className="workflow-inspector__tabs">
-            {/* Ba tab đúng bản vẽ. Checklist KHÔNG còn tab riêng — nó là phần
-                của cấu hình Node, tách ra thì Giám đốc phải nhảy qua nhảy lại
-                giữa hai tab để khai xong một bước. */}
-            {[
-              ['node', 'Node'],
-              ['assignment', 'Phân công'],
-              ['capability', 'Năng lực'],
-            ].map(([key, label]) => (
-              <button
-                type="button"
-                key={key}
-                className={(inspectorTab === key || (key === 'capability' && inspectorTab === 'transition')) ? 'active' : ''}
-                onClick={() => setInspectorTab(key)}
+          <div className="workflow-inspector__header-tabs-wrapper">
+            <div className="workflow-inspector__tabs">
+              {/* Ba tab đúng bản vẽ. Checklist KHÔNG còn tab riêng — nó là phần
+                  của cấu hình Node, tách ra thì Giám đốc phải nhảy qua nhảy lại
+                  giữa hai tab để khai xong một bước. */}
+              {[
+                ['node', 'Node'],
+                ['assignment', 'Phân công'],
+                ['capability', 'Năng lực'],
+              ].map(([key, label]) => (
+                <button
+                  type="button"
+                  key={key}
+                  className={(inspectorTab === key || (key === 'capability' && inspectorTab === 'transition')) ? 'active' : ''}
+                  onClick={() => setInspectorTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Modal thòng xuống dính với header 3 tab */}
+            {selectedNode && inspectorTab === 'node' && capabilityBanner && showCapabilityModal && (
+              <div
+                className={`wf-agency wf-capability-dropdown wf-capability-dropdown--${capabilityBanner.theme}`}
+                role="region"
+                aria-label={capabilityBanner.title}
               >
-                {label}
-              </button>
-            ))}
+                <div className={`wf-agency__preview wf-agency__preview--${capabilityBanner.theme}`}>
+                  {capabilityBanner.icon}
+                  <div className="wf-capability-dropdown__content">
+                    <strong>{capabilityBanner.title}</strong>
+                    <span>{capabilityBanner.description}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="wf-capability-dropdown__close"
+                    onClick={() => setShowCapabilityModal(false)}
+                    aria-label="Đóng hướng dẫn"
+                    title="Đóng (tắt khung hướng dẫn)"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {!selectedNode ? (
@@ -3331,20 +3581,6 @@ title="Lưu quy trình hiện tại thành mẫu"
                 />
               )}
 
-              {isHandoverNode(selectedNode) && (
-                <section className="wf-agency" aria-label="Cổng công nợ & Bàn giao">
-                  <div className="wf-agency__preview wf-agency__preview--handover">
-                    <ShieldCheck size={14} />
-                    <div>
-                      <strong>Cổng kiểm soát công nợ & Bàn giao</strong>
-                      <span>
-                        Bước bàn giao nghiệm thu yêu cầu thu đủ 100% tiền hợp đồng hoặc có phiếu phê duyệt công nợ từ Ban Giám Đốc mới được mở cổng hoàn thành.
-                      </span>
-                    </div>
-                  </div>
-                </section>
-              )}
-
               {/* Nộp cơ quan & theo dõi một cửa — Cho Node có năng lực GOV_SUBMISSION hoặc K05a/K05b */}
               {isAgencyNode(selectedNode) && (
                 <NodeAgencyPanel
@@ -3355,51 +3591,6 @@ title="Lưu quy trình hiện tại thành mẫu"
                   onChanged={onPersisted}
                   readOnly
                 />
-              )}
-
-              {/* Đo đạc hiện trạng — Cho Node có năng lực SURVEY_FIELD hoặc K02 */}
-              {isSurveyFieldNode(selectedNode) && (
-                <section className="wf-agency" aria-label="Đo đạc hiện trạng">
-                  <div className="wf-agency__preview wf-agency__preview--survey">
-                    <Compass size={14} />
-                    <div>
-                      <strong>Nghiệp vụ đo đạc & Biên bản hiện trạng</strong>
-                      <span>
-                        Bước này liên kết máy đo RTK GPS, tọa độ mốc ranh và xuất Biên bản đo đạc hiện trạng có chữ ký các bên.
-                      </span>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Biên tập bản vẽ CAD — Cho Node có năng lực SURVEY_CAD hoặc K03 */}
-              {isSurveyCadNode(selectedNode) && (
-                <section className="wf-agency" aria-label="Biên tập bản vẽ CAD">
-                  <div className="wf-agency__preview wf-agency__preview--cad">
-                    <Monitor size={14} />
-                    <div>
-                      <strong>Nội nghiệp biên tập bản vẽ CAD & GIS</strong>
-                      <span>
-                        Bước này kế thừa dữ liệu tọa độ từ máy RTK GPS hoặc sổ đo hiện trường để hoàn thiện hồ sơ kỹ thuật thửa đất, bản vẽ trích lục.
-                      </span>
-                    </div>
-                  </div>
-                </section>
-              )}
-
-              {/* Soạn thảo pháp lý — Cho Node có năng lực LEGAL_PREP hoặc K04 */}
-              {isLegalPrepNode(selectedNode) && (
-                <section className="wf-agency" aria-label="Soạn thảo pháp lý">
-                  <div className="wf-agency__preview wf-agency__preview--legal">
-                    <Scale size={14} />
-                    <div>
-                      <strong>Soạn thảo hồ sơ pháp lý & Rà quy hoạch</strong>
-                      <span>
-                        Bước này tập trung rà soát quy hoạch, thẩm định điều kiện cấp đổi/chuyển nhượng và lập bộ tờ trình, đơn từ hoàn chỉnh.
-                      </span>
-                    </div>
-                  </div>
-                </section>
               )}
 
               {/* Người nhận việc + lối tắt sang chi tiết phân công. Avatar chồng
@@ -3431,6 +3622,17 @@ title="Lưu quy trình hiện tại thành mẫu"
                     <span className={`workflow-node__cap-tag workflow-node__cap-tag--${(selectedNode.data.capability || 'standard').toLowerCase().replace(/_/g, '-')}`}>
                       {capabilityMeta(selectedNode.data.capability).label}
                     </span>
+                    {capabilityBanner && (
+                      <button
+                        type="button"
+                        className={`wf-capability-toggle-btn${showCapabilityModal ? ' is-active' : ''}`}
+                        onClick={() => setShowCapabilityModal(prev => !prev)}
+                        title={showCapabilityModal ? "Ẩn gợi ý nghiệp vụ" : "Xem gợi ý nghiệp vụ"}
+                        aria-label="Gợi ý nghiệp vụ"
+                      >
+                        <AlertCircle size={15} />
+                      </button>
+                    )}
                     {structureEditable && (
                       <button
                         type="button"
@@ -3458,15 +3660,28 @@ title="Lưu quy trình hiện tại thành mẫu"
                       {(selectedAssignmentsForDisplay.length
                         ? selectedAssignmentsForDisplay
                         : [null, null]
-                      ).slice(0, 3).map((assignment, index) => (
-                        <span
-                          key={assignment?.id || `trong-${index}`}
-                          className={`wf-node-people__avatar${assignment ? '' : ' is-empty'}`}
-                          title={assignment?.employee_name || 'Chưa phân công'}
-                        >
-                          {(assignment?.employee_name || '').trim().charAt(0).toUpperCase()}
-                        </span>
-                      ))}
+                      ).slice(0, 3).map((assignment, index) => {
+                        if (!assignment) {
+                          return (
+                            <span
+                              key={`trong-${index}`}
+                              className="wf-node-people__avatar is-empty"
+                              title="Chưa phân công"
+                            />
+                          );
+                        }
+                        const emp = employees.find(e => e.id === assignment.employee_id);
+                        return (
+                          <AvatarImage
+                            key={assignment.id || `a-${index}`}
+                            className="wf-node-people__avatar wf-node-people__avatar--img"
+                            fallbackClassName="wf-node-people__avatar"
+                            src={assignment.avatar_url || emp?.avatar_url}
+                            name={assignment.employee_name || 'Chưa phân công'}
+                            title={assignment.employee_name || 'Chưa phân công'}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -3514,10 +3729,23 @@ title="Lưu quy trình hiện tại thành mẫu"
                     value={selectedNode.data.poolDepartmentCode || ''}
                     options={POOL_DEPARTMENTS}
                     placeholder="— Chọn phòng ban —"
-                    onChange={val => updateSelectedNode({
-                      poolDepartmentCode: val,
-                      poolDepartmentLabel: poolDepartmentLabel(val),
-                    })}
+                    onChange={val => {
+                      const currentAssignments = selectedNode.data.assignments || []
+                      const targetLabel = poolDepartmentLabel(val)
+                      const filteredAssignments = val
+                        ? currentAssignments.filter(a => {
+                            const emp = employees.find(e => e.id === a.employee_id)
+                            const deptName = a.department_name || emp?.department_name || ''
+                            const deptCode = emp?.department_code || emp?.department || ''
+                            return deptCode === val || (targetLabel && deptName === targetLabel)
+                          })
+                        : currentAssignments
+                      updateSelectedNode({
+                        poolDepartmentCode: val,
+                        poolDepartmentLabel: poolDepartmentLabel(val),
+                        assignments: filteredAssignments,
+                      })
+                    }}
                   />
                 </div>
               </section>
@@ -4083,7 +4311,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                 const emp = employees.find(item => item.id === assignment.employee_id);
                 const name = assignment.full_name || emp?.full_name || 'Chưa chọn nhân viên';
                 const dept = emp?.department_name || emp?.job_title || '';
-                const laChinh = Boolean(assignment.is_primary);
+                const laChinh = assignment.role_code === 'MAIN' || Boolean(assignment.is_primary);
                 return (
                 <article className={`workflow-assignment-card${laChinh ? ' is-primary' : ''}`} key={`${assignment.employee_id}-${assignment.role_code}-${index}`}>
                   <header className="wa-head">
@@ -4193,12 +4421,11 @@ title="Lưu quy trình hiện tại thành mẫu"
                           const updates = {
                             capability: cap.code,
                             capability_code: cap.code,
-                            requiresGovSubmission: cap.code === 'GOV_SUBMISSION',
+                            requiresGovSubmission: cap.code === GOV_TRACKING_CAPABILITY,
                             createsSurveyRecord: cap.code === 'SURVEY_FIELD',
                             isHandover: cap.code === 'HANDOVER',
                           };
-                          const currentDept = selectedNode.data.poolDepartmentCode;
-                          if (cap.suggestDept && (!currentDept || currentDept === 'SALES')) {
+                          if (cap.suggestDept) {
                             updates.poolDepartmentCode = cap.suggestDept;
                             updates.poolDepartmentLabel = poolDepartmentLabel(cap.suggestDept);
                           }

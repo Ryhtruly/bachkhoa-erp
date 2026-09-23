@@ -738,15 +738,19 @@ def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]
             })
         return runtime_report
 
+    output_rows = db.execute(
+        _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
+    ).mappings().all()
+    if not output_rows:
+        return []
+
     template_names = dict(
         db.execute(
             text("select id, name from public.document_checklist_templates")
         ).all()
     )
     report: list[dict[str, Any]] = []
-    for row in db.execute(
-        _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
-    ).mappings().all():
+    for row in output_rows:
         existing_counts = dict(row.get("existing_counts") or row.get("dang_co") or {})
         missing_items = []
         for config in list(row["output_documents"] or []):

@@ -44,7 +44,7 @@ const dmy = (iso) => {
   return d && m && y ? `${d}/${m}/${y}` : s
 }
 
-export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged, readOnly = false }) {
+export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged, readOnly = false, tracking = true }) {
   const [submission, setSubmission] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -66,8 +66,8 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
         received_date: (data?.received_date || '').slice(0, 10),
         submitted_agency: data?.submitted_agency || '',
       })
-      // Chưa có biên nhận và hồ sơ chưa khoá → mở sẵn ô nhập cho đỡ phải bấm.
-      setEditing(Boolean(data) && !data.receipt_code && !data.is_locked)
+      // Chưa có biên nhận và hồ sơ chưa khoá: bước nộp mở sẵn ô nhập; bước theo dõi chờ bước nộp điền mã trước.
+      setEditing(Boolean(data) && !data.receipt_code && !data.is_locked && !tracking)
     } catch {
       setSubmission(null)
     } finally {
@@ -81,16 +81,19 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
     if (!submission) return
     setSaving(true)
     try {
+      const payload = {
+        receipt_code: form.receipt_code.trim() || null,
+        received_date: form.received_date || null,
+        submitted_agency: form.submitted_agency.trim() || null,
+      }
+      if (tracking) {
+        payload.gov_status = form.gov_status
+        payload.expected_return_date = form.expected_return_date || null
+      }
       await apiFetch(`/api/legal-submissions/${submission.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          receipt_code: form.receipt_code.trim() || null,
-          gov_status: form.gov_status,
-          expected_return_date: form.expected_return_date || null,
-          received_date: form.received_date || null,
-          submitted_agency: form.submitted_agency.trim() || null,
-        }),
+        body: JSON.stringify(payload),
       })
       addToast?.('Đã lưu & đồng bộ sang tab Pháp Lý', 'success')
       await load()
@@ -100,7 +103,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
     } finally {
       setSaving(false)
     }
-  }, [submission, form, addToast, load, onChanged])
+  }, [submission, form, tracking, addToast, load, onChanged])
 
   const traCuu = useCallback(() => {
     const code = (submission?.receipt_code || '').trim()
@@ -114,9 +117,9 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
 
   const overdue = useMemo(() => {
     const due = (submission?.expected_return_date || '').slice(0, 10)
-    if (!due || submission?.gov_status === 'Hoàn thành') return false
+    if (!tracking || !due || submission?.gov_status === 'Hoàn thành') return false
     return due < new Date().toISOString().slice(0, 10)
-  }, [submission])
+  }, [submission, tracking])
 
   if (loading || !submission) return null
 
@@ -126,7 +129,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
   return (
     <div className="legal-receipt-panel">
       <span className="legal-receipt-panel__title">
-        <Receipt size={15} /> Biên nhận &amp; theo dõi cơ quan
+        <Receipt size={15} /> {tracking ? 'Biên nhận & theo dõi cơ quan' : 'Biên nhận đã nộp'}
       </span>
 
       {editing && canEdit ? (
@@ -156,6 +159,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
             </datalist>
           </label>
           <div className="legal-receipt-panel__row">
+            {tracking && (
             <label className="legal-receipt-panel__field">
               Tình trạng tại cơ quan
               <select
@@ -167,6 +171,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
                 {GOV_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </label>
+            )}
             <label className="legal-receipt-panel__field">
               Ngày nhận biên nhận
               <input
@@ -177,7 +182,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
                 onChange={(e) => setForm((f) => ({ ...f, received_date: e.target.value }))}
               />
             </label>
-            <label className="legal-receipt-panel__field">
+            {tracking && <label className="legal-receipt-panel__field">
               Ngày hẹn trả kết quả
               <input
                 type="date"
@@ -186,7 +191,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
                 disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, expected_return_date: e.target.value }))}
               />
-            </label>
+            </label>}
           </div>
           <div className="legal-receipt-panel__actions">
             <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={traCuu}>
@@ -200,7 +205,7 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
               </button>
             )}
             <button type="button" className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-              <Check size={14} /> {saving ? 'Đang lưu…' : 'Lưu theo dõi'}
+              <Check size={14} /> {saving ? 'Đang lưu…' : (tracking ? 'Lưu theo dõi' : 'Lưu biên nhận')}
             </button>
           </div>
         </div>
@@ -210,9 +215,14 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
             <span className="legal-receipt-panel__code">
               {submission.receipt_code || 'Chưa có số biên nhận'}
             </span>
-            <span className={`legal-receipt-panel__badge is-${STATUS_TONE[submission.gov_status] || 'neutral'}`}>
-              {submission.gov_status || 'Đang chi nhánh'}
-            </span>
+            {tracking && submission.receipt_code && (
+              <span className="legal-receipt-panel__inherited" style={{ fontSize: '11px', color: 'var(--text-muted, #888)', fontStyle: 'italic', marginLeft: '6px' }}>
+                (kế thừa từ bước nộp)
+              </span>
+            )}
+            {tracking && <span className={`legal-receipt-panel__badge is-${STATUS_TONE[submission.gov_status] || 'neutral'}`}>
+                {submission.gov_status || 'Đang chi nhánh'}
+              </span>}
           </div>
           <div className="legal-receipt-panel__view-meta">
             {submission.submitted_agency && (
@@ -221,14 +231,14 @@ export default function SubmissionReceiptPanel({ taskNodeId, addToast, onChanged
             {submission.received_date && (
               <span>Nhận biên nhận: {dmy(submission.received_date)}</span>
             )}
-            {submission.expected_return_date ? (
+            {tracking && (submission.expected_return_date ? (
               <span className={overdue ? 'is-overdue' : ''}>
                 {overdue && <AlertTriangle size={13} />} Hẹn trả kết quả {dmy(submission.expected_return_date)}
                 {overdue && ' · Quá hạn'}
               </span>
             ) : (
               <span className="legal-receipt-panel__muted">Chưa đặt ngày hẹn trả</span>
-            )}
+            ))}
           </div>
           <div className="legal-receipt-panel__actions">
             <button type="button" className="btn btn-ghost btn-sm" onClick={traCuu}>

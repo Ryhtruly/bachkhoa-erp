@@ -37,9 +37,18 @@ _RUNTIME_SCHEMA_READY_QUERY = text("""
 """)
 
 
+_RUNTIME_SCHEMA_READY_CACHE: bool | None = None
+
+
 def runtime_schema_ready(db: Session) -> bool:
     """Whether the additive runtime-type migration is available on this DB."""
-    return bool(db.execute(_RUNTIME_SCHEMA_READY_QUERY).scalar())
+    global _RUNTIME_SCHEMA_READY_CACHE
+    if _RUNTIME_SCHEMA_READY_CACHE is not None:
+        return _RUNTIME_SCHEMA_READY_CACHE
+    res = bool(db.execute(_RUNTIME_SCHEMA_READY_QUERY).scalar())
+    if res:
+        _RUNTIME_SCHEMA_READY_CACHE = True
+    return res
 
 
 _MATERIALIZE_CONFIGURED_TYPES_QUERY = text("""

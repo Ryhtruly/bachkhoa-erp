@@ -525,7 +525,7 @@ def list_workflow_nodes(
         text("""
             select code, name, description from public.workflow_nodes
             where coalesce(is_active, true)
-              and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMISSION', 'HANDOVER')
+              and code not in ('STANDARD', 'SURVEY_FIELD', 'SURVEY_CAD', 'LEGAL_PREP', 'GOV_SUBMIT', 'GOV_TRACKING', 'GOV_SUBMISSION', 'HANDOVER')
             order by code
         """)
     ).mappings().all()

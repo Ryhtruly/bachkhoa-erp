@@ -251,6 +251,41 @@ class ClaimClusterTests(unittest.TestCase):
             self._claim(employee_id)
         self.assertIn("phòng khác", str(caught.exception))
 
+    def test_old_assignment_cannot_start_after_node_department_changes(self):
+        node_id = self._node("K02", status="ready")
+        survey_employee_id = self._employee("SURVEY")
+        self.db.execute(
+            text("""
+                insert into public.task_node_assignments
+                    (task_node_id, employee_id, role_code, assignment_status)
+                values (:node_id, :employee_id, 'MAIN', 'assigned')
+            """),
+            {"node_id": node_id, "employee_id": survey_employee_id},
+        )
+        self.db.execute(
+            text("""
+                update public.workflow_instance_revisions
+                set graph = cast(:graph as jsonb)
+                where id = :revision_id
+            """),
+            {
+                "revision_id": self.revision_id,
+                "graph": '{"nodes":{"k02":{"task_code":"K02",'
+                         '"pool_department_code":"LEGAL",'
+                         '"claim_roles":["MAIN"]}}}',
+            },
+        )
+
+        with self.assertRaises(Exception) as caught:
+            self.wr.start_task_node(
+                self.db,
+                task_node_id=node_id,
+                employee_id=survey_employee_id,
+                actor_id=self.user_id,
+            )
+
+        self.assertIn("phòng ban phụ trách", str(caught.exception))
+
     def test_claiming_the_same_cluster_twice_does_not_duplicate_assignments(self):
         nodes = self._survey_cluster()
         employee_id = self._employee("SURVEY")

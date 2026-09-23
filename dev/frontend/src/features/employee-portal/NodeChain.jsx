@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Check, ChevronRight } from 'lucide-react'
+import { Ban, Check, ChevronRight } from 'lucide-react'
 
 /**
  * Dải bước K01 → K07, nối bằng mũi tên, đọc từ trái sang phải.
@@ -8,14 +8,24 @@ import { Check, ChevronRight } from 'lucide-react'
  * dùng phải tự ghép thứ tự trong đầu — mà thứ tự chính là thông tin quan trọng
  * nhất của dải này.
  *
- * Bước của người khác vẫn hiện đầy đủ để nắm bối cảnh chuỗi, nhưng không bấm
- * vào được.
+ * Bước của người khác hoặc phòng ban khác vẫn hiện đầy đủ để nắm bối cảnh chuỗi,
+ * nhưng không bấm vào được (hiển thị phòng phụ trách, icon cấm khi rê chuột).
  */
 
 const DONE = new Set(['accepted', 'completed'])
 const RUNNING = new Set(['in_progress', 'ready', 'rework_required', 'submitted'])
 
-export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSelect }) {
+export default function NodeChain({
+  nodes = [],
+  activeNodeId,
+  openableIds,
+  onSelect,
+  employeeDepartmentCode,
+  isDirector = false,
+}) {
+  const isDirectorRole = Boolean(
+    isDirector || ['DIRECTOR', 'BOD', 'BAN_GIAM_DOC', 'GIAM_DOC'].includes(String(employeeDepartmentCode || '').toUpperCase())
+  )
   const openable = openableIds instanceof Set ? openableIds : new Set(openableIds || [])
   const activeRef = useRef(null)
 
@@ -28,15 +38,36 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
   return (
     <div className="eiw-chain" role="list" aria-label="Các bước của hạng mục">
       {nodes.map((node, index) => {
+        const isOtherDept = !isDirectorRole && (
+          node.is_my_department === false || (
+            Boolean(employeeDepartmentCode && node.pool_department_code && node.pool_department_code !== employeeDepartmentCode)
+          )
+        )
         const done = DONE.has(node.status)
         const current = node.id === activeNodeId
-        const tone = done ? 'done' : current ? 'current' : RUNNING.has(node.status) ? 'open' : 'idle'
-        const canOpen = openable.has(node.id)
+        const tone = isOtherDept ? 'prohibited' : done ? 'done' : current ? 'current' : RUNNING.has(node.status) ? 'open' : 'idle'
+        const canOpen = !isOtherDept && openable.has(node.id)
 
         let statusLabel = 'CHƯA TỚI'
-        if (done) statusLabel = 'ĐÃ HOÀN THÀNH'
-        else if (current) statusLabel = 'ĐANG XỬ LÝ'
-        else if (RUNNING.has(node.status)) statusLabel = 'ĐANG MỞ'
+        if (isOtherDept) {
+          const dept = node.department_name
+            ? node.department_name.replace(/^Phòng\s+/i, '')
+            : (node.pool_department_code || 'Khác')
+          statusLabel = `THUỘC ${dept.toUpperCase()}`
+        } else if (done) {
+          statusLabel = 'ĐÃ HOÀN THÀNH'
+        } else if (current) {
+          statusLabel = 'ĐANG XỬ LÝ'
+        } else if (RUNNING.has(node.status)) {
+          statusLabel = 'ĐANG MỞ'
+        }
+
+        const deptDesc = node.department_name || (node.pool_department_code ? `Phòng ${node.pool_department_code}` : 'phòng khác')
+        const tooltip = isOtherDept
+          ? `${node.node_code} · ${node.name} — Thuộc ${deptDesc} (Bạn không có quyền thao tác)`
+          : canOpen
+            ? node.name
+            : `${node.name} — bước của người khác`
 
         return (
           <div
@@ -47,14 +78,23 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
           >
             <button
               type="button"
-              className={`eiw-step is-${tone}`}
+              className={`eiw-step is-${tone}${isOtherDept ? ' is-prohibited' : ''}`}
               disabled={!canOpen}
               aria-current={current ? 'step' : undefined}
               onClick={() => canOpen && onSelect?.(node.id)}
-              title={canOpen ? node.name : `${node.name} — bước của người khác`}
+              title={tooltip}
             >
               <div className="eiw-step__circle">
-                {done ? <Check size={14} className="eiw-step__tick" aria-hidden="true" /> : (index + 1)}
+                {isOtherDept ? (
+                  <>
+                    <span className="eiw-step__circle-index">{index + 1}</span>
+                    <Ban size={13} className="eiw-step__prohibit-icon" aria-hidden="true" />
+                  </>
+                ) : done ? (
+                  <Check size={14} className="eiw-step__tick" aria-hidden="true" />
+                ) : (
+                  index + 1
+                )}
               </div>
               <div className="eiw-step__info">
                 <span className="eiw-step__state">{statusLabel}</span>
@@ -76,3 +116,4 @@ export default function NodeChain({ nodes = [], activeNodeId, openableIds, onSel
     </div>
   )
 }
+

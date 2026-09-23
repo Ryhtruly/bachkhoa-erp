@@ -206,7 +206,7 @@ def get_dossier_detail(
         dict(r) for r in db.execute(
             text("""
                 select id, submit_seq, receipt_code, receipt_photo_url, received_date,
-                       expected_return_date, submit_reason, note, created_at
+                       expected_return_date, submitted_agency, submit_reason, note, created_at
                 from public.legal_submissions
                 where dossier_id = :i
                 order by submit_seq asc

@@ -103,6 +103,9 @@ function App() {
 
   const canAccessNavigationTarget = useCallback((targetTab) => {
     if (!profile) return false;
+    if (targetTab === 'approvals') {
+      return Boolean(profile.is_director || profile.username === 'admin' || profile.role_name === 'admin');
+    }
     if (workspace === 'employee') return targetTab === 'employee-dashboard';
 
     const requiredPermission = NAVIGATION_TARGET_PERMISSIONS[targetTab];
@@ -449,10 +452,24 @@ function App() {
   const handleNotificationNavigate = async (item) => {
     if (!(await requestNavigationPermission())) return;
     if (item.type === 'cashflow_approval') {
+      if (workspace === 'employee') {
+        setWorkspace('management');
+      }
       queueTabNavigation('cashflow', 'bachkhoa:open-cashflow-voucher', {
         voucherId: item.voucher_id,
         voucher_id: item.voucher_id,
         id: item.voucher_id,
+        nonce: Date.now(),
+      });
+      return;
+    }
+    if (item.type === 'rollback_review') {
+      if (workspace === 'employee') {
+        setWorkspace('management');
+      }
+      queueTabNavigation('approvals', 'bachkhoa:open-approval-item', {
+        requestId: item.target_id || item.request_id,
+        type: 'rollback',
         nonce: Date.now(),
       });
       return;

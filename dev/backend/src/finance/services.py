@@ -919,6 +919,22 @@ class FinanceService:
             gender=payload.gender,
             date_of_birth=payload.date_of_birth,
             place_of_birth=payload.place_of_birth,
+            citizen_id=payload.citizen_id,
+            citizen_id_date=payload.citizen_id_date,
+            citizen_id_place=payload.citizen_id_place,
+            hometown=payload.hometown,
+            ethnicity=payload.ethnicity,
+            marital_status=payload.marital_status,
+            personal_email=payload.personal_email,
+            permanent_address=payload.permanent_address,
+            current_address=payload.current_address,
+            emergency_contact_name=payload.emergency_contact_name,
+            emergency_contact_phone=payload.emergency_contact_phone,
+            bank_account_no=payload.bank_account_no,
+            bank_name=payload.bank_name,
+            bank_branch=payload.bank_branch,
+            tax_code=payload.tax_code,
+            social_insurance_no=payload.social_insurance_no,
         )
         try:
             db.add(employee)
@@ -942,6 +958,11 @@ class FinanceService:
             "full_name", "department_id", "job_title", "contract_status",
             "join_date", "probation_end_date", "base_salary", "is_active",
             "email", "phone", "gender", "date_of_birth", "place_of_birth",
+            "citizen_id", "citizen_id_date", "citizen_id_place", "hometown",
+            "ethnicity", "marital_status", "personal_email", "permanent_address",
+            "current_address", "emergency_contact_name", "emergency_contact_phone",
+            "bank_account_no", "bank_name", "bank_branch", "tax_code",
+            "social_insurance_no",
         }
         updates = {
             field: value
@@ -968,6 +989,47 @@ class FinanceService:
         if "department_id" in updates:
             employee.department = department.name if department else None
         employee.updated_at = datetime.now(timezone.utc)
+
+        if "department_id" in updates and employee.user_id:
+            target_role_name = None
+            if department and getattr(department, "code", None):
+                code_upper = str(department.code).strip().upper()
+                role_by_code = {
+                    "SURVEY": "survey_staff",
+                    "LEGAL": "legal_staff",
+                    "SALES": "sales",
+                    "ACCOUNTING": "accountant",
+                    "ADMIN": "admin",
+                }
+                target_role_name = role_by_code.get(code_upper)
+            if not target_role_name:
+                role_by_id = {
+                    "dept_dove": "survey_staff",
+                    "dept_phaply": "legal_staff",
+                    "dept_sales": "sales",
+                    "dept_ketoan": "accountant",
+                    "dept_admin": "admin",
+                }
+                target_role_name = role_by_id.get(updates.get("department_id"))
+            if target_role_name:
+                target_role = db.query(Role).filter(Role.role_name == target_role_name, Role.is_active.is_(True)).first()
+                if target_role:
+                    current_user_role = db.query(UserRole).filter(UserRole.user_id == employee.user_id).first()
+                    is_admin = False
+                    if current_user_role:
+                        curr_role = db.query(Role).filter(Role.id == current_user_role.role_id).first()
+                        if curr_role and curr_role.role_name.lower() == "admin":
+                            is_admin = True
+                    if not is_admin:
+                        if current_user_role:
+                            current_user_role.role_id = target_role.id
+                        else:
+                            db.add(UserRole(user_id=employee.user_id, role_id=target_role.id))
+                        try:
+                            invalidate_cache(f"bachkhoa:auth:me:{employee.user_id}")
+                            invalidate_cache(f"bachkhoa:user_profile:{employee.user_id}")
+                        except Exception:
+                            pass
 
         synced_user = None
         should_revoke_user = False

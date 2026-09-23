@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, date
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, cast
 from decimal import Decimal
 
 from src.db.database import get_db
@@ -32,46 +32,56 @@ def get_payroll_options(
         return cached
 
     departments = db.query(Department).all()
-    dept_map = {d.id: d for d in departments}
+    dept_map = {cast(str, d.id): d for d in departments}
     employees = db.query(Employee).filter(Employee.is_active == True).order_by(Employee.full_name.asc()).all()
     
     dept_employees: Dict[str, List[Dict[str, Any]]] = {}
     for d in departments:
-        dept_employees[d.id] = []
+        dept_id = cast(str, d.id)
+        dept_employees[dept_id] = []
     
     dept_employees["dept_general"] = []
     
     for emp in employees:
-        d_id = emp.department_id
+        d_id = cast(Optional[str], emp.department_id)
+        emp_department = cast(Optional[str], emp.department)
         if not d_id or d_id not in dept_map:
-            dept_text = (emp.department or "").lower()
+            dept_text = (emp_department or "").lower()
             matched_id = "dept_general"
             for did, d in dept_map.items():
-                if d.name.lower() in dept_text or (d.code and d.code.lower() in dept_text):
+                dept_name = cast(Optional[str], d.name)
+                dept_code = cast(Optional[str], d.code)
+                if (dept_name and dept_name.lower() in dept_text) or (
+                    dept_code and dept_code.lower() in dept_text
+                ):
                     matched_id = did
                     break
             dept_employees.setdefault(matched_id, []).append({
-                "id": emp.id,
-                "full_name": emp.full_name,
-                "job_title": emp.job_title or "Nhân viên",
-                "department": emp.department or (dept_map[matched_id].name if matched_id in dept_map else "Công ty")
+                "id": cast(str, emp.id),
+                "full_name": cast(Optional[str], emp.full_name),
+                "job_title": cast(Optional[str], emp.job_title) or "Nhân viên",
+                "department": emp_department or (
+                    cast(Optional[str], dept_map[matched_id].name)
+                    if matched_id in dept_map else "Công ty"
+                )
             })
         else:
             dept_employees[d_id].append({
-                "id": emp.id,
-                "full_name": emp.full_name,
-                "job_title": emp.job_title or "Nhân viên",
-                "department": emp.department or dept_map[d_id].name
+                "id": cast(str, emp.id),
+                "full_name": cast(Optional[str], emp.full_name),
+                "job_title": cast(Optional[str], emp.job_title) or "Nhân viên",
+                "department": emp_department or cast(Optional[str], dept_map[d_id].name)
             })
             
     dept_list = []
     for d in departments:
-        emps = dept_employees.get(d.id, [])
+        dept_id = cast(str, d.id)
+        emps = dept_employees.get(dept_id, [])
         if emps:
             dept_list.append({
-                "id": d.id,
-                "name": d.name,
-                "code": d.code or d.name,
+                "id": dept_id,
+                "name": cast(Optional[str], d.name),
+                "code": cast(Optional[str], d.code) or cast(Optional[str], d.name),
                 "employees": emps
             })
             
@@ -120,9 +130,10 @@ def get_employee_ledger(
     if not is_payroll_all_user(db, user):
         if not actor_employee:
             raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ nhân sự.")
-        if emp_id_val and emp_id_val != actor_employee.id:
+        actor_employee_id = cast(str, actor_employee.id)
+        if emp_id_val and emp_id_val != actor_employee_id:
             raise HTTPException(status_code=403, detail="Bạn chỉ được xem bảng lương của chính mình.")
-        emp_id_val = actor_employee.id
+        emp_id_val = actor_employee_id
 
     if emp_id_val:
         assert_payroll_employee_access(db, user, emp_id_val)
@@ -141,7 +152,7 @@ def get_employee_ledger(
         """)).scalar()
         if not first_emp:
             first_emp_row = db.query(Employee).first()
-            first_emp = first_emp_row.id if first_emp_row else None
+            first_emp = cast(str, first_emp_row.id) if first_emp_row else None
         emp_id_val = str(first_emp) if first_emp else None
 
     if not emp_id_val:
@@ -208,6 +219,7 @@ def get_employee_ledger(
         left join workflow_nodes wn on wn.code = n.node_code
         left join active_work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
         where a.employee_id = :emp_id
+          and not (a.assignment_status in ('replaced', 'cancelled') and wpe.id is null)
         order by coalesce(n.completed_at, n.started_at, n.created_at) desc
     """)
     rows = db.execute(query, {"emp_id": emp_id_val}).mappings().all()
@@ -409,7 +421,8 @@ def get_employee_ledger(
     # Fetch period status from PayrollPeriod model for this specific month
     period_month_start = date(year_val, month_val, 1)
     period_row = db.query(PayrollPeriod).filter(PayrollPeriod.period_month == period_month_start).first()
-    period_status = period_row.status if period_row and period_row.status else "Open"
+    period_status = cast(Optional[str], period_row.status) if period_row else None
+    period_status = period_status or "Open"
 
     result = {
         "status": "success",
@@ -468,6 +481,7 @@ def close_employee_period(
             join workflow_instances wi on wi.id = n.workflow_instance_id
             left join active_work_pay_entitlements wpe on wpe.task_node_id = n.id and wpe.employee_id = a.employee_id
             where a.employee_id = :emp_id and n.status in ('accepted', 'completed')
+              and not (a.assignment_status in ('replaced', 'cancelled') and wpe.id is null)
         """), {"emp_id": payload.employee_id}).mappings().all()
 
 # Chốt lương chỉ DUYỆT các khoán đã sinh từ checklist khi nghiệm thu.
@@ -498,16 +512,15 @@ def close_employee_period(
             """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id}).scalar()
 
             if exists:
-                db.execute(text("""
+                upd = db.execute(text("""
                     update work_pay_entitlements
                     set status = 'approved', approved_by = :actor_id, approved_at = now()
                     where task_node_id = :node_id and employee_id = :emp_id and status != 'approved'
-                      -- Suất đã chuyển sang người khác thì không duyệt nữa. Câu
-                      -- này ghi nên phải trỏ vào BẢNG, không trỏ view được — lọc
-                      -- ở đây là chỗ duy nhất chặn được.
+                      -- Suất đã chuyển sang người khác thì không duyệt nữa.
                       and not is_replaced
                 """), {"node_id": node["task_node_id"], "emp_id": payload.employee_id, "actor_id": user.id})
-                approved_count += 1
+                if upd.rowcount and upd.rowcount > 0:
+                    approved_count += upd.rowcount
             else:
                 # Không có khoán checklist cho node này → bỏ qua, không đẻ tiền.
                 skipped_count += 1

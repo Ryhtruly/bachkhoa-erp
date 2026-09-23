@@ -101,6 +101,8 @@ STAGE_BY_NODE_CODE = {
     "SURVEY_FIELD": "do-hien-truong",
     "SURVEY_CAD": "chuan-hoa-ky-thuat",
     "LEGAL_PREP": "soan-ho-so",
+    "GOV_SUBMIT": "nop-co-quan",
+    "GOV_TRACKING": "nop-co-quan",
     "GOV_SUBMISSION": "nop-co-quan",
     "HANDOVER": "ket-qua",
 }

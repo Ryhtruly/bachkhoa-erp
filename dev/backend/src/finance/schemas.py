@@ -185,6 +185,22 @@ class EmployeeUpsertIn(BaseModel):
     gender: Optional[Literal["male", "female", "other"]] = None
     date_of_birth: Optional[date] = None
     place_of_birth: Optional[str] = None
+    citizen_id: Optional[str] = None
+    citizen_id_date: Optional[date] = None
+    citizen_id_place: Optional[str] = None
+    hometown: Optional[str] = None
+    ethnicity: Optional[str] = None
+    marital_status: Optional[str] = None
+    personal_email: Optional[str] = None
+    permanent_address: Optional[str] = None
+    current_address: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    bank_account_no: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_branch: Optional[str] = None
+    tax_code: Optional[str] = None
+    social_insurance_no: Optional[str] = None
 
     @field_validator("full_name")
     @classmethod
@@ -194,7 +210,14 @@ class EmployeeUpsertIn(BaseModel):
             raise ValueError("Full name cannot be empty")
         return value
 
-    @field_validator("user_id", "department_id", "job_title", "email", "phone", "place_of_birth", mode="before")
+    @field_validator(
+        "user_id", "department_id", "job_title", "email", "phone", "place_of_birth",
+        "citizen_id", "citizen_id_place", "hometown", "ethnicity", "marital_status",
+        "personal_email", "permanent_address", "current_address",
+        "emergency_contact_name", "emergency_contact_phone",
+        "bank_account_no", "bank_name", "bank_branch", "tax_code", "social_insurance_no",
+        mode="before"
+    )
     @classmethod
     def normalize_optional_text(cls, value):
         if value is None:

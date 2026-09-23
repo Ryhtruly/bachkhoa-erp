@@ -12,6 +12,7 @@ const TYPE_ICON = {
   node_start: <RotateCcw size={14} />,
   checklist_resubmit: <XCircle size={14} />,
   cashflow_approval: <Wallet size={14} />,
+  rollback_review: <RotateCcw size={14} />,
   node_event: <Bell size={14} />,
 };
 

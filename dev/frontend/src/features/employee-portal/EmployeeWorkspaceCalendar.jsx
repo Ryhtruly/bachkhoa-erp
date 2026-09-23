@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import FullCalendar from '@fullcalendar/react'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import viLocale from '@fullcalendar/core/locales/vi'
-import { AlertTriangle, BriefcaseBusiness, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock, Coins, ExternalLink, LockKeyhole, MinusCircle, Paperclip, Play, Star, UploadCloud, UserRound, XCircle } from 'lucide-react'
+import { AlertTriangle, BriefcaseBusiness, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock, Coins, ExternalLink, Loader2, LockKeyhole, MinusCircle, Paperclip, Play, Star, UploadCloud, UserRound, XCircle } from 'lucide-react'
 import { useToast } from '../../contexts/ToastContext'
 import ChecklistOutputDocuments from './ChecklistOutputDocuments'
 import MissingDocumentsModal from './MissingDocumentsModal'
@@ -16,8 +16,13 @@ import Modal from '../../components/ui/Modal'
 import LegalDossierNodePanel from '../legal-dossier/LegalDossierNodePanel'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import HandoverPanel from '../handover/HandoverPanel'
+import NodeBusinessSlot from './NodeBusinessSlot'
+import PauseReasonModal from './PauseReasonModal'
+import RollbackPickerModal from './RollbackPickerModal'
+import { governmentSubmissionMode, isGovernmentTracking } from '../../components/contracts/governmentCapability'
 
-const requiresGovSubmission = (task) => task?.requires_gov_submission === true || task?.capability_code === 'GOV_SUBMISSION' || task?.capability === 'GOV_SUBMISSION'
+const requiresGovSubmission = (task) => isGovernmentTracking(task)
+const isGovernmentNode = (task) => Boolean(governmentSubmissionMode(task))
 const isHandoverTask = (task) => task?.is_handover === true || task?.capability_code === 'HANDOVER' || task?.capability === 'HANDOVER' || task?.node_code === 'K06'
 
 const CHECKLIST_STATUS = Object.freeze({
@@ -409,6 +414,7 @@ export function NodeActionBar({
   gate = null,
   handoverState = null,
   onOptimisticStatusChange = null,
+  onSubmittingChange = null,
 }) {
   // Bối cảnh Toast có thể vắng mặt (component dựng đơn lẻ trong test) — thiếu
   // hàm báo lỗi không được phép làm sập cả màn làm việc.
@@ -605,6 +611,7 @@ export function NodeActionBar({
         'success',
       )
       setBusy(true)
+      onSubmittingChange?.(true)
       try {
         const payload = { note: reason ? String(reason).trim() : null }
         await apiFetch(isHandover
@@ -614,7 +621,7 @@ export function NodeActionBar({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        onChanged?.()
+        await onChanged?.()
       } catch (error) {
         setOptimisticSubmitted(false)
         onOptimisticStatusChange?.(null)
@@ -622,6 +629,7 @@ export function NodeActionBar({
         addToast(error.message || 'Không thể nộp nghiệm thu', 'error')
       } finally {
         setBusy(false)
+        onSubmittingChange?.(false)
       }
     }
 
@@ -650,18 +658,21 @@ export function NodeActionBar({
 
       // Đọc shortage nếu chưa có dữ liệu gate đầy đủ
       setBusy(true)
+      onSubmittingChange?.(true)
       try {
         const ket = await apiFetch(`/api/employee-portal/tasks/${task.id}/shortage`)
         const hardBlocker = hardBlockerFrom(ket, task.status)
         if (hardBlocker) {
           addToast(hardBlocker.message, 'error')
           setBusy(false)
+          onSubmittingChange?.(false)
           return
         }
         const missingList = extractShortageList(ket)
         if (missingList.length) {
           setMissingDocs(missingList)
           setBusy(false)
+          onSubmittingChange?.(false)
           return
         }
       } catch {
@@ -675,12 +686,20 @@ export function NodeActionBar({
         type="button"
         className="btn btn-primary btn-sm"
         disabled={busy || Boolean(lyDoKhoa)}
-        title={lyDoKhoa || undefined}
+        title={busy ? 'Đang gửi hồ sơ nghiệm thu…' : (lyDoKhoa || undefined)}
         onClick={handleSubmitClick}
         onMouseEnter={prefetchShortage}
         onFocus={prefetchShortage}
       >
-        <CheckCircle2 size={14} /> {isResubmission ? 'Nộp nghiệm thu lại' : 'Nộp nghiệm thu'}
+        {busy ? (
+          <>
+            <Loader2 size={14} className="animate-spin" /> {isResubmission ? 'Đang nộp lại…' : 'Đang nộp…'}
+          </>
+        ) : (
+          <>
+            <CheckCircle2 size={14} /> {isResubmission ? 'Nộp nghiệm thu lại' : 'Nộp nghiệm thu'}
+          </>
+        )}
       </button>
       {lyDoKhoa && (
         <small className="eiw-gate__lock-reason">
@@ -758,7 +777,9 @@ function TaskPoolPanel({ taskPool, onClaim, claimingKey, now }) {
               type="button"
               className="btn btn-primary btn-sm"
               disabled={blocked || claimingKey === key}
-              onClick={() => onClaim?.(item.id, role)}
+              // Nhận trong Bể việc chỉ giữ người và suất; nhân viên phải bấm
+              // "Bắt đầu làm" ở bước đã tới lượt để mở đồng hồ và hồ sơ nghiệp vụ.
+              onClick={() => onClaim?.(item.id, role, false)}
               aria-label={`Nhận ${ROLE_LABELS[role] || role}`}
             >
               {claimingKey === key ? 'Đang nhận…' : `Nhận ${ROLE_LABELS[role] || role}`}
@@ -798,6 +819,67 @@ function ActiveWorkStrip({ tasks, now }) {
  */
 export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false }) {
   const { addToast } = useToast() || {}
+  const [pauseOpen, setPauseOpen] = useState(false)
+  const [rollbackOpen, setRollbackOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const handlePause = useCallback(async ({ reason_type, note }) => {
+    if (reason_type === 'SURVEYOR') {
+      setPauseOpen(false)
+      setRollbackOpen(true)
+      return
+    }
+    setBusy(true)
+    try {
+      await apiFetch(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/pause`, {
+        method: 'POST', body: JSON.stringify({ reason_type, note }),
+      })
+      setPauseOpen(false)
+      addToast?.('Đã tạm dừng, đồng hồ ngừng chạy', 'success')
+      onRefresh?.()
+    } catch (error) {
+      addToast?.(error?.message || 'Không tạm dừng được', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }, [task?.id, addToast, onRefresh])
+
+  const handleResume = useCallback(async () => {
+    setBusy(true)
+    try {
+      await apiFetch(`/api/employee-portal/tasks/${encodeURIComponent(task.id)}/resume`, { method: 'POST' })
+      addToast?.('Đã chạy tiếp', 'success')
+      onRefresh?.()
+    } catch (error) {
+      addToast?.(error?.message || 'Không chạy tiếp được', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }, [task?.id, addToast, onRefresh])
+
+  const handleRollback = useCallback(async ({ target_task_node_id, reason }) => {
+    setBusy(true)
+    try {
+      await apiFetch(
+        `/api/contracts/workflow/nodes/${encodeURIComponent(target_task_node_id)}/rollback-requests`,
+        { method: 'POST', body: JSON.stringify({ reason }) },
+      )
+      setRollbackOpen(false)
+      addToast?.('Đã gửi yêu cầu quay lại, chờ Giám đốc duyệt', 'success')
+      onRefresh?.()
+    } catch (error) {
+      addToast?.(error?.message || 'Không gửi được yêu cầu', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }, [addToast, onRefresh])
+
+  const businessItem = {
+    contract_id: task?.contract_id,
+    service_line_id: task?.service_line_id,
+    contract_total_value: task?.contract_total_value,
+    contract_paid_amount: task?.contract_paid_amount,
+  }
   if (!task) return null
 
   return createPortal(
@@ -851,6 +933,19 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
           <NodeActionBar task={task} onChanged={onRefresh} />
         </div>
 
+        {isGovernmentNode(task) && (
+          <NodeBusinessSlot
+            task={task}
+            item={businessItem}
+            addToast={addToast}
+            onRefresh={onRefresh}
+            busy={busy}
+            hideReceipt
+            onPause={() => setPauseOpen(true)}
+            onResume={handleResume}
+          />
+        )}
+
         {/* Hai node đặc biệt — mỗi panel TỰ ẨN khi không đúng loại bước (LegalDossier
             trả null khi không có hồ sơ; Handover được truyền hideIfNotHandover để im
             lặng thay vì hiện box đỏ). Không chặn theo cờ graph vì cờ có thể lệch với
@@ -858,11 +953,16 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
         {requiresGovSubmission(task) && (
           <LegalDossierNodePanel taskNodeId={task.id} addToast={addToast} onChanged={onRefresh} />
         )}
+        {isGovernmentNode(task) && (
+          <SubmissionReceiptPanel
+            taskNodeId={task.id}
+            addToast={addToast}
+            onChanged={onRefresh}
+            tracking={isGovernmentTracking(task)}
+          />
+        )}
         {/* Số biên nhận cơ quan — điền tại chỗ, lưu thẳng sang tab Pháp Lý.
             Tự ẩn nếu Node không gắn hồ sơ nộp cơ quan. */}
-        {requiresGovSubmission(task) && (
-          <SubmissionReceiptPanel taskNodeId={task.id} addToast={addToast} onChanged={onRefresh} />
-        )}
         {isHandoverTask(task) && (
           <HandoverPanel
             taskNodeId={task.id}
@@ -903,6 +1003,20 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
         >
           <ExternalLink size={14} /> Xem chi tiết đầy đủ
         </button>
+        <PauseReasonModal
+          open={pauseOpen}
+          busy={busy}
+          onClose={() => setPauseOpen(false)}
+          onConfirm={handlePause}
+        />
+        <RollbackPickerModal
+          open={rollbackOpen}
+          nodes={task.workflow_nodes || task.nodes || []}
+          currentTaskNodeId={task.id}
+          busy={busy}
+          onClose={() => setRollbackOpen(false)}
+          onSubmit={handleRollback}
+        />
       </div>
     </Modal>,
     document.body,
@@ -911,6 +1025,7 @@ export function EmployeeNodeModal({ task, onClose, onRefresh, isDirector = false
 
 export default function EmployeeWorkspaceCalendar({
   tasks = [],
+  heldItems = [],
   taskPool = { items: [], restrictions: {} },
   dailySummary = null,
   onClaim,
@@ -925,7 +1040,11 @@ export default function EmployeeWorkspaceCalendar({
   const calendarRef = useRef(null)
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [weekLabel, setWeekLabel] = useState('')
-  const hasActiveTask = tasks.some(task => task.status === 'in_progress')
+  const calendarTasks = useMemo(() => tasks.map(task => {
+    const item = heldItems.find(entry => entry.workflow_instance_id === task.workflow_instance_id)
+    return item?.nodes?.length ? { ...task, workflow_nodes: item.nodes } : task
+  }), [tasks, heldItems])
+  const hasActiveTask = calendarTasks.some(task => task.status === 'in_progress')
   const hasPreferenceCountdown = (taskPool?.items || []).some(item => item.is_preferred_for_me)
   const [now, setNow] = useState(() => Date.now())
 
@@ -936,12 +1055,12 @@ export default function EmployeeWorkspaceCalendar({
   }, [hasActiveTask, hasPreferenceCountdown])
 
   const events = useMemo(
-    () => groupConcurrentCalendarEvents(mapTasksToCalendarEvents(tasks)),
-    [tasks],
+    () => groupConcurrentCalendarEvents(mapTasksToCalendarEvents(calendarTasks)),
+    [calendarTasks],
   )
   const selectedTask = useMemo(
-    () => tasks.find(task => task.id === selectedTaskId) || null,
-    [tasks, selectedTaskId],
+    () => calendarTasks.find(task => task.id === selectedTaskId) || null,
+    [calendarTasks, selectedTaskId],
   )
 
   // Khung giờ hiển thị phải bao trọn mọi công việc. Cố định 07:00–18:00 sẽ ẩn mất

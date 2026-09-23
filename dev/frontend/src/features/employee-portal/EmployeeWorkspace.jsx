@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { BriefcaseBusiness, CheckCircle2, ChevronRight, Clock, Info, LifeBuoy, MapPin, Plus, Rocket, RotateCcw, Star, Users, Zap } from 'lucide-react'
+import { Ban, BriefcaseBusiness, CheckCircle2, ChevronRight, Clock, Info, LifeBuoy, MapPin, Plus, Rocket, RotateCcw, Star, Users, Zap } from 'lucide-react'
 
 import AvatarImage from '../../components/AvatarImage'
 import CompletedItemsModal from './CompletedItemsModal'
@@ -54,9 +54,17 @@ function PriorityBadge({ priority }) {
 /** Thanh tiến độ theo BƯỚC — mỗi ô là một bước thật của chuỗi, không phải phần trăm ước lượng. */
 function StepMeter({ nodes = [] }) {
   return <div className="ew-steps" aria-hidden="true">
-    {nodes.map((node) => (
-      <span key={node.id} className={`ew-steps__cell is-${STEP_TONE[node.status] || 'idle'}`} />
-    ))}
+    {nodes.map((node, index) => {
+      const isOther = node.is_my_department === false
+      const dept = node.department_name || (node.pool_department_code ? `Phòng ${node.pool_department_code}` : 'phòng khác')
+      return (
+        <span
+          key={node.id || node.node_code || index}
+          className={`ew-steps__cell is-${STEP_TONE[node.status] || 'idle'}${isOther ? ' is-prohibited' : ''}`}
+          title={isOther ? `${node.node_code} · Thuộc ${dept} (Không phụ trách)` : node.node_code}
+        />
+      )
+    })}
   </div>
 }
 
@@ -67,6 +75,8 @@ function HeldItemCard({ item, departmentLabel, onOpen, onYield, onCancelYield })
   // Bước của mình nhưng chưa tới lượt thì không mở ra làm được — bước trước
   // chưa nghiệm thu xong. Cho bấm vào sẽ chỉ nhận lỗi từ máy chủ.
   const waiting = item.current_node_status === 'pending'
+  const currentNode = item.nodes?.find(n => n.id === item.current_task_node_id || n.node_code === item.current_node_code)
+  const isCurrentOtherDept = currentNode?.is_my_department === false
   // Đã nhờ rồi thì không nhờ lại được nữa — máy chủ chặn bằng 409. Nút phải nói
   // đúng trạng thái đó thay vì để nhân viên bấm vào rồi mới biết.
   const daNho = Boolean(item.current_help_request_open)
@@ -77,11 +87,13 @@ function HeldItemCard({ item, departmentLabel, onOpen, onYield, onCancelYield })
       <span className="ew-chip ew-chip--dept">{departmentLabel}</span>
       {rework
         ? <span className="ew-held__state is-rework">● Cần sửa</span>
-        : running
-          ? <span className="ew-held__state is-running">● Đang làm</span>
-          : waiting
-            ? <span className="ew-held__state">● Chờ bước trước</span>
-            : <span className="ew-held__state is-running">● Sẵn sàng làm</span>}
+        : isCurrentOtherDept
+          ? <span className="ew-held__state">● Chờ {currentNode?.department_name || 'phòng khác'}</span>
+          : running
+            ? <span className="ew-held__state is-running">● Đang làm</span>
+            : waiting
+              ? <span className="ew-held__state">● Chờ tới lượt</span>
+              : <span className="ew-held__state is-running">● Sẵn sàng làm</span>}
     </header>
 
     <strong className="ew-held__title">{item.service_line_name} · HĐ {item.contract_id}</strong>
@@ -96,6 +108,37 @@ function HeldItemCard({ item, departmentLabel, onOpen, onYield, onCancelYield })
         {item.current_node_code} {item.current_node_name}
       </strong>
     </p>
+
+    <div className="ew-held__chain ew-card__chain">
+      {(item.nodes || []).map((node, index) => {
+        const isOther = node.is_my_department === false
+        const deptTag = node.department_name
+          ? node.department_name.replace(/^Phòng\s+/i, '')
+          : (node.pool_department_code || '')
+        const tooltip = isOther
+          ? `${node.node_code || ''} ${node.name ? `· ${node.name} ` : ''}— Thuộc ${node.department_name || (node.pool_department_code ? `Phòng ${node.pool_department_code}` : 'phòng khác')} (Không phụ trách)`
+          : `${node.node_code || ''} ${node.name ? `· ${node.name}` : ''}`
+
+        return (
+          <span
+            key={node.id || node.node_code || index}
+            className={`ew-card__chain-item${isOther ? ' is-prohibited' : ''}`}
+            title={tooltip}
+          >
+            {index > 0 && <i>→</i>}
+            <span className="ew-card__chain-pill">
+              <b>{node.node_code}</b>
+              {isOther && (
+                <>
+                  {deptTag && <span className="ew-dept-tag">[{deptTag}]</span>}
+                  <Ban size={11} className="ew-prohibit-icon" aria-hidden="true" />
+                </>
+              )}
+            </span>
+          </span>
+        )
+      })}
+    </div>
 
     <div className="ew-held__progress">
       <StepMeter nodes={item.nodes} />
@@ -115,7 +158,7 @@ function HeldItemCard({ item, departmentLabel, onOpen, onYield, onCancelYield })
         className="ew-btn ew-btn--dark"
         onClick={onOpen}
       >
-        Mở ra làm
+        {isCurrentOtherDept ? 'Mở xem chuỗi' : 'Mở ra làm'}
       </button>
       {idLoiNhoCuaMinh ? (
         <button
@@ -130,11 +173,12 @@ function HeldItemCard({ item, departmentLabel, onOpen, onYield, onCancelYield })
         <button
           type="button"
           className="ew-btn ew-btn--sos"
-          disabled={!item.current_task_node_id || waiting || daNho}
+          disabled={!item.current_task_node_id || waiting || daNho || isCurrentOtherDept}
           title={
-            daNho ? 'Bước này đang nằm trên Bể việc, chờ đồng đội nhận'
-              : waiting ? 'Bước chưa tới lượt thì chưa nhường được'
-                : 'Đẩy bước này lên Bể việc nhờ đồng đội làm hộ'
+            isCurrentOtherDept ? 'Bước này thuộc phòng ban khác'
+              : daNho ? 'Bước này đang nằm trên Bể việc, chờ đồng đội nhận'
+                : waiting ? 'Bước chưa tới lượt thì chưa nhường được'
+                  : 'Đẩy bước này lên Bể việc nhờ đồng đội làm hộ'
           }
           onClick={() => onYield(item.current_task_node_id, item.current_node_code, item.current_node_name)}
         >
@@ -155,10 +199,15 @@ function EmptySlotCard({ remaining }) {
   </div>
 }
 
-function ChainPoolCard({ item, departmentLabel, onClaim, onDetail, claiming, blocked, blockedReason }) {
-  const role = item.available_roles.find(code => code !== 'ASSISTANT') || 'MAIN'
+function ChainPoolCard({ item, departmentLabel, onClaim, onClaimCluster, onDetail, claiming, blocked, blockedReason }) {
+  const role = (item.available_roles || []).find(code => code !== 'ASSISTANT') || 'MAIN'
   const amount = item.chain_amount || item.role_amounts?.[role] || 0
   const sla = deadlineLabel(item.deadline_at)
+
+  const chainNodes = item.chain_nodes || (item.chain_codes || [item.node_code]).map(code => ({
+    node_code: code,
+    is_my_department: true,
+  }))
 
   return <article className="ew-card">
     <header className="ew-card__top">
@@ -175,14 +224,36 @@ function ChainPoolCard({ item, departmentLabel, onClaim, onDetail, claiming, blo
     <div className="ew-card__rule" />
 
     <div className="ew-card__chain">
-      {(item.chain_codes || [item.node_code]).map((code, index) => (
-        <span key={code} className="ew-card__chain-item">
-          {index > 0 && <i>→</i>}
-          <b>{code}</b>
-        </span>
-      ))}
+      {chainNodes.map((node, index) => {
+        const isOther = node.is_my_department === false
+        const deptTag = node.department_name
+          ? node.department_name.replace(/^Phòng\s+/i, '')
+          : (node.department_code || '')
+        const tooltip = isOther
+          ? `${node.node_code || ''} ${node.name ? `· ${node.name} ` : ''}— Thuộc ${node.department_name || (node.department_code ? `Phòng ${node.department_code}` : 'phòng khác')} (Không có quyền nhận)`
+          : `${node.node_code || ''} ${node.name ? `· ${node.name}` : ''}`
+
+        return (
+          <span
+            key={node.task_node_id || node.node_code || index}
+            className={`ew-card__chain-item${isOther ? ' is-prohibited' : ''}`}
+            title={tooltip}
+          >
+            {index > 0 && <i>→</i>}
+            <span className="ew-card__chain-pill">
+              <b>{node.node_code}</b>
+              {isOther && (
+                <>
+                  {deptTag && <span className="ew-dept-tag">[{deptTag}]</span>}
+                  <Ban size={11} className="ew-prohibit-icon" aria-hidden="true" />
+                </>
+              )}
+            </span>
+          </span>
+        )
+      })}
       <span className="ew-card__chain-note">
-        · {item.step_count || 1} bước{item.output_count ? ` · ${item.output_count} đầu ra` : ''}
+        · {item.step_count || chainNodes.length || 1} bước{item.output_count ? ` · ${item.output_count} đầu ra` : ''}
       </span>
     </div>
 
@@ -203,7 +274,9 @@ function ChainPoolCard({ item, departmentLabel, onClaim, onDetail, claiming, blo
           className="ew-btn ew-btn--primary"
           disabled={blocked || claiming}
           title={blocked ? blockedReason : undefined}
-          onClick={() => onClaim(item.id, role)}
+          onClick={() => onClaimCluster
+            ? onClaimCluster(item, role)
+            : onClaim(item.id, role, false)}
         >
           {claiming ? 'Đang nhận…' : <><Rocket size={14} /> Nhận trọn</>}
         </button>
@@ -318,6 +391,7 @@ export default function EmployeeWorkspace({
   dailySummary = null,
   completedItems = { count: 0, items: [] },
   onClaim,
+  onClaimCluster,
   onClaimHelp,
   onYield,
   onCancelYield,
@@ -377,6 +451,8 @@ export default function EmployeeWorkspace({
     return <EmployeeItemWorkspace
       item={openItem}
       tasks={tasks}
+      employee={employee}
+      employeeDepartmentCode={employee?.department_code || taskPool?.department_code}
       onBack={() => setOpenItemId(null)}
       onRefresh={onRefresh}
       // Nhờ hỗ trợ dùng lại đúng hai handler của bàn làm việc, không dựng đường
@@ -411,6 +487,7 @@ export default function EmployeeWorkspace({
 
     <EmployeeWorkspaceCalendar
       tasks={tasks}
+      heldItems={heldItems}
       taskPool={taskPool}
       dailySummary={dailySummary}
       onClaim={onClaim}
@@ -515,14 +592,17 @@ export default function EmployeeWorkspace({
               claiming={claimingKey === `${item.id}:ASSISTANT`}
             />
           }
-          const role = item.available_roles.find(code => code !== 'ASSISTANT') || 'MAIN'
+          const role = (item.available_roles || []).find(code => code !== 'ASSISTANT') || 'MAIN'
           return <ChainPoolCard
             key={`${item.id}:${role}`}
             item={item}
             departmentLabel={departmentLabel}
             onClaim={onClaim}
+            onClaimCluster={onClaimCluster}
             onDetail={setDetailNodeId}
-            claiming={claimingKey === `${item.id}:${role}`}
+            claiming={claimingKey === (item.workflow_instance_id && item.cluster_code
+              ? `cluster:${item.workflow_instance_id}:${item.cluster_code}`
+              : `${item.id}:${role}`)}
             blocked={chainClaimLocked || item.preference_locked}
             blockedReason={item.preference_locked
               ? 'Bước này đang được ưu tiên cho người đã đo K02.'
@@ -547,16 +627,25 @@ export default function EmployeeWorkspace({
         : 'Bước này đang được ưu tiên cho người đã đo K02.';
       const isBlocked = chainClaimLocked || itemBlocked;
       const finalReason = itemBlocked ? itemBlockedReason : claimBlockedReason;
+      const claimKey = target?.workflow_instance_id && target?.cluster_code
+        ? `cluster:${target.workflow_instance_id}:${target.cluster_code}`
+        : `${detailNodeId}:${role}`;
 
       return <PoolItemDetailModal
         taskNodeId={detailNodeId}
         onClose={() => setDetailNodeId(null)}
-        claiming={claimingKey.startsWith(`${detailNodeId}:`)}
+        claiming={claimingKey === claimKey}
         blocked={isBlocked}
         blockedReason={finalReason}
         onClaim={() => {
           setDetailNodeId(null)
-          onClaim(detailNodeId, role)
+          if (onClaimCluster && target?.workflow_instance_id && target?.cluster_code) {
+            onClaimCluster(target, role)
+          } else {
+            // Popup Chi tiết dùng cùng luật với nút ngoài thẻ: nhận chỉ phân
+            // công, không tự chạy node trước khi nhân viên bấm Bắt đầu làm.
+            onClaim(detailNodeId, role, false)
+          }
         }}
       />
     })()}

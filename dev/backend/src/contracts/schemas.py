@@ -13,6 +13,12 @@ class ContractCreateSchema(BaseModel):
     paid_amount: Optional[float] = Field(default=0.0, ge=0, description="Số tiền đã trả phải >= 0")
     sales_source: str
     notes: Optional[str] = ""
+    # Ưu đãi khách hàng thân thiết
+    loyalty_tier_id: Optional[str] = None
+    loyalty_tier_name: Optional[str] = None
+    loyalty_discount_percent: Optional[float] = None
+    loyalty_discount_amount: Optional[float] = None
+    original_value: Optional[float] = None
 
 class ContractGenerateSchema(BaseModel):
     contract_id: str = ""
@@ -60,3 +66,9 @@ class ContractGenerateSchema(BaseModel):
     date_signed: str
     due_date: str
     sales_source: str
+    # Ưu đãi khách hàng thân thiết
+    loyalty_tier_id: Optional[str] = None
+    loyalty_tier_name: Optional[str] = None
+    loyalty_discount_percent: Optional[float] = None
+    loyalty_discount_amount: Optional[float] = None
+    original_value: Optional[float] = None
