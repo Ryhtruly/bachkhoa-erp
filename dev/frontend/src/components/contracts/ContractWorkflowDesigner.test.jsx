@@ -2,7 +2,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import ContractWorkflowDesigner, { WorkflowEdge } from './ContractWorkflowDesigner';
+import ContractWorkflowDesigner, { WorkflowEdge, getCapabilityBanner } from './ContractWorkflowDesigner';
 import { neoTuyenVaoHandle } from './workflowEdgeRouting';
 import { clearApiCache } from '../../lib/api';
 
@@ -16,9 +16,18 @@ vi.mock('@xyflow/react', () => ({
   Handle: () => null,
   MarkerType: { ArrowClosed: 'arrowclosed' },
   MiniMap: () => null,
-  Position: { Left: 'left', Right: 'right' },
-  ReactFlow: ({ children, nodes = [], nodeTypes = {} }) => (
-    <div>
+  Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
+  ReactFlow: ({ children, nodes = [], nodeTypes = {}, onConnect, isValidConnection }) => (
+    <div data-testid="react-flow-mock">
+      <button
+        type="button"
+        data-testid="mock-connect-btn"
+        onClick={() => {
+          if (typeof window !== 'undefined' && window.__testConnectHook) {
+            window.__testConnectHook({ onConnect, isValidConnection });
+          }
+        }}
+      />
       {nodes.map(node => {
         const NodeComponent = nodeTypes[node.type];
         return NodeComponent ? <NodeComponent key={node.id} id={node.id} data={node.data} /> : null;
@@ -1379,6 +1388,21 @@ describe('Dropdown chọn Mẫu quy trình (CustomSelect)', () => {
 describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
   afterEach(cleanup);
 
+  it.each([
+    ['STANDARD', 'Tác nghiệp tiêu chuẩn', 'standard'],
+    ['SURVEY_FIELD', 'Nghiệp vụ đo đạc & Biên bản hiện trạng', 'survey'],
+    ['SURVEY_CAD', 'Nội nghiệp biên tập bản vẽ CAD & GIS', 'cad'],
+    ['LEGAL_PREP', 'Soạn thảo hồ sơ pháp lý & Rà quy hoạch', 'legal'],
+    ['GOV_SUBMIT', 'Nộp hồ sơ & nhập biên nhận', 'submit'],
+    ['GOV_TRACKING', 'Theo dõi hồ sơ Một cửa', 'tracking'],
+    ['HANDOVER', 'Cổng kiểm soát công nợ & Bàn giao', 'handover'],
+  ])('mọi năng lực đều có banner hướng dẫn và nút đóng: %s', (code, title, theme) => {
+    expect(getCapabilityBanner({ data: { capability: code } })).toMatchObject({
+      title,
+      theme,
+    });
+  });
+
   it('cho phép chọn năng lực cho node từ tab Năng lực và tự động cập nhật', async () => {
     render(
       <ContractWorkflowDesigner
@@ -1441,7 +1465,7 @@ describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
     expect(screen.getByText('Cổng kiểm soát công nợ & Bàn giao')).toBeInTheDocument();
   });
 
-  it('khi gán năng lực GOV_SUBMISSION cho node, Tab 1 lập tức hiện panel Nộp cơ quan & Một cửa', async () => {
+  it('khi gán năng lực GOV_TRACKING cho node, Tab 1 lập tức hiện panel theo dõi Một cửa', async () => {
     render(
       <ContractWorkflowDesigner
         serviceLine={makeServiceLine({ noExecutionNodes: true })}
@@ -1449,9 +1473,9 @@ describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
       />
     );
 
-    // Mở Tab Năng lực và chọn Nộp & Theo dõi Một Cửa
+    // Mở Tab Năng lực và chọn Theo dõi hồ sơ Một cửa
     fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
-    const govCard = screen.getByRole('button', { name: /Nộp & Theo dõi Một Cửa/i });
+    const govCard = screen.getByRole('button', { name: /Theo dõi hồ sơ Một cửa/i });
     fireEvent.click(govCard);
 
     // Chuyển sang Tab Node
@@ -1459,7 +1483,7 @@ describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
 
     // Kiểm tra NodeAgencyPanel xuất hiện với preview sau khi nạp
     await waitFor(() => {
-      expect(screen.getByText('Nộp cơ quan & Theo dõi một cửa')).toBeInTheDocument();
+      expect(screen.getByText('Theo dõi & rút kết quả')).toBeInTheDocument();
     });
   });
 
@@ -1513,6 +1537,53 @@ describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Node' }));
     expect(screen.getByText('Soạn thảo hồ sơ pháp lý & Rà quy hoạch')).toBeInTheDocument();
+  });
+
+  it('dropdown năng lực hiện mặc định rồi biến mất khi bấm nút [X]', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Gán năng lực SURVEY_FIELD cho node
+    fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
+    fireEvent.click(screen.getByRole('button', { name: /Khảo sát & Đo thực địa/i }));
+
+    // Chuyển sang Tab Node → dropdown mặc định hiện
+    fireEvent.click(screen.getByRole('button', { name: 'Node' }));
+    expect(screen.getByText('Nghiệp vụ đo đạc & Biên bản hiện trạng')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Đóng hướng dẫn' })).toBeInTheDocument();
+
+    // Bấm nút [X] → dropdown biến mất
+    fireEvent.click(screen.getByRole('button', { name: 'Đóng hướng dẫn' }));
+    expect(screen.queryByText('Nghiệp vụ đo đạc & Biên bản hiện trạng')).not.toBeInTheDocument();
+  });
+
+  it('nút "Gợi ý nghiệp vụ" mở lại dropdown sau khi đã đóng', async () => {
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={makeServiceLine()}
+        capabilities={{ edit_workflow: true }}
+      />
+    );
+
+    // Gán năng lực SURVEY_CAD
+    fireEvent.click(screen.getByRole('button', { name: 'Năng lực' }));
+    fireEvent.click(screen.getByRole('button', { name: /Biên tập bản vẽ CAD/i }));
+
+    // Chuyển sang Tab Node
+    fireEvent.click(screen.getByRole('button', { name: 'Node' }));
+    expect(screen.getByText('Nội nghiệp biên tập bản vẽ CAD & GIS')).toBeInTheDocument();
+
+    // Đóng dropdown
+    fireEvent.click(screen.getByRole('button', { name: 'Đóng hướng dẫn' }));
+    expect(screen.queryByText('Nội nghiệp biên tập bản vẽ CAD & GIS')).not.toBeInTheDocument();
+
+    // Bấm nút toggle "Gợi ý nghiệp vụ" → dropdown hiện lại
+    fireEvent.click(screen.getByRole('button', { name: /Gợi ý nghiệp vụ/i }));
+    expect(screen.getByText('Nội nghiệp biên tập bản vẽ CAD & GIS')).toBeInTheDocument();
   });
 
   describe('Modal chọn tài liệu đầu ra: Tìm kiếm, lọc theo nguồn và đồng bộ mẫu Combo tức thì', () => {
@@ -1668,8 +1739,173 @@ describe('Ban phát năng lực cho Node (Tab Năng lực)', () => {
       );
     });
   });
+
+  describe('Lọc phân công đã huỷ (cancelled assignments)', () => {
+    it('loại bỏ phân công đã huỷ khỏi số lượng nhân sự và huy hiệu trên thẻ bước', async () => {
+      const line = makeServiceLine({ active: true });
+      line.workflow.execution_nodes[0].assignments = [
+        {
+          id: 'assign-quoc',
+          employee_id: 'emp-quoc',
+          full_name: 'Trương Tấn Quốc',
+          role_code: 'MAIN',
+          is_primary: true,
+          assignment_status: 'cancelled',
+        },
+        {
+          id: 'assign-huy',
+          employee_id: 'emp-huy',
+          full_name: 'Lê Quang Huy',
+          role_code: 'MAIN',
+          is_primary: true,
+          assignment_status: 'assigned',
+        },
+      ];
+
+      render(
+        <ContractWorkflowDesigner
+          serviceLine={line}
+          contractId="001/BK-2026"
+          workItems={[workItem]}
+          documentTemplates={DOC_TEMPLATES}
+          capabilities={{ amend_workflow: true }}
+          addToast={vi.fn()}
+        />
+      );
+
+      // Node card hiển thị "1 người" thay vì "2 người"
+      expect(await screen.findByText('1 người')).toBeInTheDocument();
+      expect(screen.queryByText('2 người')).not.toBeInTheDocument();
+
+      // Chỉ hiển thị chip "Chính: Huy", loại bỏ "Chính: Quốc"
+      expect(screen.getByText('Chính: Huy')).toBeInTheDocument();
+      expect(screen.queryByText('Chính: Quốc')).not.toBeInTheDocument();
+    });
+
+    it('hiển thị rõ ràng 1 Chính 1 Phụ khi có 2 nhân viên hoạt động, không bao giờ có 2 Chính', async () => {
+      const line = makeServiceLine({ active: true });
+      line.workflow.execution_nodes[0].assignments = [
+        {
+          id: 'assign-huy',
+          employee_id: 'emp-huy',
+          full_name: 'Lê Quang Huy',
+          role_code: 'MAIN',
+          is_primary: true,
+          assignment_status: 'assigned',
+        },
+        {
+          id: 'assign-quoc',
+          employee_id: 'emp-quoc',
+          full_name: 'Trương Tấn Quốc',
+          role_code: 'ASSISTANT',
+          is_primary: false,
+          assignment_status: 'assigned',
+        },
+      ];
+
+      render(
+        <ContractWorkflowDesigner
+          serviceLine={line}
+          contractId="001/BK-2026"
+          workItems={[workItem]}
+          documentTemplates={DOC_TEMPLATES}
+          capabilities={{ amend_workflow: true }}
+          addToast={vi.fn()}
+        />
+      );
+
+      // Node card hiển thị "2 người"
+      expect(await screen.findByText('2 người')).toBeInTheDocument();
+
+      // Chip hiển thị đúng 1 Chính và 1 Phụ
+      expect(screen.getByText('Chính: Huy')).toBeInTheDocument();
+      expect(screen.getByText('Phụ: Quốc')).toBeInTheDocument();
+      expect(screen.queryByText('Chính: Quốc')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Sequential Connection Rules (1 node chỉ được phép 1 đường mỗi đầu)', () => {
+    it('chặn kết nối khi node nguồn đã có đường ra hoặc tạo vòng lặp', async () => {
+      const addToast = vi.fn();
+      let capturedProps = null;
+      window.__testConnectHook = props => {
+        capturedProps = props;
+      };
+
+      const line = {
+        id: 'sl-seq-1',
+        service_type: 'Trích lục',
+        workflow: {
+          id: 'wf-seq-1',
+          status: 'draft',
+          revision_status: 'draft',
+          graph: {
+            start_node: 'k01',
+            nodes: {
+              k01: {
+                task_code: 'TL01',
+                name: 'Bước 1',
+                transitions: { COMPLETED: 'k02' },
+              },
+              k02: {
+                task_code: 'TL02',
+                name: 'Bước 2',
+                transitions: {},
+              },
+              k03: {
+                task_code: 'TL03',
+                name: 'Bước 3',
+                transitions: {},
+              },
+            },
+          },
+        },
+      };
+
+      render(
+        <ContractWorkflowDesigner
+          serviceLine={line}
+          contractId="001/BK-2026"
+          capabilities={{ amend_workflow: true }}
+          addToast={addToast}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('mock-connect-btn'));
+      expect(capturedProps).not.toBeNull();
+      const { onConnect, isValidConnection } = capturedProps;
+
+      // 1. Thử tự nối vào chính mình k01 -> k01
+      expect(isValidConnection({ source: 'k01', target: 'k01' })).toBe(false);
+      onConnect({ source: 'k01', target: 'k01' });
+      expect(addToast).toHaveBeenCalledWith(
+        expect.stringContaining('Không thể nối bước với chính nó'),
+        'warning'
+      );
+
+      // 2. k01 ĐÃ CÓ đường ra tới k02. Thử nối thêm đường thứ 2: k01 -> k03
+      expect(isValidConnection({ source: 'k01', target: 'k03' })).toBe(false);
+      addToast.mockClear();
+      onConnect({ source: 'k01', target: 'k03' });
+      expect(addToast).toHaveBeenCalledWith(
+        expect.stringContaining('Đầu ra của bước này đã có đường nối'),
+        'warning'
+      );
+
+      // 3. k02 ĐÃ CÓ đường vào từ k01. Thử lấy k03 nối vào k02 (2 đường vào 1 node)
+      expect(isValidConnection({ source: 'k03', target: 'k02' })).toBe(false);
+      addToast.mockClear();
+      onConnect({ source: 'k03', target: 'k02' });
+      expect(addToast).toHaveBeenCalledWith(
+        expect.stringContaining('Đầu vào của bước tiếp nhận đã có đường nối'),
+        'warning'
+      );
+
+      // 4. Cho phép nối hợp lệ k02 -> k03 (k02 chưa có đường ra, k03 chưa có đường vào)
+      expect(isValidConnection({ source: 'k02', target: 'k03' })).toBe(true);
+      delete window.__testConnectHook;
+    });
+  });
 });
-
-
 
 

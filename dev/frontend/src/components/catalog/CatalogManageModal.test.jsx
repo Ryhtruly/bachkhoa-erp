@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import CatalogManageModal, { PRESET_COLORS } from './CatalogManageModal'
+import CatalogManageModal from './CatalogManageModal'
 import { apiFetch } from '../../lib/api'
 
 vi.mock('../../lib/api', () => ({

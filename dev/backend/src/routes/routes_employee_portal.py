@@ -53,6 +53,7 @@ class SubmitNodeIn(BaseModel):
 
 class ClaimNodeIn(BaseModel):
     role_code: Optional[str] = None
+    start_now: bool = True
 
 
 class PauseNodeIn(BaseModel):
@@ -305,6 +306,7 @@ def pause_task_node(
         db.commit()
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("NODE_PAUSED", entity_id=task_node_id)
         return result
     except WorkflowValidationError as exc:
@@ -329,6 +331,7 @@ def resume_task_node(
         db.commit()
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("NODE_RESUMED", entity_id=task_node_id)
         return result
     except WorkflowValidationError as exc:
@@ -364,6 +367,7 @@ def claim_task_cluster(
         invalidate_cache("task_pool:*")
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         for item in result["claimed"]:
             publish_timeline_change("TASK_CLAIMED", entity_id=item["task_node_id"])
         return result
@@ -396,11 +400,13 @@ def claim_task(
             employee_id=employee.id,
             role_code=payload.role_code,
             actor_id=user.id,
+            start_now=payload.start_now,
         )
         db.commit()
         invalidate_cache("task_pool:*")
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("TASK_CLAIMED", entity_id=task_node_id)
         return result
     except TaskClaimConflict as exc:
@@ -594,6 +600,7 @@ async def submit_checklist_evidence(
             except Exception:
                 logger.exception("Unable to compensate evidence upload for task node %s", task_node_id)
         raise
+    EmployeePortalService.invalidate_employee_caches(employee.id)
     publish_timeline_change("checklist_submitted", entity_id=checklist_result_id)
     return result
 
@@ -676,7 +683,7 @@ def create_checklist_document_type(
 ):
     from src.dossiers.checklist_document_types import add_type
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     try:
         result = add_type(
             db,
@@ -687,6 +694,7 @@ def create_checklist_document_type(
             actor_id=user.id,
         )
         db.commit()
+        EmployeePortalService.invalidate_employee_caches(employee.id)
     except Exception:
         db.rollback()
         raise
@@ -709,7 +717,7 @@ async def upload_checklist_document_type_files(
     from src.dossiers.checklist_document_types import add_files
     from src.dossiers.documents import MAX_DOCUMENT_BYTES
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     if not files:
         raise HTTPException(status_code=422, detail="Phải chọn ít nhất một tệp.")
     _require_document_type_in_checklist(db, checklist_result_id, type_id)
@@ -738,6 +746,7 @@ async def upload_checklist_document_type_files(
             change_reason=change_reason,
         ) if uploads else []
         db.commit()
+        EmployeePortalService.invalidate_employee_caches(employee.id)
     except Exception:
         db.rollback()
         raise
@@ -759,7 +768,7 @@ def delete_checklist_document_type_file(
 ):
     from src.dossiers.checklist_document_types import remove_file
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     _require_document_type_in_checklist(db, checklist_result_id, type_id)
     try:
         result = remove_file(
@@ -770,6 +779,7 @@ def delete_checklist_document_type_file(
             change_reason=payload.change_reason,
         )
         db.commit()
+        EmployeePortalService.invalidate_employee_caches(employee.id)
     except Exception:
         db.rollback()
         raise
@@ -816,6 +826,7 @@ async def submit_checklist_output_document(
             actor_id=user.id,
         )
         db.commit()
+        EmployeePortalService.invalidate_employee_caches(employee.id)
     except Exception:
         db.rollback()
         raise
@@ -850,6 +861,7 @@ def reuse_checklist_output_document(
             document_id=document_id, actor_id=user.id,
         )
         db.commit()
+        EmployeePortalService.invalidate_employee_caches(employee.id)
     except Exception:
         db.rollback()
         raise
@@ -869,7 +881,7 @@ def classify_source_document(
     """Gán giấy nguyên bản vào đúng loại giấy checklist trong một transaction."""
     from src.dossiers.checklist_document_types import attach_existing_file
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
+    employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     document_type_id = str(payload.document_type_id or "").strip() or None
     if document_type_id:
         _require_document_type_in_checklist(db, checklist_result_id, document_type_id)
@@ -907,6 +919,7 @@ def classify_source_document(
             actor_id=user.id,
         )
         db.commit()
+        EmployeePortalService.invalidate_employee_caches(employee.id)
     except Exception:
         db.rollback()
         raise
@@ -981,6 +994,7 @@ def start_task(
         invalidate_cache("task_pool:*")
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("TASK_STARTED", entity_id=task_node_id)
         return result
     except WorkflowValidationError as exc:
@@ -1005,6 +1019,7 @@ def start_field_work(
         db.commit()
         invalidate_cache("task_pool:*")
         invalidate_cache("bachkhoa:contract_workspace:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("FIELD_WORK_STARTED", entity_id=task_node_id)
         return result
     except WorkflowValidationError as exc:
@@ -1267,6 +1282,7 @@ def submit_task(
         invalidate_cache("task_pool:*")
         invalidate_cache("bachkhoa:contract_workspace:*")
         invalidate_cache(f"employee_daily_summary:{employee.id}:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("TASK_SUBMITTED", entity_id=task_node_id)
         return result
     except WorkflowValidationError as exc:
@@ -1303,6 +1319,7 @@ def request_help(
         )
         db.commit()
         invalidate_cache("task_pool:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("HELP_REQUESTED", entity_id=task_node_id)
         return result
     except TaskClaimConflict as exc:
@@ -1329,6 +1346,7 @@ def claim_help(
         )
         db.commit()
         invalidate_cache("task_pool:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         publish_timeline_change("HELP_CLAIMED", entity_id=result["task_node_id"])
         return result
     except TaskClaimConflict as exc:
@@ -1358,6 +1376,7 @@ def cancel_help(
         result = cancel_node_help(db, request_id=request_id, employee_id=employee.id)
         db.commit()
         invalidate_cache("task_pool:*")
+        EmployeePortalService.invalidate_employee_caches(employee.id)
         return result
     except TaskClaimConflict as exc:
         db.rollback()

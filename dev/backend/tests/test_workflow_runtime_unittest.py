@@ -284,5 +284,111 @@ class DirectorDocumentTypeReviewRouteTests(unittest.TestCase):
         self.assertEqual(validated["nodes"]["k05a"]["task_code"], "K05a")
 
 
+class WorkflowAssignmentStatusFilterTests(unittest.TestCase):
+    def test_primary_assignee_query_filters_out_cancelled(self):
+        sql = str(workflow_runtime._NODE_PRIMARY_ASSIGNEE_QUERY).lower()
+        self.assertIn("cancelled", sql)
+        self.assertIn("replaced", sql)
+        self.assertIn("declined", sql)
+
+    def test_workspace_contract_query_filters_out_cancelled(self):
+        import inspect
+        src = inspect.getsource(routes_contracts.get_contract_workspace)
+        self.assertIn("'cancelled'", src)
+        self.assertIn("'replaced'", src)
+        self.assertIn("'declined'", src)
+
+    def test_normalize_assignment_synchronizes_main_and_is_primary(self):
+        # 1. role_code="MAIN" forces is_primary=True
+        norm_main = workflow_runtime._normalize_assignment(
+            {"employee_id": "EMP-1", "role_code": "MAIN", "is_primary": False}, "n1"
+        )
+        self.assertEqual(norm_main["role_code"], "MAIN")
+        self.assertTrue(norm_main["is_primary"])
+
+        # 2. is_primary=True forces role_code="MAIN"
+        norm_primary = workflow_runtime._normalize_assignment(
+            {"employee_id": "EMP-2", "role_code": "ASSISTANT", "is_primary": True}, "n1"
+        )
+        self.assertEqual(norm_primary["role_code"], "MAIN")
+        self.assertTrue(norm_primary["is_primary"])
+
+        # 3. ASSISTANT with is_primary=False remains ASSISTANT and False
+        norm_assistant = workflow_runtime._normalize_assignment(
+            {"employee_id": "EMP-3", "role_code": "ASSISTANT", "is_primary": False}, "n1"
+        )
+        self.assertEqual(norm_assistant["role_code"], "ASSISTANT")
+        self.assertFalse(norm_assistant["is_primary"])
+
+    def test_validate_workflow_graph_blocks_duplicate_main_assignees(self):
+        db = MagicMock()
+        def mock_execute(query, params=None):
+            sql = str(query).lower()
+            if "from public.work_items" in sql:
+                return _Result(rows=[])
+            if "from public.workflow_nodes" in sql:
+                return _Result(rows=[("K01",)])
+            if "from public.departments" in sql:
+                return _Result(rows=[("SURVEY",), ("LEGAL",), ("SALES",)])
+            if "from public.employees" in sql:
+                return _Result(rows=[("EMP-1",), ("EMP-2",)])
+            return _Result(rows=[])
+        db.execute.side_effect = mock_execute
+
+        graph_invalid = {
+            "start_node": "k01",
+            "nodes": {
+                "k01": {
+                    "task_code": "K01",
+                    "name": "Khảo sát",
+                    "transitions": {},
+                    "checklist": [],
+                    "assignments": [
+                        {"employee_id": "EMP-1", "role_code": "MAIN"},
+                        {"employee_id": "EMP-2", "role_code": "MAIN"},
+                    ],
+                }
+            }
+        }
+        with self.assertRaises(workflow_runtime.WorkflowValidationError) as caught:
+            workflow_runtime.validate_workflow_graph(db, graph_invalid)
+        self.assertIn("chỉ được có một người phụ trách chính", str(caught.exception))
+
+    def test_validate_workflow_graph_allows_one_main_and_assistants(self):
+        db = MagicMock()
+        def mock_execute(query, params=None):
+            sql = str(query).lower()
+            if "from public.work_items" in sql:
+                return _Result(rows=[])
+            if "from public.workflow_nodes" in sql:
+                return _Result(rows=[("K01",)])
+            if "from public.departments" in sql:
+                return _Result(rows=[("SURVEY",), ("LEGAL",), ("SALES",)])
+            if "from public.employees" in sql:
+                return _Result(rows=[("EMP-1",), ("EMP-2",)])
+            return _Result(rows=[])
+        db.execute.side_effect = mock_execute
+
+        graph_valid = {
+            "start_node": "k01",
+            "nodes": {
+                "k01": {
+                    "task_code": "K01",
+                    "name": "Khảo sát",
+                    "transitions": {},
+                    "checklist": [],
+                    "assignments": [
+                        {"employee_id": "EMP-1", "role_code": "MAIN"},
+                        {"employee_id": "EMP-2", "role_code": "ASSISTANT"},
+                    ],
+                }
+            }
+        }
+        validated = workflow_runtime.validate_workflow_graph(db, graph_valid)
+        self.assertEqual(len(validated["nodes"]["k01"]["assignments"]), 2)
+        roles = [a["role_code"] for a in validated["nodes"]["k01"]["assignments"]]
+        self.assertEqual(roles, ["MAIN", "ASSISTANT"])
+
+
 if __name__ == "__main__":
     unittest.main()

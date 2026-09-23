@@ -47,3 +47,81 @@ export function neoTuyenVaoHandle(points, sourceX, sourceY, targetX, targetY) {
     };
   });
 }
+
+/**
+ * Kiểm tra xem nếu nối từ source tới target thì có tạo thành chu trình (vòng lặp) không.
+ * Duyệt BFS từ target: nếu có thể đi tới source thì tức là việc nối source -> target
+ * sẽ khép kín một vòng lặp.
+ */
+export function hasCyclePath(fromNodeId, toNodeId, currentEdges = []) {
+  if (!fromNodeId || !toNodeId) return false;
+  if (fromNodeId === toNodeId) return true;
+  const visited = new Set();
+  const queue = [fromNodeId];
+  while (queue.length > 0) {
+    const curr = queue.shift();
+    if (curr === toNodeId) return true;
+    if (!visited.has(curr)) {
+      visited.add(curr);
+      for (const edge of currentEdges) {
+        if (edge.source === curr && !visited.has(edge.target)) {
+          queue.push(edge.target);
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Kiểm tra quy tắc nối tuần tự 1-1 cho sơ đồ quy trình:
+ * 1. Không tự nối vào chính mình (self-loop).
+ * 2. Một đầu chỉ được phép có 1 đường nối:
+ *    - Đầu ra (source) tối đa 1 đường ra.
+ *    - Đầu vào (target) tối đa 1 đường vào.
+ * 3. Không tạo thành vòng lặp khép kín (cycle).
+ *
+ * @param {Object} connection - { source, target, id? }
+ * @param {Array} edges - danh sách edges hiện có
+ * @returns {{ ok: boolean, reason?: string, message?: string }}
+ */
+export function checkSequentialConnection(connection, edges = []) {
+  const { source, target, id } = connection || {};
+  if (!source || !target) {
+    return { ok: false, reason: 'missing_nodes', message: 'Thiếu thông tin bước nối.' };
+  }
+  if (source === target) {
+    return { ok: false, reason: 'self_loop', message: 'Không thể nối bước với chính nó!' };
+  }
+
+  // Đầu ra của node nguồn: chỉ được phép có tối đa 1 đường
+  const hasOutgoing = edges.some(e => e.source === source && e.id !== id);
+  if (hasOutgoing) {
+    return {
+      ok: false,
+      reason: 'source_has_outgoing',
+      message: 'Đầu ra của bước này đã có đường nối. Mỗi đầu chỉ được phép có 1 đường nối duy nhất!',
+    };
+  }
+
+  // Đầu vào của node đích: chỉ được phép có tối đa 1 đường
+  const hasIncoming = edges.some(e => e.target === target && e.id !== id);
+  if (hasIncoming) {
+    return {
+      ok: false,
+      reason: 'target_has_incoming',
+      message: 'Đầu vào của bước tiếp nhận đã có đường nối. Mỗi đầu chỉ được phép có 1 đường nối duy nhất!',
+    };
+  }
+
+  // Chặn tạo vòng lặp
+  if (hasCyclePath(target, source, edges)) {
+    return {
+      ok: false,
+      reason: 'cycle',
+      message: 'Không thể nối tạo thành vòng lặp! Quy trình phải chạy tuần tự từ trước ra sau.',
+    };
+  }
+
+  return { ok: true };
+}

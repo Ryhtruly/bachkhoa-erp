@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FileClock, Pause, TriangleAlert } from 'lucide-react';
+import { ExternalLink, FileClock, Pause, TriangleAlert } from 'lucide-react';
 
 import { apiFetch } from '../../lib/api';
 import LegalDossierActions from '../../features/legal-dossier/LegalDossierActions';
 import { daysUntil, latestSubmission, pauseNote } from './nodeAgency';
+import { isGovernmentCapability, isGovernmentTracking } from './governmentCapability';
 
 /**
  * Khối NỘP CƠ QUAN trong panel chi tiết Node — phía GIÁM ĐỐC.
@@ -34,6 +35,8 @@ const PAUSE_LABELS = {
   INTERNAL: 'NỘI BỘ',
 };
 
+const DVC_TRACUU_URL = 'https://dichvucong.gov.vn/p/home/dvc-tra-cuu-ho-so.html';
+
 const formatDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -57,6 +60,32 @@ function Row({ label, children }) {
   );
 }
 
+function getDisplayStatus({ paused, dossier, receiptCode, isTracking, taskNode }) {
+  if (paused) return 'Tạm dừng';
+  if (dossier?.status === 'CLOSED' || dossier?.status === 'COMPLETED' || dossier?.status === 'DONE') {
+    return dossier?.status_label || 'Đã đóng';
+  }
+
+  // Nếu chưa có mã biên nhận (chưa nộp vào cơ quan nhà nước)
+  if (!receiptCode) {
+    if (isTracking) {
+      return 'Chưa có biên nhận';
+    }
+    const execStatus = taskNode?.executionStatus || taskNode?.status;
+    const isNotStarted = execStatus === 'ready' || execStatus === 'pending' || dossier?.status === 'ASSIGNED' || !taskNode?.assigned_to;
+    if (isNotStarted) {
+      return 'Chờ tiếp nhận';
+    }
+    return 'Chưa nộp';
+  }
+
+  // Đã có mã biên nhận hợp lệ (đã nộp vào cơ quan)
+  if (isTracking) {
+    return dossier?.status_label || 'Đang chi nhánh';
+  }
+  return dossier?.status_label || 'Đã nộp';
+}
+
 export default function NodeAgencyPanel({
   taskNodeId,
   nodeCode,
@@ -65,6 +94,11 @@ export default function NodeAgencyPanel({
   onChanged,
   readOnly = true,
 }) {
+  const capabilitySource = taskNode || { node_code: nodeCode };
+  const isGovSub = isGovernmentCapability(capabilitySource);
+  const isTracking = isGovernmentTracking(capabilitySource);
+  const title = isTracking ? 'Theo dõi & rút kết quả' : (isGovSub ? 'Nộp hồ sơ & nhập biên nhận' : 'Nộp & lấy biên nhận');
+
   const [dossier, setDossier] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -72,27 +106,53 @@ export default function NodeAgencyPanel({
     if (!taskNodeId) { setDossier(null); setLoading(false); return; }
     setLoading(true);
     try {
-      // by-task-node chỉ trả phần thân hồ sơ; nhật ký và các lần nộp nằm ở
-      // endpoint chi tiết. Hai lượt gọi này được apiFetch gộp và nhớ lại nên mở
-      // lại Node không tốn thêm vòng mạng nào.
-      const found = await apiFetch(`/api/legal-dossiers/by-task-node/${taskNodeId}`);
-      const id = found?.data?.id;
-      if (!id) { setDossier(null); return; }
-      const full = await apiFetch(`/api/legal-dossiers/${id}`);
-      setDossier(full?.data || found?.data || null);
-    } catch {
-      // Bước chưa bắt đầu, hoặc node không bật cờ nộp cơ quan — khối tự ẩn.
+      try {
+        const found = await apiFetch(`/api/legal-dossiers/by-task-node/${taskNodeId}`);
+        const id = found?.data?.id;
+        if (id) {
+          const full = await apiFetch(`/api/legal-dossiers/${id}`);
+          setDossier(full?.data || found?.data || null);
+          return;
+        }
+      } catch {
+        // Bỏ qua lỗi legal-dossiers, kiểm tra tiếp legal-submissions
+      }
+
+      try {
+        const subRes = await apiFetch(`/api/legal-submissions/by-task-node/${taskNodeId}`);
+        const sub = subRes?.data;
+        if (sub) {
+          const hasReceipt = Boolean(sub.receipt_code);
+          const execStatus = taskNode?.executionStatus || taskNode?.status;
+          const isNotStarted = execStatus === 'ready' || execStatus === 'pending' || !taskNode?.assigned_to;
+
+          const status = hasReceipt ? 'PROCESSING' : (isNotStarted ? 'ASSIGNED' : 'PROCESSING');
+          const statusLabel = hasReceipt
+            ? (sub.gov_status || sub.legacy_gov_status || (isTracking ? 'Đang chi nhánh' : 'Đã nộp'))
+            : (isTracking ? 'Chưa có biên nhận' : (isNotStarted ? 'Chờ tiếp nhận' : 'Chưa nộp'));
+
+          setDossier({
+            id: sub.id,
+            status,
+            status_label: statusLabel,
+            latest_receipt_code: sub.receipt_code || null,
+            submissions: [sub],
+            events: [],
+            is_standalone_submission: true,
+          });
+          return;
+        }
+      } catch {
+        // Cả 2 đều không có
+      }
+
       setDossier(null);
     } finally {
       setLoading(false);
     }
-  }, [taskNodeId]);
+  }, [taskNodeId, isTracking, taskNode]);
 
   useEffect(() => { load(); }, [load]);
-
-  const isGovSub = taskNode?.capability === 'GOV_SUBMISSION' || taskNode?.capability_code === 'GOV_SUBMISSION' || taskNode?.requiresGovSubmission || taskNode?.requires_gov_submission;
-  const isTracking = nodeCode === 'K05b';
-  const title = isTracking ? 'Theo dõi & rút kết quả' : (isGovSub ? 'Nộp cơ quan & Theo dõi một cửa' : 'Nộp & lấy biên nhận');
 
   // ── Bước chưa chạy ──
   // Xem trước cho biết sẽ có gì, thay vì để trống khiến Giám đốc tưởng chưa làm.
@@ -140,6 +200,17 @@ export default function NodeAgencyPanel({
   const dueDate = latestSubmit?.expected_return_date || null;
   const daysLeft = daysUntil(dueDate);
 
+  const handleTraCuu = () => {
+    if (receiptCode && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(receiptCode)
+        .then(() => addToast?.('Đã copy số biên nhận — dán vào ô tra cứu trên cổng', 'info'))
+        .catch(() => {});
+    }
+    window.open(DVC_TRACUU_URL, '_blank', 'noopener,noreferrer');
+  };
+
+  const displayStatus = getDisplayStatus({ paused, dossier, receiptCode, isTracking, taskNode });
+
   return (
     <section className="wf-agency" aria-label={title}>
       {/* Đang tạm dừng thì nói NGAY ở đầu khối, kèm lý do và ghi chú. Giám đốc mở
@@ -157,12 +228,32 @@ export default function NodeAgencyPanel({
 
       <div className="wf-agency__grid">
         <Row label="Mã biên nhận">
-          {receiptCode
-            ? <strong>{receiptCode}</strong>
-            : <span className="wf-agency__empty">chưa có</span>}
-          {/* K05b không tự sinh mã — nó dùng lại đúng mã K05a đã lấy về. */}
-          {isTracking && receiptCode && <em>kế thừa từ K05a</em>}
+          <div className="wf-agency__receipt-row">
+            <div>
+              {receiptCode
+                ? <strong>{receiptCode}</strong>
+                : <span className="wf-agency__empty">chưa có</span>}
+              {/* K05b / Node theo dõi không tự sinh mã — nó dùng lại đúng mã bước nộp đã lấy về. */}
+              {isTracking && receiptCode && <em>{nodeCode === 'K05b' ? 'kế thừa từ K05a' : 'kế thừa từ bước nộp'}</em>}
+            </div>
+            {receiptCode && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs wf-agency__dvc-btn"
+                onClick={handleTraCuu}
+                title="Tra cứu tiến độ hồ sơ tại Cổng Dịch vụ công Quốc gia"
+              >
+                <ExternalLink size={12} /> Tra cứu tại Cổng DVC
+              </button>
+            )}
+          </div>
         </Row>
+
+        {latestSubmit?.submitted_agency && (
+          <Row label="Nơi nộp">
+            <strong>{latestSubmit.submitted_agency}</strong>
+          </Row>
+        )}
 
         {latestSubmit?.received_date && (
           <Row label="Ngày nhận">{formatDate(latestSubmit.received_date)}</Row>
@@ -174,8 +265,8 @@ export default function NodeAgencyPanel({
         </Row>
 
         <Row label="Trạng thái">
-          <strong>{dossier.status_label}</strong>
-          {dossier.submission_count > 1 && <em>đã nộp {dossier.submission_count} lần</em>}
+          <strong>{displayStatus}</strong>
+          {receiptCode && dossier.submission_count > 1 && <em>đã nộp {dossier.submission_count} lần</em>}
         </Row>
       </div>
 
@@ -187,7 +278,7 @@ export default function NodeAgencyPanel({
           Đang tạm dừng nên nhân viên chưa nộp nghiệm thu được. Bấm Tiếp tục mới mở lại.
         </p>
       )}
-      {isTracking && dossier.status !== 'CLOSED' && (
+      {!dossier.is_standalone_submission && isTracking && dossier.status !== 'CLOSED' && (
         <p className="wf-agency__gate">
           <TriangleAlert size={13} />
           Chưa có kết quả chính thức từ cơ quan thì chưa đóng được bước này.
@@ -218,12 +309,14 @@ export default function NodeAgencyPanel({
         </details>
       )}
 
-      <LegalDossierActions
-        dossier={dossier}
-        addToast={addToast}
-        readOnly={readOnly}
-        onDone={() => { load(); onChanged?.(); }}
-      />
+      {!dossier.is_standalone_submission && (
+        <LegalDossierActions
+          dossier={dossier}
+          addToast={addToast}
+          readOnly={readOnly}
+          onDone={() => { load(); onChanged?.(); }}
+        />
+      )}
     </section>
   );
 }

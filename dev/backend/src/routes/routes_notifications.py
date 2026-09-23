@@ -119,6 +119,31 @@ _MANAGER_DEBT_REVIEW_QUERY = text(
     """
 )
 
+_MANAGER_ROLLBACK_REVIEW_QUERY = text(
+    """
+    select r.id as request_id, r.reason, r.created_at, r.workflow_instance_id,
+           r.target_task_node_id as task_node_id,
+           n.node_code, n.node_key,
+           coalesce(nullif(n.name, ''), nullif(wn.name, ''), n.node_code) as node_name,
+           sl.contract_id, sl.id as service_line_id,
+           coalesce(tt.name, sl.service_type, 'Hạng mục') as service_line_name,
+           coalesce(cu.full_name, 'Khách hàng') as customer_name,
+           u.username as requested_by_name
+    from public.workflow_rollback_requests r
+    join public.task_nodes n on n.id = r.target_task_node_id
+    left join public.workflow_nodes wn on wn.code = n.node_code
+    join public.workflow_instances wi on wi.id = r.workflow_instance_id
+    join public.service_lines sl on sl.id = wi.service_line_id
+    join public.contracts c on c.id = sl.contract_id
+    left join public.customers cu on cu.id = c.customer_id
+    left join public.task_types tt on tt.id = sl.task_type_id
+    left join public.users u on u.id = r.requested_by
+    where r.status = 'pending'
+    order by r.created_at asc
+    limit 50
+    """
+)
+
 # Phiếu thu/chi kế toán đã lập, đang nằm chờ giám đốc duyệt. Không có dòng này
 # thì kế toán bấm gửi xong là tiền rơi vào im lặng: giám đốc không biết có gì để
 # duyệt, kế toán không biết phiếu của mình đã đi tới đâu.
@@ -166,6 +191,7 @@ _EMPLOYEE_NODE_TODO_QUERY = text(
     join public.task_node_assignments a
       on a.task_node_id = n.id and a.employee_id = :employee_id
      and a.assignment_status not in ('replaced', 'declined')
+     and a.assignment_status not in ('replaced', 'declined', 'cancelled')
     left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
@@ -190,6 +216,7 @@ _EMPLOYEE_CHECKLIST_RESUBMIT_QUERY = text(
     join public.task_node_assignments a
       on a.task_node_id = n.id and a.employee_id = :employee_id
      and a.assignment_status not in ('replaced', 'declined')
+     and a.assignment_status not in ('replaced', 'declined', 'cancelled')
     left join public.workflow_nodes wn on wn.code = n.node_code
     join public.workflow_instances wi on wi.id = n.workflow_instance_id
     join public.service_lines sl on sl.id = wi.service_line_id
@@ -223,7 +250,7 @@ def _iso(value):
     return value.isoformat() if value else None
 
 
-def _manager_review_notifications(*, doc_type_rows=None, checklist_rows=None, debt_rows=None) -> list[dict]:
+def _manager_review_notifications(*, doc_type_rows=None, checklist_rows=None, debt_rows=None, rollback_rows=None) -> list[dict]:
     """Map hàng đợi duyệt sang đích điều hướng bất biến trên chuông."""
     items = []
     if doc_type_rows:
@@ -270,6 +297,25 @@ def _manager_review_notifications(*, doc_type_rows=None, checklist_rows=None, de
             "task_node_id": row["task_node_id"],
             "created_at": _iso(row["created_at"]),
         } for row in debt_rows)
+
+    if rollback_rows:
+        items.extend({
+            "type": "rollback_review",
+            "target_type": "rollback_review",
+            "target_id": row["request_id"],
+            "request_id": row["request_id"],
+            "label": (
+                f"HĐ {row['contract_id']} — Xin quay lại bước {row['node_code']} ({row['node_name']})"
+            ),
+            "contract_id": row["contract_id"],
+            "service_line_id": row["service_line_id"],
+            "node_key": row.get("node_key"),
+            "node_code": row.get("node_code"),
+            "node_name": row.get("node_name"),
+            "task_node_id": row.get("task_node_id"),
+            "requested_by_name": row.get("requested_by_name"),
+            "created_at": _iso(row["created_at"]),
+        } for row in rollback_rows)
     return items
 
 
@@ -350,6 +396,19 @@ def _feed_label(row) -> str:
     return node
 
 
+_HAS_NOTIFICATION_READS_TABLE: bool | None = None
+
+def _has_notification_reads_table(db: Session) -> bool:
+    global _HAS_NOTIFICATION_READS_TABLE
+    if _HAS_NOTIFICATION_READS_TABLE is None:
+        try:
+            val = db.execute(text("select to_regclass('public.notification_reads')")).scalar()
+            _HAS_NOTIFICATION_READS_TABLE = bool(val)
+        except Exception:
+            return False
+    return _HAS_NOTIFICATION_READS_TABLE
+
+
 def employee_event_feed(db: Session, *, user_id: str, employee_id: str | None) -> list[dict]:
     """Sự kiện chưa đọc của các bước người này đang giữ.
 
@@ -358,13 +417,9 @@ def employee_event_feed(db: Session, *, user_id: str, employee_id: str | None) -
     """
     if not employee_id:
         return []
-    if not db.execute(text("select to_regclass('public.notification_reads')")).scalar():
+    if not _has_notification_reads_table(db):
         # Migration C3 chưa lên. Trả rỗng và đi tiếp — chuông cũ vẫn chạy, không
         # được để cả chuông vỡ vì một phần mới.
-        #
-        # Kiểm bảng thay vì bọc try/except quanh truy vấn: một except rộng ở đây
-        # nuốt luôn lỗi cú pháp SQL, và feed im lặng trả rỗng mãi mà không ai
-        # biết vì sao — đúng cái vừa xảy ra khi viết hàm này.
         return []
     rows = db.execute(_EMPLOYEE_FEED_QUERY, {
         "event_types": list(_EMPLOYEE_FEED_TYPES),
@@ -389,25 +444,17 @@ def get_notifications_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Chốt lười TRƯỚC khi đọc cache: nhân viên bị trả bài sẽ bấm chuông, chứ
-    # không tự mở lại bước mình vừa nộp. Đây là cổng thật của đường chốt lười —
-    # chỉ gắn ở cổng chi tiết bước thì đúng người cần tin lại không kích hoạt
-    # được nó.
-    #
-    # Chạy trước cache vì nếu chốt xong mới trả cache cũ thì tin vừa sinh ra phải
-    # đợi hết TTL mới hiện.
+    cache_key = f"bachkhoa:notifications:summary:{user.id}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     employee_id = db.execute(
         text("select id from public.employees where user_id = :u limit 1"),
         {"u": user.id},
     ).scalar()
     if flush_stale_review_batches(db, employee_id=employee_id):
         db.commit()
-        invalidate_cache(f"bachkhoa:notifications:summary:{user.id}")
-
-    cache_key = f"bachkhoa:notifications:summary:{user.id}"
-    cached = get_cached_json(cache_key)
-    if cached is not None:
-        return cached
 
     items = []
 
@@ -415,7 +462,7 @@ def get_notifications_summary(
     # cần thấy ngay, còn danh sách việc tồn thì lúc nào cũng ở đó.
     items.extend(employee_event_feed(db, user_id=user.id, employee_id=employee_id))
 
-    if check_user_permission(db, user, "contract", "update"):
+    if check_user_permission(db, user, "contract", "update") or check_user_permission(db, user, "task_node", "approve"):
         for row in db.execute(_build_acceptance_query(db)).mappings().all():
             so_mien = int(row["so_phieu_mien"] or 0)
             items.append({
@@ -437,6 +484,7 @@ def get_notifications_summary(
             doc_type_rows=db.execute(_MANAGER_DOC_TYPE_REVIEW_QUERY).mappings().all(),
             checklist_rows=db.execute(_MANAGER_CHECKLIST_REVIEW_QUERY).mappings().all(),
             debt_rows=db.execute(_MANAGER_DEBT_REVIEW_QUERY).mappings().all(),
+            rollback_rows=db.execute(_MANAGER_ROLLBACK_REVIEW_QUERY).mappings().all(),
         ))
 
     # Người duyệt tiền là giám đốc. Kế toán lập phiếu xong thì phiếu phải hiện
@@ -514,7 +562,7 @@ def get_notifications_summary(
 
     items.sort(key=lambda item: item["created_at"] or "")
     result = {"count": len(items), "items": items}
-    set_cached_json(cache_key, result, ttl_seconds=10)
+    set_cached_json(cache_key, result, ttl_seconds=30)
     return result
 
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, Inbox, FileStack, Workflow, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, Filter, FolderKanban, FileCheck, FileText, Wallet, BarChart2, BookOpen, Settings2, ChartNoAxesGantt, Users, Inbox, Workflow, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { prefetchApi } from '../lib/api';
 
 const TAB_PREFETCH_HANDLERS = {

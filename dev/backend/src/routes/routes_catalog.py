@@ -60,7 +60,6 @@ def _check_catalog_write_permission(db: Session, user: User) -> None:
         check_user_permission(db, user, "workflow", "update")
         or check_user_permission(db, user, "workflow", "approve")
         or check_user_permission(db, user, "settings", "update")
-        or user.username == "admin"
     ):
         raise HTTPException(status_code=403, detail="Không có quyền chỉnh sửa danh mục dịch vụ")
 

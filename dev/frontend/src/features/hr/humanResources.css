@@ -106,6 +106,64 @@
   padding-left: 38px;
 }
 
+.hr-list__status-filters {
+  display: flex;
+  background: var(--bg-deep, rgba(0, 0, 0, 0.04));
+  padding: 3px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-subtle);
+  gap: 2px;
+}
+
+.hr-list__status-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms var(--ease-out, ease);
+  white-space: nowrap;
+}
+
+.hr-list__status-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hr-list__status-btn.is-active {
+  background: var(--bg-card);
+  color: var(--orange-500);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
+}
+
+.hr-list__status-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  border-radius: 999px;
+  background: rgba(125, 125, 125, 0.15);
+  color: var(--text-tertiary);
+  font-weight: 600;
+}
+
+.hr-list__status-btn.is-active .hr-list__status-count {
+  background: rgba(235, 74, 35, 0.12);
+  color: var(--orange-500);
+}
+
 .hr-list__items {
   flex: 1;
   overflow-y: auto;

@@ -33,6 +33,20 @@ export default function ApprovalQueue() {
   const [reviewDialog, setReviewDialog] = useState(null)
   const [reviewNote, setReviewNote] = useState('')
   const [reviewError, setReviewError] = useState('')
+  const [focusTarget, setFocusTarget] = useState(null)
+
+  useEffect(() => {
+    const handleOpenItem = (event) => {
+      const detail = event.detail
+      if (!detail) return
+      setFocusTarget({
+        id: detail.requestId || detail.id,
+        type: detail.type || 'rollback',
+      })
+    }
+    window.addEventListener('bachkhoa:open-approval-item', handleOpenItem)
+    return () => window.removeEventListener('bachkhoa:open-approval-item', handleOpenItem)
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -98,6 +112,21 @@ export default function ApprovalQueue() {
       if (retryId) window.clearTimeout(retryId)
     }
   }, [load])
+
+  useEffect(() => {
+    if (loading || !focusTarget?.id) return
+    const elId = focusTarget.type === 'rollback' ? `rollback-${focusTarget.id}` : `approval-${focusTarget.type}-${focusTarget.id}`
+    const el = document.getElementById(elId) || document.getElementById(`rollback-${focusTarget.id}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('aq-card--highlight')
+      const timer = window.setTimeout(() => {
+        el.classList.remove('aq-card--highlight')
+        setFocusTarget(null)
+      }, 2500)
+      return () => window.clearTimeout(timer)
+    }
+  }, [loading, focusTarget, rollbacks])
 
   const openReview = (payload) => {
     setReviewDialog(payload)
@@ -191,7 +220,7 @@ export default function ApprovalQueue() {
 
     {rollbacks.length > 0 && <div className="aq-group">
       <h3><CornerUpLeft size={15} /> Xin quay lại bước · {rollbacks.length}</h3>
-      {rollbacks.map(row => <article key={row.id} className="aq-card is-rollback">
+      {rollbacks.map(row => <article key={row.id} id={`rollback-${row.id}`} className="aq-card is-rollback">
         <div className="aq-card__top">
           <strong>{row.service_line_name} · HĐ {row.contract_id}</strong>
           <span>{dateLabel(row.created_at)}</span>
@@ -229,7 +258,7 @@ export default function ApprovalQueue() {
       <h3><FilePlus2 size={15} /> Đề xuất loại tài liệu phát sinh · {slotRequests.length}</h3>
       {slotRequests.map(row => {
         const adjustment = adjustments[row.id] || {}
-        return <article key={row.id} className="aq-card is-slot-request">
+        return <article key={row.id} id={`slot-${row.id}`} className="aq-card is-slot-request">
           <div className="aq-card__top">
             <strong>{row.proposed_name}</strong>
             <span>{dateLabel(row.created_at)}</span>
@@ -337,7 +366,7 @@ export default function ApprovalQueue() {
 
     {waivers.length > 0 && <div className="aq-group">
       <h3><ShieldCheck size={15} /> Xin miễn giấy · {waivers.length}</h3>
-      {waivers.map(row => <article key={row.id} className="aq-card is-waiver">
+      {waivers.map(row => <article key={row.id} id={`waiver-${row.id}`} className="aq-card is-waiver">
         <div className="aq-card__top">
           <strong>{row.slot_name}</strong>
           <span>{dateLabel(row.created_at)}</span>
@@ -367,7 +396,7 @@ export default function ApprovalQueue() {
 
     {normalDocumentChanges.length > 0 && <div className="aq-group">
       <h3><FileWarning size={15} /> Xin sửa tài liệu chuyển giao · {normalDocumentChanges.length}</h3>
-      {normalDocumentChanges.map(row => <article key={row.id} className="aq-card is-document">
+      {normalDocumentChanges.map(row => <article key={row.id} id={`document-change-${row.id}`} className="aq-card is-document">
         <div className="aq-card__top">
           <strong>{row.slot_name}</strong>
           <span>{dateLabel(row.created_at)}</span>

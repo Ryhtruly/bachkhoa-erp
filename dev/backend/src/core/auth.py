@@ -127,16 +127,33 @@ RESOURCE_ALIASES = {
 }
 
 def check_user_permission(db: Session, user: User, resource: str, action: str) -> bool:
-    if not user or not user.is_active:
+    if not user or not getattr(user, "is_active", False):
         return False
 
-    # Superuser admin bypass
-    if user.username == "admin":
-        return True
+    user_id = getattr(user, "id", None)
+    if not user_id:
+        return False
 
     permission_column = f"can_{action}"
     if not hasattr(RolePermission, permission_column):
         return False
+
+    # Role-based admin check: users with the active "admin" role have superuser access
+    try:
+        is_admin = db.query(
+            db.query(UserRole)
+            .join(Role, Role.id == UserRole.role_id)
+            .filter(
+                UserRole.user_id == user_id,
+                Role.is_active.is_(True),
+                func.lower(Role.role_name) == "admin",
+            )
+            .exists()
+        ).scalar()
+        if is_admin:
+            return True
+    except Exception:
+        pass
 
     valid_resources = RESOURCE_ALIASES.get(resource, [resource])
 
@@ -146,7 +163,7 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
     try:
         normalized_decision = evaluate_normalized_permission(
             db,
-            user_id=user.id,
+            user_id=user_id,
             resource_codes=valid_resources,
             action=action,
         )
@@ -165,7 +182,7 @@ def check_user_permission(db: Session, user: User, resource: str, action: str) -
         .join(Role, Role.id == UserRole.role_id)
         .outerjoin(RolePermission, RolePermission.role_id == Role.id)
         .filter(
-            UserRole.user_id == user.id,
+            UserRole.user_id == user_id,
             Role.is_active.is_(True),
             (func.lower(Role.role_name) == "admin") | (
                 RolePermission.resource.in_(valid_resources) &
@@ -211,15 +228,16 @@ ACCOUNTANT_ROLE_NAMES = CANONICAL_ACCOUNTANT_ROLE_NAMES
 
 def is_payroll_all_user(db: Session, user: User) -> bool:
     """Only accountant/director may use collection-wide payroll endpoints."""
-    if not user or not user.is_active:
+    if not user or not getattr(user, "is_active", False):
         return False
-    if (user.username or "").strip().lower() == "admin":
-        return True
+    user_id = getattr(user, "id", None)
+    if not user_id:
+        return False
     return bool(
         db.query(Role.id)
         .join(UserRole, UserRole.role_id == Role.id)
         .filter(
-            UserRole.user_id == user.id,
+            UserRole.user_id == user_id,
             Role.is_active.is_(True),
             func.lower(Role.role_name).in_(PAYROLL_ALL_ROLE_NAMES),
         )
@@ -229,17 +247,18 @@ def is_payroll_all_user(db: Session, user: User) -> bool:
 
 def is_accountant_user(db: Session, user: User) -> bool:
     """Only the accounting role (or the technical admin) may issue vouchers."""
-    if not user or not user.is_active:
+    if not user or not getattr(user, "is_active", False):
         return False
-    if (user.username or "").strip().lower() == "admin":
-        return True
+    user_id = getattr(user, "id", None)
+    if not user_id:
+        return False
     return bool(
         db.query(Role.id)
         .join(UserRole, UserRole.role_id == Role.id)
         .filter(
-            UserRole.user_id == user.id,
+            UserRole.user_id == user_id,
             Role.is_active.is_(True),
-            func.lower(Role.role_name).in_(ACCOUNTANT_ROLE_NAMES),
+            func.lower(Role.role_name).in_(ACCOUNTANT_ROLE_NAMES | {"admin"}),
         )
         .first()
     )

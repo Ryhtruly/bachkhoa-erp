@@ -100,7 +100,7 @@ export default function EmployeePortalDashboard() {
     }
   }, [loadWorkspace])
 
-  const claimTask = useCallback(async (taskNodeId, roleCode) => {
+  const claimTask = useCallback(async (taskNodeId, roleCode, startNow = true) => {
     const key = `${taskNodeId}:${roleCode}`
     setClaimingKey(key)
     setActionError('')
@@ -108,7 +108,7 @@ export default function EmployeePortalDashboard() {
       await apiFetch(`/api/employee-portal/tasks/${taskNodeId}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role_code: roleCode }),
+        body: JSON.stringify({ role_code: roleCode, start_now: startNow }),
       })
       await loadWorkspace(false)
     } catch (requestError) {
@@ -120,6 +120,37 @@ export default function EmployeePortalDashboard() {
       setClaimingKey('')
     }
   }, [loadWorkspace])
+
+  const claimCluster = useCallback(async (item, roleCode) => {
+    const workflowInstanceId = item?.workflow_instance_id
+    const clusterCode = item?.cluster_code
+    // A node without a configured cluster uses the dynamic same-department
+    // reservation path. Do not auto-start it: this is still a “Nhận trọn”
+    // action.
+    if (!workflowInstanceId || !clusterCode) {
+      return claimTask(item?.id, roleCode, false)
+    }
+
+    const key = `cluster:${workflowInstanceId}:${clusterCode}`
+    setClaimingKey(key)
+    setActionError('')
+    try {
+      await apiFetch('/api/employee-portal/clusters/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_instance_id: workflowInstanceId,
+          cluster_code: clusterCode,
+        }),
+      })
+      await loadWorkspace(false)
+    } catch (requestError) {
+      setActionError(requestError.message || 'Không thể nhận trọn cụm công việc này.')
+      await loadWorkspace(false)
+    } finally {
+      setClaimingKey('')
+    }
+  }, [claimTask, loadWorkspace])
 
   const claimHelp = useCallback(async (requestId) => {
     setClaimingKey(`help:${requestId}`)
@@ -188,6 +219,7 @@ export default function EmployeePortalDashboard() {
       completedItems={completedItems}
       claimingKey={claimingKey}
       onClaim={claimTask}
+      onClaimCluster={claimCluster}
       onClaimHelp={claimHelp}
       onYield={yieldTask}
       onCancelYield={cancelYield}

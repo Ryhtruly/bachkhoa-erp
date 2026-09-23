@@ -531,6 +531,59 @@
   color: var(--text-secondary, #64748b);
 }
 
+.ew-card__chain-item.is-prohibited {
+  cursor: not-allowed;
+}
+
+.ew-card__chain-item.is-prohibited .ew-card__chain-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  padding: 1px 5px;
+  transition: all 0.15s ease;
+}
+
+.ew-card__chain-item.is-prohibited .ew-dept-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  transition: color 0.15s ease;
+}
+
+.ew-card__chain-item.is-prohibited .ew-prohibit-icon {
+  display: none;
+  color: #e11d48;
+}
+
+.ew-card__chain-item.is-prohibited:hover .ew-card__chain-pill {
+  background: #fff1f2;
+  border-color: #fca5a5;
+  color: #9f1239;
+}
+
+.ew-card__chain-item.is-prohibited:hover .ew-dept-tag {
+  color: #e11d48;
+}
+
+.ew-card__chain-item.is-prohibited:hover .ew-prohibit-icon {
+  display: inline-block;
+}
+
+.ew-steps__cell.is-prohibited {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-image: repeating-linear-gradient(45deg, #cbd5e1, #cbd5e1 2px, transparent 2px, transparent 4px);
+}
+
+.ew-held__chain {
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
 .ew-card__quote {
   margin: 0;
   padding: 6px 8px;
@@ -1370,6 +1423,43 @@
 }
 .eiw-step.is-idle {
   opacity: 0.65;
+}
+.eiw-step.is-prohibited {
+  cursor: not-allowed !important;
+  opacity: 0.75;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+.eiw-step.is-prohibited:hover {
+  opacity: 1;
+  border-color: #fca5a5;
+  background: #fff1f2;
+}
+.eiw-step.is-prohibited .eiw-step__circle {
+  position: relative;
+  transition: all 0.15s ease;
+}
+.eiw-step.is-prohibited .eiw-step__prohibit-icon {
+  display: none;
+  color: #e11d48;
+}
+.eiw-step.is-prohibited:hover .eiw-step__circle-index {
+  display: none;
+}
+.eiw-step.is-prohibited:hover .eiw-step__circle {
+  border-color: #f43f5e;
+  background: #ffe4e6;
+  color: #e11d48;
+}
+.eiw-step.is-prohibited:hover .eiw-step__prohibit-icon {
+  display: inline-block;
+}
+.eiw-step.is-prohibited .eiw-step__state {
+  color: #64748b;
+  font-weight: 700;
+}
+.eiw-step.is-prohibited:hover .eiw-step__state {
+  color: #e11d48;
 }
 .eiw-step__circle {
   display: grid;

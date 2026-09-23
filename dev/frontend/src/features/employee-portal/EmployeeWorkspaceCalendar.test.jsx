@@ -17,6 +17,9 @@ vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({
 vi.mock('../handover/HandoverPanel', () => ({
   default: () => <div data-testid="handover-panel" />,
 }))
+vi.mock('./NodeBusinessSlot', () => ({
+  default: ({ task }) => <div data-testid="node-business-slot" data-capability={task.capability_code || ''} />,
+}))
 
 vi.mock('@fullcalendar/react', () => ({
   default: (props) => <div
@@ -105,6 +108,32 @@ describe('EmployeeWorkspaceCalendar', () => {
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
       '/api/handover/k06/submit-acceptance',
       expect.objectContaining({ method: 'POST' }),
+    ))
+    expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it('node LEGAL_PREP ở trạng thái sẵn sàng hiện Bắt đầu làm và gọi start node', async () => {
+    const onChanged = vi.fn()
+    render(
+      <ToastProvider>
+        <NodeActionBar
+          task={{
+            id: 'legal-node-10',
+            node_code: 'N03',
+            capability_code: 'LEGAL_PREP',
+            status: 'ready',
+          }}
+          onChanged={onChanged}
+        />
+      </ToastProvider>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Bắt đầu làm' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Bắt đầu làm' }))
+
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+      '/api/employee-portal/tasks/legal-node-10/start',
+      { method: 'POST' },
     ))
     expect(onChanged).toHaveBeenCalledTimes(1)
   })
@@ -642,7 +671,7 @@ describe('EmployeeWorkspaceCalendar', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: /Nhận việc chính/i }))
-    expect(onClaim).toHaveBeenCalledWith('pool-k02', 'MAIN')
+    expect(onClaim).toHaveBeenCalledWith('pool-k02', 'MAIN', false)
   })
 
   it('can hide the task pool when embedded beside the legacy dashboard pool', () => {
@@ -692,6 +721,41 @@ describe('EmployeeWorkspaceCalendar', () => {
     expect(screen.getByTestId('legal-dossier-panel')).toBeInTheDocument()
     expect(screen.getByTestId('submission-receipt-panel')).toBeInTheDocument()
     expect(screen.queryByTestId('handover-panel')).not.toBeInTheDocument()
+  })
+
+  it('node tự do GOV_SUBMIT mở đúng ô nghiệp vụ của nhân viên', () => {
+    render(
+      <ToastProvider>
+        <EmployeeNodeModal
+          task={{
+            id: 't-submit', node_code: 'CUSTOM-1', name: 'Nộp hồ sơ', status: 'in_progress',
+            capability_code: 'GOV_SUBMIT', requires_gov_submission: false, checklist: [],
+          }}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+    expect(screen.getByTestId('node-business-slot')).toHaveAttribute('data-capability', 'GOV_SUBMIT')
+    expect(screen.queryByTestId('legal-dossier-panel')).not.toBeInTheDocument()
+  })
+
+  it('node tự do GOV_TRACKING mở ô nghiệp vụ theo dõi và hồ sơ pháp lý', () => {
+    render(
+      <ToastProvider>
+        <EmployeeNodeModal
+          task={{
+            id: 't-tracking', node_code: 'CUSTOM-2', name: 'Theo dõi hồ sơ', status: 'in_progress',
+            capability_code: 'GOV_TRACKING', requires_gov_submission: false, checklist: [],
+          }}
+          onClose={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </ToastProvider>,
+    )
+    expect(screen.getByTestId('node-business-slot')).toHaveAttribute('data-capability', 'GOV_TRACKING')
+    expect(screen.getByTestId('legal-dossier-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('submission-receipt-panel')).toBeInTheDocument()
   })
 
   it('handover task mounts handover panel only', () => {

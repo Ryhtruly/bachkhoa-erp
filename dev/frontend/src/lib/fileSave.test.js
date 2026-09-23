@@ -4,7 +4,6 @@ import {
   fetchProtectedDocumentFile,
   downloadBlob,
   resolveDocumentFileName,
-  extractExtension,
   requestDocxSaveHandle,
   writeBlobToFileHandle,
 } from './fileSave';

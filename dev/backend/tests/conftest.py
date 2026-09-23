@@ -235,8 +235,7 @@ def _ensure_fake_redis_when_redis_offline():
 
 from src.index import app
 from src.db.database import engine, Base, get_db
-from src.db.models import User, Role, UserRole, RolePermission, AuditLog
-from src.db.models import User, Role, UserRole, RolePermission, AuditLog, Employee
+from src.db.models import User, Role, UserRole, RolePermission, AuditLog, Employee, Permission, RolePermissionGrant
 from src.core.auth import hash_password, create_access_token
 
 
@@ -1021,6 +1020,22 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS task_type_id VARCHAR" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN task_type_id VARCHAR",
         f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE" if is_pg else "ALTER TABLE workflow_templates ADD COLUMN is_default BOOLEAN DEFAULT 0",
         f"ALTER TABLE {p}workflow_templates ADD COLUMN IF NOT EXISTS graph {json_type}" if is_pg else f"ALTER TABLE workflow_templates ADD COLUMN graph {json_type}",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS citizen_id VARCHAR(30)" if is_pg else "ALTER TABLE employees ADD COLUMN citizen_id VARCHAR(30)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS citizen_id_date DATE" if is_pg else "ALTER TABLE employees ADD COLUMN citizen_id_date DATE",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS citizen_id_place VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN citizen_id_place VARCHAR(255)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS hometown VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN hometown VARCHAR(255)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS ethnicity VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN ethnicity VARCHAR(50)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS marital_status VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN marital_status VARCHAR(50)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS personal_email VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN personal_email VARCHAR(255)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS permanent_address TEXT" if is_pg else "ALTER TABLE employees ADD COLUMN permanent_address TEXT",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS current_address TEXT" if is_pg else "ALTER TABLE employees ADD COLUMN current_address TEXT",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN emergency_contact_name VARCHAR(255)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(30)" if is_pg else "ALTER TABLE employees ADD COLUMN emergency_contact_phone VARCHAR(30)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS bank_account_no VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN bank_account_no VARCHAR(50)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS bank_name VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN bank_name VARCHAR(255)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN bank_branch VARCHAR(255)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS tax_code VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN tax_code VARCHAR(50)",
+        f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS social_insurance_no VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN social_insurance_no VARCHAR(50)",
     ]
     if is_pg:
         alter_statements.extend([
@@ -1146,6 +1161,26 @@ def _ensure_runtime_tables_and_columns(connection):
                 CREATE UNIQUE INDEX IF NOT EXISTS ux_checklist_document_type_file_active
                 ON {p}checklist_result_document_type_files (document_type_id, document_id)
                 WHERE is_active;
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_task_node_assignments_single_primary
+                ON {p}task_node_assignments (task_node_id)
+                WHERE is_primary AND assignment_status IN ('proposed', 'assigned', 'accepted');
+            """))
+            connection.execute(text(f"""
+                CREATE INDEX IF NOT EXISTS idx_task_nodes_active_pool
+                ON {p}task_nodes (status, deadline_at, created_at)
+                WHERE status IN ('ready', 'in_progress');
+            """))
+            connection.execute(text(f"""
+                CREATE INDEX IF NOT EXISTS idx_workflow_instances_running_status
+                ON {p}workflow_instances (status)
+                WHERE status = 'running';
+            """))
+            connection.execute(text(f"""
+                CREATE INDEX IF NOT EXISTS idx_task_node_assignments_active_lookup
+                ON {p}task_node_assignments (task_node_id, role_code, employee_id)
+                WHERE assignment_status IN ('proposed', 'assigned', 'accepted');
             """))
             connection.execute(text(f"""
                 ALTER TABLE {p}work_pay_entitlements DROP CONSTRAINT IF EXISTS work_pay_entitlements_replaced_check;
@@ -1309,6 +1344,17 @@ def admin_user(db):
         db.add(admin)
         db.commit()
         db.refresh(admin)
+    from sqlalchemy import func
+    admin_role = db.query(Role).filter(func.lower(Role.role_name) == "admin").first()
+    if not admin_role:
+        max_role_id = db.query(func.max(Role.id)).scalar() or 0
+        admin_role = Role(id=max_role_id + 1, role_name="admin", is_active=True)
+        db.add(admin_role)
+        db.commit()
+    user_role = db.query(UserRole).filter(UserRole.user_id == admin.id, UserRole.role_id == admin_role.id).first()
+    if not user_role:
+        db.add(UserRole(user_id=admin.id, role_id=admin_role.id))
+        db.commit()
     return admin
 
 
@@ -1395,6 +1441,21 @@ def finance_clerk_user(db):
         setattr(perm, "can_approve", True)
     db.add(user_role)
     db.add(perm)
+
+    created_grants = []
+    try:
+        finance_perms = db.query(Permission).filter(Permission.resource_code == "finance").all()
+        for fp in finance_perms:
+            existing = db.query(RolePermissionGrant).filter(
+                RolePermissionGrant.role_id == role.id,
+                RolePermissionGrant.permission_code == fp.code,
+            ).first()
+            if not existing:
+                grant = RolePermissionGrant(role_id=role.id, permission_code=fp.code)
+                db.add(grant)
+                created_grants.append(grant)
+    except Exception:
+        pass
     db.commit()
 
     token = create_access_token(str(user.id))
@@ -1405,6 +1466,11 @@ def finance_clerk_user(db):
     # Cleanup
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
+    for grant in created_grants:
+        try:
+            db.delete(grant)
+        except Exception:
+            pass
     if permission_created:
         db.query(RolePermission).filter(
             RolePermission.role_id == role.id,

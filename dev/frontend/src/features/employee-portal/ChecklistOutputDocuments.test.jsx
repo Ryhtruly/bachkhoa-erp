@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiFetch } from '../../lib/api'
@@ -17,21 +17,6 @@ const CAU_HINH = [{
   required_before_submit: true,
   needs_director_approval: true,
 }]
-
-const CAU_HINH_FLAT = [
-  {
-    template_id: 'TPL_BAN_KY_THUAT_GOC',
-    min_count: 1,
-    required_before_submit: true,
-    needs_director_approval: false,
-  },
-  {
-    template_id: 'TPL_ANH_CHUP',
-    min_count: 1,
-    required_before_submit: true,
-    needs_director_approval: false,
-  },
-]
 
 const mockApi = ({ documents, missing = [], sourceDocs = [] } = {}) => {
   apiFetch.mockImplementation((url) => {

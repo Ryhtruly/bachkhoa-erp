@@ -16,15 +16,16 @@ import {
   MapPin,
   Maximize2,
   MessageCircle,
-  HelpCircle,
   Sparkles,
   Settings,
   UserCircle,
-  UserCheck
+  UserCheck,
+  Award,
 } from 'lucide-react';
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
 import AvatarImage from '../components/AvatarImage';
 import { apiFetch } from '../lib/api';
+import { normalizeVietnamese } from '../lib/vietnamese';
 import { useToast } from '../contexts/ToastContext';
 import './crm.css';
 
@@ -93,9 +94,11 @@ function parseLeadRequirements(reqStr = '') {
 
 export default function CRM({ user, isDirector = false, employeeMode = false }) {
   const { addToast } = useToast();
-  const managerView = !employeeMode;
-  const canConfigure = Boolean(isDirector || user?.role_name === 'accountant' || user?.role_name === 'admin');
-  const leadScope = employeeMode ? 'mine' : 'all';
+  const isManager = Boolean(isDirector || user?.role_name === 'admin' || user?.role_name === 'accountant');
+  const managerView = isManager && !employeeMode;
+  const effectiveEmployeeMode = !managerView;
+  const canConfigure = isManager && managerView;
+  const leadScope = managerView ? 'all' : 'mine';
   const [leads, setLeads] = useState([]);
   const [stats, setStats] = useState({ total_leads: 0, won_leads: 0, in_progress: 0, win_rate: 0 });
   const [loading, setLoading] = useState(true);
@@ -103,6 +106,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [closingLead, setClosingLead] = useState(null);
   const [closingData, setClosingData] = useState({ price: '', tax_id: '', area: '' });
+  const [loyaltyInfo, setLoyaltyInfo] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -236,18 +240,13 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   }, [leads]);
 
   const handleStatusChange = async (lead, newStatus) => {
-    // Nếu lead chưa có người phụ trách, tự động nhận trước khi chuyển trạng thái
-    if (!lead.assigned_to) {
+    // Nếu lead chưa có người phụ trách và không phải manager, sale cần nhận trước khi chuyển trạng thái
+    if (!lead.assigned_to && !managerView) {
       try {
         await apiFetch(`/api/crm/leads/${lead.id}/claim`, { method: 'POST' });
         lead.assigned_to = user?.id;
         lead.assigned_to_name = user?.username || 'Bạn';
-        addToast(
-          managerView
-            ? 'Đã tự động gán bạn phụ trách lead này'
-            : 'Đã tự động nhận lead này vào danh sách phụ trách',
-          'success'
-        );
+        addToast('Đã tự động nhận lead này vào danh sách phụ trách', 'success');
       } catch (err) {
         addToast(err?.message || 'Vui lòng nhận lead trước khi chuyển trạng thái', 'error');
         return;
@@ -263,18 +262,46 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
         tax_id: '',
         area: parsed.scaleInfo || ''
       });
+      // Kiểm tra ưu đãi khách hàng thân thiết
+      setLoyaltyInfo(null);
+      if (lead.customer_id) {
+        apiFetch(`/api/customers/loyalty-eligibility?customer_id=${encodeURIComponent(lead.customer_id)}`)
+          .then(res => { if (res?.data?.eligible) setLoyaltyInfo(res.data); })
+          .catch(() => {});
+      }
       return;
     }
     await submitStatusChange(lead.id, newStatus, {});
   };
 
   const submitStatusChange = async (leadId, newStatus, extraData = {}) => {
+    setDraggingLeadId(null);
+    setDragOverCol(null);
+    // Optimistic update: move the lead card instantly in local state
+    const targetLead = leads.find(l => l.id === leadId);
+    const oldStatus = targetLead?.status;
+    const oldAssignedTo = targetLead?.assigned_to;
+    const oldAssignedToName = targetLead?.assigned_to_name;
+
+    if (oldStatus && oldStatus !== newStatus) {
+      setLeads(prev => prev.map(l => {
+        if (l.id !== leadId) return l;
+        return {
+          ...l,
+          status: newStatus,
+          assigned_to: l.assigned_to || user?.id,
+          assigned_to_name: l.assigned_to_name || (user?.username || 'Bạn')
+        };
+      }));
+    }
+
     try {
       const res = await apiFetch(`/api/crm/leads/${leadId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_status: newStatus, ...extraData })
       });
+      // Sync with server data in background (silent)
       fetchData(true);
       setClosingLead(null);
       if (res?.data?.contract_id) {
@@ -284,6 +311,18 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
       }
     } catch (err) {
       console.error(err);
+      // Revert optimistic update on failure
+      if (oldStatus) {
+        setLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return {
+            ...l,
+            status: oldStatus,
+            assigned_to: oldAssignedTo,
+            assigned_to_name: oldAssignedToName
+          };
+        }));
+      }
       addToast(err?.message || 'Có lỗi xảy ra khi cập nhật trạng thái', 'error');
     }
   };
@@ -348,8 +387,9 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
 
   const handleDrop = async (e, targetCol) => {
     e.preventDefault();
-    setDragOverCol(null);
     const leadId = e.dataTransfer.getData('text/plain') || draggingLeadId;
+    setDragOverCol(null);
+    setDraggingLeadId(null);
     if (!leadId) return;
 
     const lead = leads.find(l => l.id === leadId);
@@ -358,25 +398,41 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     await handleStatusChange(lead, targetCol);
   };
 
-  const filteredLeads = leads.filter(l => {
-    const matchSearch = (l.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (l.phone || '').includes(searchTerm) ||
-      (l.requirements || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (l.assigned_to_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredLeads = useMemo(() => {
+    const q = normalizeVietnamese(searchTerm);
+    return leads.filter(l => {
+      // Phân lập dữ liệu nhân viên Sale (Defense in Depth):
+      // - Cột "Tiếp cận": Sale thấy lead chưa gán (bể claim "ai nhanh tay thì được") HOẶC lead của chính mình
+      // - Cột "Báo giá", "Đàm phán", "Chốt": Sale chỉ nhìn thấy lead của chính mình phụ trách
+      if (!managerView) {
+        if (l.status === 'Tiếp cận') {
+          const canSee = !l.assigned_to || l.assigned_to === user?.id;
+          if (!canSee) return false;
+        } else {
+          if (l.assigned_to !== user?.id) return false;
+        }
+      }
 
-    const matchSource = filterSource === 'All' || l.source === filterSource;
-    const matchSale = !managerView || filterSale === 'All' ||
-      (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
+      const matchSearch = !q ||
+        normalizeVietnamese(l.customer_name).includes(q) ||
+        (l.phone || '').includes(searchTerm.trim()) ||
+        normalizeVietnamese(l.requirements).includes(q) ||
+        normalizeVietnamese(l.assigned_to_name).includes(q);
 
-    return matchSearch && matchSource && matchSale;
-  });
+      const matchSource = filterSource === 'All' || l.source === filterSource;
+      const matchSale = !managerView || filterSale === 'All' ||
+        (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
+
+      return matchSearch && matchSource && matchSale;
+    });
+  }, [leads, searchTerm, filterSource, filterSale, managerView, user?.id]);
 
   return (
     <section className="tab-pane active crm-container" id="tab-crm">
       {/* Stats Header */}
       <StatsGrid>
         <StatCard
-          label={employeeMode ? "Lead Của Tôi" : "Tổng Lead Tiếp Nhận"}
+          label={effectiveEmployeeMode ? "Lead Của Tôi" : "Tổng Lead Tiếp Nhận"}
           value={stats.total_leads || 0}
           icon={<Target size={24} />}
           iconVariant="purple"
@@ -394,10 +450,10 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
           iconVariant="green"
         />
         <StatCard
-          label={employeeMode ? "Tỷ Lệ Hoa Hồng" : "Tỉ Lệ Chốt Thầu"}
-          value={employeeMode ? `${crmPolicy.commission_rate_percent || 0}%` : `${stats.win_rate || 0}%`}
-          icon={employeeMode ? <Sparkles size={24} /> : <Percent size={24} />}
-          iconVariant={employeeMode ? "orange" : "red"}
+          label={effectiveEmployeeMode ? "Tỷ Lệ Hoa Hồng" : "Tỉ Lệ Chốt Thầu"}
+          value={effectiveEmployeeMode ? `${crmPolicy.commission_rate_percent || 0}%` : `${stats.win_rate || 0}%`}
+          icon={effectiveEmployeeMode ? <Sparkles size={24} /> : <Percent size={24} />}
+          iconVariant={effectiveEmployeeMode ? "orange" : "red"}
         />
       </StatsGrid>
 
@@ -629,7 +685,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
 
                         {/* Thanh thao tác nhanh: Gọi điện + Chat Zalo */}
                         {lead.phone && (
-                          <div className="lead-actions-bar">
+                          <div className="lead-actions-bar" onDragStart={(e) => e.stopPropagation()}>
                             <a
                               href={`tel:${lead.phone}`}
                               className="lead-action-btn lead-action-btn--phone"
@@ -652,7 +708,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                         )}
 
                         {/* Hộp chọn di chuyển cột */}
-                        <div className="lead-move-footer">
+                        <div className="lead-move-footer" onDragStart={(e) => e.stopPropagation()}>
                           {!lead.assigned_to && lead.status !== 'Chốt' && (
                             <button
                               type="button"
@@ -758,9 +814,36 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                 </p>
               </div>
 
+              {loyaltyInfo?.eligible && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '12px 14px',
+                  background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.12), rgba(245, 158, 11, 0.05))',
+                  border: '1px solid rgba(234, 179, 8, 0.35)',
+                  borderRadius: '8px',
+                }}>
+                  <Award size={22} color="var(--orange-500, #f59e0b)" />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <strong style={{ fontSize: '0.85rem', color: '#b45309' }}>
+                        ⭐ Khách hàng ưu tiên: {loyaltyInfo.tier?.tier_name}
+                      </strong>
+                      <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#92400e', padding: '1px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                        Đã làm {loyaltyInfo.contract_count} hợp đồng
+                      </span>
+                    </div>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      Tự động áp dụng chiết khấu <strong>{loyaltyInfo.discount_percent}%</strong> cho hợp đồng lần này.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-secondary)' }}>
-                  Giá trị Hợp Đồng (VNĐ) <span style={{ color: 'red' }}>*</span>
+                  Giá trị Hợp Đồng gốc (VNĐ) <span style={{ color: 'red' }}>*</span>
                 </label>
                 <input
                   required
@@ -782,9 +865,40 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                 {closingData.price && Number(closingData.price) > 0 && (
                   <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div className="currency-live-preview">
-                      <span>Số tiền hiển thị:</span>
+                      <span>Số tiền gốc:</span>
                       <span>{new Intl.NumberFormat('vi-VN').format(Number(closingData.price))} VNĐ</span>
                     </div>
+
+                    {loyaltyInfo?.eligible && (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 4,
+                        padding: '10px 12px',
+                        background: 'rgba(234, 179, 8, 0.08)',
+                        border: '1px solid rgba(234, 179, 8, 0.25)',
+                        borderRadius: 8,
+                        fontSize: '0.82rem'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            Ưu đãi VIP ({loyaltyInfo.discount_percent}%):
+                          </span>
+                          <strong style={{ color: '#d97706' }}>
+                            -{new Intl.NumberFormat('vi-VN').format(Math.round(Number(closingData.price) * (Number(loyaltyInfo.discount_percent) / 100)))} VNĐ
+                          </strong>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed rgba(234, 179, 8, 0.3)', paddingTop: 4 }}>
+                          <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                            Giá trị hợp đồng thực tế (sau giảm):
+                          </span>
+                          <strong style={{ color: 'var(--green-600, #16a34a)', fontSize: '0.95rem' }}>
+                            {new Intl.NumberFormat('vi-VN').format(Math.round(Number(closingData.price) * (1 - Number(loyaltyInfo.discount_percent) / 100)))} VNĐ
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',

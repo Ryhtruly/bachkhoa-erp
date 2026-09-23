@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, FolderOpen, LifeBuoy, Lock, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, FolderOpen, LifeBuoy, Loader2, Lock, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch, getAccessToken, peekApiCache, prefetchApi } from '../../lib/api'
@@ -72,9 +72,10 @@ const dispatchUnauthorized = () => {
 
 
 export default function EmployeeItemWorkspace({
-
   item,
   tasks = [],
+  employee,
+  employeeDepartmentCode,
   onBack,
   onRefresh,
   onRequestHelp,
@@ -99,12 +100,19 @@ export default function EmployeeItemWorkspace({
   const [openError, setOpenError] = useState(null)
   const [locallyFilledTypeIds, setLocallyFilledTypeIds] = useState(() => new Set())
   const [optimisticStatus, setOptimisticStatus] = useState(null)
+  const [nodeSubmitting, setNodeSubmitting] = useState(false)
   const objectUrlRef = useRef(null)
   // Số thứ tự lượt đọc /shortage: chỉ lượt MỚI NHẤT được ghi vào state, nên lượt
   // cũ về muộn (hay về sau khi component đã rời) không đạp lên kết quả mới.
   const gateReqRef = useRef(0)
-  const nodes = item.nodes || []
   const activeNodeId = pickedNodeId || item.current_task_node_id
+  const nodes = useMemo(() => {
+    const rawNodes = item.nodes || []
+    if (!optimisticStatus || !activeNodeId) return rawNodes
+    return rawNodes.map(node =>
+      node.id === activeNodeId ? { ...node, status: optimisticStatus } : node
+    )
+  }, [item.nodes, optimisticStatus, activeNodeId])
   const activeNode = useMemo(
     () => nodes.find(node => node.id === activeNodeId) || null,
     [nodes, activeNodeId],
@@ -121,13 +129,11 @@ export default function EmployeeItemWorkspace({
   }, [baseTask, optimisticStatus])
 
   const openableIds = useMemo(
-    () => new Set(nodes.filter(node => node.mine && tasks.some(row => row.id === node.id))
-      .map(node => node.id)),
-    [nodes, tasks],
     () => new Set(
-      isDirector
-        ? nodes.map(node => node.id)
-        : nodes.filter(node => node.mine && tasks.some(row => row.id === node.id)).map(node => node.id)
+      nodes
+        .filter(node => node.is_my_department !== false && (isDirector || (node.mine && tasks.some(row => row.id === node.id))))
+        .filter(node => (isDirector || node.is_my_department !== false) && (isDirector || (node.mine && tasks.some(row => row.id === node.id))))
+        .map(node => node.id)
     ),
     [nodes, tasks, isDirector],
   )
@@ -485,6 +491,8 @@ export default function EmployeeItemWorkspace({
           type="button"
           className="eiw-back"
           onClick={onBack}
+          disabled={busy || nodeSubmitting}
+          title={nodeSubmitting ? 'Hệ thống đang nộp hồ sơ nghiệm thu, vui lòng chờ trong giây lát…' : 'Quay lại bàn làm việc'}
           aria-label="Quay lại bàn làm việc"
         >
           <ArrowLeft size={18} />
@@ -501,11 +509,33 @@ export default function EmployeeItemWorkspace({
         </span>
       </header>
 
+      {nodeSubmitting && (
+        <div
+          role="status"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 16px',
+            background: '#fff7ed',
+            borderBottom: '1px solid #fdba74',
+            color: '#c2410c',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
+          <Loader2 size={16} className="animate-spin" />
+          <span>Hệ thống đang gửi hồ sơ nghiệm thu lên Giám đốc. Vui lòng không đóng hoặc thoát khỏi trang…</span>
+        </div>
+      )}
+
       <NodeChain
         nodes={nodes}
         activeNodeId={activeNodeId}
         openableIds={openableIds}
-        onSelect={setPickedNodeId}
+        onSelect={nodeSubmitting ? undefined : setPickedNodeId}
+        employeeDepartmentCode={employeeDepartmentCode || employee?.department_code}
+        isDirector={isDirector}
       />
 
       {!task ? (
@@ -513,7 +543,9 @@ export default function EmployeeItemWorkspace({
           <Lock size={20} />
           <h2>{activeNode?.node_code} · {activeNode?.name || 'Bước chưa tới lượt'}</h2>
           <p>
-            {activeNode?.assignee_name
+            {activeNode?.is_my_department === false
+              ? `Bước này thuộc ${activeNode.department_name || (activeNode.pool_department_code ? `Phòng ${activeNode.pool_department_code}` : 'phòng ban khác')}. Bạn không có quyền thao tác.`
+              : activeNode?.assignee_name
               ? `${activeNode.assignee_name} đang phụ trách bước này.`
               : 'Bước này chưa giao cho ai, hoặc chưa tới lượt bạn.'}
           </p>
@@ -718,6 +750,7 @@ export default function EmployeeItemWorkspace({
                   gate={effectiveGate}
                   handoverState={handoverState}
                   onOptimisticStatusChange={setOptimisticStatus}
+                  onSubmittingChange={setNodeSubmitting}
                 />
               </div>
             </footer>

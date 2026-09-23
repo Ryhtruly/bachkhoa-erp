@@ -234,6 +234,112 @@ class NhanTronChuoiDoVeTests(unittest.TestCase):
         )
         self.assertEqual(result["reserved_task_node_ids"], ["TN-K02", "TN-K03"])
 
+    def test_claim_submitter_marks_the_single_legal_worker_as_primary(self):
+        """SUBMITTER là vai trò nghiệp vụ nhưng vẫn là người chính của node."""
+
+        @contextmanager
+        def unlocked(*_args, **_kwargs):
+            yield
+
+        db = MagicMock()
+        db.execute.side_effect = [
+            _row({"id": "NV-LEGAL", "department_code": "LEGAL"}),
+            _row({
+                "id": "TN-SUBMIT",
+                "node_code": "CUSTOM-SUBMIT",
+                "status": "ready",
+                "workflow_instance_id": "WI-1",
+                "defined_by_revision_id": "REV-1",
+                "node_key": "submit",
+                "execution_data": {},
+                "node_definition": {
+                    "capability": "GOV_SUBMIT",
+                    "pool_department_code": "LEGAL",
+                    "claim_roles": ["SUBMITTER", "MAIN"],
+                },
+            }),
+            _row(None),
+            _scalar("ASSIGN-SUBMIT"),
+            MagicMock(),
+        ]
+
+        with (
+            patch("src.core.redis_utils.redis_distributed_lock", unlocked),
+            patch.object(workflow_runtime, "held_item_count", return_value=0),
+            patch.object(workflow_runtime, "wip_limit_reached", return_value=False),
+            patch.object(workflow_runtime, "_bind_claimed_employee_to_payable_checklists", return_value={}),
+            patch.object(workflow_runtime, "_reserve_main_workflow_chain", return_value={
+                "reserved_task_node_ids": [],
+            }),
+            patch.object(workflow_runtime, "recompute_planned_deadlines"),
+        ):
+            result = workflow_runtime.claim_and_start_task(
+                db,
+                task_node_id="TN-SUBMIT",
+                employee_id="NV-LEGAL",
+                role_code="SUBMITTER",
+                actor_id="USER-LEGAL",
+                start_now=False,
+            )
+
+        self.assertEqual(result["role_code"], "SUBMITTER")
+        assignment_params = next(
+            call.args[1]
+            for call in db.execute.call_args_list
+            if isinstance(call.args[1], dict) and "is_primary" in call.args[1]
+        )
+        self.assertTrue(assignment_params["is_primary"])
+
+    def test_claim_cluster_submitter_keeps_one_primary_worker_on_the_node(self):
+        """Nút Nhận trọn cũng phải ghi SUBMITTER là người chính duy nhất."""
+
+        @contextmanager
+        def unlocked(*_args, **_kwargs):
+            yield
+
+        db = MagicMock()
+        db.execute.side_effect = [
+            _row({"id": "NV-LEGAL", "department_code": "LEGAL"}),
+            _row(None),
+            _scalar("ASSIGN-SUBMIT"),
+            MagicMock(),
+        ]
+        nodes = [{
+            "id": "TN-SUBMIT",
+            "node_code": "CUSTOM-SUBMIT",
+            "status": "ready",
+            "node_key": "submit",
+            "node_definition": {
+                "capability": "GOV_SUBMIT",
+                "pool_department_code": "LEGAL",
+                "claim_roles": ["SUBMITTER", "MAIN"],
+            },
+        }]
+
+        with (
+            patch("src.core.redis_utils.redis_distributed_lock", unlocked),
+            patch.object(workflow_runtime, "cluster_nodes_for_claim", return_value=nodes),
+            patch.object(workflow_runtime, "held_item_count", return_value=0),
+            patch.object(workflow_runtime, "wip_limit_reached", return_value=False),
+            patch.object(workflow_runtime, "_bind_claimed_employee_to_payable_checklists", return_value={}),
+            patch.object(workflow_runtime, "recompute_planned_deadlines"),
+        ):
+            result = workflow_runtime.claim_cluster(
+                db,
+                workflow_instance_id="WI-1",
+                cluster_code="LEGAL_DOSSIER",
+                employee_id="NV-LEGAL",
+                actor_id="USER-LEGAL",
+            )
+
+        self.assertEqual(result["claimed"][0]["role_code"], "SUBMITTER")
+        assignment_params = next(
+            call.args[1]
+            for call in db.execute.call_args_list
+            if isinstance(call.args[1], dict) and "is_primary" in call.args[1]
+        )
+        self.assertTrue(assignment_params["is_primary"])
+
 
 class SuatThoPhuK02Tests(unittest.TestCase):
     """Ch.5 — suất thợ phụ đóng khi thợ chính bắt đầu đo, người đã nhận thì giữ."""
@@ -313,18 +419,19 @@ class CascadeRollbackTests(unittest.TestCase):
                 {"id": "TN-K04", "node_code": "K04", "occurrence_no": 1, "status": "in_progress"},
                 {"id": "TN-K05b", "node_code": "K05b", "occurrence_no": 1, "status": "pending"},
             ]),
-            MagicMock(),   # update task_nodes
-            # Cấp hạn sửa bài MỚI cho từng bước bị kéo về — một câu mỗi bước.
-            # Dùng lại deadline_at cũ là bước vừa mở lại đã đỏ quá hạn.
+            MagicMock(),   # update target task_node to rework_required
+            # Cấp hạn sửa bài MỚI cho bước đích bị kéo về. Dùng lại deadline cũ
+            # là bước vừa mở lại đã đỏ quá hạn.
             MagicMock(),   # rework_deadline_at cho TN-K03
-            MagicMock(),   # rework_deadline_at cho TN-K04
+            MagicMock(),   # event TN-K03 (to_status: rework_required)
+            MagicMock(),   # update downstream task_nodes to pending
+            MagicMock(),   # event TN-K04 (to_status: pending)
+            MagicMock(),   # reject pending acceptances
             MagicMock(),   # reset checklist
             # Hạ phán quyết TỪNG TỜ về chờ duyệt. Thiếu bước này thì bước bị kéo
             # về sửa vẫn mang đủ giấy 'approved' của vòng trước, và cổng đóng
             # bước cho qua ngay — bản vẽ sai đi thẳng qua vòng hai.
             MagicMock(),   # reset phán quyết giấy
-            MagicMock(),   # event TN-K03
-            MagicMock(),   # event TN-K04
             MagicMock(),   # notifications
             _scalar("WI-1"),
         ]
@@ -370,6 +477,79 @@ class CascadeRollbackTests(unittest.TestCase):
         cau_lenh = str(db.execute.call_args_list[1].args[0])
         self.assertIn("(node_code, occurrence_no) >= (:node_code, :occurrence_no)", cau_lenh)
         self.assertIn("status not in ('cancelled', 'skipped')", cau_lenh)
+
+    def test_cascade_rollback_tach_biet_buoc_dich_rework_va_buoc_sau_pending(self):
+        """Bước đích là 'rework_required', mọi bước phía sau bắt buộc phải là 'pending'."""
+        db = self._db_cho_cascade()
+        with patch.object(workflow_runtime, "recompute_planned_deadlines"):
+            workflow_runtime.cascade_rollback(
+                db, target_task_node_id="TN-K03", reason="Sai ranh", actor_id="USER-GD"
+            )
+        calls = [str(call.args[0]) for call in db.execute.call_args_list]
+        # Cuộc gọi thứ 3 (sau 2 query select) là update target về rework_required
+        self.assertIn("set status = 'rework_required'", calls[2])
+        # Cuộc gọi thứ 6 là update downstream về pending
+        self.assertIn("set status = 'pending'", calls[5])
+        # Cuộc gọi thứ 8 là huỷ pending acceptances
+        self.assertIn("update public.task_node_acceptances", calls[7])
+        self.assertIn("set status = 'rejected'", calls[7])
+
+    def test_start_task_node_chan_khi_buoc_truoc_chua_nghiem_thu(self):
+        """Không thể bắt đầu làm khi bước tiền nhiệm chưa được nghiệm thu."""
+        db = MagicMock()
+        with patch.object(workflow_runtime, "_require_node_assignment"), \
+             patch.object(workflow_runtime, "task_pool_departments", return_value=None), \
+             patch.object(workflow_runtime, "unaccepted_predecessors", return_value=[{"node_code": "N03", "name": "Bản vẽ"}]):
+            db.execute.return_value.mappings.return_value.first.return_value = {
+                "id": "TN-N04", "node_code": "N04", "status": "ready",
+                "workflow_instance_id": "WI-1", "defined_by_revision_id": "REV-1",
+                "node_key": "node_4", "node_definition": {},
+            }
+            with self.assertRaises(WorkflowValidationError) as ctx:
+                workflow_runtime.start_task_node(
+                    db, task_node_id="TN-N04", employee_id="EMP-1", actor_id="USER-1"
+                )
+            self.assertIn("chưa được nghiệm thu", str(ctx.exception))
+
+    def test_submit_task_node_chan_khi_buoc_truoc_chua_nghiem_thu(self):
+        """Không thể nộp nghiệm thu khi bước tiền nhiệm chưa được nghiệm thu."""
+        db = MagicMock()
+        with patch.object(workflow_runtime, "_require_node_assignment"), \
+             patch.object(workflow_runtime, "node_pause_block", return_value=None), \
+             patch.object(workflow_runtime, "task_pool_departments", return_value=None), \
+             patch.object(workflow_runtime, "unaccepted_predecessors", return_value=[{"node_code": "N03", "name": "Bản vẽ"}]):
+            # can_submit check
+            db.execute.return_value.first.return_value = True
+            db.execute.return_value.mappings.return_value.first.return_value = {
+                "id": "TN-N04", "node_code": "N04", "status": "in_progress",
+                "node_definition": {}, "is_handover": False,
+            }
+            with self.assertRaises(WorkflowValidationError) as ctx:
+                workflow_runtime.submit_task_node_for_acceptance(
+                    db, task_node_id="TN-N04", employee_id="EMP-1", actor_id="USER-1", note=""
+                )
+            self.assertIn("chưa được nghiệm thu", str(ctx.exception))
+
+    def test_review_task_node_acceptance_chan_khi_buoc_truoc_chua_nghiem_thu(self):
+        """Giám đốc không thể nghiệm thu đạt một node khi bước tiền nhiệm chưa đạt."""
+        db = MagicMock()
+        with patch.object(workflow_runtime, "unaccepted_predecessors", return_value=[{"node_code": "N03", "name": "Bản vẽ"}]):
+            # acceptance row
+            db.execute.return_value.mappings.return_value.first.side_effect = [
+                {
+                    "id": "ACC-1", "status": "pending", "task_node_id": "TN-N04",
+                    "node_key": "node_4", "node_status": "submitted",
+                    "workflow_instance_id": "WI-1", "defined_by_revision_id": "REV-1",
+                },
+                # handover_context
+                {"contract_id": "C-1", "total_value": 1000, "is_handover": False},
+            ]
+            with self.assertRaises(WorkflowValidationError) as ctx:
+                workflow_runtime.review_task_node_acceptance(
+                    db, acceptance_id="ACC-1", decision="accepted", outcome="COMPLETED_1",
+                    review_note="", actor_id="USER-GD"
+                )
+            self.assertIn("chưa được nghiệm thu", str(ctx.exception))
 
 
 class PhieuQuayLaiTests(unittest.TestCase):
@@ -508,6 +688,24 @@ class BeViecTruyVanChuoiTests(unittest.TestCase):
         self.assertIn("wr.role_code in ('MAIN', 'SUBMITTER')", cau_lenh_checklist)
 
 
+class DepartmentNormalizationTests(unittest.TestCase):
+    def test_normalize_department_code(self):
+        from src.contracts.workflow_runtime import _normalize_department_code
+        self.assertEqual(_normalize_department_code("Phòng Đo vẽ"), "SURVEY")
+        self.assertEqual(_normalize_department_code("Đo vẽ"), "SURVEY")
+        self.assertEqual(_normalize_department_code("Phòng Pháp lý"), "LEGAL")
+        self.assertEqual(_normalize_department_code("Pháp lý"), "LEGAL")
+        self.assertEqual(_normalize_department_code("Phòng Sale"), "SALES")
+        self.assertEqual(_normalize_department_code("Phòng Sale/CSKH"), "SALES")
+        self.assertEqual(_normalize_department_code("Phòng Kế toán"), "ACCOUNTING")
+        self.assertEqual(_normalize_department_code("SURVEY"), "SURVEY")
+        self.assertEqual(_normalize_department_code("LEGAL"), "LEGAL")
+
+    def test_tasks_query_excludes_cancelled_assignments(self):
+        from src.employee_portal.service import _TASKS_QUERY
+        query_str = str(_TASKS_QUERY)
+        self.assertIn("and a.assignment_status in ('proposed', 'assigned', 'accepted')", query_str)
+
+
 if __name__ == "__main__":
     unittest.main()
-

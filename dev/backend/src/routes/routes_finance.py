@@ -6,20 +6,22 @@ import uuid
 
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query, File, UploadFile
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timezone, timedelta
 
 from src.db.database import get_db
-from src.db.models import AdvanceRequest, AuditLog, SystemSetting
+from src.db.models import AdvanceRequest, AuditLog, SystemSetting, Department, Employee
 from src.core.auth import require_permission, require_any_permission, require_payroll_all, require_accountant, get_current_user, User
 from src.services.storage_service import delete_file, ensure_bucket, upload_file
 from src.services.timeline_realtime import publish_timeline_change
-from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json
+from src.core.redis_utils import get_cached_json, invalidate_money_caches, set_cached_json, invalidate_cache
 from src.finance import (
     FinanceRepository, FinanceService,
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
     AdvanceCreateIn, AdvanceClearIn, FundCloseIn,
     EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
+    DepartmentPatchIn,
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee,
     TransactionType, TransactionStatus, PaymentMethod, TransactionScope,
     APPROVED_STATUS_SET,
@@ -33,6 +35,11 @@ from src.finance.access import (
     finance_visibility,
     is_income_transaction,
     restrict_cashflow_rows,
+)
+from src.services.employee_handover_service import (
+    get_employee_workload,
+    execute_employee_handover,
+    EmployeeHandoverIn,
 )
 
 ALLOWED_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -475,8 +482,22 @@ def list_employee_departments(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("hr", "read"))
 ):
+    cache_key = "bachkhoa:finance:employees_departments"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     departments = FinanceRepository.list_employee_departments(db)
-    return [{"id": department.id, "name": department.name} for department in departments]
+    result = [
+        {
+            "id": department.id,
+            "name": department.name,
+            "is_active": bool(department.is_active if department.is_active is not None else True),
+        }
+        for department in departments
+    ]
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
 
 @router.get("/departments")
 def list_departments(
@@ -485,6 +506,124 @@ def list_departments(
 ):
     departments = FinanceRepository.list_employee_departments(db)
     return [{"id": department.id, "name": department.name} for department in departments]
+
+
+@router.get("/departments/manage")
+def list_departments_manage(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "read"))
+):
+    """Danh sách toàn bộ phòng ban kèm thông tin chi tiết và số nhân sự."""
+    cache_key = "bachkhoa:finance:departments_manage"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
+    rows = (
+        db.query(
+            Department,
+            func.count(case((Employee.is_active == True, Employee.id))).label("employee_count"),
+        )
+        .outerjoin(Employee, Employee.department_id == Department.id)
+        .group_by(Department.id)
+        .order_by(Department.display_order.asc(), Department.name.asc())
+        .all()
+    )
+    result = [
+        {
+            "id": d.id,
+            "code": d.code,
+            "name": d.name,
+            "is_active": bool(d.is_active if d.is_active is not None else True),
+            "display_order": d.display_order or 100,
+            "employee_count": int(count or 0),
+        }
+        for d, count in rows
+    ]
+    set_cached_json(cache_key, result, ttl_seconds=300)
+    return result
+
+
+@router.patch("/departments/manage/{department_id}")
+def update_department_manage(
+    department_id: str,
+    payload: DepartmentPatchIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Giám đốc sửa tên phòng ban, kích hoạt / tắt phòng ban."""
+    assert_director(db, user, detail="Chỉ Giám đốc mới có quyền chỉnh sửa phòng ban.")
+
+    dept = db.get(Department, department_id)
+    if not dept:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phòng ban.")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "code" in changes:
+        new_code = changes["code"]
+        if not new_code:
+            raise HTTPException(status_code=422, detail="Mã phòng ban không được để trống.")
+        if not re.match(r"^[A-Z0-9_]{2,30}$", new_code):
+            raise HTTPException(
+                status_code=422,
+                detail="Mã phòng ban chỉ gồm chữ hoa không dấu, chữ số và gạch dưới (2-30 ký tự).",
+            )
+        if new_code != dept.code:
+            existing = (
+                db.query(Department.id)
+                .filter(Department.code == new_code, Department.id != dept.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="Mã phòng ban đã tồn tại.")
+            dept.code = new_code
+
+    if "name" in changes:
+        new_name = changes["name"]
+        if not new_name:
+            raise HTTPException(status_code=422, detail="Tên phòng ban không được để trống.")
+        if new_name != dept.name:
+            existing = (
+                db.query(Department.id)
+                .filter(Department.name == new_name, Department.id != dept.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="Tên phòng ban đã tồn tại.")
+            db.query(Employee).filter(Employee.department_id == dept.id).update(
+                {Employee.department: new_name}, synchronize_session=False
+            )
+            dept.name = new_name
+
+    if "is_active" in changes and changes["is_active"] is not None:
+        dept.is_active = bool(changes["is_active"])
+
+    if "display_order" in changes and changes["display_order"] is not None:
+        dept.display_order = changes["display_order"]
+
+    db.commit()
+    db.refresh(dept)
+
+    emp_count = (
+        db.query(func.count(Employee.id))
+        .filter(Employee.department_id == dept.id, Employee.is_active == True)
+        .scalar() or 0
+    )
+
+    invalidate_cache("bachkhoa:finance:departments_manage")
+    invalidate_cache("bachkhoa:finance:employees_departments")
+
+    return {
+        "status": "success",
+        "data": {
+            "id": dept.id,
+            "code": dept.code,
+            "name": dept.name,
+            "is_active": bool(dept.is_active if dept.is_active is not None else True),
+            "display_order": dept.display_order or 100,
+            "employee_count": emp_count,
+        }
+    }
 
 @router.get("/employees")
 def list_employees(
@@ -529,6 +668,23 @@ def delete_employee(
     user: User = Depends(require_permission("hr", "delete"))
 ):
     return FinanceService.delete_employee(db, employee_id, actor_id=user.id)
+
+@router.get("/employees/{employee_id}/workload")
+def get_employee_workload_route(
+    employee_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_any_permission(("hr", "read"), ("hr", "update")))
+):
+    return get_employee_workload(db, employee_id)
+
+@router.post("/employees/{employee_id}/handover")
+def execute_employee_handover_route(
+    employee_id: str,
+    payload: EmployeeHandoverIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("hr", "update"))
+):
+    return execute_employee_handover(db, employee_id, payload, actor_id=user.id)
 
 @router.post("/employees/{employee_id}/avatar")
 async def upload_employee_avatar(

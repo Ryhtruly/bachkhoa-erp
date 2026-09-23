@@ -174,7 +174,7 @@ export default function DatePicker({
     : placeholder;
 
   return (
-    <div className={`date-picker${className ? ` ${className}` : ''}`} ref={rootRef}>
+    <div className={`date-picker${className ? ` ${className}` : ''}${open ? ' date-picker--open is-open' : ''}`} ref={rootRef}>
       <button
         type="button"
         className={`date-picker__trigger${open ? ' date-picker__trigger--open' : ''}`}

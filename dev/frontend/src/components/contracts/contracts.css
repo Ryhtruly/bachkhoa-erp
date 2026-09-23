@@ -1647,6 +1647,18 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--orange-500) 22%, transparent);
 }
 .react-flow__node:hover .workflow-node__handle { transform: scale(1.2); }
+/* Phản hồi trực quan khi kéo dây nối: Chặn ngay khi vi phạm quy tắc tuần tự 1-1 */
+.workflow-node__handle.react-flow__handle-valid {
+  background: var(--green-500, #22c55e) !important;
+  box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.35) !important;
+  transform: scale(1.5) !important;
+}
+.workflow-node__handle.react-flow__handle-invalid {
+  background: var(--red-500, #ef4444) !important;
+  box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.4) !important;
+  cursor: not-allowed !important;
+  transform: scale(1.35) !important;
+}
 .workflow-empty-canvas { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; pointer-events: none; color: var(--text-tertiary); }
 
 .workflow-inspector {
@@ -4321,6 +4333,10 @@
   border-style: dashed;
   border-color: var(--border-color, #cbd5e1);
 }
+.wf-node-people__avatar--img {
+  object-fit: cover;
+  background: transparent;
+}
 .wf-node-people__detail {
   margin-left: auto;
   padding: 5px 14px;
@@ -4854,17 +4870,15 @@
   padding: 0;
   overflow: hidden;
 }
-/* Vùng cấu hình NHƯỜNG chỗ trước khi checklist bị bóp. Trên màn thấp, bảng
-   cấu hình chiếm 250px khiến danh sách checklist chỉ còn ~77px — đúng thứ Giám
-   đốc đang làm việc lại là thứ bị co. Cho nó co và tự cuộn, còn checklist giữ
-   sàn đủ hai card. */
+/* Vùng cấu hình NHƯỜNG chỗ trước khi checklist bị bóp. Banner năng lực đã
+   chuyển lên dropdown modal gắn header nên vùng này giờ chỉ còn grid ~115px,
+   không cần thanh cuộn riêng nữa. overflow: visible cho dropdown bên trong
+   (CustomSelect) không bị cắt. */
 .wf-node-panel__fixed {
-  flex: 0 1 auto;
-  min-height: 100px;
-  max-height: 42%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  flex: 0 0 auto;
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
 }
 .wf-node-panel__foot {
   flex: 0 0 auto;
@@ -5745,6 +5759,45 @@
 .workflow-designer .wf-agency__overdue { color: var(--danger-600, #dc2626) !important; font-weight: 700; }
 .workflow-designer .wf-agency__due { color: var(--orange-600, #c23816) !important; font-weight: 700; }
 .workflow-designer .wf-agency__left { color: var(--np-add-ink) !important; }
+.workflow-designer .wf-agency__receipt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.workflow-designer .wf-agency__receipt-row > div {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.workflow-designer .wf-agency__dvc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary-600, #2563eb);
+  background: var(--primary-50, #eff6ff);
+  border: 1px solid var(--primary-200, #bfdbfe);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.workflow-designer .wf-agency__dvc-btn:hover {
+  background: var(--primary-100, #dbeafe);
+  color: var(--primary-700, #1d4ed8);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__dvc-btn {
+  background: rgba(37, 99, 235, 0.15);
+  border-color: rgba(37, 99, 235, 0.3);
+  color: #93c5fd;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__dvc-btn:hover {
+  background: rgba(37, 99, 235, 0.25);
+}
 
 /* Điều kiện chặn: nói vì sao chưa bấm được, thay vì để Giám đốc đi tìm nút. */
 .workflow-designer .wf-agency__gate {
@@ -5839,6 +5892,30 @@
 .workflow-designer .wf-agency__preview--legal strong {
   color: #8b5cf6;
 }
+.workflow-designer .wf-agency__preview--standard {
+  border-color: #cbd5e1;
+  background: color-mix(in srgb, #64748b 7%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--standard svg,
+.workflow-designer .wf-agency__preview--standard strong {
+  color: #475569;
+}
+.workflow-designer .wf-agency__preview--submit {
+  border-color: #fed7aa;
+  background: color-mix(in srgb, #ea580c 8%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--submit svg,
+.workflow-designer .wf-agency__preview--submit strong {
+  color: #c2410c;
+}
+.workflow-designer .wf-agency__preview--tracking {
+  border-color: #fecaca;
+  background: color-mix(in srgb, #dc2626 7%, #ffffff);
+}
+.workflow-designer .wf-agency__preview--tracking svg,
+.workflow-designer .wf-agency__preview--tracking strong {
+  color: #b91c1c;
+}
 [data-theme="dark"] .workflow-designer .wf-agency__preview--handover {
   border-color: rgba(5, 150, 105, 0.4);
   background: rgba(5, 150, 105, 0.12);
@@ -5871,7 +5948,166 @@
 [data-theme="dark"] .workflow-designer .wf-agency__preview--legal strong {
   color: #a78bfa;
 }
+[data-theme="dark"] .workflow-designer .wf-agency__preview--standard {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: rgba(100, 116, 139, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--standard svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--standard strong {
+  color: #cbd5e1;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--submit {
+  border-color: rgba(234, 88, 12, 0.4);
+  background: rgba(234, 88, 12, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--submit svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--submit strong {
+  color: #fdba74;
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--tracking {
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.12);
+}
+[data-theme="dark"] .workflow-designer .wf-agency__preview--tracking svg,
+[data-theme="dark"] .workflow-designer .wf-agency__preview--tracking strong {
+  color: #fca5a5;
+}
 .workflow-designer .wf-agency__gate b { font-weight: 700; }
+
+/* ── Capability dropdown modal — gắn ngay dưới header 3 tab ──────────── */
+.workflow-inspector__header-tabs-wrapper {
+  position: relative;
+  z-index: 25;
+  flex: 0 0 auto;
+}
+/* Dropdown thòng xuống từ header tabs */
+.workflow-designer .wf-capability-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 35;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  animation: wfDropdownSlideDown 0.18s ease;
+}
+@keyframes wfDropdownSlideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Override base .wf-agency__preview cho dropdown: bo góc khác */
+.workflow-designer .wf-capability-dropdown .wf-agency__preview {
+  border-radius: 0 0 10px 10px;
+  border: 0;
+  padding: 10px 14px;
+  position: relative;
+}
+/* Nút đóng [X] góc phải */
+.wf-capability-dropdown__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.wf-capability-dropdown__close:hover {
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+}
+/* Nội dung bên trong dropdown */
+.wf-capability-dropdown__content {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 24px;
+}
+.wf-capability-dropdown__content strong {
+  font-size: 12.5px;
+  color: var(--np-label-ink);
+}
+.wf-capability-dropdown__content span {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+/* Nút toggle icon tròn chấm than "Gợi ý nghiệp vụ" bên cạnh nhãn năng lực */
+.wf-capability-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid var(--orange-300, #fdba74);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--orange-500) 10%, #ffffff);
+  color: var(--orange-600, #ea580c);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.wf-capability-toggle-btn:hover {
+  background: var(--orange-500);
+  border-color: var(--orange-600);
+  color: #ffffff;
+  transform: scale(1.08);
+}
+.wf-capability-toggle-btn.is-active {
+  background: var(--orange-500);
+  border-color: var(--orange-600);
+  color: #ffffff;
+}
+
+/* Đảm bảo kích thước chữ đồng đều cho nhãn năng lực trong lưới thông tin bước */
+.wf-node-grid .workflow-node__cap-tag {
+  font-size: 13.5px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  margin-top: 0;
+  padding: 0;
+  background: transparent !important;
+  color: var(--text-primary, #0f172a);
+}
+
+/* Dark mode */
+[data-theme="dark"] .wf-capability-dropdown__close {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+[data-theme="dark"] .wf-capability-dropdown__close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .wf-capability-toggle-btn {
+  background: rgba(234, 88, 12, 0.2);
+  border-color: rgba(251, 146, 60, 0.4);
+  color: var(--orange-400, #fb923c);
+}
+[data-theme="dark"] .wf-capability-toggle-btn:hover,
+[data-theme="dark"] .wf-capability-toggle-btn.is-active {
+  background: var(--orange-500);
+  border-color: var(--orange-500);
+  color: #ffffff;
+}
+[data-theme='dark'] .wf-node-grid .workflow-node__cap-tag {
+  color: var(--text-primary, #f8fafc);
+  background: transparent !important;
+}
 
 /* Hộp xác nhận kích hoạt: hai nhóm cảnh báo, mỗi nhóm một tiêu đề riêng. */
 .workflow-activation-warning-dialog__head {
@@ -6060,4 +6296,3 @@
   background: rgba(217, 119, 6, 0.15);
   color: #facc15;
 }
-

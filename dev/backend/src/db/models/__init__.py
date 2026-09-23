@@ -23,6 +23,7 @@ from src.db.models.auth import (
 from src.db.models.crm import (
     Customer,
     CustomerIntakeSubmission,
+    CustomerLoyaltyTier,
     LeadPipeline,
     Contract,
     ZaloInteraction,
@@ -85,6 +86,7 @@ __all__ = [
     "Notification",
     "Customer",
     "CustomerIntakeSubmission",
+    "CustomerLoyaltyTier",
     "LeadPipeline",
     "Contract",
     "ZaloInteraction",

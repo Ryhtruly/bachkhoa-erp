@@ -55,7 +55,7 @@ const toEditForm = (data) => ({
   receipt_photo_url: data.receipt_photo_url || '',
   dossier_file_url: data.dossier_file_url || '',
   payment_status: data.payment_status || '',
-  gov_status: data.gov_status || 'Đang chi nhánh',
+  gov_status: data.gov_status || data.status_label || 'Đang chi nhánh',
   received_date: data.received_date || '',
   expected_return_date: data.expected_return_date || '',
   submitted_agency: data.submitted_agency || '',
@@ -138,13 +138,25 @@ export default function LegalSubmissions() {
   const [editForm, setEditForm] = useState(null);
   // Mở chi tiết là chế độ XEM; phải bấm nút "Sửa" mới cho nhập liệu.
   const [editing, setEditing] = useState(false);
+  // Hồ sơ nền sinh ở node Soạn thảo trước lần nộp cơ quan đầu tiên. Ghi rõ
+  // loại bản ghi để không gửi nhầm PATCH của lần nộp vào legal_dossiers.
+  const [selectedRecordType, setSelectedRecordType] = useState('submission');
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/legal-submissions/stats`);
-      if (res.ok) {
-        const payload = await res.json();
-        setStats(payload.data || { total: 0 });
+      const [submissionRes, dossierRes] = await Promise.all([
+        fetch(`${API}/api/legal-submissions/stats`),
+        fetch(`${API}/api/legal-dossiers/?status=All`),
+      ]);
+      const submissionPayload = submissionRes.ok ? await submissionRes.json() : null;
+      const dossierPayload = dossierRes.ok ? await dossierRes.json() : null;
+      const dossierOnlyCount = (dossierPayload?.data || [])
+        .filter((row) => Number(row.submission_count || 0) === 0).length;
+      if (submissionPayload?.data) {
+        setStats({
+          ...submissionPayload.data,
+          total: Number(submissionPayload.data.total || 0) + dossierOnlyCount,
+        });
       }
     } catch (err) {
       console.error('Fetch stats error:', err);
@@ -164,14 +176,46 @@ export default function LegalSubmissions() {
       if (searchTerm) params.set('search', searchTerm);
       if (statusFilter && statusFilter !== 'All') params.set('gov_status', statusFilter);
 
-      const res = await fetch(`${API}/api/legal-submissions/?${params}`);
+      const [res, dossierRes] = await Promise.all([
+        fetch(`${API}/api/legal-submissions/?${params}`),
+        fetch(`${API}/api/legal-dossiers/?status=All`),
+      ]);
       if (res.ok) {
         const payload = await res.json();
-        setSubmissions(payload.data || []);
+        const submissionRows = payload.data || [];
+        const submissionDossierIds = new Set(submissionRows.map((row) => row.dossier_id).filter(Boolean));
+        const normalizedSearch = searchTerm.trim().toLowerCase();
+        let dossierOnlyRows = [];
+        let dossierOnlyCount = 0;
+        // Hồ sơ chưa có lần nộp chỉ được thêm ở trang đầu và khi không lọc
+        // trạng thái biên nhận. Các trang/lọc cũ vẫn giữ nguyên semantics.
+        if (statusFilter === 'All' && dossierRes.ok) {
+          const dossierPayload = await dossierRes.json();
+          const dossierCandidates = (dossierPayload.data || [])
+            .filter((row) => Number(row.submission_count || 0) === 0)
+            .filter((row) => !submissionDossierIds.has(row.id))
+            .filter((row) => !normalizedSearch || [
+              row.dossier_name, row.contract_id, row.service_line_name, row.customer_name,
+            ].some((value) => String(value || '').toLowerCase().includes(normalizedSearch)));
+          dossierOnlyCount = dossierCandidates.length;
+          dossierOnlyRows = page === 1 ? dossierCandidates
+            .map((row) => ({
+              ...row,
+              record_type: 'dossier',
+              dossier_id: row.id,
+              gov_status: row.status_label || row.status,
+              receipt_code: row.latest_receipt_code || null,
+              assigned_employee_name: row.assigned_employee_name || null,
+            })) : [];
+        }
+        setSubmissions([
+          ...submissionRows.map((row) => ({ ...row, record_type: 'submission' })),
+          ...dossierOnlyRows,
+        ]);
         if (payload.meta) {
           setPagination({
-            total: payload.meta.total || 0,
-            total_pages: payload.meta.total_pages || 1,
+            total: Number(payload.meta.total || 0) + dossierOnlyCount,
+            total_pages: Math.max(1, Math.ceil((Number(payload.meta.total || 0) + dossierOnlyCount) / limit)),
           });
         }
       } else if (showLoading) {
@@ -193,7 +237,8 @@ export default function LegalSubmissions() {
   }, [fetchSubmissions]);
 
   const loadDossier = useCallback(async (taskNodeId) => {
-    if (!taskNodeId) { setDossier(null); return; }
+    setDossier(null);
+    if (!taskNodeId) return;
     try {
       const res = await fetch(`${API}/api/legal-dossiers/by-task-node/${taskNodeId}`);
       setDossier(res.ok ? (await res.json()).data : null);
@@ -202,20 +247,25 @@ export default function LegalSubmissions() {
     }
   }, []);
 
-  const handleOpenDetailModal = async (submissionId) => {
-    setSelectedSubmissionId(submissionId);
+  const handleOpenDetailModal = async (recordId, recordType = 'submission') => {
+    setSelectedSubmissionId(recordId);
+    setSelectedRecordType(recordType);
     setIsDetailModalOpen(true);
     setDetailLoading(true);
     setEditing(false);
     setDetailError('');
     try {
-      const res = await fetch(`${API}/api/legal-submissions/${submissionId}`);
+      const endpoint = recordType === 'dossier'
+        ? `${API}/api/legal-dossiers/${recordId}`
+        : `${API}/api/legal-submissions/${recordId}`;
+      const res = await fetch(endpoint);
       if (res.ok) {
         const payload = await res.json();
         const data = payload.data;
         setDetailData(data);
-        setEditForm(toEditForm(data));
-        loadDossier(data.task_node_id);
+        setEditForm(toEditForm({ ...data, receipt_code: data.receipt_code || data.latest_receipt_code }));
+        if (recordType === 'dossier') setDossier(data);
+        else loadDossier(data.task_node_id);
       } else {
         // Không được để hộp thoại đứng ở "Đang tải…" mãi — phải nói rõ hỏng gì
         // và cho người dùng bấm thử lại.
@@ -335,7 +385,7 @@ export default function LegalSubmissions() {
           type="button"
           className="btn btn-sm btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          onClick={() => handleOpenDetailModal(row.id)}
+          onClick={() => handleOpenDetailModal(row.id, row.record_type || 'submission')}
         >
           <Eye size={14} />
           Chi tiết
@@ -470,7 +520,14 @@ export default function LegalSubmissions() {
         }
         footer={(!detailLoading && !detailError && editForm) ? (
           <div className="legal-detail__footer">
-            {isDossierLocked(detailData, editForm.gov_status) ? (
+            {selectedRecordType === 'dossier' ? (
+              <>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }} role="status">
+                  Hồ sơ nền đã được tạo từ node Soạn thảo. Biên nhận sẽ bổ sung sau khi nộp cơ quan.
+                </span>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsDetailModalOpen(false)}>Đóng</button>
+              </>
+            ) : isDossierLocked(detailData, editForm.gov_status) ? (
               <>
                 <span style={{ color: 'var(--text-tertiary)', fontSize: '0.875rem' }} role="status">
                   Hồ sơ đã hoàn tất và không thể chỉnh sửa.
@@ -506,7 +563,7 @@ export default function LegalSubmissions() {
               {detailError || 'Không có dữ liệu để hiển thị.'}
             </p>
             <button type="button" className="btn btn-secondary"
-              onClick={() => handleOpenDetailModal(selectedSubmissionId)}>
+              onClick={() => handleOpenDetailModal(selectedSubmissionId, selectedRecordType)}>
               Thử lại
             </button>
           </div>
@@ -527,7 +584,10 @@ export default function LegalSubmissions() {
               <LegalDossierActions
                 dossier={dossier}
                 addToast={addToast}
-                onDone={() => { loadDossier(detailData?.task_node_id); fetchSubmissions(); }}
+                onDone={() => {
+                  if (selectedRecordType === 'dossier') handleOpenDetailModal(detailData?.id, 'dossier');
+                  else { loadDossier(detailData?.task_node_id); fetchSubmissions(); }
+                }}
               />
             )}
 
@@ -652,7 +712,7 @@ export default function LegalSubmissions() {
               />
 
               <DossierDocuments
-                dossierId={detailData?.dossier_id}
+                dossierId={detailData?.dossier_id || (selectedRecordType === 'dossier' ? detailData?.id : null)}
                 addToast={addToast}
                 onChanged={() => fetchSubmissions()}
               />

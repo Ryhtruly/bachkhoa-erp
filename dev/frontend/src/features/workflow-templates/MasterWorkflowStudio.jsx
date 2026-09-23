@@ -52,6 +52,13 @@ import { useToast } from '../../contexts/ToastContext'
 import { apiFetch, peekApiCache } from '../../lib/api'
 import '../../components/contracts/contracts.css'
 import './masterWorkflowStudio.css'
+import { checkSequentialConnection } from '../../components/contracts/workflowEdgeRouting'
+import {
+  GOV_SUBMIT_CAPABILITY,
+  GOV_TRACKING_CAPABILITY,
+  LEGACY_GOV_SUBMISSION_CAPABILITY,
+  normalizeGovernmentCapability,
+} from '../../components/contracts/governmentCapability'
 
 // ── Danh mục Phòng ban chuẩn Bách Khoa ERP ──
 export const STANDARD_DEPARTMENTS = [
@@ -215,9 +222,17 @@ export const CAPABILITIES = [
     suggestDept: 'LEGAL',
   },
   {
-    code: 'GOV_SUBMISSION',
-    label: 'Nộp & Theo dõi Một Cửa',
-    desc: 'Tự động tạo Sổ Một Cửa, theo dõi biên nhận',
+    code: GOV_SUBMIT_CAPABILITY,
+    label: 'Nộp hồ sơ & nhập biên nhận',
+    desc: 'Lưu số biên nhận và bằng chứng đã nộp, không theo dõi vòng đời',
+    icon: Landmark,
+    color: '#ea580c',
+    suggestDept: 'LEGAL',
+  },
+  {
+    code: GOV_TRACKING_CAPABILITY,
+    label: 'Theo dõi hồ sơ Một cửa',
+    desc: 'Theo dõi trạng thái hồ sơ đến khi hoàn thành',
     icon: Landmark,
     color: '#ea580c',
     suggestDept: 'LEGAL',
@@ -399,7 +414,7 @@ export const STARTER_NODES_LEGAL = [
   {
     code: 'K05b',
     label: 'Nộp & theo dõi hồ sơ một cửa',
-    capability: 'GOV_SUBMISSION',
+    capability: GOV_TRACKING_CAPABILITY,
     dept: 'LEGAL',
     days: 7,
     hours: 0,
@@ -511,7 +526,11 @@ function flowToGraphJson(nodes, edges, startNode) {
       name: node.data.label,
       capability: cap,
       description: node.data.description || '',
-      requires_gov_submission: Boolean(node.data.requiresGovSubmission || cap === 'GOV_SUBMISSION'),
+      requires_gov_submission: Boolean(
+        node.data.requiresGovSubmission
+        || cap === GOV_TRACKING_CAPABILITY
+        || cap === LEGACY_GOV_SUBMISSION_CAPABILITY
+      ),
       creates_survey_record: Boolean(node.data.createsSurveyRecord || cap === 'SURVEY_FIELD'),
       is_handover: Boolean(node.data.isHandover || cap === 'HANDOVER'),
       duration_days: Number(node.data.durationDays) || 0,
@@ -562,14 +581,14 @@ function graphJsonToFlow(graph, packageObj) {
 
   const entries = Object.entries(graph.nodes)
   const nodes = entries.map(([key, value], index) => {
-    const capCode = value.capability || (
+    const capCode = normalizeGovernmentCapability(value.capability || (
       value.creates_survey_record || value.task_code === 'K02' ? 'SURVEY_FIELD'
-      : value.requires_gov_submission || value.task_code === 'K05' || value.task_code === 'K05B' || value.task_code === 'K05b' ? 'GOV_SUBMISSION'
+      : value.requires_gov_submission || value.task_code === 'K05' || value.task_code === 'K05B' || value.task_code === 'K05b' ? GOV_TRACKING_CAPABILITY
       : value.is_handover || value.task_code === 'K06' ? 'HANDOVER'
       : value.task_code === 'K03' ? 'SURVEY_CAD'
       : value.task_code === 'K04' ? 'LEGAL_PREP'
       : 'STANDARD'
-    )
+    ))
     return {
       id: key,
       type: 'studioNode',
@@ -577,14 +596,18 @@ function graphJsonToFlow(graph, packageObj) {
       data: {
         code: value.task_code || key.toUpperCase(),
         label: value.name || key,
-        capability: capCode,
+        capability: normalizeGovernmentCapability(capCode),
         description: value.description || '',
         poolDepartmentCode: value.pool_department_code || '',
         claimRoles: Array.isArray(value.claim_roles) && value.claim_roles.length > 0 ? value.claim_roles : ['MAIN'],
         durationDays: Number(value.duration_days) || 0,
         durationHours: Number(value.duration_hours) || 0,
         durationMinutes: Number(value.duration_minutes) || 0,
-        requiresGovSubmission: Boolean(value.requires_gov_submission || capCode === 'GOV_SUBMISSION'),
+        requiresGovSubmission: Boolean(
+          value.requires_gov_submission
+          || capCode === GOV_TRACKING_CAPABILITY
+          || capCode === LEGACY_GOV_SUBMISSION_CAPABILITY
+        ),
         createsSurveyRecord: Boolean(value.creates_survey_record || capCode === 'SURVEY_FIELD'),
         isHandover: Boolean(value.is_handover || capCode === 'HANDOVER'),
         checklist: (value.checklist || []).map((item) => ({
@@ -941,8 +964,70 @@ export default function MasterWorkflowStudio() {
     addToast?.('Đã tạo bản sao. Hãy chỉnh sửa và bấm [Lưu mẫu]', 'info')
   }
 
+  const isValidConnection = useCallback(
+    (connection) => {
+      return checkSequentialConnection(connection, edges).ok
+    },
+    [edges]
+  )
+
+  const connectingNodeRef = useRef(null)
+
+  const handleConnectStart = useCallback(
+    (event, { nodeId, handleType }) => {
+      connectingNodeRef.current = { nodeId, handleType }
+      if (handleType === 'source') {
+        const alreadyHasOutgoing = edges.some((e) => e.source === nodeId)
+        if (alreadyHasOutgoing) {
+          addToast?.('Đầu ra của bước này đã có đường nối. Mỗi đầu chỉ được phép có 1 đường nối duy nhất!', 'warning')
+        }
+      } else if (handleType === 'target') {
+        const alreadyHasIncoming = edges.some((e) => e.target === nodeId)
+        if (alreadyHasIncoming) {
+          addToast?.('Đầu vào của bước này đã có đường nối. Mỗi đầu chỉ được phép có 1 đường nối duy nhất!', 'warning')
+        }
+      }
+    },
+    [addToast, edges]
+  )
+
+  const handleConnectEnd = useCallback(
+    (event) => {
+      const startInfo = connectingNodeRef.current
+      connectingNodeRef.current = null
+      if (!startInfo) return
+      if (!event || typeof document === 'undefined') return
+
+      const clientX = event.clientX ?? event.changedTouches?.[0]?.clientX
+      const clientY = event.clientY ?? event.changedTouches?.[0]?.clientY
+      if (clientX == null || clientY == null) return
+
+      const targetEl = document.elementFromPoint(clientX, clientY)
+      const nodeEl = targetEl?.closest('.react-flow__node')
+      if (!nodeEl) return
+
+      const targetNodeId = nodeEl.getAttribute('data-id')
+      if (!targetNodeId) return
+
+      const check =
+        startInfo.handleType === 'target'
+          ? checkSequentialConnection({ source: targetNodeId, target: startInfo.nodeId }, edges)
+          : checkSequentialConnection({ source: startInfo.nodeId, target: targetNodeId }, edges)
+
+      if (!check.ok) {
+        addToast?.(check.message, 'warning')
+      }
+    },
+    [addToast, edges]
+  )
+
   const handleConnect = useCallback(
     (params) => {
+      const validation = checkSequentialConnection(params, edges)
+      if (!validation.ok) {
+        addToast?.(validation.message, 'warning')
+        return
+      }
       setEdges((eds) =>
         addEdge(
           {
@@ -954,7 +1039,7 @@ export default function MasterWorkflowStudio() {
         )
       )
     },
-    [setEdges]
+    [addToast, edges, setEdges]
   )
 
   const handleAutoLayout = () => {
@@ -1158,11 +1243,10 @@ export default function MasterWorkflowStudio() {
     const updates = {
       capability: capCode,
       createsSurveyRecord: capCode === 'SURVEY_FIELD',
-      requiresGovSubmission: capCode === 'GOV_SUBMISSION',
+      requiresGovSubmission: capCode === GOV_TRACKING_CAPABILITY,
       isHandover: capCode === 'HANDOVER',
     }
-    const currentDept = normalizeDepartmentCode(selectedNode?.data?.poolDepartmentCode)
-    if (cap?.suggestDept && (!currentDept || currentDept === 'SALES')) {
+    if (cap?.suggestDept) {
       updates.poolDepartmentCode = cap.suggestDept
     }
     updateSelectedNodeData(updates)
@@ -1529,6 +1613,9 @@ export default function MasterWorkflowStudio() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
+            isValidConnection={isValidConnection}
+            onConnectStart={handleConnectStart}
+            onConnectEnd={handleConnectEnd}
             nodeTypes={NODE_TYPES}
             onNodeClick={(_evt, node) => {
               setSelectedNodeId(node.id)

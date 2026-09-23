@@ -18,16 +18,22 @@ GOV_STATUSES = ["Đang chi nhánh", "Hoàn thành", "Rút hồ sơ", "Trả côn
 
 _LIST_BASE_SQL = f"""
     select s.id, s.task_node_id, s.service_line_id, s.contract_id, s.dossier_id, s.dossier_name,
-           s.case_description, s.assigned_employee_id, s.contact_phone, s.receipt_code,
+           s.case_description,
+           coalesce(d.assigned_employee_id, s.assigned_employee_id) as assigned_employee_id,
+           coalesce(ed.phone, s.contact_phone, e.phone) as contact_phone,
+           s.receipt_code,
            s.receipt_photo_url, s.dossier_file_url, s.linked_survey_folder_url,
            s.payment_status, s.legacy_gov_status as gov_status,
            -- Cùng một quy tắc khoá với bên Đo vẽ, do backend quyết định.
            s.legacy_gov_status = any({TERMINAL_SQL_ARRAY}) as is_locked,
            s.received_date, s.expected_return_date, s.submitted_agency,
            s.is_first_submission, s.previous_submission_id, s.note, s.created_at, s.updated_at,
-           sl.service_type as service_line_name, e.full_name as assigned_employee_name
+           sl.service_type as service_line_name,
+           coalesce(ed.full_name, e.full_name) as assigned_employee_name
     from public.legal_submissions s
     join public.service_lines sl on sl.id = s.service_line_id
+    left join public.legal_dossiers d on d.id = s.dossier_id
+    left join public.employees ed on ed.id = d.assigned_employee_id
     left join public.employees e on e.id = s.assigned_employee_id
 """
 

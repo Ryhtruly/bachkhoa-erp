@@ -4,6 +4,7 @@ import { DatePicker, Select } from '../../ui';
 import { fmtShort, spellVietnameseCurrency, CATEGORY_AUTO_MAPPING } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import { COMPANY_IDENTITY } from '../../../lib/companyIdentity';
 import { printElement } from '../print/printDocument';
 import voucherPrintStyles from './PrintVoucherScreen.print.css?inline';
@@ -422,7 +423,7 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
   }, [selectedId, mode, transactions]);
 
   const printList = useMemo(() => {
-    const q = printSearch.trim().toLowerCase();
+    const q = normalizeVietnamese(printSearch.trim());
     return [...transactions]
       .filter(t => {
         if (month) {
@@ -431,9 +432,9 @@ export default function PrintVoucherScreen({ month, user, isDirector = false }) 
         }
         if (!q) return true;
         return (
-          (t.id || '').toLowerCase().includes(q) ||
-          (t.description || '').toLowerCase().includes(q) ||
-          (t.partner || t.payer_payee || '').toLowerCase().includes(q)
+          normalizeVietnamese(t.id || '').includes(q) ||
+          normalizeVietnamese(t.description || '').includes(q) ||
+          normalizeVietnamese(t.partner || t.payer_payee || '').includes(q)
         );
       })
       .sort((a, b) => (b.id || '').localeCompare(a.id || ''));

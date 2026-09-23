@@ -18,7 +18,8 @@ from src.finance.enums import (
 from src.finance.schemas import (
     CashflowIn, CashflowUpdateIn, CashflowVoidIn,
     AdvanceCreateIn, AdvanceRequestIn, AdvanceClearIn, FundCloseIn,
-    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn
+    WageCreateIn, EmployeeUpsertIn, FinanceSettingsIn, DocumentSignersIn, RefundExcessIn,
+    DepartmentPatchIn
 )
 from src.finance.serializers import (
     serialize_cashflow, serialize_cashflow_bulk, serialize_employee
@@ -74,6 +75,7 @@ __all__ = [
     "FinanceSettingsIn",
     "DocumentSignersIn",
     "RefundExcessIn",
+    "DepartmentPatchIn",
     "serialize_cashflow",
     "serialize_cashflow_bulk",
     "serialize_employee",

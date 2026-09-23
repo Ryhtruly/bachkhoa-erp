@@ -17,6 +17,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import { apiFetch, getAccessToken } from '../lib/api';
+import { normalizeVietnamese } from '../lib/vietnamese';
 import AvatarImage from '../components/AvatarImage';
 import { WORKFLOW_NODE_STATUS_LABELS } from '../components/contracts/workflowLabels';
 import './contractTimeline.css';
@@ -370,14 +371,14 @@ export default function ContractTimeline() {
   }, [loadTimeline]);
 
   const filteredContracts = useMemo(() => {
-    const keyword = search.trim().toLocaleLowerCase('vi');
+    const keyword = normalizeVietnamese(search);
     return contracts.reduce((result, contract) => {
       if (statusFilter !== 'all' && contract.timeline_status !== statusFilter) return result;
-      const contractMatches = !keyword || `${contract.id} ${contract.customer_name}`.toLocaleLowerCase('vi').includes(keyword);
+      const contractMatches = !keyword || normalizeVietnamese(`${contract.id} ${contract.customer_name}`).includes(keyword);
       const serviceLines = contract.service_lines.reduce((lineResult, line) => {
-        const lineMatches = contractMatches || !keyword || `${line.name} ${line.package || ''}`.toLocaleLowerCase('vi').includes(keyword);
+        const lineMatches = contractMatches || !keyword || normalizeVietnamese(`${line.name} ${line.package || ''}`).includes(keyword);
         const nodes = line.nodes.filter((node) => nodeTypeFilter === 'all' || node.node_type === nodeTypeFilter);
-        if ((lineMatches || nodes.some((node) => `${node.name} ${node.node_code}`.toLocaleLowerCase('vi').includes(keyword))) && nodes.length) {
+        if ((lineMatches || nodes.some((node) => normalizeVietnamese(`${node.name} ${node.node_code}`).includes(keyword))) && nodes.length) {
           lineResult.push({ ...line, nodes });
         }
         return lineResult;

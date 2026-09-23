@@ -24,12 +24,13 @@ from src.core.auth import get_current_user, require_permission, User
 from src.dossiers.actor_guard import is_director
 from src.core.redis_utils import get_cached_json, set_cached_json, invalidate_cache
 from src.db.database import get_db
-from src.db.models import WorkItem, WorkItemRate
+from src.db.models import WorkItem, WorkItemRate, Department
 
 router = APIRouter(prefix="/api/piece-rates", tags=["06. Piece Rates"])
 
 CACHE_KEY = "bachkhoa:catalog:piece_rates"
 WORK_ITEM_CODE_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+EXCLUDED_PIECE_RATE_DEPT_CODES = ("ADMIN", "ACCOUNTING")
 
 
 def _normalize_code(value: str) -> str:
@@ -71,13 +72,20 @@ def _item_response(db: Session, item: WorkItem) -> dict:
         .order_by(WorkItemRate.role_code, WorkItemRate.effective_from.desc())
         .all()
     )
+    dept_name = None
+    if item.department_id:
+        dept = db.get(Department, item.department_id)
+        if dept:
+            dept_name = dept.name
     return {
         "work_item_id": item.id,
         "code": item.code,
         "name": item.name,
         "unit": item.default_unit,
+        "default_unit": item.default_unit,
         "output_definition": item.output_definition,
         "department_id": item.department_id,
+        "department_name": dept_name,
         "is_active": bool(item.is_active),
         "rates": [_rate_response(rate) for rate in rates],
     }
@@ -98,6 +106,21 @@ def require_piece_rate_director(
     return user
 
 
+@router.get("/departments")
+def list_piece_rate_departments(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("payroll", "read")),
+):
+    """Danh sách phòng ban phục vụ gán cho hạng mục khoán (loại trừ Ban Giám đốc và Kế toán)."""
+    departments = (
+        db.query(Department)
+        .filter(Department.is_active == True, Department.code.notin_(EXCLUDED_PIECE_RATE_DEPT_CODES))
+        .order_by(Department.display_order.asc(), Department.name.asc())
+        .all()
+    )
+    return [{"id": d.id, "name": d.name, "code": d.code} for d in departments]
+
+
 @router.get("/rates")
 def list_piece_rates(
     include_inactive: bool = False,
@@ -115,12 +138,13 @@ def list_piece_rates(
 
     rows = db.execute(text("""
         select wi.id as work_item_id, wi.code, wi.name, wi.default_unit, wi.is_active,
+               wi.department_id,
                d.name as department_name,
                wr.id as rate_id, wr.role_code, wr.amount, wr.status,
                wr.effective_from, wr.effective_to
-        from public.work_items wi
-        left join public.departments d on d.id = wi.department_id
-        left join public.work_item_rates wr on wr.work_item_id = wi.id
+        from work_items wi
+        left join departments d on d.id = wi.department_id
+        left join work_item_rates wr on wr.work_item_id = wi.id
              and wr.status in ('published', 'draft')
              and (wr.effective_to is null or wr.effective_to >= current_date)
         where (:include_inactive or wi.is_active)
@@ -136,6 +160,7 @@ def list_piece_rates(
                 "code": r["code"],
                 "name": r["name"],
                 "unit": r["default_unit"],
+                "department_id": r["department_id"],
                 "department_name": r["department_name"],
                 "is_active": bool(r["is_active"]) if "is_active" in r else True,
                 "rates": {},          # role -> giá đang hiệu lực
@@ -153,7 +178,17 @@ def list_piece_rates(
         else:
             theo_item[wid]["pending"][r["role_code"]] = muc
 
-    result = {"status": "success", "data": list(theo_item.values())}
+    dept_rows = (
+        db.query(Department)
+        .filter(Department.is_active == True, Department.code.notin_(EXCLUDED_PIECE_RATE_DEPT_CODES))
+        .order_by(Department.display_order.asc(), Department.name.asc())
+        .all()
+    )
+    result = {
+        "status": "success",
+        "data": list(theo_item.values()),
+        "departments": [{"id": d.id, "name": d.name, "code": d.code} for d in dept_rows],
+    }
     set_cached_json(cache_key, result, ttl_seconds=3600)
     return result
 
@@ -178,13 +213,47 @@ class WorkItemCreateIn(BaseModel):
     department_id: str | None = Field(default=None, max_length=50)
     initial_rates: list[InitialRateIn] = Field(default_factory=list)
 
+    @field_validator("department_id", mode="before")
+    @classmethod
+    def clean_department_id(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s if s else None
+
 
 class WorkItemPatchIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    code: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=200)
+    default_unit: str | None = Field(default=None, min_length=1, max_length=50)
     output_definition: str | None = Field(default=None, max_length=2000)
     department_id: str | None = Field(default=None, max_length=50)
+
+    @field_validator("code", mode="before")
+    @classmethod
+    def clean_code(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip().upper()
+        return s if s else None
+
+    @field_validator("default_unit", mode="before")
+    @classmethod
+    def clean_default_unit(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s if s else None
+
+    @field_validator("department_id", mode="before")
+    @classmethod
+    def clean_department_id(cls, value):
+        if value is None:
+            return None
+        s = str(value).strip()
+        return s if s else None
 
 
 class DirectRateIn(BaseModel):
@@ -216,48 +285,61 @@ def create_piece_rate_item(
     db: Session = Depends(get_db),
     user: User = Depends(require_piece_rate_director),
 ):
-    """Giám đốc tạo hạng mục tái sử dụng và có thể khai báo giá khởi tạo."""
-    code = _normalize_code(payload.code)
+    """Giám đốc thêm hạng mục khoán mới vào danh mục."""
+    code = payload.code.strip().upper()
+    if not re.match(r"^[A-Z0-9_]{2,64}$", code):
+        raise HTTPException(
+            status_code=422,
+            detail="Mã hạng mục chỉ được chứa chữ hoa không dấu, chữ số và gạch dưới (2-64 ký tự).",
+        )
     name = _require_non_blank(payload.name, "Tên hạng mục")
     unit = _require_non_blank(payload.default_unit, "Đơn vị tính")
-    roles = [_normalize_role(rate.role_code) for rate in payload.initial_rates]
-    if len(roles) != len(set(roles)):
-        raise HTTPException(status_code=422, detail="Mỗi vai trò chỉ được khai báo một đơn giá khởi tạo.")
-    if db.query(WorkItem.id).filter(WorkItem.code == code).first():
-        raise HTTPException(status_code=409, detail="Mã hạng mục đã tồn tại.")
 
-    now = datetime.now(timezone.utc)
+    if db.query(WorkItem.id).filter(WorkItem.code == code).first():
+        raise HTTPException(status_code=409, detail="Mã hạng mục đã tồn tại trong danh mục.")
+
+    if payload.department_id:
+        dept = db.get(Department, payload.department_id)
+        if not dept:
+            raise HTTPException(status_code=422, detail="Phòng ban không tồn tại.")
+
     item = WorkItem(
         code=code,
         name=name,
         default_unit=unit,
-        output_definition=payload.output_definition.strip() if payload.output_definition else None,
         department_id=payload.department_id,
-        created_by=user.id,
+        output_definition=payload.output_definition.strip() if payload.output_definition else None,
         is_active=True,
+        created_by=user.id,
     )
     db.add(item)
+    db.flush()
+
+    roles = set()
+    for rate_in in payload.initial_rates:
+        role = _normalize_role(rate_in.role_code)
+        if role in roles:
+            raise HTTPException(status_code=422, detail=f"Trùng vai trò {role} trong danh sách giá khởi tạo.")
+        roles.add(role)
+        db.add(WorkItemRate(
+            work_item_id=item.id,
+            role_code=role,
+            amount=rate_in.amount,
+            effective_from=date.today(),
+            status="published",
+            created_by=user.id,
+            approved_by=user.id,
+            approved_at=datetime.now(timezone.utc),
+        ))
+
+    log_action(
+        db,
+        user.id,
+        "CREATE_PIECE_RATE_WORK_ITEM",
+        "work_item",
+        {"work_item_id": item.id, "code": code, "initial_rate_count": len(roles)},
+    )
     try:
-        db.flush()
-        for rate_payload, role in zip(payload.initial_rates, roles):
-            db.add(WorkItemRate(
-                work_item_id=item.id,
-                role_code=role,
-                amount=rate_payload.amount,
-                effective_from=date.today(),
-                status="published",
-                approved_by=user.id,
-                approved_at=now,
-                approval_source="manual",
-                created_by=user.id,
-            ))
-        log_action(
-            db,
-            user.id,
-            "CREATE_PIECE_RATE_WORK_ITEM",
-            "work_item",
-            {"work_item_id": item.id, "code": code, "initial_rate_count": len(roles)},
-        )
         db.commit()
         db.refresh(item)
     except IntegrityError as exc:
@@ -274,24 +356,50 @@ def update_piece_rate_item(
     db: Session = Depends(get_db),
     user: User = Depends(require_piece_rate_director),
 ):
-    """Giám đốc sửa metadata hiển thị; mã hạng mục không được đổi."""
+    """Giám đốc sửa metadata hiển thị (mã, tên, đơn vị, mô tả, phòng ban)."""
     item = db.get(WorkItem, work_item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Không tìm thấy hạng mục khoán.")
 
     changes = payload.model_dump(exclude_unset=True)
     audit_changes = {}
+    if "code" in changes:
+        new_code = _require_non_blank(changes["code"] or "", "Mã hạng mục").upper()
+        if not re.match(r"^[A-Z0-9_]{2,64}$", new_code):
+            raise HTTPException(
+                status_code=422,
+                detail="Mã hạng mục chỉ được chứa chữ hoa không dấu, chữ số và gạch dưới (2-64 ký tự).",
+            )
+        if new_code != item.code:
+            existing = (
+                db.query(WorkItem.id)
+                .filter(WorkItem.code == new_code, WorkItem.id != item.id)
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=409, detail="Mã hạng mục đã tồn tại trong danh mục.")
+            audit_changes["code"] = {"old": item.code, "new": new_code}
+            item.code = new_code
     if "name" in changes:
         new_name = _require_non_blank(changes["name"] or "", "Tên hạng mục")
         if new_name != item.name:
             audit_changes["name"] = {"old": item.name, "new": new_name}
             item.name = new_name
+    if "default_unit" in changes:
+        new_unit = _require_non_blank(changes["default_unit"] or "", "Đơn vị tính")
+        if new_unit != item.default_unit:
+            audit_changes["default_unit"] = {"old": item.default_unit, "new": new_unit}
+            item.default_unit = new_unit
     if "output_definition" in changes:
         new_definition = changes["output_definition"].strip() if changes["output_definition"] else None
         if new_definition != item.output_definition:
             audit_changes["output_definition"] = {"old": item.output_definition, "new": new_definition}
             item.output_definition = new_definition
     if "department_id" in changes and changes["department_id"] != item.department_id:
+        if changes["department_id"]:
+            dept = db.get(Department, changes["department_id"])
+            if not dept:
+                raise HTTPException(status_code=422, detail="Phòng ban không tồn tại.")
         audit_changes["department_id"] = {"old": item.department_id, "new": changes["department_id"]}
         item.department_id = changes["department_id"]
 
@@ -430,8 +538,8 @@ def rate_history(
         select wr.id, wr.role_code, wr.amount, wr.status,
                wr.effective_from, wr.effective_to, wr.approved_at,
                u.username as approved_by
-        from public.work_item_rates wr
-        left join public.users u on u.id = wr.approved_by
+        from work_item_rates wr
+        left join users u on u.id = wr.approved_by
         where wr.work_item_id = :w
         order by wr.role_code, wr.effective_from desc nulls last
     """), {"w": work_item_id}).mappings().all()
@@ -461,7 +569,7 @@ def propose_piece_rate(
     """Đề xuất giá mới — tạo một dòng `draft`. Chưa ảnh hưởng tiền cho tới khi duyệt."""
     role = payload.role_code.strip().upper()
     exists = db.execute(
-        text("select 1 from public.work_items where id = :w and is_active"),
+        text("select 1 from work_items where id = :w and is_active"),
         {"w": payload.work_item_id},
     ).scalar()
     if not exists:
@@ -470,12 +578,12 @@ def propose_piece_rate(
     # Mỗi (hạng mục, vai trò) chỉ giữ MỘT bản nháp — đề xuất mới đè bản nháp cũ,
     # tránh chồng đống nháp không ai duyệt.
     db.execute(text("""
-        delete from public.work_item_rates
+        delete from work_item_rates
         where work_item_id = :w and role_code = :r and status = 'draft'
     """), {"w": payload.work_item_id, "r": role})
 
     row = db.execute(text("""
-        insert into public.work_item_rates
+        insert into work_item_rates
             (id, work_item_id, role_code, amount, effective_from, status, created_by, created_at)
         values
             (gen_random_uuid(), :w, :r, :a, coalesce(:ef, current_date), 'draft', :u, now())
@@ -498,7 +606,7 @@ def publish_piece_rate(
     """Giám đốc duyệt: đóng kỳ giá cũ, cho giá mới hiệu lực. Không ghi đè bản cũ."""
     draft = db.execute(text("""
         select id, work_item_id, role_code, amount, effective_from, status
-        from public.work_item_rates where id = :i
+        from work_item_rates where id = :i
     """), {"i": rate_id}).mappings().first()
     if not draft:
         raise HTTPException(status_code=404, detail="Không tìm thấy bản giá")
@@ -510,7 +618,7 @@ def publish_piece_rate(
         effective_from = date.fromisoformat(effective_from)
 
     db.execute(text("""
-        update public.work_item_rates
+        update work_item_rates
         set effective_to = :previous_day
         where work_item_id = :w and role_code = :r and status = 'published'
           and (effective_to is null or effective_to >= :current_effective)
@@ -518,7 +626,7 @@ def publish_piece_rate(
            "w": draft["work_item_id"], "r": draft["role_code"]})
 
     db.execute(text("""
-        update public.work_item_rates
+        update work_item_rates
         set status = 'published', effective_from = :ef,
             approved_by = :u, approved_at = now()
         where id = :i
@@ -536,14 +644,14 @@ def discard_draft_rate(
 ):
     """Bỏ một bản nháp chưa duyệt. Bản đã published không xoá (là lịch sử tiền)."""
     row = db.execute(
-        text("select status from public.work_item_rates where id = :i"),
+        text("select status from work_item_rates where id = :i"),
         {"i": rate_id},
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy bản giá")
     if row["status"] != "draft":
         raise HTTPException(status_code=409, detail="Chỉ bỏ được bản nháp; bản đã áp dụng là lịch sử tiền")
-    db.execute(text("delete from public.work_item_rates where id = :i"), {"i": rate_id})
+    db.execute(text("delete from work_item_rates where id = :i"), {"i": rate_id})
     db.commit()
     _clear_rates_cache()
     return {"status": "success", "message": "Đã bỏ bản nháp"}

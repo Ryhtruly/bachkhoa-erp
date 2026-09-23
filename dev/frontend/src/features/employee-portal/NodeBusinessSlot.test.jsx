@@ -12,7 +12,7 @@ vi.mock('./CustomerSourceDocuments', () => ({
   ),
 }))
 vi.mock('../legal-dossier/SubmissionReceiptPanel', () => ({
-  default: () => <div data-testid="theo-doi-co-quan" />,
+  default: ({ tracking = false }) => <div data-testid="theo-doi-co-quan" data-tracking={String(tracking)} />,
 }))
 
 const ITEM = {
@@ -168,6 +168,18 @@ describe('Thanh công nợ K06', () => {
     expect(screen.getByTestId('theo-doi-co-quan')).toBeInTheDocument()
   })
 
+  it('node tự do có GOV_SUBMIT hiển thị biên nhận nhưng không bật theo dõi vòng đời', () => {
+    mount({ node_code: 'N01', capability_code: 'GOV_SUBMIT', status: 'in_progress' })
+    expect(screen.getByRole('button', { name: /Tạm dừng/ })).toBeInTheDocument()
+    expect(screen.getByTestId('theo-doi-co-quan')).toHaveAttribute('data-tracking', 'false')
+  })
+
+  it('node tự do có GOV_TRACKING hiển thị bảng theo dõi vòng đời', () => {
+    mount({ node_code: 'N01', capability_code: 'GOV_TRACKING', status: 'in_progress' })
+    expect(screen.getByRole('button', { name: /Tạm dừng/ })).toBeInTheDocument()
+    expect(screen.getByTestId('theo-doi-co-quan')).toHaveAttribute('data-tracking', 'true')
+  })
+
   it('node tự do có capability_code SURVEY_FIELD hiển thị thông tin nghiệp vụ đo đạc thực địa', () => {
     mount({ node_code: 'N03', capability_code: 'SURVEY_FIELD' })
     expect(screen.getByText('Khảo sát & Đo thực địa')).toBeInTheDocument()
@@ -194,4 +206,3 @@ describe('Thanh công nợ K06', () => {
     expect(screen.getByText('Soạn thảo hồ sơ pháp lý & Rà quy hoạch')).toBeInTheDocument()
   })
 })
-

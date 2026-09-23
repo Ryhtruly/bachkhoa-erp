@@ -33,32 +33,45 @@ def _redact_redis_url(url: str) -> str:
     return url
 
 
+_last_connect_fail: float = 0.0
+_CONNECT_RETRY_INTERVAL: float = 30.0
+
+
 def get_redis_client() -> Optional[redis.Redis]:
     """Trả về Redis client singleton; trả về None nếu không kết nối được."""
-    global _client
-    if _client is None:
+    global _client, _last_connect_fail
+    if _client is not None:
+        return _client
+
+    now = time.time()
+    if now - _last_connect_fail < _CONNECT_RETRY_INTERVAL:
+        return None
+
+    try:
+        candidate = redis.Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=0.5,
+            socket_timeout=1.0,
+            health_check_interval=30,
+        )
+        # Ping nhẹ để kiểm tra liveness
+        candidate.ping()
+        _client = candidate
+        return _client
+    except Exception as exc:
+        _last_connect_fail = now
+        redacted_url = _redact_redis_url(REDIS_URL)
+        err_msg = str(exc)
         try:
-            _client = redis.Redis.from_url(
-                REDIS_URL,
-                decode_responses=True,
-                socket_connect_timeout=0.5,
-                socket_timeout=1.0,
-                health_check_interval=30,
-            )
-            # Ping nhẹ để kiểm tra liveness
-            _client.ping()
-        except Exception as exc:
-            redacted_url = _redact_redis_url(REDIS_URL)
-            err_msg = str(exc)
-            try:
-                parsed = urllib.parse.urlsplit(REDIS_URL)
-                if parsed.password:
-                    err_msg = err_msg.replace(parsed.password, "***")
-            except Exception:
-                pass
-            logger.warning("Không kết nối được tới Redis (%s): %s", redacted_url, err_msg)
-            _client = None
-    return _client
+            parsed = urllib.parse.urlsplit(REDIS_URL)
+            if parsed.password:
+                err_msg = err_msg.replace(parsed.password, "***")
+        except Exception:
+            pass
+        logger.warning("Không kết nối được tới Redis (%s): %s", redacted_url, err_msg)
+        _client = None
+        return None
 
 _fallback_store: dict[str, tuple[float, str]] = {}
 _fallback_lock = threading.Lock()
@@ -195,6 +208,10 @@ def invalidate_money_caches() -> None:
     invalidate_cache("bachkhoa:dashboard:*")
 
 
+_fallback_locks: dict[str, float] = {}
+_fallback_locks_mutex = threading.Lock()
+
+
 @contextmanager
 def redis_distributed_lock(
     lock_key: str,
@@ -205,14 +222,42 @@ def redis_distributed_lock(
     """Khóa phân tán Redis chống race condition / bấm trùng nút.
 
     - Nếu Redis hoạt động: Lấy khóa lock trong timeout_seconds. Nếu đang bị giữ, báo lỗi 429.
+    - Nếu Redis không khả dụng (môi trường dev/test không có Redis, hoặc sự cố mạng tạm thời):
+      Dùng khóa bộ nhớ trong (in-memory lock) an toàn luồng (threading.Lock) để ngăn race condition /
+      bấm trùng nút trong cùng tiến trình mà không làm gián đoạn hệ thống.
     - Nếu Redis sập: Từ chối thao tác để bảo toàn tính nguyên tử của nghiệp vụ.
     """
     client = get_redis_client()
+    full_key = f"bachkhoa:lock:{lock_key}"
+
     if not client:
+        acquired = False
+        start_time = time.time()
+        while True:
+            with _fallback_locks_mutex:
+                now = time.time()
+                expires_at = _fallback_locks.get(full_key, 0)
+                if now >= expires_at:
+                    _fallback_locks[full_key] = now + timeout_seconds
+                    acquired = True
+                    break
+            if blocking_timeout <= 0 or (time.time() - start_time) >= blocking_timeout:
+                break
+            time.sleep(0.05)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Dịch vụ khóa giao dịch tạm thời không khả dụng. Vui lòng thử lại.",
         )
+
+        if not acquired:
+            msg = custom_error_msg or "Thao tác đang được xử lý bởi một yêu cầu khác, vui lòng không bấm liên tiếp."
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
+        try:
+            yield True
+        finally:
+            with _fallback_locks_mutex:
+                _fallback_locks.pop(full_key, None)
+        return
 
     full_key = f"bachkhoa:lock:{lock_key}"
     lock = client.lock(full_key, timeout=timeout_seconds, blocking_timeout=blocking_timeout)
@@ -224,6 +269,19 @@ def redis_distributed_lock(
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
         yield True
     except RedisError as exc:
+        logger.warning("Redis lock error cho '%s': %s (fallback in-memory lock)", full_key, exc)
+        with _fallback_locks_mutex:
+            now = time.time()
+            expires_at = _fallback_locks.get(full_key, 0)
+            if now < expires_at:
+                msg = custom_error_msg or "Thao tác đang được xử lý bởi một yêu cầu khác, vui lòng không bấm liên tiếp."
+                raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=msg)
+            _fallback_locks[full_key] = now + timeout_seconds
+        try:
+            yield True
+        finally:
+            with _fallback_locks_mutex:
+                _fallback_locks.pop(full_key, None)
         logger.error("Redis lock error cho '%s': thao tác bị từ chối: %s", full_key, exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

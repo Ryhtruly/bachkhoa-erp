@@ -51,6 +51,7 @@ _BASE_SQL = f"""
       join public.employees e on e.id = a.employee_id
       where a.task_node_id = s.task_node_id and a.role_code = 'MAIN'
         and a.assignment_status not in ('replaced', 'declined')
+        and a.assignment_status not in ('replaced', 'declined', 'cancelled')
       order by a.is_primary desc, a.created_at asc limit 1
     ) main_emp on true
     left join lateral (
@@ -59,6 +60,7 @@ _BASE_SQL = f"""
       join public.employees e on e.id = a.employee_id
       where a.task_node_id = s.task_node_id and a.role_code = 'ASSISTANT'
         and a.assignment_status not in ('replaced', 'declined')
+        and a.assignment_status not in ('replaced', 'declined', 'cancelled')
       order by a.created_at asc limit 1
     ) assist_emp on true
 {SURVEY_FLAGS_LATERAL}

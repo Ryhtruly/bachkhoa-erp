@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text, or_
+from sqlalchemy import func, text, or_, case
+from sqlalchemy import func, text, or_, and_, case
 import datetime
 import uuid
 import os
@@ -17,13 +18,14 @@ from src.db.models import LeadPipeline, Customer, ServiceLine, Contract, AuditLo
 from src.db.models.crm import ContractTemplate, CustomerIntakeSubmission, ContractGeneratedDocument
 from src.db.models.finance import Receivable
 from src.db.models.operations import TaskType, ServicePackage
-from src.contracts import sync_contract_read_model_after_write
+from src.contracts import sync_contract_read_model_after_write, warm_contract_read_model
 from src.contracts.services import ContractService, _create_initial_service_line, resolve_document_selection, telegram_service
 from src.services.storage_service import upload_contract_document, CONTRACT_TEMPLATE_CONTENT_TYPE
 from src.files.references import DossierFileReference
 from src.core.auth import require_permission, User, is_payroll_all_user
 from src.crm.commission import can_claim_lead, normalize_policy, workload_score
 from src.core.finance_validation import parse_issued_money
+from src.routes.routes_customers import check_loyalty_eligibility
 
 logger = logging.getLogger(__name__)
 
@@ -169,16 +171,35 @@ def get_crm_stats(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("crm", "read"))
 ):
-    query = db.query(LeadPipeline)
+    manager_view = _is_crm_manager(db, user)
+    if not manager_view:
+        scope = "mine"
+
+    base_filter = []
     if scope == "mine":
-        query = query.filter(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+        base_filter.append(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+        base_filter.append(
+            or_(
+                and_(LeadPipeline.status == "Tiếp cận", LeadPipeline.assigned_to.is_(None)),
+                LeadPipeline.assigned_to == user.id,
+            )
+        )
     elif scope != "all":
         raise HTTPException(status_code=422, detail="scope must be all or mine")
-    total = query.count()
-    won = query.filter(LeadPipeline.status == "Chốt").count()
-    in_progress = query.filter(LeadPipeline.status.in_(["Tiếp cận", "Báo giá", "Đàm phán"])).count()
+
+    stats_query = db.query(
+        func.count(LeadPipeline.id),
+        func.count(case((LeadPipeline.status == "Chốt", LeadPipeline.id))),
+        func.count(case((LeadPipeline.status.in_(["Tiếp cận", "Báo giá", "Đàm phán"]), LeadPipeline.id))),
+    )
+    if base_filter:
+        stats_query = stats_query.filter(*base_filter)
+    total, won, in_progress = stats_query.first() or (0, 0, 0)
+    total = int(total or 0)
+    won = int(won or 0)
+    in_progress = int(in_progress or 0)
     win_rate = round((won / total * 100) if total > 0 else 0, 1)
-    
+
     return {
         "status": "success",
         "data": {
@@ -233,15 +254,65 @@ def get_leads(
     user: User = Depends(require_permission("crm", "read"))
 ):
     manager_view = _is_crm_manager(db, user)
+    if not manager_view:
+        scope = "mine"
+
     query = db.query(LeadPipeline)
     if scope == "mine":
         query = query.filter(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+        query = query.filter(
+            or_(
+                and_(LeadPipeline.status == "Tiếp cận", LeadPipeline.assigned_to.is_(None)),
+                LeadPipeline.assigned_to == user.id,
+            )
+        )
     elif scope != "all":
         raise HTTPException(status_code=422, detail="scope must be all or mine")
     leads = query.order_by(LeadPipeline.created_at.desc()).all()
+    if not leads:
+        return {"status": "success", "data": []}
+
+    customer_ids = {l.customer_id for l in leads if l.customer_id}
+    customers_map = {}
+    if customer_ids:
+        cust_rows = (
+            db.query(Customer.id, Customer.full_name, Customer.phone)
+            .filter(Customer.id.in_(customer_ids))
+            .all()
+        )
+        customers_map = {c.id: c for c in cust_rows}
+
+    employees_map = {}
+    if manager_view:
+        assigned_ids = {l.assigned_to for l in leads if l.assigned_to}
+        if assigned_ids:
+            emp_rows = (
+                db.query(Employee.id, Employee.user_id, Employee.full_name, Employee.avatar_url)
+                .filter(or_(Employee.user_id.in_(assigned_ids), Employee.id.in_(assigned_ids)))
+                .all()
+            )
+            for e in emp_rows:
+                if e.user_id:
+                    employees_map[e.user_id] = e
+                if e.id:
+                    employees_map[e.id] = e
+    assigned_ids = {l.assigned_to for l in leads if l.assigned_to}
+    if assigned_ids:
+        emp_rows = (
+            db.query(Employee.id, Employee.user_id, Employee.full_name, Employee.avatar_url)
+            .filter(or_(Employee.user_id.in_(assigned_ids), Employee.id.in_(assigned_ids)))
+            .all()
+        )
+        for e in emp_rows:
+            if e.user_id:
+                employees_map[e.user_id] = e
+            if e.id:
+                employees_map[e.id] = e
+
     results = []
     for l in leads:
-        cust = db.query(Customer).filter(Customer.id == l.customer_id).first()
+        cust = customers_map.get(l.customer_id)
+        owner = employees_map.get(l.assigned_to) if l.assigned_to else None
         row = {
             "id": l.id,
             "customer_name": cust.full_name if cust else "Unknown",
@@ -253,13 +324,12 @@ def get_leads(
             "created_at": l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else ""
         }
         if manager_view and l.assigned_to:
-            owner = (
-                db.query(Employee)
-                .filter(or_(Employee.user_id == l.assigned_to, Employee.id == l.assigned_to))
-                .first()
-            )
+            owner = employees_map.get(l.assigned_to)
             row["assigned_to_name"] = owner.full_name if owner else ""
             row["assigned_to_avatar_url"] = owner.avatar_url if owner else None
+        if owner and (manager_view or l.assigned_to == user.id):
+            row["assigned_to_name"] = owner.full_name
+            row["assigned_to_avatar_url"] = owner.avatar_url
         results.append(row)
     return {"status": "success", "data": results}
 
@@ -312,7 +382,8 @@ def update_lead_status(
     lead_id: str,
     body: LeadStatusUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_permission("crm", "update"))
+    user: User = Depends(require_permission("crm", "update")),
+    background_tasks: BackgroundTasks = None,
 ):
     lead = db.query(LeadPipeline).filter(LeadPipeline.id == lead_id).first()
     if not lead:
@@ -324,8 +395,9 @@ def update_lead_status(
         # Validate before changing the lead or creating any finance/dossier row.
         issued_total = parse_issued_money(body.price)
 
+    is_manager = _is_crm_manager(db, user)
     if not lead.assigned_to:
-        if _is_crm_manager(db, user):
+        if is_manager:
             lead.assigned_to = user.id
             db.add(AuditLog(
                 actor_id=user.id,
@@ -335,7 +407,7 @@ def update_lead_status(
             ))
         else:
             raise HTTPException(status_code=409, detail="Claim the lead before changing its status")
-    if not _is_crm_manager(db, user) and lead.assigned_to != user.id:
+    if not is_manager and lead.assigned_to != user.id:
         raise HTTPException(status_code=403, detail="Only the assigned Sale can update this lead")
 
     lead.status = body.new_status
@@ -390,18 +462,51 @@ def update_lead_status(
             .first()
         )
 
-        # 6. Chuẩn bị file Word (.docx) và Render thông tin
+        # 6. Kiểm tra ưu đãi khách hàng thân thiết (Loyalty Discount) TRƯỚC KHI sinh chứng từ
+        loyalty_info = check_loyalty_eligibility(db, lead.customer_id, numeric_total_value)
+        final_contract_value = numeric_total_value
+        loyalty_discount_percent = None
+        loyalty_discount_amount = None
+        original_value_for_contract = None
+        loyalty_tier_id = None
+        loyalty_tier_name = None
+        loyalty_addons = None
+
+        if loyalty_info.get("eligible"):
+            original_value_for_contract = numeric_total_value
+            loyalty_discount_percent = loyalty_info["discount_percent"]
+            loyalty_discount_amount = loyalty_info["discount_amount"]
+            final_contract_value = loyalty_info["final_value"]
+            loyalty_tier_id = loyalty_info["tier"]["id"]
+            loyalty_tier_name = loyalty_info["tier"]["tier_name"]
+            loyalty_addons = {
+                "loyalty_discount": {
+                    "tier_name": loyalty_tier_name,
+                    "tier_id": loyalty_tier_id,
+                    "contract_count": loyalty_info["contract_count"],
+                    "discount_percent": loyalty_discount_percent,
+                    "discount_amount": loyalty_discount_amount,
+                    "original_value": numeric_total_value,
+                    "final_value": final_contract_value,
+                }
+            }
+            logger.info(
+                "Áp dụng ưu đãi khách thân thiết cho HĐ %s: %s%% (-%s)",
+                contract_id, loyalty_discount_percent, loyalty_discount_amount,
+            )
+
+        # 6b. Chuẩn bị file Word (.docx) và Render thông tin với GIÁ TRỊ HỢP ĐỒNG THỰC TẾ
         template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "Mau_Hop_Dong_Do_Dac_Bach_Khoa.docx")
         safe_id = contract_id.replace("/", "_").replace("\\", "_")
         safe_cust = re.sub(r'[^a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]', '_', customer.full_name if customer else 'KhachHang')
         output_filename = f"HopDong_{safe_id}_{safe_cust}.docx"
 
-        formatted_price = f"{int(numeric_total_value):,}".replace(",", ".") + " VNĐ" if numeric_total_value > 0 else "Chưa báo giá"
+        formatted_price = f"{int(final_contract_value):,}".replace(",", ".") + " VNĐ" if final_contract_value > 0 else "Chưa báo giá"
         price_text = "Chưa báo giá"
-        if numeric_total_value > 0:
+        if final_contract_value > 0:
             try:
                 from num2words import num2words
-                price_text = num2words(int(numeric_total_value), lang='vi').capitalize() + " đồng"
+                price_text = num2words(int(final_contract_value), lang='vi').capitalize() + " đồng"
             except Exception:
                 pass
 
@@ -416,7 +521,10 @@ def update_lead_status(
             "service_location": customer.address or "Tại hiện trường",
             "service_area": body.area or "Cập nhật sau",
             "total_amount": formatted_price,
-            "total_amount_text": price_text
+            "total_amount_text": price_text,
+            "original_amount": f"{int(numeric_total_value):,}".replace(",", ".") + " VNĐ" if numeric_total_value > 0 else formatted_price,
+            "discount_percent": loyalty_discount_percent or 0,
+            "discount_amount": f"{int(loyalty_discount_amount):,}".replace(",", ".") + " VNĐ" if loyalty_discount_amount else "0 VNĐ",
         }
 
         file_link = None
@@ -450,7 +558,12 @@ def update_lead_status(
             lead_id=lead.id,
             contract_template_id=published_template.id if published_template else None,
             service_type=final_service_name,
-            total_value=numeric_total_value,
+            total_value=final_contract_value,
+            original_value=original_value_for_contract,
+            loyalty_tier_id=loyalty_tier_id,
+            loyalty_tier_name=loyalty_tier_name,
+            loyalty_discount_percent=loyalty_discount_percent,
+            loyalty_discount_amount=loyalty_discount_amount,
             date_signed=datetime.datetime.now(datetime.timezone.utc).date(),
             service_location=customer.address if customer else None,
             service_area=numeric_area,
@@ -459,6 +572,7 @@ def update_lead_status(
             sale_id=lead.assigned_to,
             commission_rate_snapshot=commission_policy["commission_rate_percent"],
             commission_locked_at=datetime.datetime.now(datetime.timezone.utc),
+            addons=loyalty_addons,
         )
         db.add(new_contract)
 
@@ -467,7 +581,7 @@ def update_lead_status(
             db,
             contract_id=contract_id,
             service_type=final_service_name,
-            price=numeric_total_value,
+            price=final_contract_value,
             address=customer.address if customer else None,
             task_type_id=task_type.id if task_type else None,
             checklist_template_ids=resolve_document_selection("DEFAULT", None),
@@ -481,7 +595,7 @@ def update_lead_status(
             id=str(uuid.uuid4()),
             contract_id=contract_id,
             paid_amount=0.0,
-            remaining_amount=numeric_total_value,
+            remaining_amount=final_contract_value,
         )
         db.add(rec)
 
@@ -550,14 +664,21 @@ def update_lead_status(
         except Exception as reg_err:
             logger.warning("Không thể mở sổ cho hợp đồng %s: %s", contract_id, reg_err)
 
-        # 13. Thông báo Telegram
+        # 13. Thông báo Telegram (bất đồng bộ qua BackgroundTasks)
         try:
-            telegram_service.notify_new_contract({
+            telegram_payload = {
                 "contract_id": contract_id,
                 "customer_name": customer.full_name if customer else "Khách hàng",
                 "service_type": final_service_name,
                 "contract_value": numeric_total_value
-            })
+            }
+            if background_tasks:
+                background_tasks.add_task(telegram_service.notify_new_contract, telegram_payload)
+            else:
+                try:
+                    telegram_service.notify_new_contract(telegram_payload)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -572,7 +693,18 @@ def update_lead_status(
         
     db.commit()
     if contract_created:
-        sync_contract_read_model_after_write(db)
+        try:
+            from src.contracts.read_model import CONTRACT_READ_KEY, _get_redis_client
+            _get_redis_client().delete(CONTRACT_READ_KEY)
+        except Exception:
+            pass
+        if background_tasks:
+            background_tasks.add_task(warm_contract_read_model)
+        else:
+            try:
+                warm_contract_read_model()
+            except Exception:
+                pass
     return {
         "status": "success",
         "data": {

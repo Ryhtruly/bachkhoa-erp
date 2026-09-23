@@ -39,8 +39,10 @@ def publish_timeline_change(source: str, *, entity_id: str | None = None) -> Non
     try:
         _redis_client().publish(TIMELINE_CHANNEL, payload)
         # Xóa cache notification và dashboard để khi client nhận tín hiệu realtime sẽ lấy dữ liệu mới nhất
+        # Xóa cache notification, dashboard và task_pool để khi client nhận tín hiệu realtime sẽ lấy dữ liệu mới nhất
         invalidate_cache("bachkhoa:notifications:summary:*")
         invalidate_cache("bachkhoa:dashboard:*")
+        invalidate_cache("task_pool:*")
     except RedisError as exc:
         # A failed notification must not roll back the business transaction.
         logger.warning("Timeline realtime publish failed: %s", exc)

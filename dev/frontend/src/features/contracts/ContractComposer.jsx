@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, FileUp, X } from 'lucide-react'
+import { Check, ChevronDown, FileUp, X, Award } from 'lucide-react'
 import { apiFetch } from '../../lib/api'
 import { laLoiChuaKichHoat, loiHienThi } from '../../lib/schemaV2'
 import DatePicker from '../../components/ui/DatePicker'
@@ -318,6 +318,7 @@ export default function ContractComposer({
   // Customer types: individual / business
   const [customerType, setCustomerType] = useState('individual')
   const [existingCustomerId, setExistingCustomerId] = useState('')
+  const [loyaltyInfo, setLoyaltyInfo] = useState(null)
   const [identityInfo, setIdentityInfo] = useState({
     tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
     email: '', zalo_phone: '', representative_name: '', representative_role: '',
@@ -336,6 +337,33 @@ export default function ContractComposer({
   const [createdContractId, setCreatedContractId] = useState('')
   const bodyRef = useRef(null)
   const sourcePreviewUrlRef = useRef('')
+  const loyaltyReqSeqRef = useRef(0)
+
+  const checkLoyaltyEligibility = useCallback(async (cid, ph, tax, cccd) => {
+    const currentSeq = ++loyaltyReqSeqRef.current
+    try {
+      const params = new URLSearchParams()
+      if (cid) params.set('customer_id', cid)
+      if (ph) params.set('phone', ph)
+      if (tax) params.set('tax_id', tax)
+      if (cccd) params.set('id_card_number', cccd)
+      if (params.toString()) {
+        const res = await apiFetch(`/api/customers/loyalty-eligibility?${params.toString()}`)
+        if (currentSeq !== loyaltyReqSeqRef.current) return
+        if (res?.data?.eligible) {
+          setLoyaltyInfo(res.data)
+          return
+        }
+      }
+      if (currentSeq === loyaltyReqSeqRef.current) {
+        setLoyaltyInfo(null)
+      }
+    } catch {
+      if (currentSeq === loyaltyReqSeqRef.current) {
+        setLoyaltyInfo(null)
+      }
+    }
+  }, [])
 
   const closeSourcePreview = useCallback(() => {
     if (sourcePreviewUrlRef.current) URL.revokeObjectURL(sourcePreviewUrlRef.current)
@@ -391,6 +419,7 @@ export default function ContractComposer({
     setPriorityReason('')
     setCustomerType('individual')
     setExistingCustomerId('')
+    setLoyaltyInfo(null)
     setIdentityInfo({ tax_id: '', id_card_number: '', id_card_date: '', id_card_place: '',
       email: '', zalo_phone: '', representative_name: '', representative_role: '' })
     setNameSearchResults([])
@@ -525,6 +554,7 @@ export default function ContractComposer({
     if (type === customerType) return
     setCustomerType(type)
     setExistingCustomerId('')
+    setLoyaltyInfo(null)
     setForm(cur => ({
       ...cur,
       customer_name: '',
@@ -595,6 +625,7 @@ export default function ContractComposer({
     })
     setNameSearchResults([])
     setTaxSearchResults([])
+    checkLoyaltyEligibility(customer.id, customer.phone, customer.tax_id, customer.id_card_number)
   }
 
   // Lookup tax ID
@@ -670,7 +701,16 @@ export default function ContractComposer({
       representative_name: identityInfo.representative_name.trim() || null,
       representative_role: identityInfo.representative_role.trim() || null,
       sales_source: form.sales_source.trim(),
-      contract_value: numericValue,
+      contract_value: loyaltyInfo?.eligible
+        ? Math.max(0, Math.round(numericValue * (1 - loyaltyInfo.discount_percent / 100)))
+        : numericValue,
+      ...(loyaltyInfo?.eligible ? {
+        loyalty_tier_id: loyaltyInfo.tier?.id || loyaltyInfo.tier_id || null,
+        loyalty_tier_name: loyaltyInfo.tier?.tier_name || loyaltyInfo.tier_name || null,
+        loyalty_discount_percent: loyaltyInfo.discount_percent,
+        loyalty_discount_amount: Math.round(numericValue * (loyaltyInfo.discount_percent / 100)),
+        original_value: numericValue,
+      } : {}),
       address: fullAddress,
       address_detail: form.detail.trim(),
       province_code: geoBoundary.provinceCode || null,
@@ -1080,6 +1120,26 @@ export default function ContractComposer({
             </div>
             <div className="row">
               <div className="tien">
+                {loyaltyInfo?.eligible && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    background: 'rgba(234, 179, 8, 0.1)',
+                    border: '1px solid rgba(234, 179, 8, 0.3)',
+                    borderRadius: 8,
+                    marginBottom: 10,
+                  }}>
+                    <Award size={18} color="#d97706" />
+                    <div style={{ fontSize: '0.82rem' }}>
+                      <strong style={{ color: '#b45309' }}>Khách ưu tiên: {loyaltyInfo.tier?.tier_name}</strong>
+                      <span style={{ marginLeft: 6, color: 'var(--ink-3)' }}>
+                        ({loyaltyInfo.contract_count} HĐ cũ) — Áp dụng giảm <strong>{loyaltyInfo.discount_percent}%</strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <label htmlFor="dv-gia">Giá trị hợp đồng<u>*</u><small>gõ tắt được: 18.5tr, 500k</small></label>
                 <div className="wrap">
                   <input className={`in money${getValidationClass('contract_value')}`} id="dv-gia" inputMode="decimal"
@@ -1088,6 +1148,22 @@ export default function ContractComposer({
                   <span className="suf">₫</span>
                 </div>
                 <p className="hint">{numericValue > 0 && <b>{spellCurrencyWords(numericValue)}</b>}</p>
+                {numericValue > 0 && loyaltyInfo?.eligible && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    background: 'rgba(22, 163, 74, 0.08)',
+                    border: '1px solid rgba(22, 163, 74, 0.2)',
+                    borderRadius: 6,
+                    fontSize: '0.8rem',
+                    margin: '6px 0',
+                  }}>
+                    <span>Giá gốc: <strong>{numericValue.toLocaleString('vi-VN')}₫</strong> (Giảm {loyaltyInfo.discount_percent}%: -{Math.round(numericValue * loyaltyInfo.discount_percent / 100).toLocaleString('vi-VN')}₫)</span>
+                    <span style={{ color: '#16a34a', fontWeight: 700 }}>Sau giảm: {Math.round(numericValue * (1 - loyaltyInfo.discount_percent / 100)).toLocaleString('vi-VN')}₫</span>
+                  </div>
+                )}
                 <div className="quick">
                   {QUICK_DENOMINATIONS.map(m => (
                     <button key={m.value} type="button" onClick={() => handleAddQuickAmount(m.value)}>{m.label}</button>

@@ -150,6 +150,120 @@ def test_sales_crm_view_mine_filters_correctly(client, db):
     assert lead_other.id not in lead_ids
 
 
+def test_sales_quotation_isolation_and_all_bypass_blocked(client, admin_headers, db):
+    """Màn hình Báo giá của nhân viên Sale chỉ hiện lead của chính nhân viên đó, không lẫn của Sale khác.
+    
+    1. Ở cột "Tiếp cận": Sale thấy lead chưa nhận (pool ai nhanh tay thì được) và lead của mình.
+    2. Ở cột "Báo giá" & "Chốt": Sale CHỈ thấy lead của chính mình.
+    3. Non-manager gọi scope=all không bypass được, vẫn bị giới hạn theo đúng phạm vi phân lập.
+    4. Giám đốc/Admin xem scope=all thấy đầy đủ toàn bộ lead.
+    """
+    sale_a, headers_a = _create_crm_user(db, username_prefix="sale_iso_a")
+    sale_b, _ = _create_crm_user(db, username_prefix="sale_iso_b")
+
+    cust = Customer(id=str(uuid.uuid4()), full_name="Khách Hàng Phân Lập", phone="0908889999")
+    db.add(cust)
+    db.commit()
+
+    # 1. Tiếp cận
+    lead_contact_free = LeadPipeline(
+        id=f"LEAD-C-FREE-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Tiếp cận",
+        assigned_to=None,
+    )
+    lead_contact_mine = LeadPipeline(
+        id=f"LEAD-C-MINE-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Tiếp cận",
+        assigned_to=sale_a.id,
+    )
+    lead_contact_other = LeadPipeline(
+        id=f"LEAD-C-OTHER-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Tiếp cận",
+        assigned_to=sale_b.id,
+    )
+
+    # 2. Báo giá
+    lead_quote_mine = LeadPipeline(
+        id=f"LEAD-Q-MINE-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Báo giá",
+        assigned_to=sale_a.id,
+    )
+    lead_quote_other = LeadPipeline(
+        id=f"LEAD-Q-OTHER-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Báo giá",
+        assigned_to=sale_b.id,
+    )
+    lead_quote_free = LeadPipeline(
+        id=f"LEAD-Q-FREE-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Báo giá",
+        assigned_to=None,
+    )
+
+    # 3. Chốt
+    lead_won_mine = LeadPipeline(
+        id=f"LEAD-W-MINE-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Chốt",
+        assigned_to=sale_a.id,
+    )
+    lead_won_other = LeadPipeline(
+        id=f"LEAD-W-OTHER-{uuid.uuid4().hex[:4].upper()}",
+        customer_id=cust.id,
+        status="Chốt",
+        assigned_to=sale_b.id,
+    )
+
+    db.add_all([
+        lead_contact_free, lead_contact_mine, lead_contact_other,
+        lead_quote_mine, lead_quote_other, lead_quote_free,
+        lead_won_mine, lead_won_other
+    ])
+    db.commit()
+
+    # Sale A gọi scope=mine
+    res_mine = client.get("/api/crm/leads?scope=mine", headers=headers_a)
+    assert res_mine.status_code == 200
+    ids_mine = [l["id"] for l in res_mine.json()["data"]]
+
+    assert lead_contact_free.id in ids_mine  # Tiếp cận chưa nhận -> Thấy ("ai nhanh tay thì được")
+    assert lead_contact_mine.id in ids_mine  # Tiếp cận của mình -> Thấy
+    assert lead_contact_other.id not in ids_mine  # Tiếp cận của sale khác -> KHÔNG thấy
+    assert lead_quote_mine.id in ids_mine  # Báo giá của mình -> Thấy
+    assert lead_quote_other.id not in ids_mine  # Báo giá của sale khác -> KHÔNG thấy
+    assert lead_quote_free.id not in ids_mine  # Báo giá unassigned -> KHÔNG thấy
+    assert lead_won_mine.id in ids_mine  # Chốt của mình -> Thấy
+    assert lead_won_other.id not in ids_mine  # Chốt của sale khác -> KHÔNG thấy
+
+    # Sale A thử gọi scope=all để bypass -> Backend tự ép về scope=mine
+    res_all_attempt = client.get("/api/crm/leads?scope=all", headers=headers_a)
+    assert res_all_attempt.status_code == 200
+    ids_attempt = [l["id"] for l in res_all_attempt.json()["data"]]
+    assert ids_attempt == ids_mine
+
+    # Thống kê cá nhân của Sale A
+    stats_res = client.get("/api/crm/stats", headers=headers_a)
+    assert stats_res.status_code == 200
+    stats_data = stats_res.json()["data"]
+    assert stats_data["total_leads"] == 4
+    assert stats_data["won_leads"] == 1
+    assert stats_data["in_progress"] == 3
+
+    # Giám đốc (Admin) gọi scope=all -> Thấy toàn bộ 8 lead
+    res_admin = client.get("/api/crm/leads?scope=all", headers=admin_headers)
+    assert res_admin.status_code == 200
+    ids_admin = [l["id"] for l in res_admin.json()["data"]]
+    for item in [lead_contact_free, lead_contact_mine, lead_contact_other,
+                 lead_quote_mine, lead_quote_other, lead_quote_free,
+                 lead_won_mine, lead_won_other]:
+        assert item.id in ids_admin
+
+
 def test_sales_claim_lead_success(client, db):
     """Nhân viên sale nhận lead chưa phân công thành công."""
     sale_user, headers = _create_crm_user(db, username_prefix="sale_claim")

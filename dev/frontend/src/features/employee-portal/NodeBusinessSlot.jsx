@@ -4,6 +4,7 @@ import { ChevronDown, Compass, Monitor, Pause, Play, Scale } from 'lucide-react'
 import CustomerSourceDocuments from './CustomerSourceDocuments'
 import SubmissionReceiptPanel from '../legal-dossier/SubmissionReceiptPanel'
 import { formatMoney } from './nodeWorkFormat'
+import { governmentSubmissionMode, isGovernmentTracking } from '../../components/contracts/governmentCapability'
 
 function formatTime(iso) {
   if (!iso) return ''
@@ -18,12 +19,12 @@ function formatTime(iso) {
 /**
  * Ô NGHIỆP VỤ — hàng thứ hai của cột phải, thứ duy nhất đổi theo bước.
  *
- * Bốn thẻ trong bản vẽ (K01·K04·K07, K05a, K05b, K06) dùng chung một khung; chỉ
+ * Các node trong bản vẽ dùng chung một khung; chỉ
  * ô này khác. Nên nó là một component riêng, và chọn nhánh bằng CỜ CẤU HÌNH đọc
  * từ danh mục — không phải bằng `if (node_code === 'K05b')`.
  *
- *   allow_pause         → dải tạm dừng / tiếp tục          (K05a, K05b)
- *   allow_gov_tracking  → thêm bảng theo dõi cơ quan       (chỉ K05b)
+ *   allow_pause         → dải tạm dừng / tiếp tục          (theo capability)
+ *   allow_gov_tracking  → thêm bảng theo dõi cơ quan       (năng lực theo dõi)
  *   is_handover         → thanh công nợ + lập phiếu nợ     (K06)
  *   mọi node            → kho giấy tờ khách gửi chưa phân loại
  *
@@ -39,14 +40,15 @@ export default function NodeBusinessSlot({
   onPause,
   onResume,
   busy = false,
+  hideReceipt = false,
 }) {
   const [customerDocsOpen, setCustomerDocsOpen] = useState(true)
   const paused = Boolean(task.pause_reason_type)
 
   const isHandover = Boolean(task.is_handover || task.capability_code === 'HANDOVER' || task.capability === 'HANDOVER' || task.node_code === 'K06')
-  const allowPause = Boolean(task.allow_pause || task.capability_code === 'GOV_SUBMISSION' || task.capability === 'GOV_SUBMISSION')
-  const allowGovTracking = Boolean(task.allow_gov_tracking || task.capability_code === 'GOV_SUBMISSION' || task.capability === 'GOV_SUBMISSION')
-  const requiresGovSubmission = Boolean(task.requires_gov_submission || task.capability_code === 'GOV_SUBMISSION' || task.capability === 'GOV_SUBMISSION')
+  const governmentMode = governmentSubmissionMode(task)
+  const isGovernmentNode = Boolean(governmentMode)
+  const allowPause = Boolean(task.allow_pause || isGovernmentNode)
   const isSurveyField = Boolean(
     task.capability_code === 'SURVEY_FIELD' || task.capability === 'SURVEY_FIELD'
     || task.creates_survey_record
@@ -118,12 +120,13 @@ export default function NodeBusinessSlot({
       )}
 
       {/* ── Bảng theo dõi cơ quan (chỉ bật khi cấu hình yêu cầu) ── */}
-      {(allowGovTracking || requiresGovSubmission) && (
+      {isGovernmentNode && !hideReceipt && (
         <div className="eiw-slotbody">
           <SubmissionReceiptPanel
             taskNodeId={task.id}
             addToast={addToast}
             onChanged={onRefresh}
+            tracking={isGovernmentTracking(task)}
           />
         </div>
       )}

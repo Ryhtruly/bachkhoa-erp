@@ -210,4 +210,188 @@ describe('Khối nộp cơ quan — màn Giám đốc', () => {
     expect(dai).toHaveTextContent('Thiếu giấy tờ khách hàng')
     expect(dai).toHaveTextContent('NỘI BỘ')
   })
+
+  it('có mã biên nhận thì hiện nút Tra cứu tại Cổng DVC, bấm thì mở cổng DVC', async () => {
+    const originalOpen = window.open
+    window.open = vi.fn()
+    const addToast = vi.fn()
+
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('by-task-node')) return Promise.resolve({ data: { id: DOSSIER.id } })
+      return Promise.resolve({ data: DOSSIER })
+    })
+
+    render(
+      <NodeAgencyPanel taskNodeId="task-1" nodeCode="K05b" addToast={addToast} />,
+    )
+
+    const btn = await screen.findByRole('button', { name: /Tra cứu tại Cổng DVC/i })
+    expect(btn).toBeInTheDocument()
+
+    btn.click()
+    expect(window.open).toHaveBeenCalledWith(
+      'https://dichvucong.gov.vn/p/home/dvc-tra-cuu-ho-so.html',
+      '_blank',
+      'noopener,noreferrer',
+    )
+    window.open = originalOpen
+  })
+
+  it('chưa có biên nhận và nhân viên chưa nhận việc thì hiển thị Chờ tiếp nhận, KHÔNG bịa là Đã nộp', async () => {
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('legal-dossiers')) return Promise.reject(new Error('404'))
+      if (url.includes('legal-submissions')) {
+        return Promise.resolve({
+          data: {
+            id: 'sub-1',
+            receipt_code: null,
+            gov_status: 'Đang chi nhánh',
+          },
+        })
+      }
+      return Promise.reject(new Error('404'))
+    })
+
+    render(
+      <NodeAgencyPanel
+        taskNodeId="task-1"
+        nodeCode="N01"
+        taskNode={{
+          id: 'task-1',
+          executionStatus: 'ready',
+          assigned_to: null,
+          status: 'ready',
+        }}
+        addToast={vi.fn()}
+      />,
+    )
+
+    const hangTrangThai = (await screen.findByText('Trạng thái')).closest('.wf-agency__row')
+    expect(within(hangTrangThai).getByText('Chờ tiếp nhận')).toBeInTheDocument()
+    expect(within(hangTrangThai).queryByText('Đã nộp')).not.toBeInTheDocument()
+  })
+
+  it('chưa có biên nhận nhưng nhân viên đang làm thì hiển thị Chưa nộp, KHÔNG bịa là Đã nộp', async () => {
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('legal-dossiers')) return Promise.reject(new Error('404'))
+      if (url.includes('legal-submissions')) {
+        return Promise.resolve({
+          data: {
+            id: 'sub-1',
+            receipt_code: null,
+            gov_status: 'Đang chi nhánh',
+          },
+        })
+      }
+      return Promise.reject(new Error('404'))
+    })
+
+    render(
+      <NodeAgencyPanel
+        taskNodeId="task-1"
+        nodeCode="N01"
+        taskNode={{
+          id: 'task-1',
+          executionStatus: 'in_progress',
+          assigned_to: 'emp-1',
+          status: 'in_progress',
+        }}
+        addToast={vi.fn()}
+      />,
+    )
+
+    const hangTrangThai = (await screen.findByText('Trạng thái')).closest('.wf-agency__row')
+    expect(within(hangTrangThai).getByText('Chưa nộp')).toBeInTheDocument()
+    expect(within(hangTrangThai).queryByText('Đã nộp')).not.toBeInTheDocument()
+  })
+
+  it('node theo dõi một cửa mà chưa có biên nhận từ bước trước thì hiển thị Chưa có biên nhận', async () => {
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('legal-dossiers')) return Promise.reject(new Error('404'))
+      if (url.includes('legal-submissions')) {
+        return Promise.resolve({
+          data: {
+            id: 'sub-2',
+            receipt_code: null,
+            gov_status: 'Đang chi nhánh',
+          },
+        })
+      }
+      return Promise.reject(new Error('404'))
+    })
+
+    render(
+      <NodeAgencyPanel
+        taskNodeId="task-2"
+        nodeCode="N02"
+        taskNode={{
+          id: 'task-2',
+          capability_code: 'GOV_TRACKING',
+          executionStatus: 'pending',
+          status: 'pending',
+        }}
+        addToast={vi.fn()}
+      />,
+    )
+
+    const hangTrangThai = (await screen.findByText('Trạng thái')).closest('.wf-agency__row')
+    expect(within(hangTrangThai).getByText('Chưa có biên nhận')).toBeInTheDocument()
+    expect(within(hangTrangThai).queryByText('Đang chi nhánh')).not.toBeInTheDocument()
+  })
+
+  it('node N02 theo dõi một cửa kế thừa trọn vẹn thông tin biên nhận từ bước nộp N01', async () => {
+    apiFetch.mockReset()
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('legal-dossiers')) return Promise.reject(new Error('404'))
+      if (url.includes('legal-submissions')) {
+        return Promise.resolve({
+          data: {
+            id: 'sub-af821c',
+            receipt_code: 'BN-CUGHI-2026/0099',
+            submitted_agency: 'Chi nhánh VP ĐKĐĐ Củ Chi',
+            received_date: '2026-09-23',
+            expected_return_date: '2026-10-15',
+            gov_status: 'Đang chi nhánh',
+          },
+        })
+      }
+      return Promise.reject(new Error('404'))
+    })
+
+    render(
+      <NodeAgencyPanel
+        taskNodeId="task-n02-af821c"
+        nodeCode="N02"
+        taskNode={{
+          id: 'task-n02-af821c',
+          capability_code: 'GOV_TRACKING',
+          executionStatus: 'in_progress',
+          status: 'in_progress',
+          assigned_to: 'emp-tracker',
+        }}
+        addToast={vi.fn()}
+      />,
+    )
+
+    // Mã biên nhận và nhãn kế thừa
+    expect(await screen.findByText('BN-CUGHI-2026/0099')).toBeInTheDocument()
+    expect(screen.getByText('kế thừa từ bước nộp')).toBeInTheDocument()
+
+    // Nơi nộp, ngày nhận, ngày hẹn trả
+    expect(screen.getByText('Chi nhánh VP ĐKĐĐ Củ Chi')).toBeInTheDocument()
+    expect(screen.getByText(/23\/9\/2026/)).toBeInTheDocument()
+    expect(screen.getByText(/15\/10\/2026/)).toBeInTheDocument()
+
+    // Trạng thái theo dõi
+    const hangTrangThai = screen.getByText('Trạng thái').closest('.wf-agency__row')
+    expect(within(hangTrangThai).getByText('Đang chi nhánh')).toBeInTheDocument()
+
+    // Nút tra cứu DVC
+    expect(screen.getByRole('button', { name: /Tra cứu tại Cổng DVC/i })).toBeInTheDocument()
+  })
 })
+

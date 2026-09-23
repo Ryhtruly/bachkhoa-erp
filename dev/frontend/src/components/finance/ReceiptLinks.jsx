@@ -1,5 +1,5 @@
 import { FileText, Paperclip, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { getAccessToken } from '../../lib/api'
 import './receipts.css'
@@ -13,6 +13,11 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
   const [openingId, setOpeningId] = useState(null)
   const [previewReceipt, setPreviewReceipt] = useState(null)
   const items = normalizedAttachments(attachments, legacyUrl)
+
+  const handleClosePreview = useCallback(() => {
+    if (previewReceipt?.objectUrl) URL.revokeObjectURL(previewReceipt.objectUrl)
+    setPreviewReceipt(null)
+  }, [previewReceipt?.objectUrl])
 
   useEffect(() => () => { if (previewReceipt?.objectUrl) URL.revokeObjectURL(previewReceipt.objectUrl) }, [previewReceipt])
 
@@ -30,7 +35,7 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
       window.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [previewReceipt])
+  }, [previewReceipt, handleClosePreview])
 
   const openProtected = async (item) => {
     setOpeningId(item.id)
@@ -58,11 +63,6 @@ export default function ReceiptLinks({ attachments, legacyUrl, addToast, compact
     } finally {
       setOpeningId(null)
     }
-  }
-
-  const handleClosePreview = () => {
-    if (previewReceipt?.objectUrl) URL.revokeObjectURL(previewReceipt.objectUrl)
-    setPreviewReceipt(null)
   }
 
   if (items.length === 0) return null

@@ -5,17 +5,20 @@ danh sách. Router này lấp chỗ đó.
 """
 
 from datetime import date
+from typing import Optional
 import re
 
 import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from src.core.auth import require_permission, User
 from src.db.database import get_db
+from src.db.models import CustomerLoyaltyTier
+from src.finance.access import assert_director
 from src.finance.enums import APPROVED_STATUS_DB_VALUES, PENDING_STATUS_DB_VALUES
 from src.finance.services import INCOME_TX_TYPES
 
@@ -132,6 +135,290 @@ def list_customers(
     return {"status": "success", "data": [
         {**dict(r), "so_hop_dong": int(r["so_hop_dong"] or 0)} for r in rows
     ]}
+
+
+# ────────────────────────────────────────────────────────────────────
+#  LOYALTY TIERS — Thiết lập ưu đãi khách hàng thân thiết
+# ────────────────────────────────────────────────────────────────────
+
+def _tier_to_dict(t) -> dict:
+    return {
+        "id": t.id,
+        "tier_name": t.tier_name,
+        "min_contracts": t.min_contracts,
+        "discount_percent": float(t.discount_percent),
+        "description": t.description,
+        "is_active": t.is_active,
+        "created_at": _format_date(t.created_at),
+        "updated_at": _format_date(t.updated_at),
+    }
+
+
+class LoyaltyTierIn(BaseModel):
+    tier_name: str = Field(min_length=1, max_length=100)
+    min_contracts: int = Field(ge=1)
+    discount_percent: float = Field(ge=0, le=100)
+    description: Optional[str] = None
+    is_active: Optional[bool] = True
+
+
+@router.get("/loyalty-tiers")
+def list_loyalty_tiers(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("customer", "read")),
+):
+    """Danh sách bậc ưu đãi khách hàng, sắp xếp theo min_contracts tăng dần."""
+    tiers = (
+        db.query(CustomerLoyaltyTier)
+        .order_by(CustomerLoyaltyTier.min_contracts.asc())
+        .all()
+    )
+    return {"status": "success", "data": [_tier_to_dict(t) for t in tiers]}
+
+
+@router.post("/loyalty-tiers")
+def create_loyalty_tier(
+    payload: LoyaltyTierIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("customer", "read")),
+):
+    """Thêm mới bậc ưu đãi — chỉ giám đốc."""
+    assert_director(db, user, "Chỉ Giám đốc được thiết lập bậc ưu đãi.")
+
+    clean_name = payload.tier_name.strip()
+    # Kiểm tra trùng lặp số HĐ tối thiểu
+    existing_min = db.query(CustomerLoyaltyTier).filter(CustomerLoyaltyTier.min_contracts == payload.min_contracts).first()
+    if existing_min:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Đã có bậc ưu đãi '{existing_min.tier_name}' áp dụng cho mốc {payload.min_contracts} hợp đồng."
+        )
+    # Kiểm tra trùng tên bậc
+    existing_name = db.query(CustomerLoyaltyTier).filter(func.lower(CustomerLoyaltyTier.tier_name) == clean_name.lower()).first()
+    if existing_name:
+        raise HTTPException(status_code=409, detail=f"Tên bậc ưu đãi '{clean_name}' đã tồn tại.")
+
+    import uuid
+    tier = CustomerLoyaltyTier(
+        id=str(uuid.uuid4()),
+        tier_name=clean_name,
+        min_contracts=payload.min_contracts,
+        discount_percent=payload.discount_percent,
+        description=(payload.description or "").strip() or None,
+        is_active=payload.is_active if payload.is_active is not None else True,
+    )
+    db.add(tier)
+    db.commit()
+    db.refresh(tier)
+    return {"status": "success", "data": _tier_to_dict(tier)}
+
+
+@router.put("/loyalty-tiers/{tier_id}")
+def update_loyalty_tier(
+    tier_id: str,
+    payload: LoyaltyTierIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("customer", "read")),
+):
+    """Sửa bậc ưu đãi — chỉ giám đốc."""
+    assert_director(db, user, "Chỉ Giám đốc được sửa bậc ưu đãi.")
+    tier = db.query(CustomerLoyaltyTier).filter(CustomerLoyaltyTier.id == tier_id).first()
+    if not tier:
+        raise HTTPException(status_code=404, detail="Bậc ưu đãi không tồn tại")
+
+    clean_name = payload.tier_name.strip()
+    # Kiểm tra trùng lặp số HĐ tối thiểu với các bậc khác
+    existing_min = db.query(CustomerLoyaltyTier).filter(
+        CustomerLoyaltyTier.min_contracts == payload.min_contracts,
+        CustomerLoyaltyTier.id != tier_id,
+    ).first()
+    if existing_min:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Đã có bậc ưu đãi '{existing_min.tier_name}' áp dụng cho mốc {payload.min_contracts} hợp đồng."
+        )
+    # Kiểm tra trùng tên bậc với các bậc khác
+    existing_name = db.query(CustomerLoyaltyTier).filter(
+        func.lower(CustomerLoyaltyTier.tier_name) == clean_name.lower(),
+        CustomerLoyaltyTier.id != tier_id,
+    ).first()
+    if existing_name:
+        raise HTTPException(status_code=409, detail=f"Tên bậc ưu đãi '{clean_name}' đã tồn tại.")
+
+    tier.tier_name = clean_name
+    tier.min_contracts = payload.min_contracts
+    tier.discount_percent = payload.discount_percent
+    tier.description = (payload.description or "").strip() or None
+    if payload.is_active is not None:
+        tier.is_active = payload.is_active
+    db.commit()
+    db.refresh(tier)
+    return {"status": "success", "data": _tier_to_dict(tier)}
+
+
+@router.delete("/loyalty-tiers/{tier_id}")
+def delete_loyalty_tier(
+    tier_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("customer", "read")),
+):
+    """Xóa bậc ưu đãi — chỉ giám đốc."""
+    assert_director(db, user, "Chỉ Giám đốc được xóa bậc ưu đãi.")
+    tier = db.query(CustomerLoyaltyTier).filter(CustomerLoyaltyTier.id == tier_id).first()
+    if not tier:
+        raise HTTPException(status_code=404, detail="Bậc ưu đãi không tồn tại")
+    db.delete(tier)
+    db.commit()
+    return {"status": "success", "data": {"id": tier_id}}
+
+
+def _lookup_customer_by_identity(db: Session, *, customer_id=None, phone=None, tax_id=None, id_card_number=None):
+    """Tìm khách theo thứ tự ưu tiên: id > MST > CCCD > SĐT."""
+    cid = (customer_id or "").strip()
+    if cid:
+        row = db.execute(text("select id from customers where id = :v"), {"v": cid}).first()
+        if row:
+            return row[0]
+    tid = (tax_id or "").strip()
+    if tid:
+        row = db.execute(text("select id from customers where tax_id = :v"), {"v": tid}).first()
+        if row:
+            return row[0]
+    cccd = (id_card_number or "").strip()
+    if cccd:
+        row = db.execute(text("select id from customers where id_card_number = :v"), {"v": cccd}).first()
+        if row:
+            return row[0]
+    ph = (phone or "").strip()
+    if ph:
+        row = db.execute(text("select id from customers where phone = :v"), {"v": ph}).first()
+        if row:
+            return row[0]
+    return None
+
+
+def check_loyalty_eligibility(db: Session, customer_id: str, original_value: float = 0) -> dict:
+    """Tra cứu bậc ưu đãi mà khách đạt được dựa trên số HĐ đã thực hiện.
+
+    Hàm helper dùng chung cho CRM close deal và tạo HĐ thủ công.
+    """
+    contract_count = db.execute(
+        text("""
+            select count(*) from contracts
+            where customer_id = :cid
+              and coalesce(status, '') not in ('Đã huỷ', 'cancelled')
+        """),
+        {"cid": customer_id},
+    ).scalar() or 0
+
+    # Lấy bậc cao nhất mà khách đủ điều kiện (sắp xếp deterministically)
+    tier_row = (
+        db.query(CustomerLoyaltyTier)
+        .filter(CustomerLoyaltyTier.is_active == True, CustomerLoyaltyTier.min_contracts <= contract_count)  # noqa: E712
+        .order_by(CustomerLoyaltyTier.min_contracts.desc(), CustomerLoyaltyTier.discount_percent.desc())
+        .first()
+    )
+    if not tier_row:
+        return {"eligible": False, "contract_count": int(contract_count)}
+
+    discount_pct = float(tier_row.discount_percent)
+    discount_amt = int(round(float(original_value) * float(discount_pct) / 100.0 + 1e-9)) if original_value else 0
+    final_val = max(0, int(round(float(original_value))) - discount_amt) if original_value else 0
+
+    return {
+        "eligible": True,
+        "contract_count": int(contract_count),
+        "tier": _tier_to_dict(tier_row),
+        "tier_id": tier_row.id,
+        "tier_name": tier_row.tier_name,
+        "original_value": original_value,
+        "discount_percent": discount_pct,
+        "discount_amount": discount_amt,
+        "final_value": final_val,
+    }
+
+
+@router.get("/loyalty-eligibility")
+def get_loyalty_eligibility(
+    customer_id: str = Query(None),
+    phone: str = Query(None),
+    tax_id: str = Query(None),
+    id_card_number: str = Query(None),
+    original_value: float = Query(0),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("customer", "read")),
+):
+    """Kiểm tra khách hàng có đạt bậc ưu đãi nào không."""
+    cid = _lookup_customer_by_identity(
+        db, customer_id=customer_id, phone=phone, tax_id=tax_id, id_card_number=id_card_number
+    )
+    if not cid:
+        return {"status": "success", "data": {"eligible": False, "contract_count": 0}}
+    result = check_loyalty_eligibility(db, cid, original_value)
+    return {"status": "success", "data": result}
+
+
+@router.get("/loyalty-qualifying-customers")
+def list_qualifying_customers(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission("customer", "read")),
+):
+    """Danh sách khách hàng đạt chuẩn ưu tiên — để hiển thị trong tab Thiết lập."""
+    # Lấy bậc ưu đãi thấp nhất đang bật
+    min_tier = (
+        db.query(CustomerLoyaltyTier)
+        .filter(CustomerLoyaltyTier.is_active == True)  # noqa: E712
+        .order_by(CustomerLoyaltyTier.min_contracts.asc())
+        .first()
+    )
+    if not min_tier:
+        return {"status": "success", "data": []}
+
+    # Lấy tất cả bậc active, sắp xếp giảm dần
+    all_tiers = (
+        db.query(CustomerLoyaltyTier)
+        .filter(CustomerLoyaltyTier.is_active == True)  # noqa: E712
+        .order_by(CustomerLoyaltyTier.min_contracts.desc())
+        .all()
+    )
+
+    rows = db.execute(
+        text("""
+            select c.id, c.customer_type, c.full_name, c.phone, c.tax_id, c.id_card_number,
+                   count(ct.id) as contract_count
+            from customers c
+            join contracts ct on ct.customer_id = c.id
+              and coalesce(ct.status, '') not in ('Đã huỷ', 'cancelled')
+            group by c.id
+            having count(ct.id) >= :min_ct
+            order by count(ct.id) desc, c.full_name
+            limit 200
+        """),
+        {"min_ct": min_tier.min_contracts},
+    ).mappings().all()
+
+    result = []
+    for r in rows:
+        ct_count = int(r["contract_count"])
+        # Tìm bậc cao nhất phù hợp
+        matched_tier = None
+        for t in all_tiers:
+            if ct_count >= t.min_contracts:
+                matched_tier = t
+                break
+        result.append({
+            "id": r["id"],
+            "customer_type": r["customer_type"],
+            "full_name": r["full_name"],
+            "phone": r["phone"],
+            "tax_id": r["tax_id"],
+            "id_card_number": r["id_card_number"],
+            "contract_count": ct_count,
+            "tier_name": matched_tier.tier_name if matched_tier else None,
+            "discount_percent": float(matched_tier.discount_percent) if matched_tier else 0,
+        })
+
+    return {"status": "success", "data": result}
 
 
 @router.get("/{customer_id}")
@@ -334,3 +621,4 @@ def update_customer(
     )
     db.commit()
     return {"status": "success", "data": {"id": customer_id}}
+

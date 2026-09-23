@@ -48,8 +48,33 @@ class NotificationReviewTargetTests(unittest.TestCase):
             routes_notifications._EMPLOYEE_NODE_TODO_QUERY,
         )
 
+    def test_manager_review_items_carry_exact_rollback_targets(self):
+        created_at = datetime(2026, 9, 22, 14, 0, tzinfo=timezone.utc)
+        items = routes_notifications._manager_review_notifications(
+            rollback_rows=[{
+                "request_id": "ROLLBACK-REQ-123",
+                "node_code": "N02",
+                "node_name": "Đo đạc hiện trạng",
+                "contract_id": "HD-2026-001",
+                "service_line_id": "SL-001",
+                "node_key": "k02",
+                "task_node_id": "TN-K02",
+                "requested_by_name": "nguyenvana",
+                "created_at": created_at,
+            }],
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["type"], "rollback_review")
+        self.assertEqual(items[0]["target_type"], "rollback_review")
+        self.assertEqual(items[0]["target_id"], "ROLLBACK-REQ-123")
+        self.assertEqual(items[0]["request_id"], "ROLLBACK-REQ-123")
+        self.assertEqual(items[0]["task_node_id"], "TN-K02")
+        self.assertEqual(items[0]["node_code"], "N02")
+        self.assertIn("Xin quay lại bước N02", items[0]["label"])
+        self.assertIn("HD-2026-001", items[0]["label"])
+
     def test_get_notifications_summary_executes_for_employee_without_name_error(self):
-        from unittest.mock import MagicMock
+        from unittest.mock import MagicMock, patch
         mock_db = MagicMock()
         mock_db.execute.return_value.scalar.return_value = "EMP-001"
         mock_db.execute.return_value.mappings.return_value.all.return_value = []
@@ -60,12 +85,13 @@ class NotificationReviewTargetTests(unittest.TestCase):
         mock_user = MagicMock()
         mock_user.id = "USER-001"
 
-        res = routes_notifications.get_notifications_summary(db=mock_db, user=mock_user)
+        with patch("src.routes.routes_notifications.get_cached_json", return_value=None):
+            res = routes_notifications.get_notifications_summary(db=mock_db, user=mock_user)
         self.assertIn("count", res)
         self.assertIn("items", res)
 
     def test_get_notifications_summary_maps_employee_node_start_items(self):
-        from unittest.mock import MagicMock
+        from unittest.mock import MagicMock, patch
         from datetime import datetime, timezone
         mock_db = MagicMock()
         now = datetime(2026, 9, 17, 9, 0, tzinfo=timezone.utc)
@@ -95,7 +121,8 @@ class NotificationReviewTargetTests(unittest.TestCase):
         mock_user = MagicMock()
         mock_user.id = "USER-001"
 
-        res = routes_notifications.get_notifications_summary(db=mock_db, user=mock_user)
+        with patch("src.routes.routes_notifications.get_cached_json", return_value=None):
+            res = routes_notifications.get_notifications_summary(db=mock_db, user=mock_user)
         self.assertEqual(res["count"], 1)
         self.assertEqual(res["items"][0]["type"], "node_start")
         self.assertEqual(res["items"][0]["node_key"], "k01")

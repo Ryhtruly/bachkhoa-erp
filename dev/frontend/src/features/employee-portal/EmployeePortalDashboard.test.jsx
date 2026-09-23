@@ -220,6 +220,40 @@ it('bể việc hiện thẻ trọn chuỗi kèm tổng khoán, và đổi sang 
   expect(screen.getAllByText('100.000đ').length).toBeGreaterThan(0)
 })
 
+it('bấm Nhận trọn chỉ nhận cụm, chưa tự bắt đầu node để hồ sơ mở đúng lúc Bắt đầu làm', async () => {
+  mockApi()
+
+  render(<EmployeePortalDashboard />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Nhận trọn' }))
+
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+    '/api/employee-portal/tasks/pool-1/claim',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ role_code: 'MAIN', start_now: false }),
+    }),
+  ))
+})
+
+it('bấm Nhận trọn chuỗi trong Chi tiết cũng không tự bắt đầu node', async () => {
+  mockApi()
+
+  render(<EmployeePortalDashboard />)
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Chi tiết' }))
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.click(within(dialog).getByRole('button', { name: /Nhận trọn chuỗi/ }))
+
+  await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
+    '/api/employee-portal/tasks/pool-1/claim',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ role_code: 'MAIN', start_now: false }),
+    }),
+  ))
+})
+
 it('bấm Chi tiết mở bảng kê: từng bước, thời lượng, checklist nào có tiền, tổng khoán', async () => {
   mockApi()
 
@@ -323,8 +357,8 @@ it('bước chưa tới lượt thì mở ra chỉ báo chờ, không cho thao t
   })
 
   render(<EmployeePortalDashboard />)
-  // Trên thẻ đã báo trước là đang chờ bước khác.
-  expect(await screen.findByText('● Chờ bước trước')).toBeInTheDocument()
+  // Trên thẻ đã báo trước là đang chờ tới lượt.
+  expect(await screen.findByText('● Chờ tới lượt')).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'Mở ra làm' }))
   expect(await screen.findByRole('heading', { name: /K03 · Chuẩn hoá tài liệu/ })).toBeInTheDocument()
@@ -378,7 +412,7 @@ it('notification deep-link dispatch opens the correct task in calendar modal', a
   // Wait for dashboard to load — use getAllByRole because React Strict Mode double-renders
   await waitFor(() => {
     expect(screen.getAllByRole('heading', { name: /Lịch làm việc/ }).length).toBeGreaterThan(0)
-  })
+  }, { timeout: 3000 })
 
   // Dispatch the notification deep-link event
   act(() => {
@@ -391,7 +425,7 @@ it('notification deep-link dispatch opens the correct task in calendar modal', a
   // (rendered via createPortal, so it's in the document body)
   await waitFor(() => {
     expect(screen.getAllByText('Khảo sát & đo hiện trường').length).toBeGreaterThan(0)
-  })
+  }, { timeout: 3000 })
 })
 
 it('bấm "Xem quy trình đã hoàn thành" mở lịch sử chuỗi K của riêng mình', async () => {

@@ -1,12 +1,28 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Search, Building2, User, Users, Pencil, Save, X, FileText,
   Phone, Mail, MapPin, MessageCircle, Landmark, Fingerprint, Briefcase, Calendar, Layers,
+  Crown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { apiFetch } from '../lib/api';
 import { DatePicker } from '../components/ui';
+import CustomerLoyaltyModal from './CustomerLoyaltyModal';
 import './customerDirectory.css';
+
+function getPaginationItems(currentPage, totalPages) {
+  return Array.from({ length: totalPages }, (_, index) => index + 1)
+    .filter(pageNumber => (
+      pageNumber === 1
+      || pageNumber === totalPages
+      || Math.abs(pageNumber - currentPage) <= 1
+    ))
+    .reduce((items, pageNumber, index, pages) => {
+      if (index > 0 && pages[index - 1] !== pageNumber - 1) items.push('…');
+      items.push(pageNumber);
+      return items;
+    }, []);
+}
 
 const formatCurrency = (n) => (Number(n) || 0).toLocaleString('vi-VN') + '₫';
 
@@ -48,11 +64,14 @@ function ContractStatus({ ct }) {
 
 export default function CustomerDirectory({ isDirector = false }) {
   const { addToast } = useToast();
+  const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
   const [detail, setDetail] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
@@ -92,6 +111,19 @@ export default function CustomerDirectory({ isDirector = false }) {
   }, [search, filterType, addToast]);
 
   useEffect(() => { const t = setTimeout(loadList, 250); return () => clearTimeout(t); }, [loadList]);
+
+  const totalItems = list.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return list.slice(start, start + ITEMS_PER_PAGE);
+  }, [list, currentPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const loadDetail = useCallback(async (id) => {
     setSelectedId(id);
@@ -160,38 +192,149 @@ export default function CustomerDirectory({ isDirector = false }) {
     <div className="cust-dir">
       <aside className="cust-list">
         <div className="cust-list__head">
-          <div className="cust-search">
-            <Search size={16} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm tên, SĐT, CCCD, MST..." />
-            {search && (
-              <button type="button" className="cust-search__clear" onClick={() => setSearch('')}>
-                <X size={14} />
+          <div className="cust-search-row">
+            <div className="cust-search">
+              <Search size={16} />
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Tìm tên, SĐT, CCCD, MST..."
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="cust-search__clear"
+                  onClick={() => {
+                    setSearch('');
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Xóa tìm kiếm"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {isDirector && (
+              <button
+                type="button"
+                className="btn-loyalty-toolbar"
+                onClick={() => setShowLoyaltyModal(true)}
+                title="Thiết lập ưu đãi khách hàng thân thiết"
+                aria-haspopup="dialog"
+              >
+                <Crown size={15} />
+                <span>Ưu đãi</span>
               </button>
             )}
           </div>
           <div className="cust-filter">
             {[['all', 'Tất cả'], ['individual', 'Cá nhân'], ['business', 'Doanh nghiệp']].map(([v, l]) => (
-              <button key={v} type="button" className={filterType === v ? 'is-on' : ''} onClick={() => setFilterType(v)}>{l}</button>
+              <button
+                key={v}
+                type="button"
+                className={filterType === v ? 'is-on' : ''}
+                onClick={() => {
+                  setFilterType(v);
+                  setCurrentPage(1);
+                }}
+              >
+                {l}
+              </button>
             ))}
           </div>
         </div>
         <div className="cust-list__body">
           {loading ? <p className="cust-msg">Đang tải…</p>
             : list.length === 0 ? <p className="cust-msg">Không có khách nào</p>
-            : list.map((c) => (
+            : paginatedList.map((c) => (
               <button key={c.id} type="button" className={`cust-item${selectedId === c.id ? ' is-active' : ''}`} onClick={() => loadDetail(c.id)}>
                 <span className="cust-item__body">
                   <strong>{c.full_name}</strong>
                   <small>{c.customer_type === 'business' ? `MST ${c.tax_id || '—'}` : `CCCD ${c.id_card_number || '—'}`}</small>
                 </span>
-                <span className="cust-item__count" title={`${c.so_hop_dong} hợp đồng`}><Layers size={13} /> {c.so_hop_dong}</span>
+                <span className="cust-item__meta">
+                  {c.so_hop_dong >= 2 && (
+                    <span className="cust-vip-pill" title={`Khách hàng thân thiết (${c.so_hop_dong} hợp đồng)`}>
+                      <Crown size={10} /> VIP
+                    </span>
+                  )}
+                  <span className="cust-item__count" title={`${c.so_hop_dong} hợp đồng`}>
+                    <Layers size={13} /> {c.so_hop_dong}
+                  </span>
+                </span>
               </button>
             ))}
         </div>
-        <div className="cust-list__foot">
-          <Users size={13} />
-          <span>Tổng cộng <strong>{list.length}</strong> khách hàng</span>
-        </div>
+        {totalItems > 0 && (
+          <div className="contract-server-pagination cust-pagination">
+            <span>
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+              –{Math.min(currentPage * ITEMS_PER_PAGE, totalItems)}
+              {' / '}{totalItems} khách hàng
+            </span>
+            <div className="contract-server-pagination__controls">
+              <button
+                type="button"
+                className="contract-page-button"
+                disabled={currentPage <= 1 || loading}
+                onClick={() => setCurrentPage(1)}
+                title="Trang đầu"
+                aria-label="Trang đầu"
+              >
+                <ChevronsLeft size={15} />
+              </button>
+              <button
+                type="button"
+                className="contract-page-button"
+                disabled={currentPage <= 1 || loading}
+                onClick={() => setCurrentPage((c) => Math.max(1, c - 1))}
+                title="Trang trước"
+                aria-label="Trang trước"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              {getPaginationItems(currentPage, totalPages).map((item, index) => (
+                item === '…' ? (
+                  <span key={`ellipsis-${index}`} className="contract-page-ellipsis">…</span>
+                ) : (
+                  <button
+                    type="button"
+                    key={item}
+                    className={`contract-page-button${currentPage === item ? ' contract-page-button--active' : ''}`}
+                    disabled={loading}
+                    onClick={() => setCurrentPage(item)}
+                    aria-label={`Trang ${item}`}
+                  >
+                    {item}
+                  </button>
+                )
+              ))}
+              <button
+                type="button"
+                className="contract-page-button"
+                disabled={currentPage >= totalPages || loading}
+                onClick={() => setCurrentPage((c) => Math.min(totalPages, c + 1))}
+                title="Trang sau"
+                aria-label="Trang sau"
+              >
+                <ChevronRight size={15} />
+              </button>
+              <button
+                type="button"
+                className="contract-page-button"
+                disabled={currentPage >= totalPages || loading}
+                onClick={() => setCurrentPage(totalPages)}
+                title="Trang cuối"
+                aria-label="Trang cuối"
+              >
+                <ChevronsRight size={15} />
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       <section className="cust-detail">
@@ -208,6 +351,11 @@ export default function CustomerDirectory({ isDirector = false }) {
               <div className="cust-hero-id">
                 <div className="cust-hero-id__top">
                   <h2>{detail.full_name}</h2>
+                  {detail.contracts.length >= 2 && (
+                    <span className="cust-vip-badge-hero">
+                      <Crown size={12} /> VIP ({detail.contracts.length} HĐ)
+                    </span>
+                  )}
                   <span className="cust-hero-chip">
                     {isBusinessCustomer ? <><Building2 size={12} /> Doanh nghiệp</> : <><User size={12} /> Cá nhân</>}
                   </span>
@@ -331,6 +479,13 @@ export default function CustomerDirectory({ isDirector = false }) {
           </>
         )}
       </section>
+
+      {/* Modal thiết lập ưu đãi khách hàng */}
+      <CustomerLoyaltyModal
+        open={showLoyaltyModal}
+        onClose={() => setShowLoyaltyModal(false)}
+        isDirector={isDirector}
+      />
     </div>
   );
 }

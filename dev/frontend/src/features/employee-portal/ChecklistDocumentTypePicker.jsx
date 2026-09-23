@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FilePlus2, LoaderCircle, Search, X } from 'lucide-react'
 
 import { apiFetch } from '../../lib/api'
+import { normalizeVietnamese } from '../../lib/vietnamese'
 
 const SOURCE_OPTIONS = [
   { value: 'KHACH_HANG', label: 'Khách hàng cung cấp' },
@@ -70,9 +71,9 @@ export default function ChecklistDocumentTypePicker({
   }, [cacheKey, taskNodeId, checklistResultId])
 
   const filteredSuggestions = useMemo(() => {
-    const keyword = query.trim().toLocaleLowerCase('vi')
+    const keyword = normalizeVietnamese(query.trim())
     if (!keyword || selected) return suggestions
-    return suggestions.filter(item => item.name?.toLocaleLowerCase('vi').includes(keyword))
+    return suggestions.filter(item => normalizeVietnamese(item.name || '').includes(keyword))
   }, [query, selected, suggestions])
 
   const chooseSuggestion = (suggestion) => {

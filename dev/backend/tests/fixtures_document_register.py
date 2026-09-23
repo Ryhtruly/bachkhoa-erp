@@ -44,7 +44,7 @@ def build_test_context(db, *, item_count: int = 1, version: int = 2) -> dict:
     """
     package_id = generate_test_id("P")
     db.execute(text("insert into public.service_packages (id, name) values (:id, :name)"),
-               {"id": package_id, "name": "Gói thử nghiệm"})
+               {"id": package_id, "name": f"Gói thử nghiệm {package_id}"})
 
     contract_id = generate_test_id("HD")
     db.execute(text("insert into public.contracts (id, completion_override) values (:id, false)"), {"id": contract_id})
@@ -55,7 +55,7 @@ def build_test_context(db, *, item_count: int = 1, version: int = 2) -> dict:
         db.execute(
             text("insert into public.task_types (id, name, service_package_id) "
                  "values (:id, :name, :package_id)"),
-            {"id": task_type_id, "name": f"Thủ tục thử {i + 1}", "package_id": package_id},
+            {"id": task_type_id, "name": f"Thủ tục thử {task_type_id}", "package_id": package_id},
         )
         service_line_id = generate_test_id("SL")
         db.execute(

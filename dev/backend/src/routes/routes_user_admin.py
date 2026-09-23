@@ -49,8 +49,7 @@ def create_account_for_employee(
 ):
     if payload.role_name.lower() == "admin":
         is_caller_admin = (
-            user.username == "admin"
-            or db.query(Role)
+            db.query(Role)
             .join(UserRole, UserRole.role_id == Role.id)
             .filter(
                 UserRole.user_id == user.id,

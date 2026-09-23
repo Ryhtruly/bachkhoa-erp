@@ -94,7 +94,7 @@ export default function DossierDocuments({ dossierId, addToast, onChanged }) {
     }
   }
 
-  const open = async (documentId, fileName) => {
+  const open = async (documentId, _fileName) => {
     try {
       const response = await fetch(`${API}/api/legal-dossiers/documents/${documentId}/download`, {
         headers: { Authorization: `Bearer ${getAccessToken()}` },
