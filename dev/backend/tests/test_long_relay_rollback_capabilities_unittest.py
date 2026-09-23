@@ -149,8 +149,8 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
         rate_id = _id("WR")
         actual_id = self.db.execute(
             text("""
-                insert into public.work_items (id, code, name, default_unit, is_active)
-                values (:id, :c, :n, 'bản', true)
+                insert into public.work_items (id, code, name, default_unit, is_active, created_at, updated_at)
+                values (:id, :c, :n, 'bản', true, now(), now())
                 on conflict (code) do update set name = excluded.name
                 returning id
             """),
@@ -160,9 +160,9 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
         self.db.execute(
             text("""
                 insert into public.work_item_rates
-                    (id, work_item_id, role_code, amount, status, effective_from, approved_at, approved_by)
+                    (id, work_item_id, role_code, amount, status, effective_from, approved_at, approved_by, approval_source, created_at)
                 values
-                    (:id, :wid, 'MAIN', :r, 'published', current_date, now(), :actor_id)
+                    (:id, :wid, 'MAIN', :r, 'published', current_date, now(), :actor_id, 'manual', now())
             """),
             {"id": rate_id, "wid": w_item_id, "r": rate_amount, "actor_id": self.director_user_id},
         )
@@ -257,6 +257,26 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
         return instance_id, node_ids, chk_data
 
     def _sync_checklist_assignment(self, task_node_id, employee_id, chk_info):
+        existing = self.db.execute(
+            text("""
+                select id from public.task_node_checklist_assignments
+                where checklist_result_id = :cid and employee_id = :eid
+                  and status not in ('replaced', 'cancelled')
+            """),
+            {"cid": chk_info["checklist_result_id"], "eid": employee_id},
+        ).first()
+        if existing:
+            if chk_info.get("rate_id"):
+                self.db.execute(
+                    text("""
+                        update public.task_node_checklist_assignments
+                        set work_item_rate_id = :rid
+                        where id = :id
+                    """),
+                    {"rid": chk_info.get("rate_id"), "id": existing[0]},
+                )
+            return
+
         self.db.execute(
             text("""
                 insert into public.task_node_checklist_assignments
