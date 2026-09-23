@@ -10,14 +10,15 @@ from src.db.models import Contract, LeadPipeline, Role, User, UserRole
 
 def user_has_all_contract_read_access(db: Session, user: User) -> bool:
     """Return whether the user may read every contract."""
-    if not user or not user.is_active:
+    if not user or not getattr(user, "is_active", False):
         return False
-    if (user.username or "").strip().casefold() == "admin":
-        return True
+    user_id = getattr(user, "id", None)
+    if not user_id:
+        return False
     role_names = (
         db.query(Role.role_name)
         .join(UserRole, UserRole.role_id == Role.id)
-        .filter(UserRole.user_id == user.id, Role.is_active.is_(True))
+        .filter(UserRole.user_id == user_id, Role.is_active.is_(True))
         .all()
     )
     return any(

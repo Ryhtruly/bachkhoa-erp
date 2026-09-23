@@ -37,10 +37,18 @@ class TestContractLifecycleActions(unittest.TestCase):
 
     def test_permission_allows_admin(self):
         db = MagicMock()
-        # Should not raise exception
-        _require_director_or_contract_admin(self.admin_user, db)
+        with patch("src.routes.routes_contracts.check_user_permission", return_value=True):
+            # Should not raise exception when user has permission
+            _require_director_or_contract_admin(self.admin_user, db)
 
-    def test_cancel_contract_not_found(self):
+        with patch("src.routes.routes_contracts.check_user_permission", return_value=False):
+            db.query.return_value.join.return_value.filter.return_value.first.return_value = ("role-admin-id",)
+            # Should also allow when user has director/admin role in DB
+            _require_director_or_contract_admin(self.admin_user, db)
+
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
+    def test_cancel_contract_not_found(self, mock_perm, mock_access):
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = None
         payload = ContractCancelPayload(reason="Khách hàng dừng thực hiện")
@@ -48,7 +56,9 @@ class TestContractLifecycleActions(unittest.TestCase):
             cancel_contract_endpoint("HD-999", payload, db=db, user=self.admin_user)
         self.assertEqual(ctx.exception.status_code, 404)
 
-    def test_cancel_contract_already_cancelled(self):
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
+    def test_cancel_contract_already_cancelled(self, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="HD-1", status="cancelled", appendix_summary=None)
         db.query.return_value.filter.return_value.first.return_value = mock_contract
@@ -58,9 +68,11 @@ class TestContractLifecycleActions(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("đã ở trạng thái đã hủy", ctx.exception.detail)
 
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
     @patch("src.routes.routes_contracts.invalidate_cache")
     @patch("src.routes.routes_contracts.cancel_workflow")
-    def test_cancel_contract_success(self, mock_cancel_wf, mock_inv_cache):
+    def test_cancel_contract_success(self, mock_cancel_wf, mock_inv_cache, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="HD-1", status=None, appendix_summary=None)
         mock_sl = SimpleNamespace(id="sl-1", contract_id="HD-1")
@@ -88,9 +100,11 @@ class TestContractLifecycleActions(unittest.TestCase):
         db.commit.assert_called_once()
         mock_cancel_wf.assert_called_once()
 
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
     @patch("src.routes.routes_contracts.invalidate_cache")
     @patch("src.routes.routes_contracts.cancel_workflow")
-    def test_cancel_contract_with_multiple_service_lines_mixed_workflows(self, mock_cancel_wf, mock_inv_cache):
+    def test_cancel_contract_with_multiple_service_lines_mixed_workflows(self, mock_cancel_wf, mock_inv_cache, mock_perm, mock_access):
         from src.contracts.workflow_runtime import WorkflowValidationError
 
         db = MagicMock()
@@ -132,7 +146,9 @@ class TestContractLifecycleActions(unittest.TestCase):
         with self.assertRaises(ValidationError):
             ContractCancelPayload(reason="ngan")
 
-    def test_delete_contract_rejects_mismatched_confirm_code(self):
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
+    def test_delete_contract_rejects_mismatched_confirm_code(self, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="015/BK-2026")
         db.query.return_value.filter.return_value.first.return_value = mock_contract
@@ -147,16 +163,19 @@ class TestContractLifecycleActions(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("Mã hợp đồng xác nhận không khớp", ctx.exception.detail)
 
-    def test_delete_contract_rejects_paid_amount(self):
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
+    def test_delete_contract_rejects_paid_amount(self, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="015/BK-2026")
         mock_rec = SimpleNamespace(paid_amount=500000.0)
 
         def mock_query(model):
             q = MagicMock()
-            if model.__name__ == "Contract":
+            m_name = getattr(model, "__name__", str(model))
+            if m_name == "Contract":
                 q.filter.return_value.first.return_value = mock_contract
-            elif model.__name__ == "Receivable":
+            elif m_name == "Receivable":
                 q.filter.return_value.first.return_value = mock_rec
             return q
 
@@ -172,16 +191,19 @@ class TestContractLifecycleActions(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("Không thể xoá hợp đồng đã phát sinh thu tiền", ctx.exception.detail)
 
-    def test_delete_contract_rejects_existing_cashflow(self):
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
+    def test_delete_contract_rejects_existing_cashflow(self, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="015/BK-2026")
         mock_rec = SimpleNamespace(paid_amount=0.0)
 
         def mock_query(model):
             q = MagicMock()
-            if model.__name__ == "Contract":
+            m_name = getattr(model, "__name__", str(model))
+            if m_name == "Contract":
                 q.filter.return_value.first.return_value = mock_contract
-            elif model.__name__ == "Receivable":
+            elif m_name == "Receivable":
                 q.filter.return_value.first.return_value = mock_rec
             return q
 
@@ -198,16 +220,19 @@ class TestContractLifecycleActions(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("Không thể xoá hợp đồng đã có giao dịch dòng tiền", ctx.exception.detail)
 
-    def test_delete_contract_rejects_active_workflow(self):
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
+    def test_delete_contract_rejects_active_workflow(self, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="015/BK-2026")
         mock_rec = SimpleNamespace(paid_amount=0.0)
 
         def mock_query(model):
             q = MagicMock()
-            if model.__name__ == "Contract":
+            m_name = getattr(model, "__name__", str(model))
+            if m_name == "Contract":
                 q.filter.return_value.first.return_value = mock_contract
-            elif model.__name__ == "Receivable":
+            elif m_name == "Receivable":
                 q.filter.return_value.first.return_value = mock_rec
             return q
 
@@ -226,17 +251,20 @@ class TestContractLifecycleActions(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("Hợp đồng đang có quy trình thực hiện", ctx.exception.detail)
 
+    @patch("src.routes.routes_contracts.assert_contract_write_access")
+    @patch("src.routes.routes_contracts.check_user_permission", return_value=True)
     @patch("src.routes.routes_contracts.invalidate_cache")
-    def test_delete_contract_success_when_clean(self, mock_inv_cache):
+    def test_delete_contract_success_when_clean(self, mock_inv_cache, mock_perm, mock_access):
         db = MagicMock()
         mock_contract = SimpleNamespace(id="015/BK-2026")
         mock_rec = SimpleNamespace(paid_amount=0.0)
 
         def mock_query(model):
             q = MagicMock()
-            if model.__name__ == "Contract":
+            m_name = getattr(model, "__name__", str(model))
+            if m_name == "Contract":
                 q.filter.return_value.first.return_value = mock_contract
-            elif model.__name__ == "Receivable":
+            elif m_name == "Receivable":
                 q.filter.return_value.first.return_value = mock_rec
             return q
 
@@ -290,7 +318,9 @@ class TestContractLifecycleActions(unittest.TestCase):
         app.dependency_overrides[require_authenticated_user] = lambda: self.admin_user
 
         with patch("src.routes.routes_contracts.invalidate_cache"), \
-             patch("src.routes.routes_contracts.cancel_workflow"):
+             patch("src.routes.routes_contracts.cancel_workflow"), \
+             patch("src.routes.routes_contracts.check_user_permission", return_value=True), \
+             patch("src.routes.routes_contracts.assert_contract_write_access"):
             client = TestClient(app)
 
             # Test DELETE with slash in path
@@ -298,7 +328,6 @@ class TestContractLifecycleActions(unittest.TestCase):
             self.assertEqual(res_del.status_code, 200)
             self.assertEqual(res_del.json()["status"], "success")
 
-            # Test POST cancel with slash in path
             mock_contract.status = "running"
             res_cancel = client.post("/api/contracts/015%2FBK-2026/cancel", json={"reason": "Khách hàng dừng thực hiện hợp đồng"})
             self.assertEqual(res_cancel.status_code, 200)

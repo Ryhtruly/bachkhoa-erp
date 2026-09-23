@@ -4,7 +4,7 @@ import requests
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "MOCK_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "MOCK_CHAT_ID")
 
-def send_telegram_message(message: str):
+def send_telegram_message(message: str, parse_mode: str | None = None) -> bool:
     """
     Sends a message to the configured Telegram chat.
     If TELEGRAM_BOT_TOKEN is 'MOCK_TOKEN', it just prints to console for testing.
@@ -12,15 +12,23 @@ def send_telegram_message(message: str):
     if TELEGRAM_BOT_TOKEN == "MOCK_TOKEN":
         print("====== MOCK TELEGRAM MESSAGE ======")
         print(f"To: {TELEGRAM_CHAT_ID}")
+        print(f"Parse Mode: {parse_mode or 'auto'}")
         print(f"Message:\n{message}")
         print("===================================")
         return True
+
+    resolved_parse_mode = parse_mode
+    if resolved_parse_mode is None:
+        if any(tag in message for tag in ("<b>", "<i>", "<code>", "<pre>", "<a href")):
+            resolved_parse_mode = "HTML"
+        else:
+            resolved_parse_mode = "Markdown"
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
-        "parse_mode": "Markdown"
+        "parse_mode": resolved_parse_mode,
     }
     
     try:

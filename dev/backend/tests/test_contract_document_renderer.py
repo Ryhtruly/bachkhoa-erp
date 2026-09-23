@@ -57,10 +57,17 @@ def _current_document_db(contract_template_id, template_rows):
         def first(self):
             return self.rows[0] if self.rows else None
 
-    return SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(model.__name__)))
+    return SimpleNamespace(query=lambda model: CurrentDataQuery(current_rows.get(getattr(model, "__name__", str(model)))))
 
 
 class ContractDocumentRendererTests(unittest.TestCase):
+    def setUp(self):
+        self.access_patch = patch("src.routes.routes_contracts.assert_contract_read_access")
+        self.access_patch.start()
+
+    def tearDown(self):
+        self.access_patch.stop()
+
     def test_legacy_storage_key_falls_back_to_current_render(self):
         document = SimpleNamespace(
             output_file_name='HopDong_008_BK-2026.docx',

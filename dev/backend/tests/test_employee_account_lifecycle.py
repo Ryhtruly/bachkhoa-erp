@@ -379,7 +379,7 @@ def test_non_admin_cannot_create_admin_account(db):
 
 def test_admin_can_create_admin_account(db):
     """Admin có quyền cấp tài khoản mang vai trò admin."""
-    _ensure_role(db, "admin")
+    admin_role = _ensure_role(db, "admin")
 
     admin_user = User(
         id=str(uuid.uuid4()),
@@ -388,6 +388,9 @@ def test_admin_can_create_admin_account(db):
         is_active=True,
     )
     db.add(admin_user)
+    db.commit()
+
+    db.add(UserRole(user_id=admin_user.id, role_id=admin_role.id))
     db.commit()
 
     emp = Employee(

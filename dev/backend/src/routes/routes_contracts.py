@@ -1976,17 +1976,16 @@ def review_checklist_evidence(
         raise HTTPException(status_code=404, detail="Không tìm thấy checklist.")
     if checklist["status"] not in ("pending_approval", "late_pending_approval"):
         raise HTTPException(status_code=409, detail="Checklist chưa được nộp minh chứng để duyệt.")
-    if user.username != "admin":
-        has_approver_role = db.query(UserRole.id).join(Role, Role.id == UserRole.role_id).filter(
-            UserRole.user_id == user.id,
-            Role.is_active.is_(True),
-            Role.role_name.ilike(checklist["approver_role"]),
-        ).first()
-        if not has_approver_role:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Checklist này yêu cầu vai trò duyệt '{checklist['approver_role']}'.",
-            )
+    has_approver_role = db.query(UserRole.id).join(Role, Role.id == UserRole.role_id).filter(
+        UserRole.user_id == user.id,
+        Role.is_active.is_(True),
+        (func.lower(Role.role_name) == "admin") | (Role.role_name.ilike(checklist["approver_role"])),
+    ).first()
+    if not has_approver_role:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Checklist này yêu cầu vai trò duyệt '{checklist['approver_role']}'.",
+        )
     if checklist["status"] == "late_pending_approval" and payload.decision == "failed":
         raise HTTPException(
             status_code=422,
@@ -2895,13 +2894,12 @@ class ContractCancelPayload(BaseModel):
 
 
 def _require_director_or_contract_admin(user: User, db: Session):
-    is_admin = (user.username or "").lower() == "admin"
     has_perm = (
         check_user_permission(db, user, "contract", "delete")
         or check_user_permission(db, user, "contract", "update")
         or check_user_permission(db, user, "workflow", "approve")
     )
-    if is_admin or has_perm:
+    if has_perm:
         return
     has_dir_role = db.query(Role.id).join(
         UserRole, UserRole.role_id == Role.id

@@ -1309,6 +1309,17 @@ def admin_user(db):
         db.add(admin)
         db.commit()
         db.refresh(admin)
+    from sqlalchemy import func
+    admin_role = db.query(Role).filter(func.lower(Role.role_name) == "admin").first()
+    if not admin_role:
+        max_role_id = db.query(func.max(Role.id)).scalar() or 0
+        admin_role = Role(id=max_role_id + 1, role_name="admin", is_active=True)
+        db.add(admin_role)
+        db.commit()
+    user_role = db.query(UserRole).filter(UserRole.user_id == admin.id, UserRole.role_id == admin_role.id).first()
+    if not user_role:
+        db.add(UserRole(user_id=admin.id, role_id=admin_role.id))
+        db.commit()
     return admin
 
 

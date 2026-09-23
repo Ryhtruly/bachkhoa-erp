@@ -104,8 +104,7 @@ def create_employee_account(
 
     if role_name.lower() == "admin" and creator_user is not None:
         is_caller_admin = (
-            creator_user.username == "admin"
-            or db.query(Role)
+            db.query(Role)
             .join(UserRole, UserRole.role_id == Role.id)
             .filter(
                 UserRole.user_id == creator_user.id,

@@ -295,6 +295,8 @@ def test_upload_document_streams_file_without_ram_buffering(monkeypatch):
                     return self
                 def first(self):
                     return None
+                def all(self):
+                    return []
             return Q()
         def add(self, *_args):
             pass
@@ -303,6 +305,7 @@ def test_upload_document_streams_file_without_ram_buffering(monkeypatch):
         def rollback(self):
             pass
 
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(routes_wiki, "ensure_bucket", lambda: None)
     monkeypatch.setattr(routes_wiki, "upload_file", lambda f_obj, obj_name: writes.append((f_obj, obj_name)))
     monkeypatch.setattr(routes_wiki, "enqueue_indexing_job", lambda f_bytes, fname, doc_id, object_name: enqueued_jobs.append((f_bytes, fname, doc_id, object_name)) or True)
@@ -344,8 +347,11 @@ def test_upload_document_rejects_oversized_file(monkeypatch):
                     return self
                 def first(self):
                     return None
+                def all(self):
+                    return []
             return Q()
 
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(routes_wiki, "consume_rate_limit", lambda *_args, **_kwargs: (True, 0))
     monkeypatch.setattr(routes_wiki, "can_enqueue_indexing_job", lambda: True)
 
