@@ -438,6 +438,65 @@ describe('ContractWorkflowDesigner workflow activation', () => {
     expect(screen.queryByText('Kết quả xử lý')).not.toBeInTheDocument();
   });
 
+  it('hiện phiếu Duyệt đạt Node khi nhân viên nộp lại nghiệm thu sau sửa chữa (dù mọi loại giấy đã duyệt trước đó)', async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const serviceLine = makeServiceLine({
+      active: true,
+      pendingChecklistReview: true,
+      runtimeDocumentTypes: [{
+        id: 'TYPE-DONE', name: 'Hợp đồng dịch vụ đã ký', source: 'CONG_TY', status: 'approved',
+        file_count: 1, files: [{ document_id: 'DOC-DONE', file_name: 'hop-dong.pdf' }],
+      }],
+    });
+    serviceLine.workflow.graph.nodes['node-1'].transitions = {
+      COMPLETED_1: 'node-next',
+    };
+    if (serviceLine.workflow.active_graph) {
+      serviceLine.workflow.active_graph.nodes['node-1'].transitions = {
+        COMPLETED_1: 'node-next',
+      };
+    }
+    serviceLine.workflow.execution_nodes[0] = {
+      ...serviceLine.workflow.execution_nodes[0],
+      status: 'submitted',
+      pending_acceptance_id: 'ACCEPTANCE-RESUBMIT-123',
+    };
+
+    render(
+      <ContractWorkflowDesigner
+        serviceLine={serviceLine}
+        workItems={[workItem]}
+        documentTemplates={[]}
+        plannedNodeByTemplate={{}}
+        capabilities={{
+          review_workflow_node: true,
+          review_workflow_checklist: true,
+        }}
+        targetTaskNodeId="task-1"
+        addToast={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/Nhân viên đã nộp nghiệm thu Node — chờ Giám đốc duyệt/)).toBeInTheDocument();
+    const btnApprove = screen.getByRole('button', { name: /Duyệt đạt Node/ });
+    expect(btnApprove).toBeInTheDocument();
+    expect(btnApprove).not.toBeDisabled();
+
+    fireEvent.click(btnApprove);
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter(([url]) =>
+        String(url).includes('/api/contracts/workflow/acceptances/ACCEPTANCE-RESUBMIT-123/review')
+      );
+      expect(calls.length).toBe(1);
+      const requestBody = JSON.parse(calls[0][1].body);
+      expect(requestBody.decision).toBe('accepted');
+      expect(requestBody.outcome).toBe('COMPLETED_1');
+    });
+  });
+
   it('giữ nguyên lỗi API duyệt loại giấy trên toast và không refresh sai', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
       detail: 'Loại giấy không còn ở trạng thái chờ duyệt.',

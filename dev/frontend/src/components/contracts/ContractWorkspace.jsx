@@ -236,10 +236,15 @@ export default function ContractWorkspace({ tab, contract, _contracts, _onContra
     if (workspaceMemoryCache.has(contextKey) && refreshKey === 0) {
       const cached = workspaceMemoryCache.get(contextKey);
       setWorkspace(cached);
+      const shouldApplyTarget = targetServiceLineId && !targetConsumedRef.current
+        && cached.service_lines?.some(item => item.id === targetServiceLineId);
+      if (shouldApplyTarget) targetConsumedRef.current = true;
       setSelectedServiceLineId(current => (
-        cached.service_lines?.some(item => item.id === current)
-          ? current
-          : cached.service_lines?.[0]?.id || ''
+        shouldApplyTarget
+          ? targetServiceLineId
+          : cached.service_lines?.some(item => item.id === current)
+            ? current
+            : cached.service_lines?.[0]?.id || ''
       ));
       setLoading(false);
     }
