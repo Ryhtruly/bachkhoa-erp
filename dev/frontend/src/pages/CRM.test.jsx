@@ -117,7 +117,7 @@ describe('CRM Component — Sales and Director views', () => {
     expect(screen.queryByRole('button', { name: /thiết lập crm/i })).not.toBeInTheDocument();
 
     // Lead names render
-    expect(screen.getByText('Nguyễn Văn Khách 1')).toBeInTheDocument();
+    expect(await screen.findByText('Nguyễn Văn Khách 1')).toBeInTheDocument();
     expect(screen.getByText('Trần Thị Khách 2')).toBeInTheDocument();
 
     // Unassigned card displays claim button
@@ -221,7 +221,7 @@ describe('CRM Component — Sales and Director views', () => {
     });
 
     // In 'Tiếp cận': unassigned lead is visible (first come first served claim pool)
-    expect(screen.getByText('Khách Bể Chung')).toBeInTheDocument();
+    expect(await screen.findByText('Khách Bể Chung')).toBeInTheDocument();
     // In 'Tiếp cận': another sale's lead is NOT visible
     expect(screen.queryByText('Khách Tiếp Cận Sale Khác')).not.toBeInTheDocument();
 
@@ -245,7 +245,7 @@ describe('CRM Component — Sales and Director views', () => {
     });
 
     // In director view, assigned lead displays owner badge with name
-    expect(screen.getByText('Trần Sale 1')).toBeInTheDocument();
+    expect(await screen.findByText('Trần Sale 1')).toBeInTheDocument();
 
     // Director sees Settings button
     const settingsBtn = screen.getByRole('button', { name: /thiết lập crm/i });
