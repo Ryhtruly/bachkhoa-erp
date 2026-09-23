@@ -381,14 +381,12 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
 
         dossier_id = _id("LD")
         self.db.execute(
-        dossier_id = self.db.execute(
             text("""
                 insert into public.legal_dossiers
                     (id, task_node_id, service_line_id, contract_id, dossier_name, status, assigned_employee_id)
                 values
                     (:id, :nid, :sl, :cid, 'Hồ sơ pháp lý thử nghiệm', 'ASSIGNED', :eid)
                 on conflict (service_line_id) do update set task_node_id = excluded.task_node_id
-                returning id
             """),
             {"id": dossier_id, "nid": self.node_ids["N04"], "sl": self.service_line_id, "cid": self.contract_id, "eid": self.emp_legal_id},
         )
@@ -398,8 +396,6 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
         ).mappings().first()
         self.assertIsNotNone(dossier_row, "N04 có capability LEGAL_PREP phải tự động mở legal_dossiers!")
         dossier_id = dossier_row["id"]
-            {"id": _id("LD"), "nid": self.node_ids["N04"], "sl": self.service_line_id, "cid": self.contract_id, "eid": self.emp_legal_id},
-        ).scalar()
 
         self.wr.claim_and_start_task(
             self.db, task_node_id=self.node_ids["N04"], employee_id=self.emp_legal_id, role_code="MAIN", actor_id=self.user_legal_id
@@ -444,16 +440,6 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
                 """),
                 {"id": subm_id, "nid": self.node_ids["N05b"], "did": dossier_id, "sl": self.service_line_id, "cid": self.contract_id, "eid": self.emp_legal_id},
             )
-        self.db.execute(
-            text("""
-                insert into public.legal_submissions
-                    (id, task_node_id, dossier_id, submit_seq, service_line_id, contract_id,
-                     dossier_name, receipt_code, legacy_gov_status, assigned_employee_id)
-                values
-                    (:id, :nid, :did, 1, :sl, :cid, 'Nộp Một Cửa Sở TNMT', 'BN-99999', 'Hoàn thành', :eid)
-            """),
-            {"id": subm_id, "nid": self.node_ids["N05b"], "did": dossier_id, "sl": self.service_line_id, "cid": self.contract_id, "eid": self.emp_legal_id},
-        )
         self.db.execute(
             text("update public.legal_dossiers set status = 'CLOSED' where id = :did"),
             {"did": dossier_id},
@@ -583,8 +569,6 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
 
         # 8.1. Thợ Survey B sửa lại bản vẽ N03 -> Nộp nghiệm thu vòng 2
         self.db.execute(
-            text("update public.checklist_result_document_links set review_status = 'approved', reviewed_at = now() where id = :id"),
-            {"id": link_id},
             text("update public.checklist_result_document_links set review_status = 'approved', reviewed_at = now(), reviewed_by = :rev where id = :id"),
             {"id": link_id, "rev": self.director_user_id},
         )

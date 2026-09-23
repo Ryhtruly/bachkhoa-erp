@@ -158,7 +158,14 @@ def test_direct_rate_update_creates_new_version_without_overwriting_old(client, 
 
 
 def test_director_creates_and_patches_work_item_with_department(client, admin_headers, db):
-    dept = db.query(Department).filter(Department.is_active == True).first()
+    dept = (
+        db.query(Department)
+        .filter(
+            Department.is_active == True,
+            Department.code.notin_(["ADMIN", "ACCOUNTING"]),
+        )
+        .first()
+    )
     if not dept:
         dept = Department(code="TEST_DEPT", name="Phòng Thử Nghiệm", is_active=True)
         db.add(dept)

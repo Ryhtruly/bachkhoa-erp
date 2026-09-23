@@ -3153,7 +3153,6 @@ def _maybe_create_legal_submission(
                 order by created_at, id
                 limit 1
             """),
-            {"task_node_id": task_node["id"]},
             {"task_node_id": task_node["id"], "service_line_id": context["service_line_id"]},
         ).scalar()
         if existing_id:
@@ -3846,7 +3845,6 @@ def claim_and_start_task(
 
         existing_role = db.execute(
             text("""
-                select e.full_name
                 select a.id, a.employee_id, e.full_name
                 from public.task_node_assignments a
                 join public.employees e on e.id = a.employee_id
@@ -3858,9 +3856,6 @@ def claim_and_start_task(
             {"task_node_id": task_node_id, "role_code": normalized_role},
         ).mappings().first()
         if existing_role:
-            raise TaskClaimConflict(
-                f"Công việc vừa được {existing_role['full_name']} nhận trước bạn."
-            )
             if existing_role["employee_id"] != employee_id:
                 raise TaskClaimConflict(
                     f"Công việc vừa được {existing_role['full_name']} nhận trước bạn."
@@ -4319,7 +4314,6 @@ def mark_field_work_started(
     if not is_field:
         raise WorkflowValidationError("Chỉ bước khảo sát & đo hiện trường mới có mốc bắt đầu đo")
     _require_node_assignment(db, task_node_id=task_node_id, employee_id=employee_id)
-    if node["status"] != "in_progress":
     if node["status"] not in ("in_progress", "rework_required"):
         raise WorkflowValidationError("Phải nhận ca đo trước khi bấm bắt đầu đo hiện trường")
 
@@ -4345,8 +4339,6 @@ def mark_field_work_started(
     started_at = db.execute(
         text("""
             update public.task_nodes
-            set execution_data = coalesce(execution_data, '{}'::jsonb)
-                || jsonb_build_object('field_started_at', to_jsonb(now())),
             set status = 'in_progress',
                 execution_data = coalesce(execution_data, '{}'::jsonb)
                     || jsonb_build_object('field_started_at', to_jsonb(now())),
@@ -4361,7 +4353,6 @@ def mark_field_work_started(
         text("""
             insert into public.task_node_events
                 (task_node_id, event_type, from_status, to_status, actor_user_id, payload)
-            values (:task_node_id, 'FIELD_WORK_STARTED', 'in_progress', 'in_progress',
             values (:task_node_id, 'FIELD_WORK_STARTED', :from_status, 'in_progress',
                     :actor_id, cast(:payload as jsonb))
         """),
@@ -4690,13 +4681,13 @@ def start_task_node(db: Session, *, task_node_id: str, employee_id: str, actor_i
                 dept_name = task_pool_department_code(node.get("node_code"), node_def) or "khác"
                 raise WorkflowValidationError(f"Bạn không thuộc phòng ban phụ trách bước này (thuộc {dept_name})")
 
-    if node["status"] not in ("ready", "rework_required"):
-        raise WorkflowValidationError("Node phải ở trạng thái 'Sẵn sàng thực hiện' hoặc 'Cần làm lại' để bắt đầu")
-
     unaccepted = unaccepted_predecessors(db, task_node_id=task_node_id)
     if unaccepted:
         names = ", ".join(f"{u.get('node_code') or ''} ({u.get('name') or ''})".strip() for u in unaccepted)
         raise WorkflowValidationError(f"Không thể bắt đầu bước này vì các bước trước chưa được nghiệm thu: {names}")
+
+    if node["status"] not in ("ready", "rework_required"):
+        raise WorkflowValidationError("Node phải ở trạng thái 'Sẵn sàng thực hiện' hoặc 'Cần làm lại' để bắt đầu")
 
     # Đơn nhiệm chặn ở ĐÂY, không phải lúc nhận việc: nhận cả cụm 5 bước vẫn
     # hợp lệ, nhưng chỉ một bước được chạy tại một thời điểm.
@@ -6236,8 +6227,6 @@ def _rollback_affected_nodes(db: Session, *, target_task_node_id: str) -> list[d
     """
     target = db.execute(
         text("""
-            select id, workflow_instance_id, node_code, occurrence_no
-            from public.task_nodes where id = :id
             select tn.id, tn.workflow_instance_id, tn.node_code, tn.node_key, tn.occurrence_no,
                    coalesce(wir_act.graph, wir_def.graph) as graph
             from public.task_nodes tn
@@ -6457,7 +6446,6 @@ def cascade_rollback(
     db.execute(
         text("""
             update public.task_node_checklist_results
-            set status = 'pending', submitted_at = null, updated_at = now()
             set status = 'pending',
                 submitted_at = null,
                 submitted_by = null,
@@ -6512,8 +6500,6 @@ def cascade_rollback(
                     update public.legal_submissions
                     set legacy_gov_status = 'Đang chi nhánh',
                         updated_at = now()
-                    where task_node_id = any(:ids)
-                      and legacy_gov_status = 'Hoàn thành'
                     where (
                         task_node_id = any(:ids)
                         or (
@@ -6528,7 +6514,6 @@ def cascade_rollback(
                     )
                     and legacy_gov_status = 'Hoàn thành'
                 """),
-                {"ids": node_ids},
                 {"ids": node_ids, "sl_id": service_line_id},
             )
             db.execute(
@@ -6536,8 +6521,6 @@ def cascade_rollback(
                     update public.legal_dossiers
                     set status = 'PROCESSING',
                         updated_at = now()
-                    where task_node_id = any(:ids)
-                      and status = 'CLOSED'
                     where (
                         task_node_id = any(:ids)
                         or (
@@ -6552,7 +6535,6 @@ def cascade_rollback(
                     )
                     and status = 'CLOSED'
                 """),
-                {"ids": node_ids},
                 {"ids": node_ids, "sl_id": service_line_id},
             )
             is_pg = getattr(db.bind, "dialect", None) and db.bind.dialect.name == "postgresql"
@@ -6560,10 +6542,8 @@ def cascade_rollback(
                 db.execute(
                     text("""
                         update public.task_nodes
-                        set execution_data = coalesce(execution_data, '{}'::jsonb) - 'handover'
                         set execution_data = coalesce(execution_data, '{}'::jsonb) - 'handover' - 'field_started_at'
                         where id = any(:ids)
-                          and execution_data ? 'handover'
                           and (execution_data ? 'handover' or execution_data ? 'field_started_at')
                     """),
                     {"ids": node_ids},

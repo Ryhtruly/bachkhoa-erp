@@ -221,8 +221,6 @@ class RelayRaceFlowTests(unittest.TestCase):
         # =====================================================================
         # Anh A (Đo vẽ) thấy hạng mục trên bể việc
         pool_a = EmployeePortalService.get_task_pool(self.db, emp_a)
-        self.assertEqual(len(pool_a.get("items", [])), 1, "Anh A phải thấy 1 hạng mục trong Bể việc Đo vẽ")
-        item_a = pool_a["items"][0]
         items_a = [i for i in pool_a.get("items", []) if i.get("id") == self.node_ids["N01"] or i.get("workflow_instance_id") == self.instance_id]
         self.assertEqual(len(items_a), 1, "Anh A phải thấy 1 hạng mục trong Bể việc Đo vẽ")
         item_a = items_a[0]
@@ -248,7 +246,6 @@ class RelayRaceFlowTests(unittest.TestCase):
 
         # Anh B (Pháp lý) vào Bể việc: CHƯA CÓ GÌ vì N03 đang pending
         pool_b = EmployeePortalService.get_task_pool(self.db, emp_b)
-        self.assertEqual(len(pool_b.get("items", [])), 0, "Bể việc của Pháp lý phải trống khi chưa tới lượt")
         items_b = [i for i in pool_b.get("items", []) if i.get("workflow_instance_id") == self.instance_id]
         self.assertEqual(len(items_b), 0, "Bể việc của Pháp lý phải trống khi chưa tới lượt")
 
