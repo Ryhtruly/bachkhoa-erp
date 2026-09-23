@@ -335,6 +335,8 @@
   color: var(--text-secondary, #64748b);
   line-height: 1.4;
   text-transform: none !important;
+}
+
 /* Vùng chọn nhân sự thay thế: Mở bung phẳng, tinh tế, không hộp lồng hộp */
 .handover-assignee-section {
   margin-top: 10px;
@@ -355,6 +357,8 @@
   border-top: 1px solid #fed7aa;
   background: rgba(255, 255, 255, 0.85);
   box-sizing: border-box;
+}
+
 .handover-field-label {
   font-size: 0.825rem;
   font-weight: 600;
@@ -364,6 +368,8 @@
 [data-theme='dark'] .handover-assignee-pane {
   border-top-color: rgba(234, 88, 12, 0.25);
   background: rgba(15, 23, 42, 0.4);
+}
+
 .handover-crm-checkbox {
   display: inline-flex;
   align-items: center;
