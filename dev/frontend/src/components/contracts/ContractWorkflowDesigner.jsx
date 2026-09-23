@@ -2925,18 +2925,22 @@ export default function ContractWorkflowDesigner({
 
     const hasPendingChecklistWork = hasPendingDocTypes || hasPendingPaperless;
     const hasConfiguredDocumentTypes = checklistItems.some(item => (item.runtime?.document_types || []).length > 0);
+    const allConfiguredTypesApproved = hasConfiguredDocumentTypes && checklistItems.every(item => {
+      const types = item.runtime?.document_types || [];
+      return types.length > 0 && types.every(t => t.status === 'approved' && ((t.files || []).length > 0 || (t.file_count || 0) > 0));
+    });
 
     // Với Node có checklist đang chờ duyệt (loại giấy hoặc checklist thuần), Giám đốc duyệt trực tiếp
     // từng mục. Khi mục cuối cùng đạt, backend tự động hoàn tất Node và mở bước kế tiếp.
-    // Do đó KHÔNG sinh mục 'Nghiệm thu Node' thừa thãi trong Chờ duyệt khi đang có việc checklist cần làm.
+    // Do đó KHÔNG sinh mục 'Nghiệm thu Node' thừa thãi trong Chờ duyệt khi mọi loại giấy đã đạt và không cần rẽ nhánh.
     // Chỉ thêm 'Nghiệm thu Node' khi:
     // 1. Không còn việc checklist nào đang chờ
-    // 2. VÀ (Node không dùng loại giấy runtime, HOẶC cần chọn kết quả rẽ nhánh, HOẶC duyệt chấp nhận thiếu)
+    // 2. VÀ (Chưa đạt toàn bộ loại giấy runtime, HOẶC cần chọn kết quả rẽ nhánh, HOẶC duyệt chấp nhận thiếu)
     if (
       canReviewNode
       && node.data.pendingAcceptanceId
       && !hasPendingChecklistWork
-      && (!hasConfiguredDocumentTypes || requiresOutcome || hasMissing)
+      && (!allConfiguredTypesApproved || requiresOutcome || hasMissing)
     ) {
       pending.unshift({
         id: `node:${node.data.pendingAcceptanceId}`,
@@ -4284,17 +4288,19 @@ title="Lưu quy trình hiện tại thành mẫu"
 
               {/* Ngoài vùng cuộn: mockup đặt "Node bắt đầu" nằm giữa danh sách
                   checklist và thanh Chờ duyệt, cả hai đều đứng yên. */}
-              <div className="wf-node-panel__foot">
-                <button
-                  type="button"
-                  disabled={!structureEditable}
-                  className={`workflow-start-node-dashed-btn${startNode === selectedNode.id ? ' is-active' : ''}`}
-                  onClick={() => setStartNode(selectedNode.id)}
-                >
-                  <CheckCircle2 size={15} />
-                  {startNode === selectedNode.id ? 'Node bắt đầu' : 'Đặt làm node bắt đầu'}
-                </button>
-              </div>
+              {structureEditable && (
+                <div className="wf-node-panel__foot">
+                  <button
+                    type="button"
+                    disabled={!structureEditable}
+                    className={`workflow-start-node-dashed-btn${startNode === selectedNode.id ? ' is-active' : ''}`}
+                    onClick={() => setStartNode(selectedNode.id)}
+                  >
+                    <CheckCircle2 size={15} />
+                    {startNode === selectedNode.id ? 'Node bắt đầu' : 'Đặt làm node bắt đầu'}
+                  </button>
+                </div>
+              )}
             </div>
           ) : inspectorTab === 'assignment' ? (
             <div className="workflow-inspector__content workflow-assignment-panel">

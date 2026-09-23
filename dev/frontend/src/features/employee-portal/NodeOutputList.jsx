@@ -148,7 +148,11 @@ function RuntimeNodeOutputList({
   )
   const isPaperlessRejected = isPaperless && checklistItem?.status === 'failed'
 
-  const approved = types.filter(type => type.status === 'approved').length
+  const isTypeApproved = (type) => {
+    const fc = (type.files || []).length || Number(type.file_count) || 0
+    return type.status === 'approved' && fc > 0
+  }
+  const approved = types.filter(isTypeApproved).length
   const hasRejections = types.some(type => (
     type.status === 'rejected' || Boolean(type.rejection_reason)
   )) || isPaperlessRejected
@@ -219,6 +223,7 @@ function RuntimeNodeOutputList({
       const remainingFiles = (candidate.files || []).filter(f => (f.document_id || f.id) !== targetDocId)
       return {
         ...candidate,
+        status: remainingFiles.length === 0 ? 'draft' : candidate.status,
         files: remainingFiles,
         file_count: Math.max(0, (candidate.file_count || 1) - 1),
       }
@@ -365,14 +370,17 @@ function RuntimeNodeOutputList({
                 const expanded = expandedTypeIds.has(type.id)
                 const editableType = canEdit && type.status !== 'pending_review'
                 const removableType = canEdit && type.status !== 'pending_review'
-                const requiresChangeReason = type.status === 'approved'
+                const requiresChangeReason = type.status === 'approved' && fileCount > 0
                 const awaitingResubmission = type.status === 'draft' && Boolean(type.rejection_reason)
-                const typeStatusLabel = awaitingResubmission
-                  ? 'Đã cập nhật — nộp lại'
-                  : RUNTIME_STATUS_LABELS[type.status] || type.status
+                const effectiveStatus = (fileCount === 0 && type.status === 'approved') ? 'draft' : type.status
+                const typeStatusLabel = fileCount === 0
+                  ? 'Chưa có tệp'
+                  : awaitingResubmission
+                    ? 'Đã cập nhật — nộp lại'
+                    : RUNTIME_STATUS_LABELS[effectiveStatus] || effectiveStatus
                 return (
                   <article
-                    className={`eiw-doc eiw-document-type is-${type.status}${awaitingResubmission ? ' is-rework' : ''}`}
+                    className={`eiw-doc eiw-document-type is-${effectiveStatus}${awaitingResubmission ? ' is-rework' : ''}`}
                     key={type.id}
                     id={`checklist-doc-${type.id}`}
                   >
@@ -385,9 +393,9 @@ function RuntimeNodeOutputList({
                             <span className={`eiw-doc__source is-${String(type.source || '').toLowerCase()}`}>
                               {type.source_label || SOURCE_LABELS[type.source] || type.source}
                             </span>
-                            <span className={`eiw-doc__badge eiw-doc__badge--${type.status}`}>
-                              {type.status === 'approved' && <Check size={11} />}
-                              {type.status === 'rejected' && <AlertTriangle size={11} />}
+                            <span className={`eiw-doc__badge eiw-doc__badge--${effectiveStatus}`}>
+                              {effectiveStatus === 'approved' && <Check size={11} />}
+                              {effectiveStatus === 'rejected' && <AlertTriangle size={11} />}
                               {typeStatusLabel}
                             </span>
                           </div>

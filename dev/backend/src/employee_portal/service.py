@@ -2077,10 +2077,10 @@ class EmployeePortalService:
         if checklist["status"] not in (ChecklistStatus.NOT_STARTED, ChecklistStatus.REJECTED):
             raise HTTPException(status_code=409, detail="Checklist này đã nộp hoặc đã được duyệt.")
 
-        # Phải bấm "Bắt đầu làm" trước đã. Nộp minh chứng cho một bước chưa khởi
-        # động thì mốc bắt đầu không có, thời hạn tính từ đâu cũng không biết, và
-        # trên sơ đồ bước đó vẫn nằm im như chưa ai đụng tới.
-        if checklist["node_status"] != "in_progress":
+        # Phải bấm "Bắt đầu làm" trước đã (hoặc đang ở trạng thái "Làm lại"). Nộp
+        # minh chứng cho một bước chưa khởi động thì mốc bắt đầu không có, thời hạn
+        # tính từ đâu cũng không biết, và trên sơ đồ bước đó vẫn nằm im như chưa ai đụng tới.
+        if checklist["node_status"] not in ("in_progress", "rework_required"):
             nhan = {
                 "pending": "chưa tới lượt",
                 "ready": "chưa bấm Bắt đầu làm",
@@ -2089,7 +2089,6 @@ class EmployeePortalService:
                 "completed": "đã hoàn thành",
                 "cancelled": "đã huỷ",
                 "blocked": "đang bị chặn",
-                "rework_required": "bị trả về, cần bấm Làm lại trước",
             }.get(checklist["node_status"], checklist["node_status"])
             raise HTTPException(
                 status_code=409,
