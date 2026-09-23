@@ -762,7 +762,6 @@ def _ensure_runtime_tables_and_columns(connection):
         f"""
         CREATE TABLE IF NOT EXISTS {p}survey_records (
             id VARCHAR PRIMARY KEY {id_default},
-            task_node_id VARCHAR,
             task_node_id VARCHAR UNIQUE,
             service_line_id VARCHAR,
             contract_id VARCHAR,
@@ -810,7 +809,6 @@ def _ensure_runtime_tables_and_columns(connection):
         CREATE TABLE IF NOT EXISTS {p}legal_dossiers (
             id VARCHAR PRIMARY KEY {id_default},
             contract_id VARCHAR,
-            service_line_id VARCHAR,
             service_line_id VARCHAR UNIQUE,
             task_node_id VARCHAR,
             status VARCHAR,
