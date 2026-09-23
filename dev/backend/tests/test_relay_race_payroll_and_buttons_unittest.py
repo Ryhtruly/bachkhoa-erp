@@ -925,7 +925,7 @@ class RelayRacePayrollAndButtonsQATests(unittest.TestCase):
         director_user.role = "admin"
         admin_role = self.db.query(Role).filter(func.lower(Role.role_name) == "admin").first()
         if not admin_role:
-            admin_role = Role(id=_id("ROLE"), role_name="admin", description="Admin", is_active=True)
+            admin_role = Role(role_name="admin", description="Admin", is_active=True)
             self.db.add(admin_role)
             self.db.flush()
         if not self.db.query(UserRole).filter(UserRole.user_id == director_user.id, UserRole.role_id == admin_role.id).first():

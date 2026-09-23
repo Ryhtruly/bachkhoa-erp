@@ -258,11 +258,6 @@ const formatShortDateTime = value => {
 const isInactiveAssignment = item => ['cancelled', 'replaced', 'declined'].includes(item?.assignment_status);
 
 const visibleNodeAssignments = (data = {}) => {
-  const runtimeAssignments = (Array.isArray(data.runtimeAssignments) ? data.runtimeAssignments : []).filter(item => !isInactiveAssignment(item));
-  if (runtimeAssignments.length) return runtimeAssignments;
-  const visibleAssignments = (Array.isArray(data.visibleAssignments) ? data.visibleAssignments : []).filter(item => !isInactiveAssignment(item));
-  if (visibleAssignments.length) return visibleAssignments;
-  return (Array.isArray(data.assignments) ? data.assignments : []).filter(item => !isInactiveAssignment(item));
   const getActive = list => (Array.isArray(list) ? list : []).filter(item => !isInactiveAssignment(item));
   let result = getActive(data.runtimeAssignments);
   if (!result.length) result = getActive(data.visibleAssignments);

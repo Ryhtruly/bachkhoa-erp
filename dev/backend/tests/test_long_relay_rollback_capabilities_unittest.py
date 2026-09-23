@@ -113,6 +113,7 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
                 self.db.execute(text("delete from public.task_node_acceptances where task_node_id in (select id from public.task_nodes where workflow_instance_id = :wi)"), {"wi": self.instance_id})
                 self.db.execute(text("delete from public.task_node_assignments where task_node_id in (select id from public.task_nodes where workflow_instance_id = :wi)"), {"wi": self.instance_id})
                 self.db.execute(text("delete from public.workflow_rollback_requests where workflow_instance_id = :wi"), {"wi": self.instance_id})
+                self.db.execute(text("delete from public.work_pay_entitlements where workflow_instance_id = :wi"), {"wi": self.instance_id})
                 self.db.execute(text("delete from public.task_nodes where workflow_instance_id = :wi"), {"wi": self.instance_id})
                 self.db.execute(text("delete from public.workflow_instance_revisions where workflow_instance_id = :wi"), {"wi": self.instance_id})
                 self.db.execute(text("delete from public.workflow_instances where id = :wi"), {"wi": self.instance_id})
@@ -257,6 +258,15 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
         return instance_id, node_ids, chk_data
 
     def _sync_checklist_assignment(self, task_node_id, employee_id, chk_info):
+        cid = chk_info["checklist_result_id"]
+        self.db.execute(
+            text("""
+                update public.task_node_checklist_assignments
+                set status = 'replaced', ended_at = now()
+                where checklist_result_id = :cid and status != 'replaced'
+            """),
+            {"cid": cid},
+        )
         self.db.execute(
             text("""
                 insert into public.task_node_checklist_assignments
@@ -264,11 +274,10 @@ class LongRelayRollbackCapabilitiesTests(unittest.TestCase):
                      share_percent, work_item_rate_id, status, assigned_by)
                 values
                     (:id, :cid, :eid, 'MAIN', 'PRIMARY', 100, :rid, 'assigned', :actor)
-                on conflict do nothing
             """),
             {
                 "id": _id("CA"),
-                "cid": chk_info["checklist_result_id"],
+                "cid": cid,
                 "eid": employee_id,
                 "rid": chk_info.get("rate_id"),
                 "actor": self.director_user_id,

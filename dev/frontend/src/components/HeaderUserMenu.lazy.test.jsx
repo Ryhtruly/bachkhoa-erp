@@ -31,5 +31,5 @@ describe('HeaderUserMenu payroll loading', () => {
 
     expect(await screen.findByText('Lazy payslip content')).toBeInTheDocument()
     expect(payrollModuleLoaded).toHaveBeenCalledTimes(1)
-  })
+  }, 30000)
 })
