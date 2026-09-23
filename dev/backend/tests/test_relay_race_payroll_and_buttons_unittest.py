@@ -919,8 +919,17 @@ class RelayRacePayrollAndButtonsQATests(unittest.TestCase):
             self.wr.review_task_node_acceptance(self.db, acceptance_id=sub["acceptance_id"], decision="accepted", outcome="done", review_note=f"Duyệt {code}", actor_id=self.director_user_id)
 
         # Người duyệt (Giám đốc có role admin)
+        from src.db.models import Role, UserRole
+        from sqlalchemy import func
         director_user = self.db.query(User).filter(User.id == self.director_user_id).first()
         director_user.role = "admin"
+        admin_role = self.db.query(Role).filter(func.lower(Role.role_name) == "admin").first()
+        if not admin_role:
+            admin_role = Role(id=_id("ROLE"), role_name="admin", description="Admin", is_active=True)
+            self.db.add(admin_role)
+            self.db.flush()
+        if not self.db.query(UserRole).filter(UserRole.user_id == director_user.id, UserRole.role_id == admin_role.id).first():
+            self.db.add(UserRole(user_id=director_user.id, role_id=admin_role.id))
         self.db.commit()
 
         now = datetime.now()

@@ -171,15 +171,12 @@ def link_document_to_slot(db, *, contract_id: str, slot_id: str, document_id: st
 
 
 def create_test_user(db) -> str:
-    """Ensure a test user exists for FK references."""
-    uid = db.execute(text("select id from public.users limit 1")).scalar()
-    if uid:
-        return uid
+    """Create a unique test user for FK references."""
     uid = generate_test_id("U")
     db.execute(
         text("insert into public.users (id, username, password_hash, is_active) "
              "values (:id, :u, 'x', true)"),
-        {"id": uid, "u": f"thu-nghiem-{uid[:8]}"},
+        {"id": uid, "u": f"thu-nghiem-{uid}"},
     )
     return uid
 
