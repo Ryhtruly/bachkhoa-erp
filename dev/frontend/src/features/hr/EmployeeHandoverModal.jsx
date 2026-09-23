@@ -122,14 +122,14 @@ export default function EmployeeHandoverModal({
         </div>
       }
     >
-      <div className="handover-modal" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="handover-modal" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* Workload Summary Banner */}
         <div className={`handover-banner ${totalWork > 0 ? 'handover-banner--active' : ''}`}>
           <div className="handover-banner__hd">
             {totalWork > 0 ? (
-              <AlertTriangle size={18} style={{ color: 'var(--orange-600, #ea580c)', flexShrink: 0 }} />
+              <AlertTriangle size={17} style={{ color: 'var(--orange-600, #ea580c)', flexShrink: 0 }} />
             ) : (
-              <CheckCircle2 size={18} style={{ color: 'var(--green-600, #16a34a)', flexShrink: 0 }} />
+              <CheckCircle2 size={17} style={{ color: 'var(--green-600, #16a34a)', flexShrink: 0 }} />
             )}
             <strong style={{ fontSize: 13.5, fontWeight: 600 }}>
               {totalWork > 0
@@ -192,6 +192,7 @@ export default function EmployeeHandoverModal({
         </div>
 
         {/* Handover Mode Selection */}
+        {/* Handover Mode Selection (Tinh gọn, dứt khoát, không văn phong AI) */}
         <div>
           <div className="handover-label">
             <span>Phương án xử lý công việc:</span>
@@ -219,6 +220,20 @@ export default function EmployeeHandoverModal({
                   </div>
                 </div>
               </label>
+            <label className={`handover-card ${mode === 'reassign' ? 'is-selected' : ''}`}>
+              <input
+                type="radio"
+                name="handover_mode"
+                value="reassign"
+                checked={mode === 'reassign'}
+                onChange={() => setMode('reassign')}
+                className="handover-card__input"
+              />
+              <span className="handover-card__icon">
+                <UserCheck size={16} />
+              </span>
+              <span className="handover-card__title">Chuyển giao cho nhân sự khác</span>
+            </label>
 
               {mode === 'reassign' && (
                 <div className="handover-assignee-pane">
@@ -279,6 +294,18 @@ export default function EmployeeHandoverModal({
                   </div>
                 </div>
               </div>
+              <input
+                type="radio"
+                name="handover_mode"
+                value="pool"
+                checked={mode === 'pool'}
+                onChange={() => setMode('pool')}
+                className="handover-card__input"
+              />
+              <span className="handover-card__icon">
+                <Layers size={16} />
+              </span>
+              <span className="handover-card__title">Giải phóng về Bể việc chung (Task Pool)</span>
             </label>
 
             {/* Mode 3: Keep & reassign later */}
@@ -302,8 +329,48 @@ export default function EmployeeHandoverModal({
                   </div>
                 </div>
               </div>
+              <input
+                type="radio"
+                name="handover_mode"
+                value="keep"
+                checked={mode === 'keep'}
+                onChange={() => setMode('keep')}
+                className="handover-card__input"
+              />
+              <span className="handover-card__icon">
+                <Clock size={16} />
+              </span>
+              <span className="handover-card__title">Giữ nguyên, phân công sau</span>
             </label>
           </div>
+
+          {/* Form chọn người nhận mở bung thoáng đãng, KHÔNG hộp chồng hộp */}
+          {mode === 'reassign' && (
+            <div className="handover-assignee-section">
+              <label className="handover-field-label">
+                Nhân sự tiếp nhận <span style={{ color: 'var(--red-500)' }}>*</span>
+              </label>
+              <CustomSelect
+                value={toEmployeeId}
+                onChange={setToEmployeeId}
+                options={candidateOptions}
+                placeholder="— Chọn nhân sự thay thế —"
+                searchable
+                searchPlaceholder="Gõ tên nhân sự..."
+              />
+              {activeLeads.length > 0 && (
+                <label className="handover-crm-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={handoverCrm}
+                    onChange={(e) => setHandoverCrm(e.target.checked)}
+                    style={{ accentColor: 'var(--orange-500)' }}
+                  />
+                  <span>Bàn giao cả khách hàng CRM ({activeLeads.length})</span>
+                </label>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Lock Account Option */}
@@ -314,31 +381,21 @@ export default function EmployeeHandoverModal({
             onChange={(e) => setDeactivateAfter(e.target.checked)}
             className="handover-deactivate__checkbox"
           />
-          <div style={{ flex: 1 }}>
-            <div className="handover-deactivate__title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Lock size={14} style={{ color: deactivateAfter ? 'var(--red-600, #dc2626)' : 'inherit' }} />
-              Đồng thời khóa tài khoản & chuyển trạng thái Ngừng hoạt động cho nhân sự này
-            </div>
-            <div className="handover-deactivate__desc">
-              Nhân sự sẽ bị vô hiệu hóa quyền truy cập hệ thống ngay sau khi hoàn tất chuyển giao.
-            </div>
+          <div className="handover-deactivate__content">
+            <Lock size={15} style={{ color: deactivateAfter ? 'var(--red-600, #dc2626)' : 'var(--text-tertiary)' }} />
+            <span>Khóa tài khoản nhân sự sau khi bàn giao</span>
           </div>
         </label>
 
         {/* Reason / Note */}
         <div>
-          <div className="handover-label">
-            <span>Lý do / Ghi chú bàn giao:</span>
-            <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)', fontWeight: 400 }}>
-              (Không bắt buộc)
-            </span>
-          </div>
+          <label className="handover-field-label">Ghi chú bàn giao (không bắt buộc)</label>
           <textarea
             className="handover-textarea"
             rows={2}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="VD: Nghỉ thai sản 6 tháng, chuyển công tác, bàn giao việc trước khi thôi việc..."
+            placeholder="Lý do hoặc ghi chú nếu có..."
           />
         </div>
 

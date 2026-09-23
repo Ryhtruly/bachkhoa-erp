@@ -244,10 +244,14 @@
 }
 
 /* Thẻ chọn: bố cục cân xứng 100%, không bị lệch bên */
+/* Thẻ chọn: bố cục cân xứng 100%, không bị lệch bên, KHÔNG hộp chồng hộp */
 .handover-card {
   display: flex;
   flex-direction: column;
   padding: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
   border-radius: 10px;
   border: 1.5px solid var(--border-subtle, #e2e8f0);
   background: var(--bg-surface, #ffffff);
@@ -289,6 +293,7 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  margin: 0;
 }
 
 .handover-card__icon {
@@ -318,6 +323,7 @@
 .handover-card__title {
   font-weight: 600;
   font-size: 0.865rem;
+  font-size: 0.875rem;
   color: var(--text-primary);
   line-height: 1.35;
   margin-bottom: 2px;
@@ -329,6 +335,16 @@
   color: var(--text-secondary, #64748b);
   line-height: 1.4;
   text-transform: none !important;
+/* Vùng chọn nhân sự thay thế: Mở bung phẳng, tinh tế, không hộp lồng hộp */
+.handover-assignee-section {
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(234, 88, 12, 0.03);
+  border: 1px solid rgba(234, 88, 12, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 /* Hộp chọn nhân sự: Nằm gọn gàng, đối xứng tuyệt đối (Full Width) trong thẻ */
@@ -339,11 +355,39 @@
   border-top: 1px solid #fed7aa;
   background: rgba(255, 255, 255, 0.85);
   box-sizing: border-box;
+.handover-field-label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: var(--text-secondary, #475569);
 }
 
 [data-theme='dark'] .handover-assignee-pane {
   border-top-color: rgba(234, 88, 12, 0.25);
   background: rgba(15, 23, 42, 0.4);
+.handover-crm-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+/* Đảm bảo dropdown không bao giờ bị cắt */
+.modal.employee-handover-modal,
+.modal.employee-handover-modal .modal-body,
+.handover-modal {
+  overflow: visible !important;
+}
+
+.handover-assignee-section .custom-select-container {
+  position: relative;
+  z-index: 1050;
+}
+
+.handover-assignee-section .custom-select-menu {
+  z-index: 1300 !important;
 }
 
 /* Deactivate Toggle Card */

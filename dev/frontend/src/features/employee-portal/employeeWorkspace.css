@@ -1284,9 +1284,29 @@
   gap: 14px;
   padding: 12px 16px;
   margin-bottom: 14px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  margin-bottom: 16px;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
   background: #f8fafc;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+.eiw-top__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.eiw-top__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .eiw-back {
   display: grid;
@@ -1296,6 +1316,8 @@
   flex: none;
   border: 1px solid #cbd5e1;
   border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   background: #ffffff;
   color: #334155;
   cursor: pointer;
@@ -1304,6 +1326,9 @@
 .eiw-back:hover {
   background: #f1f5f9;
   border-color: #94a3b8;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
 }
 .eiw-top__id {
   display: flex;
@@ -1314,14 +1339,18 @@
 .eiw-top__id span {
   font-size: 12px;
   font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  letter-spacing: normal;
 }
 .eiw-top__id h1 {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
+  font-weight: 800;
   color: #0f172a;
 }
 .eiw-top__flag {
@@ -1329,6 +1358,8 @@
   flex: none;
   padding: 5px 14px;
   border: 1px solid #cbd5e1;
+  padding: 4px 14px;
+  border: 1px solid #e2e8f0;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 600;
@@ -1345,17 +1376,62 @@
   color: #e11d48;
   background: #fff1f2;
 }
+.eiw-top__clock-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.eiw-top__clock-chip.is-overdue,
+.eiw-top__clock-chip.is-danger {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #e11d48;
+}
+.eiw-top__clock-chip.is-warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #b45309;
+}
+.eiw-top__clock-chip.is-safe {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+}
+.eiw-top__theme-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.eiw-top__theme-btn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
 
 /* ── Dải quy trình (NodeChain / Stepper) ─────────────────────────────────── */
+/* ── Dải quy trình liên tục (Continuous Rail Stepper chuẩn Ảnh 3) ──────────── */
 .eiw-chain {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
+  padding: 12px 24px;
   margin-bottom: 20px;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
   background: #f8fafc;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -1364,6 +1440,7 @@
 }
 .eiw-chain::-webkit-scrollbar {
   height: 5px;
+  height: 4px;
 }
 .eiw-chain::-webkit-scrollbar-track {
   background: transparent;
@@ -1382,9 +1459,12 @@
   flex: 1 0 auto;
   min-width: 170px;
   max-width: 260px;
+  flex: 1 1 auto;
+  min-width: max-content;
 }
 .eiw-step {
   display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -1397,11 +1477,20 @@
   background: #ffffff;
   color: #475569;
   cursor: default;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  color: #334155;
+  cursor: pointer;
   text-align: left;
   transition: all 0.15s ease;
 }
 .eiw-step:not(:disabled) {
   cursor: pointer;
+.eiw-step:disabled {
+  cursor: default;
 }
 .eiw-step:not(:disabled):hover {
   border-color: #cbd5e1;
@@ -1417,9 +1506,13 @@
   color: #475569;
 }
 .eiw-step.is-current {
+  border: 1.5px solid #ea580c;
+  border-radius: 9999px;
+  padding: 3px 14px 3px 4px;
   background: #ffffff;
   border: 2px solid #10b981;
   box-shadow: 0 1px 3px 0 rgba(16, 185, 129, 0.15);
+  box-shadow: 0 1px 4px rgba(234, 88, 12, 0.12);
 }
 .eiw-step.is-idle {
   opacity: 0.65;
@@ -1466,39 +1559,61 @@
   place-items: center;
   width: 28px;
   height: 28px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
   border-radius: 9999px;
   font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   background: #f1f5f9;
   color: #475569;
   border: 1px solid #e2e8f0;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
 }
 .eiw-step.is-current .eiw-step__circle {
   background: #10b981;
+  background: #ea580c;
   color: #ffffff;
   border-color: #10b981;
+  border-color: #ea580c;
 }
 .eiw-step.is-done .eiw-step__circle {
   background: #10b981;
+  background: #16a34a;
   color: #ffffff;
   border-color: #10b981;
+  border-color: #16a34a;
+}
+.eiw-step__tick {
+  color: #ffffff;
 }
 .eiw-step__info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  align-items: center;
   min-width: 0;
   flex: 1 1 auto;
 }
+/* Giữ statusLabel trong DOM cho test/screen readers nhưng ẩn giao diện thanh mảnh */
 .eiw-step__state {
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #94a3b8;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   line-height: 1.2;
+  border: 0;
 }
 .eiw-step.is-current .eiw-step__state {
   color: #047857;
@@ -1516,28 +1631,52 @@
   font-size: 13px;
   font-weight: 700;
   color: #1e293b;
+  font-weight: 600;
+  color: #334155;
   flex: 0 0 auto;
+}
+.eiw-step.is-current .eiw-step__code {
+  font-weight: 700;
+  color: #0f172a;
 }
 .eiw-step__pulse {
   display: inline-block;
   width: 7px;
   height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 9999px;
   background: #10b981;
+  background: #ea580c;
   animation: eiw-pulse 1.4s ease-in-out infinite;
   flex: 0 0 auto;
 }
+/* Tên bước chỉ hiển thị khi node đang active (current) theo đúng Ảnh 3 */
 .eiw-step__name {
   font-size: 12px;
   font-weight: 500;
   color: #475569;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
   white-space: nowrap;
   min-width: 0;
   flex: 1 1 auto;
+  display: none;
 }
+.eiw-step.is-current .eiw-step__name {
+  display: inline;
+}
+/* Mũi tên đổi thành đường ray thanh mảnh (connector line) */
 .eiw-chain__arrow {
+  flex: 1 1 0;
+  min-width: 24px;
+  height: 2.5px;
+  background: #e2e8f0;
+  margin: 0 12px;
+  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1546,6 +1685,12 @@
   width: 16px;
   height: 16px;
   padding: 0;
+}
+.eiw-chain__arrow.is-done {
+  background: #16a34a;
+}
+.eiw-chain__arrow svg {
+  display: none;
 }
 
 /* ── Node Banner (TÊN NODE HIỆN TẠI) ─────────────────────────────────────── */
@@ -1616,6 +1761,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
+  gap: 20px;
   align-items: stretch;
   border: none;
   background: transparent;
@@ -1632,6 +1778,387 @@
 }
 .eiw-col--right {
   min-height: 100%;
+}
+
+/* ── THẺ CỘT TRÁI (Chuẩn Ảnh 3) ─────────────────────────────────────────── */
+.eiw-left-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  height: 100%;
+}
+
+.eiw-node-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  margin-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+.eiw-step-fraction {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 2.5px solid #ea580c;
+  display: grid;
+  place-items: center;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #ea580c;
+  flex: 0 0 auto;
+}
+
+.eiw-node-banner__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.eiw-node-banner__main .eiw-band--name {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  justify-content: flex-start;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.eiw-node-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.eiw-assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.eiw-avatar-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #e0f2fe;
+  color: #0284c7;
+  display: grid;
+  place-items: center;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.eiw-status-dot {
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+}
+.eiw-status-dot.is-rework_required {
+  color: #dc2626;
+}
+.eiw-status-dot.is-in_progress,
+.eiw-status-dot.is-ready {
+  color: #ea580c;
+}
+.eiw-status-dot.is-completed,
+.eiw-status-dot.is-accepted {
+  color: #16a34a;
+}
+.eiw-status-dot.is-submitted {
+  color: #2563eb;
+}
+
+.eiw-left-card .eiw-clock {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #fffaf0;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.eiw-left-card .eiw-desc {
+  flex: 1;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+  padding: 20px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  gap: 8px;
+}
+
+.eiw-desc__empty-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  background: #f1f5f9;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.eiw-desc__add-btn {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.eiw-desc__add-btn:hover {
+  text-decoration: underline;
+}
+
+.eiw-attachments-card {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+}
+
+.eiw-band--cabinet {
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1.5px solid #2563eb;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #2563eb;
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: none;
+}
+.eiw-band--cabinet:hover {
+  background: #eff6ff;
+}
+
+.eiw-left-card .eiw-money {
+  margin: 14px 0 0 0;
+  padding-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.eiw-money__total-val {
+  color: #ea580c !important;
+  font-size: 20px !important;
+  font-weight: 800 !important;
+}
+
+/* ── THẺ CỘT PHẢI (Chuẩn Ảnh 3) ─────────────────────────────────────────── */
+.eiw-right-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.eiw-right-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1.5px solid #f1f5f9;
+  margin-bottom: 16px;
+}
+
+.eiw-right-tab {
+  padding: 6px 2px 10px;
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  transition: all 0.15s ease;
+}
+.eiw-right-tab:hover {
+  color: #0f172a;
+}
+.eiw-right-tab.is-active {
+  color: #ea580c;
+  font-weight: 700;
+}
+.eiw-right-tab.is-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1.5px;
+  left: 0;
+  right: 0;
+  height: 2.5px;
+  background: #ea580c;
+  border-radius: 99px;
+}
+
+.eiw-tab-badge {
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #ffedd5;
+  color: #ea580c;
+}
+.eiw-tab-badge.is-muted {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+/* ── Hoạt động gần đây (Recent Activities) ────────────────────────────────── */
+.eiw-activity-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+.eiw-activity-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 14px 0;
+}
+.eiw-activity-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  padding-left: 18px;
+}
+.eiw-activity-timeline::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  bottom: 6px;
+  width: 1.5px;
+  background: #e2e8f0;
+}
+.eiw-activity-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.eiw-activity-dot {
+  position: absolute;
+  left: -18px;
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: #94a3b8;
+}
+.eiw-activity-item.is-danger .eiw-activity-dot {
+  background: #dc2626;
+}
+.eiw-activity-item.is-neutral .eiw-activity-dot {
+  background: #94a3b8;
+}
+.eiw-activity-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+.eiw-activity-detail {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ── Chân trang & Phím tắt ───────────────────────────────────────────────── */
+.eiw-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 20px;
+  margin-top: auto;
+  border-top: 1px solid #f1f5f9;
+  gap: 12px;
+}
+.eiw-foot__hint {
+  font-size: 12.5px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.eiw-foot__hint kbd {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  font-family: inherit;
+}
+.eiw-foot__actions-cluster {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.eiw-btn--help {
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1.5px solid #ea580c;
+  background: #ffffff;
+  color: #ea580c;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.eiw-btn--help:hover {
+  background: #fff7ed;
+}
+.eiw-foot__primary button {
+  background: #ea580c !important;
+  border-radius: 10px !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
 }
 
 .eiw-source-docs {
