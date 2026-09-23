@@ -1,5 +1,5 @@
 /* ── EmployeeHandoverModal.css ──────────────────────────
-   Phong cách hiện đại, tinh tế cho hộp thoại bàn giao nhân sự
+   Phong cách hiện đại, tinh tế cho hộp thoại bàn giao nhân sự (UI/UX Pro Max)
    ──────────────────────────────────────────────────────── */
 
 .handover-modal {
@@ -84,18 +84,143 @@
   gap: 8px;
 }
 
-.handover-banner__node-list {
-  margin-top: 10px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  max-height: 110px;
+/* Workload Grouped by Contract (Sạch sẽ, trực quan, không cắt xén) */
+.handover-grouped-contracts {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 190px;
   overflow-y: auto;
-  font-size: 0.8rem;
-  color: var(--text-secondary, #475569);
+  padding-right: 4px;
 }
 
-[data-theme='dark'] .handover-banner__node-list {
-  border-top-color: rgba(255, 255, 255, 0.08);
+[data-theme='dark'] .handover-grouped-contracts {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Thanh cuộn mảnh mượt mà */
+.handover-grouped-contracts::-webkit-scrollbar {
+  width: 5px;
+}
+.handover-grouped-contracts::-webkit-scrollbar-track {
+  background: transparent;
+}
+.handover-grouped-contracts::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+}
+[data-theme='dark'] .handover-grouped-contracts::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.handover-contract-block {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: 8px;
+  padding: 8px 10px;
+  transition: all 0.15s ease;
+}
+
+[data-theme='dark'] .handover-contract-block {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.handover-contract-block__hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+.handover-contract-block__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.handover-contract-block__badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: rgba(234, 88, 12, 0.1);
+  color: var(--orange-600, #ea580c);
+}
+
+.handover-contract-block__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.handover-step-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: var(--bg-muted, #f8fafc);
+}
+
+[data-theme='dark'] .handover-step-row {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.handover-step-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.handover-step-code {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+[data-theme='dark'] .handover-step-code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.handover-step-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handover-step-role {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.handover-step-role.is-primary {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.handover-step-role.is-secondary {
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
 }
 
 /* Section label */
@@ -118,17 +243,27 @@
   gap: 8px;
 }
 
+/* Thẻ chọn: bố cục cân xứng 100%, không bị lệch bên */
 .handover-card {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 11px 14px;
+  flex-direction: column;
+  padding: 0;
   border-radius: 10px;
   border: 1.5px solid var(--border-subtle, #e2e8f0);
   background: var(--bg-surface, #ffffff);
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  overflow: hidden;
+}
+
+.handover-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  width: 100%;
+  cursor: pointer;
 }
 
 .handover-card:hover {
@@ -196,15 +331,19 @@
   text-transform: none !important;
 }
 
-/* Assignee Drawer */
+/* Hộp chọn nhân sự: Nằm gọn gàng, đối xứng tuyệt đối (Full Width) trong thẻ */
 .handover-assignee-pane {
-  margin-top: -2px;
-  margin-bottom: 4px;
-  margin-left: 28px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: var(--bg-muted, #f8fafc);
-  border: 1px solid var(--border-subtle, #e2e8f0);
+  margin: 0;
+  width: 100%;
+  padding: 12px 14px 14px;
+  border-top: 1px solid #fed7aa;
+  background: rgba(255, 255, 255, 0.85);
+  box-sizing: border-box;
+}
+
+[data-theme='dark'] .handover-assignee-pane {
+  border-top-color: rgba(234, 88, 12, 0.25);
+  background: rgba(15, 23, 42, 0.4);
 }
 
 /* Deactivate Toggle Card */
