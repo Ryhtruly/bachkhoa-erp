@@ -209,6 +209,8 @@ class FinanceService:
 
             contract_id = payload.contract_id.strip() if payload.contract_id and payload.contract_id.strip() else None
             project_id = payload.project_id.strip() if payload.project_id and payload.project_id.strip() else None
+            contract_id = payload.contract_id.strip() if getattr(payload, "contract_id", None) and payload.contract_id.strip() else None
+            project_id = payload.project_id.strip() if getattr(payload, "project_id", None) and payload.project_id.strip() else None
 
             # Liên kết với khách hàng là tùy chọn đối với các khoản thu/chi
             # ngoài hợp đồng. Khi người dùng đã chọn liên kết, backend vẫn
@@ -363,7 +365,7 @@ class FinanceService:
                 transaction_date=parsed_date,
                 document_number=new_id,
                 description=desc,
-                department_code=payload.department_code or proj_label,
+                department_code=getattr(payload, 'department_code', None) or proj_label,
                 balance_after=bal_sau,
                 cash_balance_after=bal_tm,
                 bank_balance_after=bal_ck,

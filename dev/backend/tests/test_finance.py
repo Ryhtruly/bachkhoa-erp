@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from datetime import date, datetime
 from fastapi import HTTPException
 from src.db.models import CashflowTransaction, Contract, Customer, ServiceLine
@@ -249,19 +250,21 @@ def test_voided_contract_payment_excluded_from_installments(db):
     if not contract or not admin:
         return
 
-    payload = {
-        "type": "Thu",
-        "amount": 500000.0,
-        "category": "Thu tiền hợp đồng",
-        "payer_payee": "Khách hàng test",
-        "payment_method": "Tiền mặt",
-        "transaction_date": datetime.now().strftime("%Y-%m-%d"),
-        "description": "Test installment void exclusion",
-        "scope": "Công ty",
-        "contract_id": contract.id,
-    }
-    created = FinanceService.create_cashflow(db, type("P", (), payload)(), actor_id=admin.id)
-    tx_id = created["id"]
+    tx_id = f"PT-TEST-{uuid.uuid4().hex[:6].upper()}"
+    tx = CashflowTransaction(
+        id=tx_id,
+        contract_id=contract.id,
+        transaction_type="INCOME",
+        amount=500000.0,
+        category_code="Thu tiền hợp đồng",
+        payer_payee_name="Khách hàng test",
+        payment_method="CASH",
+        transaction_date=datetime.now().date(),
+        status="COMPLETED",
+        created_by_user_id=admin.id,
+    )
+    db.add(tx)
+    db.commit()
     try:
         # Before void: installments should include tx_id
         items_before = installments(db, contract.id)

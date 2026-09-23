@@ -225,6 +225,7 @@ def redis_distributed_lock(
     - Nếu Redis không khả dụng (môi trường dev/test không có Redis, hoặc sự cố mạng tạm thời):
       Dùng khóa bộ nhớ trong (in-memory lock) an toàn luồng (threading.Lock) để ngăn race condition /
       bấm trùng nút trong cùng tiến trình mà không làm gián đoạn hệ thống.
+    - Nếu Redis sập: Từ chối thao tác để bảo toàn tính nguyên tử của nghiệp vụ.
     """
     client = get_redis_client()
     full_key = f"bachkhoa:lock:{lock_key}"
@@ -243,6 +244,10 @@ def redis_distributed_lock(
             if blocking_timeout <= 0 or (time.time() - start_time) >= blocking_timeout:
                 break
             time.sleep(0.05)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Dịch vụ khóa giao dịch tạm thời không khả dụng. Vui lòng thử lại.",
+        )
 
         if not acquired:
             msg = custom_error_msg or "Thao tác đang được xử lý bởi một yêu cầu khác, vui lòng không bấm liên tiếp."
@@ -254,6 +259,7 @@ def redis_distributed_lock(
                 _fallback_locks.pop(full_key, None)
         return
 
+    full_key = f"bachkhoa:lock:{lock_key}"
     lock = client.lock(full_key, timeout=timeout_seconds, blocking_timeout=blocking_timeout)
     acquired = False
     try:
@@ -276,6 +282,11 @@ def redis_distributed_lock(
         finally:
             with _fallback_locks_mutex:
                 _fallback_locks.pop(full_key, None)
+        logger.error("Redis lock error cho '%s': thao tác bị từ chối: %s", full_key, exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Không thể xác nhận khóa giao dịch. Vui lòng thử lại.",
+        ) from exc
     finally:
         if acquired:
             try:

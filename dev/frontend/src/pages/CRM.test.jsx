@@ -152,6 +152,87 @@ describe('CRM Component — Sales and Director views', () => {
     });
   });
 
+  it('enforces sales isolation: in "Báo giá" column only shows user own items, never items of other sales', async () => {
+    const customLeads = [
+      {
+        id: 'lead-contact-pool',
+        customer_name: 'Khách Bể Chung',
+        phone: '0901111111',
+        source: 'Web Form (Zalo)',
+        requirements: 'Đo hiện trạng',
+        status: 'Tiếp cận',
+        assigned_to: null,
+      },
+      {
+        id: 'lead-contact-other',
+        customer_name: 'Khách Tiếp Cận Sale Khác',
+        phone: '0902222222',
+        source: 'Facebook',
+        requirements: 'Đo hiện trạng',
+        status: 'Tiếp cận',
+        assigned_to: 'user-sale-2',
+      },
+      {
+        id: 'lead-quote-mine',
+        customer_name: 'Khách Báo Giá Của Tôi',
+        phone: '0903333333',
+        source: 'Hotline',
+        requirements: 'Báo giá đo đạc',
+        status: 'Báo giá',
+        assigned_to: 'user-sale-1',
+      },
+      {
+        id: 'lead-quote-other',
+        customer_name: 'Khách Báo Giá Sale Khác',
+        phone: '0904444444',
+        source: 'Zalo',
+        requirements: 'Báo giá cắm mốc',
+        status: 'Báo giá',
+        assigned_to: 'user-sale-2',
+      },
+      {
+        id: 'lead-quote-unassigned',
+        customer_name: 'Khách Báo Giá Chưa Nhận',
+        phone: '0905555555',
+        source: 'Web',
+        requirements: 'Báo giá',
+        status: 'Báo giá',
+        assigned_to: null,
+      },
+    ];
+
+    apiFetch.mockImplementation((url) => {
+      if (url.includes('/api/crm/leads')) {
+        return Promise.resolve({ status: 'success', data: customLeads });
+      }
+      if (url.includes('/api/crm/stats')) {
+        return Promise.resolve({ status: 'success', data: mockStats });
+      }
+      return Promise.resolve({ status: 'success', data: {} });
+    });
+
+    renderCRM({
+      user: { id: 'user-sale-1', username: 'sale1', role_name: 'sales' },
+      isDirector: false,
+    });
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith('/api/crm/leads?scope=mine');
+    });
+
+    // In 'Tiếp cận': unassigned lead is visible (first come first served claim pool)
+    expect(screen.getByText('Khách Bể Chung')).toBeInTheDocument();
+    // In 'Tiếp cận': another sale's lead is NOT visible
+    expect(screen.queryByText('Khách Tiếp Cận Sale Khác')).not.toBeInTheDocument();
+
+    // In 'Báo giá': user's own quotation lead is visible
+    expect(screen.getByText('Khách Báo Giá Của Tôi')).toBeInTheDocument();
+    // In 'Báo giá': another sale's quotation is NOT visible
+    expect(screen.queryByText('Khách Báo Giá Sale Khác')).not.toBeInTheDocument();
+    // In 'Báo giá': unassigned lead in quote stage is NOT visible
+    expect(screen.queryByText('Khách Báo Giá Chưa Nhận')).not.toBeInTheDocument();
+  });
+
   it('renders Director view with owner badge, avatar, and Settings modal', async () => {
     renderCRM({
       user: { id: 'user-director', username: 'admin', role_name: 'admin' },

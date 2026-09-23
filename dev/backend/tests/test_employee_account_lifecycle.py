@@ -392,8 +392,9 @@ def test_admin_can_create_admin_account(db):
         db.add(admin_user)
         db.commit()
 
-    db.add(UserRole(user_id=admin_user.id, role_id=admin_role.id))
-    db.commit()
+    if not db.query(UserRole).filter(UserRole.user_id == admin_user.id, UserRole.role_id == admin_role.id).first():
+        db.add(UserRole(user_id=admin_user.id, role_id=admin_role.id))
+        db.commit()
 
     emp = Employee(
         id=f"emp_{uuid.uuid4().hex[:10]}",

@@ -741,8 +741,6 @@ def node_shortage_report(db: Session, task_node_id: str) -> list[dict[str, Any]]
     output_rows = db.execute(
         _NODE_OUTPUT_STATE_QUERY, {"task_node_id": task_node_id}
     ).mappings().all()
-    if not output_rows:
-        return []
 
     template_names = dict(
         db.execute(

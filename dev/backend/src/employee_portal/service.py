@@ -1288,7 +1288,7 @@ class EmployeePortalService:
             "tasks": [
                 {
                     "id": task["id"],
-                    "workflow_instance_id": task["workflow_instance_id"],
+                    "workflow_instance_id": task.get("workflow_instance_id"),
                     "node_code": task["node_code"],
                     "node_key": task["node_key"],
                     "capability_code": task.get("capability_code"),

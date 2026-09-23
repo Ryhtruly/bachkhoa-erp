@@ -235,8 +235,7 @@ def _ensure_fake_redis_when_redis_offline():
 
 from src.index import app
 from src.db.database import engine, Base, get_db
-from src.db.models import User, Role, UserRole, RolePermission, AuditLog
-from src.db.models import User, Role, UserRole, RolePermission, AuditLog, Employee
+from src.db.models import User, Role, UserRole, RolePermission, AuditLog, Employee, Permission, RolePermissionGrant
 from src.core.auth import hash_password, create_access_token
 
 
@@ -1442,6 +1441,21 @@ def finance_clerk_user(db):
         setattr(perm, "can_approve", True)
     db.add(user_role)
     db.add(perm)
+
+    created_grants = []
+    try:
+        finance_perms = db.query(Permission).filter(Permission.resource_code == "finance").all()
+        for fp in finance_perms:
+            existing = db.query(RolePermissionGrant).filter(
+                RolePermissionGrant.role_id == role.id,
+                RolePermissionGrant.permission_code == fp.code,
+            ).first()
+            if not existing:
+                grant = RolePermissionGrant(role_id=role.id, permission_code=fp.code)
+                db.add(grant)
+                created_grants.append(grant)
+    except Exception:
+        pass
     db.commit()
 
     token = create_access_token(str(user.id))
@@ -1452,6 +1466,11 @@ def finance_clerk_user(db):
     # Cleanup
     db.query(AuditLog).filter(AuditLog.actor_id == user.id).delete()
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
+    for grant in created_grants:
+        try:
+            db.delete(grant)
+        except Exception:
+            pass
     if permission_created:
         db.query(RolePermission).filter(
             RolePermission.role_id == role.id,

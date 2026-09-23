@@ -838,6 +838,7 @@ class NopThangKhiConToBiTraLaiTests(unittest.TestCase):
             }],
         }
         with patch("src.dossiers.documents.node_shortage_report", return_value=[]), \
+             patch.object(workflow_runtime, "unaccepted_predecessors", return_value=[]), \
              patch.object(workflow_runtime, "node_document_review_summary", return_value=review):
             with self.assertRaises(
                 workflow_runtime.WorkflowValidationError,
@@ -863,6 +864,7 @@ class NopThangKhiConToBiTraLaiTests(unittest.TestCase):
         }
         with patch("src.dossiers.documents.node_shortage_report", return_value=[]), \
              patch.object(workflow_runtime, "submit_types_for_node", return_value={}), \
+             patch.object(workflow_runtime, "unaccepted_predecessors", return_value=[]), \
              patch.object(workflow_runtime, "node_document_review_summary", return_value=review):
             ket_qua = workflow_runtime.submit_task_node_for_acceptance(
                 db, task_node_id="TN-1", employee_id="EMP-1",

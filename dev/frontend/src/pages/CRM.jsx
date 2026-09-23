@@ -94,9 +94,11 @@ function parseLeadRequirements(reqStr = '') {
 
 export default function CRM({ user, isDirector = false, employeeMode = false }) {
   const { addToast } = useToast();
-  const managerView = !employeeMode;
-  const canConfigure = Boolean(isDirector || user?.role_name === 'accountant' || user?.role_name === 'admin');
-  const leadScope = employeeMode ? 'mine' : 'all';
+  const isManager = Boolean(isDirector || user?.role_name === 'admin' || user?.role_name === 'accountant');
+  const managerView = isManager && !employeeMode;
+  const effectiveEmployeeMode = !managerView;
+  const canConfigure = isManager && managerView;
+  const leadScope = managerView ? 'all' : 'mine';
   const [leads, setLeads] = useState([]);
   const [stats, setStats] = useState({ total_leads: 0, won_leads: 0, in_progress: 0, win_rate: 0 });
   const [loading, setLoading] = useState(true);
@@ -399,6 +401,18 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   const filteredLeads = useMemo(() => {
     const q = normalizeVietnamese(searchTerm);
     return leads.filter(l => {
+      // Phân lập dữ liệu nhân viên Sale (Defense in Depth):
+      // - Cột "Tiếp cận": Sale thấy lead chưa gán (bể claim "ai nhanh tay thì được") HOẶC lead của chính mình
+      // - Cột "Báo giá", "Đàm phán", "Chốt": Sale chỉ nhìn thấy lead của chính mình phụ trách
+      if (!managerView) {
+        if (l.status === 'Tiếp cận') {
+          const canSee = !l.assigned_to || l.assigned_to === user?.id;
+          if (!canSee) return false;
+        } else {
+          if (l.assigned_to !== user?.id) return false;
+        }
+      }
+
       const matchSearch = !q ||
         normalizeVietnamese(l.customer_name).includes(q) ||
         (l.phone || '').includes(searchTerm.trim()) ||
@@ -411,14 +425,14 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
 
       return matchSearch && matchSource && matchSale;
     });
-  }, [leads, searchTerm, filterSource, filterSale, managerView]);
+  }, [leads, searchTerm, filterSource, filterSale, managerView, user?.id]);
 
   return (
     <section className="tab-pane active crm-container" id="tab-crm">
       {/* Stats Header */}
       <StatsGrid>
         <StatCard
-          label={employeeMode ? "Lead Của Tôi" : "Tổng Lead Tiếp Nhận"}
+          label={effectiveEmployeeMode ? "Lead Của Tôi" : "Tổng Lead Tiếp Nhận"}
           value={stats.total_leads || 0}
           icon={<Target size={24} />}
           iconVariant="purple"
@@ -436,10 +450,10 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
           iconVariant="green"
         />
         <StatCard
-          label={employeeMode ? "Tỷ Lệ Hoa Hồng" : "Tỉ Lệ Chốt Thầu"}
-          value={employeeMode ? `${crmPolicy.commission_rate_percent || 0}%` : `${stats.win_rate || 0}%`}
-          icon={employeeMode ? <Sparkles size={24} /> : <Percent size={24} />}
-          iconVariant={employeeMode ? "orange" : "red"}
+          label={effectiveEmployeeMode ? "Tỷ Lệ Hoa Hồng" : "Tỉ Lệ Chốt Thầu"}
+          value={effectiveEmployeeMode ? `${crmPolicy.commission_rate_percent || 0}%` : `${stats.win_rate || 0}%`}
+          icon={effectiveEmployeeMode ? <Sparkles size={24} /> : <Percent size={24} />}
+          iconVariant={effectiveEmployeeMode ? "orange" : "red"}
         />
       </StatsGrid>
 

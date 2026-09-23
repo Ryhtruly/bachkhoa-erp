@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text, or_, case
+from sqlalchemy import func, text, or_, and_, case
 import datetime
 import uuid
 import os
@@ -170,9 +171,19 @@ def get_crm_stats(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("crm", "read"))
 ):
+    manager_view = _is_crm_manager(db, user)
+    if not manager_view:
+        scope = "mine"
+
     base_filter = []
     if scope == "mine":
         base_filter.append(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+        base_filter.append(
+            or_(
+                and_(LeadPipeline.status == "Tiếp cận", LeadPipeline.assigned_to.is_(None)),
+                LeadPipeline.assigned_to == user.id,
+            )
+        )
     elif scope != "all":
         raise HTTPException(status_code=422, detail="scope must be all or mine")
 
@@ -243,9 +254,18 @@ def get_leads(
     user: User = Depends(require_permission("crm", "read"))
 ):
     manager_view = _is_crm_manager(db, user)
+    if not manager_view:
+        scope = "mine"
+
     query = db.query(LeadPipeline)
     if scope == "mine":
         query = query.filter(or_(LeadPipeline.assigned_to.is_(None), LeadPipeline.assigned_to == user.id))
+        query = query.filter(
+            or_(
+                and_(LeadPipeline.status == "Tiếp cận", LeadPipeline.assigned_to.is_(None)),
+                LeadPipeline.assigned_to == user.id,
+            )
+        )
     elif scope != "all":
         raise HTTPException(status_code=422, detail="scope must be all or mine")
     leads = query.order_by(LeadPipeline.created_at.desc()).all()
@@ -276,10 +296,23 @@ def get_leads(
                     employees_map[e.user_id] = e
                 if e.id:
                     employees_map[e.id] = e
+    assigned_ids = {l.assigned_to for l in leads if l.assigned_to}
+    if assigned_ids:
+        emp_rows = (
+            db.query(Employee.id, Employee.user_id, Employee.full_name, Employee.avatar_url)
+            .filter(or_(Employee.user_id.in_(assigned_ids), Employee.id.in_(assigned_ids)))
+            .all()
+        )
+        for e in emp_rows:
+            if e.user_id:
+                employees_map[e.user_id] = e
+            if e.id:
+                employees_map[e.id] = e
 
     results = []
     for l in leads:
         cust = customers_map.get(l.customer_id)
+        owner = employees_map.get(l.assigned_to) if l.assigned_to else None
         row = {
             "id": l.id,
             "customer_name": cust.full_name if cust else "Unknown",
@@ -294,6 +327,9 @@ def get_leads(
             owner = employees_map.get(l.assigned_to)
             row["assigned_to_name"] = owner.full_name if owner else ""
             row["assigned_to_avatar_url"] = owner.avatar_url if owner else None
+        if owner and (manager_view or l.assigned_to == user.id):
+            row["assigned_to_name"] = owner.full_name
+            row["assigned_to_avatar_url"] = owner.avatar_url
         results.append(row)
     return {"status": "success", "data": results}
 

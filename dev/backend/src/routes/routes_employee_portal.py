@@ -683,7 +683,6 @@ def create_checklist_document_type(
 ):
     from src.dossiers.checklist_document_types import add_type
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     try:
         result = add_type(
@@ -718,7 +717,6 @@ async def upload_checklist_document_type_files(
     from src.dossiers.checklist_document_types import add_files
     from src.dossiers.documents import MAX_DOCUMENT_BYTES
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     if not files:
         raise HTTPException(status_code=422, detail="Phải chọn ít nhất một tệp.")
@@ -770,7 +768,6 @@ def delete_checklist_document_type_file(
 ):
     from src.dossiers.checklist_document_types import remove_file
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     _require_document_type_in_checklist(db, checklist_result_id, type_id)
     try:
@@ -884,7 +881,6 @@ def classify_source_document(
     """Gán giấy nguyên bản vào đúng loại giấy checklist trong một transaction."""
     from src.dossiers.checklist_document_types import attach_existing_file
 
-    _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     employee = _authorize_document_type_route(db, user, task_node_id, checklist_result_id)
     document_type_id = str(payload.document_type_id or "").strip() or None
     if document_type_id:
