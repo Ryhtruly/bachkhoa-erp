@@ -7,6 +7,7 @@ import { API, CF_COLS } from '../financeConstants';
 import { PlusCircle, HandCoins, Printer } from 'lucide-react';
 import CashflowDetailModal from '../modals/CashflowDetailModal';
 import { apiFetch } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
@@ -228,13 +229,13 @@ export default function AdvanceRequestScreen({ month: propMonth, setMonth: propS
   };
 
   const filtered = data.filter(t => {
-    if (search) {
-      const q = search.toLowerCase();
+    if (search.trim()) {
+      const q = normalizeVietnamese(search.trim());
       const matchSearch =
-        (t.id || '').toLowerCase().includes(q) ||
-        (t.partner || t.payer_payee || '').toLowerCase().includes(q) ||
-        (t.note || t.description || '').toLowerCase().includes(q) ||
-        (t.category || '').toLowerCase().includes(q);
+        normalizeVietnamese(t.id || '').includes(q) ||
+        normalizeVietnamese(t.partner || t.payer_payee || '').includes(q) ||
+        normalizeVietnamese(t.note || t.description || '').includes(q) ||
+        normalizeVietnamese(t.category || '').includes(q);
       if (!matchSearch) return false;
     }
     if (filters.payment_method !== 'All') {

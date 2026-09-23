@@ -8,7 +8,6 @@ import {
   FolderDown,
   Lock,
   Plus,
-  ShieldAlert,
   ShieldCheck,
   UploadCloud,
   XCircle,

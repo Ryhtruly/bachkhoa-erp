@@ -396,6 +396,19 @@ def _feed_label(row) -> str:
     return node
 
 
+_HAS_NOTIFICATION_READS_TABLE: bool | None = None
+
+def _has_notification_reads_table(db: Session) -> bool:
+    global _HAS_NOTIFICATION_READS_TABLE
+    if _HAS_NOTIFICATION_READS_TABLE is None:
+        try:
+            val = db.execute(text("select to_regclass('public.notification_reads')")).scalar()
+            _HAS_NOTIFICATION_READS_TABLE = bool(val)
+        except Exception:
+            return False
+    return _HAS_NOTIFICATION_READS_TABLE
+
+
 def employee_event_feed(db: Session, *, user_id: str, employee_id: str | None) -> list[dict]:
     """Sự kiện chưa đọc của các bước người này đang giữ.
 
@@ -404,13 +417,9 @@ def employee_event_feed(db: Session, *, user_id: str, employee_id: str | None) -
     """
     if not employee_id:
         return []
-    if not db.execute(text("select to_regclass('public.notification_reads')")).scalar():
+    if not _has_notification_reads_table(db):
         # Migration C3 chưa lên. Trả rỗng và đi tiếp — chuông cũ vẫn chạy, không
         # được để cả chuông vỡ vì một phần mới.
-        #
-        # Kiểm bảng thay vì bọc try/except quanh truy vấn: một except rộng ở đây
-        # nuốt luôn lỗi cú pháp SQL, và feed im lặng trả rỗng mãi mà không ai
-        # biết vì sao — đúng cái vừa xảy ra khi viết hàm này.
         return []
     rows = db.execute(_EMPLOYEE_FEED_QUERY, {
         "event_types": list(_EMPLOYEE_FEED_TYPES),
@@ -435,25 +444,17 @@ def get_notifications_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Chốt lười TRƯỚC khi đọc cache: nhân viên bị trả bài sẽ bấm chuông, chứ
-    # không tự mở lại bước mình vừa nộp. Đây là cổng thật của đường chốt lười —
-    # chỉ gắn ở cổng chi tiết bước thì đúng người cần tin lại không kích hoạt
-    # được nó.
-    #
-    # Chạy trước cache vì nếu chốt xong mới trả cache cũ thì tin vừa sinh ra phải
-    # đợi hết TTL mới hiện.
+    cache_key = f"bachkhoa:notifications:summary:{user.id}"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     employee_id = db.execute(
         text("select id from public.employees where user_id = :u limit 1"),
         {"u": user.id},
     ).scalar()
     if flush_stale_review_batches(db, employee_id=employee_id):
         db.commit()
-        invalidate_cache(f"bachkhoa:notifications:summary:{user.id}")
-
-    cache_key = f"bachkhoa:notifications:summary:{user.id}"
-    cached = get_cached_json(cache_key)
-    if cached is not None:
-        return cached
 
     items = []
 
@@ -561,7 +562,7 @@ def get_notifications_summary(
 
     items.sort(key=lambda item: item["created_at"] or "")
     result = {"count": len(items), "items": items}
-    set_cached_json(cache_key, result, ttl_seconds=10)
+    set_cached_json(cache_key, result, ttl_seconds=30)
     return result
 
 

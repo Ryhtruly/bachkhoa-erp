@@ -10,6 +10,7 @@ import ReceiptLinks from '../components/finance/ReceiptLinks'
 import { buildPaymentFormData } from '../components/finance/paymentReceipts'
 import { useToast } from '../contexts/ToastContext'
 import { apiFetch, getAccessToken } from '../lib/api'
+import { normalizeVietnamese } from '../lib/vietnamese'
 import './debtCollection.css'
 
 /**
@@ -158,12 +159,12 @@ export default function DebtCollection({ user = null, isDirector = false, initia
 
   const filteredRows = useMemo(() => {
     return rows.filter(r => {
-      const q = search.trim().toLowerCase()
+      const q = normalizeVietnamese(search.trim())
       const matchSearch = !q ||
-        (r.contract_id || '').toLowerCase().includes(q) ||
-        (r.customer_name || '').toLowerCase().includes(q) ||
-        (r.service_type || '').toLowerCase().includes(q) ||
-        (r.deliverer_name || '').toLowerCase().includes(q)
+        normalizeVietnamese(r.contract_id || '').includes(q) ||
+        normalizeVietnamese(r.customer_name || '').includes(q) ||
+        normalizeVietnamese(r.service_type || '').includes(q) ||
+        normalizeVietnamese(r.deliverer_name || '').includes(q)
 
       if (!matchSearch) return false
 

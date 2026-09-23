@@ -1,12 +1,15 @@
+import io
+import math
+import mimetypes
+import os
+import re
+from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
 from pydantic import BaseModel
-from typing import List, Optional
-import math
-import re
-import io
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
 from src.db.database import get_db
 from src.db.models import WikiDocument, AuditLog
 from src.services.storage_service import upload_file, ensure_bucket, get_file, delete_file
@@ -18,7 +21,7 @@ from src.services.wiki_rag_service import (
     cancel_indexing_job,
 )
 from src.core.auth import require_permission, User
-from src.core.redis_utils import consume_rate_limit
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
 
 router = APIRouter(prefix="/api/wiki", tags=["09. Knowledge Base & Wiki"])
 MAX_WIKI_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -51,6 +54,14 @@ def list_documents(
     user: User = Depends(require_permission("wiki", "read"))
 ):
     try:
+        # Cache the default initial view (page 1, all categories, no search query)
+        is_default_view = not search and (not category or category == "Tất cả") and page == 1 and page_size == 20
+        cache_key = "bachkhoa:wiki:default_list" if is_default_view else None
+        if cache_key:
+            cached = get_cached_json(cache_key)
+            if cached is not None:
+                return cached
+
         query = db.query(WikiDocument).filter(WikiDocument.is_active == True)
         
         if search:
@@ -68,8 +79,11 @@ def list_documents(
         total_items = query.count()
         total_pages = math.ceil(total_items / page_size) if total_items > 0 else 1
         
-        offset = (page - 1) * page_size
-        docs = query.order_by(WikiDocument.created_at.desc()).offset(offset).limit(page_size).all()
+        if total_items == 0:
+            docs = []
+        else:
+            offset = (page - 1) * page_size
+            docs = query.order_by(WikiDocument.created_at.desc()).offset(offset).limit(page_size).all()
         
         result = []
         for d in docs:
@@ -78,12 +92,13 @@ def list_documents(
                 "title": d.title,
                 "category": d.category,
                 "link": d.link,
+                "file_name": os.path.basename(d.link) if d.link else None,
                 "description": d.description,
                 "version": d.version,
                 "created_at": d.created_at.isoformat() if d.created_at else None
             })
             
-        return {
+        response_data = {
             "status": "success", 
             "data": result,
             "meta": {
@@ -93,6 +108,11 @@ def list_documents(
                 "total_pages": total_pages
             }
         }
+
+        if cache_key:
+            set_cached_json(cache_key, response_data, ttl_seconds=60)
+
+        return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -127,8 +147,15 @@ async def upload_document(
         if existing:
             raise HTTPException(status_code=400, detail="Mã tài liệu đã tồn tại.")
 
-        file_bytes = await file.read(MAX_WIKI_UPLOAD_BYTES + 1)
-        if len(file_bytes) > MAX_WIKI_UPLOAD_BYTES:
+        # Validate file size without buffering entire stream into RAM
+        try:
+            file.file.seek(0, io.SEEK_END)
+            file_size = file.file.tell()
+            file.file.seek(0)
+        except (AttributeError, io.UnsupportedOperation):
+            file_size = getattr(file, "size", None) or 0
+
+        if file_size > MAX_WIKI_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="File Wiki không được vượt quá 25MB.")
 
         # Sanitize filename: remove special characters, keep only alphanumeric, dash, underscore, dot
@@ -136,11 +163,11 @@ async def upload_document(
         safe_name = re.sub(r'_+', '_', safe_name).strip('_')
         object_name = f"wiki/{id}/{safe_name}"
 
-        # Upload file to MinIO and persist DB record FIRST before enqueuing to eliminate worker FK race condition
+        # Stream file to MinIO and persist DB record FIRST before enqueuing to eliminate worker FK race condition
         uploaded = False
         try:
             ensure_bucket()
-            upload_file(io.BytesIO(file_bytes), object_name)
+            upload_file(file.file, object_name)
             uploaded = True
 
             new_doc = WikiDocument(
@@ -168,13 +195,17 @@ async def upload_document(
                     pass
             raise
 
-        # Enqueue indexing job now that WikiDocument record is committed in DB
-        enqueued = enqueue_indexing_job(file_bytes, file.filename or safe_name, id, object_name=object_name)
+        # Enqueue indexing job now that WikiDocument record is committed in DB.
+        # Passing None for file_bytes allows worker to stream from MinIO directly, keeping RAM near 0.
+        enqueued = enqueue_indexing_job(None, file.filename or safe_name, id, object_name=object_name)
         if not enqueued:
             return {
                 "status": "success",
                 "message": "Đã lưu tài liệu thành công. Quá trình bóc tách nội dung đã được xếp vào hàng đợi chờ tự động.",
             }
+
+        # Invalidate wiki list cache so newly uploaded document appears immediately
+        invalidate_cache("bachkhoa:wiki:*")
 
         return {"status": "success", "message": "Đã lưu tài liệu thành công"}
     except HTTPException:
@@ -183,9 +214,6 @@ async def upload_document(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-
-import mimetypes
-import os
 
 
 @router.get("/download/{doc_id}")
@@ -226,7 +254,10 @@ def download_document(
         return StreamingResponse(
             _stream_storage_body(stored["Body"]),
             media_type=content_type,
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
         )
     except Exception as exc:
         raise HTTPException(status_code=404, detail="File không tồn tại trên object storage.") from exc

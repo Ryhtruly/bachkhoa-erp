@@ -35,6 +35,7 @@ dev/backend/static/contracts/
 dev/backend/static/generated_contracts/
 dev/backend/private/generated_docs/
 /.agents
+/.agent
 /.claude
 /mdfiles
 .worktrees/

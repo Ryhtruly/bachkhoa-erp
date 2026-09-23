@@ -11,6 +11,7 @@ import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
 import { apiFetch } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import { getPrintableTransactions, isCountedTransaction } from './cashflowPrintUtils';
 
 const STATUS_OPTIONS = [
@@ -140,12 +141,13 @@ export default function CashflowScreen({ mode = 'all', month: propMonth, setMont
           if (!matchPm) return false;
         }
 
-        const matchSearch = search.trim() === '' ||
-          item.id?.toLowerCase().includes(search.toLowerCase()) ||
-          item.payer_payee?.toLowerCase().includes(search.toLowerCase()) ||
-          item.partner?.toLowerCase().includes(search.toLowerCase()) ||
-          item.category?.toLowerCase().includes(search.toLowerCase()) ||
-          (item.description || '')?.toLowerCase().includes(search.toLowerCase());
+        const q = normalizeVietnamese(search.trim());
+        const matchSearch = !q ||
+          normalizeVietnamese(item.id || '').includes(q) ||
+          normalizeVietnamese(item.payer_payee || '').includes(q) ||
+          normalizeVietnamese(item.partner || '').includes(q) ||
+          normalizeVietnamese(item.category || '').includes(q) ||
+          normalizeVietnamese(item.description || '').includes(q);
 
         return matchSearch;
       })

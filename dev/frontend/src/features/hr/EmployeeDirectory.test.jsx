@@ -10,6 +10,7 @@ describe('EmployeeDirectory', () => {
     clearApiCache()
     vi.unstubAllGlobals()
     vi.clearAllMocks()
+    clearApiCache()
   })
 
   it('selects an employee into the detail panel, edits it, and does not send user_id in the PUT body', async () => {
@@ -121,5 +122,75 @@ describe('EmployeeDirectory', () => {
       expect(body.citizen_id).toBe('001085000123')
       expect(body.bank_name).toBe('Vietcombank')
     })
+  })
+
+  it('supports accent-insensitive search matching unaccented input against accented fields', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (String(url).includes('/api/finance/employees/departments')) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      }
+      if (String(url).includes('/api/finance/employees')) {
+        return Promise.resolve(new Response(JSON.stringify([
+          { id: 'emp-1', full_name: 'Nguyễn Văn An', department: 'Kỹ thuật', job_title: 'Kỹ sư', is_active: true },
+          { id: 'emp-2', full_name: 'Trần Thị Bích', department: 'Kế toán', job_title: 'Kế toán viên', is_active: true },
+        ]), { status: 200 }))
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<ToastProvider><EmployeeDirectory /></ToastProvider>)
+
+    expect(await screen.findByText('Nguyễn Văn An')).toBeInTheDocument()
+    expect(screen.getByText('Trần Thị Bích')).toBeInTheDocument()
+
+    const searchInput = screen.getByPlaceholderText('Tìm kiếm...')
+    // Search with unaccented "nguyen"
+    fireEvent.change(searchInput, { target: { value: 'nguyen' } })
+
+    expect(screen.getByText('Nguyễn Văn An')).toBeInTheDocument()
+    expect(screen.queryByText('Trần Thị Bích')).not.toBeInTheDocument()
+
+    // Search with unaccented "ky thuat"
+    fireEvent.change(searchInput, { target: { value: 'ky thuat' } })
+    expect(screen.getByText('Nguyễn Văn An')).toBeInTheDocument()
+    expect(screen.queryByText('Trần Thị Bích')).not.toBeInTheDocument()
+
+    // Search with unaccented "bich"
+    fireEvent.change(searchInput, { target: { value: 'bich' } })
+    expect(screen.queryByText('Nguyễn Văn An')).not.toBeInTheDocument()
+    expect(screen.getByText('Trần Thị Bích')).toBeInTheDocument()
+  })
+
+  it('filters employees by active, inactive, and all status tabs', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (String(url).includes('/api/finance/employees/departments')) {
+        return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+      }
+      if (String(url).includes('/api/finance/employees')) {
+        return Promise.resolve(new Response(JSON.stringify([
+          { id: 'emp-active', full_name: 'Hoàng Minh', department: 'Kinh doanh', job_title: 'Chuyên viên', is_active: true },
+          { id: 'emp-inactive', full_name: 'Lê Văn Tèo', department: 'Hành chính', job_title: 'Bảo vệ', is_active: false },
+        ]), { status: 200 }))
+      }
+      return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<ToastProvider><EmployeeDirectory /></ToastProvider>)
+
+    // Default status tab is "Đang làm" (active)
+    expect(await screen.findByText('Hoàng Minh')).toBeInTheDocument()
+    expect(screen.queryByText('Lê Văn Tèo')).not.toBeInTheDocument()
+
+    // Switch to "Đã nghỉ" tab
+    fireEvent.click(screen.getByRole('tab', { name: /đã nghỉ/i }))
+    expect(screen.queryByText('Hoàng Minh')).not.toBeInTheDocument()
+    expect(screen.getByText('Lê Văn Tèo')).toBeInTheDocument()
+
+    // Switch to "Tất cả" tab
+    fireEvent.click(screen.getByRole('tab', { name: /tất cả/i }))
+    expect(screen.getByText('Hoàng Minh')).toBeInTheDocument()
+    expect(screen.getByText('Lê Văn Tèo')).toBeInTheDocument()
   })
 })

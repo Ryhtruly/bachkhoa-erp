@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Archive, Banknote, CheckCircle2, Clock, History, Pencil, Plus, RotateCcw, Search } from 'lucide-react';
-import { ConfirmationModal, DataTable, FormGrid, FormRow, Modal } from '../../ui';
+import { ConfirmationModal, DataTable, FormGrid, FormRow, Modal, Select } from '../../ui';
 import { useToast } from '../../../contexts/ToastContext';
 import { fmt } from '../utils';
 import { API } from '../financeConstants';
 import { apiFetch } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import './PieceRatePricingScreen.css';
 
 // Role labels for display: main / assistant / submitter
 const ROLE_LABELS = { MAIN: 'Đơn giá chính', ASSISTANT: 'Phụ đo / hỗ trợ', SUBMITTER: 'Người đi nộp' };
+const PIECE_RATE_ROLES = ['MAIN', 'ASSISTANT', 'SUBMITTER'];
 
 export default function PieceRatePricingScreen({ isDirector = false }) {
   const { addToast } = useToast();
@@ -21,9 +23,10 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   const [history, setHistory] = useState(null);
   const [publishTarget, setPublishTarget] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [departments, setDepartments] = useState([]);
   const [itemEditor, setItemEditor] = useState(null);
   const [itemForm, setItemForm] = useState({
-    code: '', name: '', default_unit: '', output_definition: '',
+    code: '', name: '', default_unit: '', output_definition: '', department_id: '',
     initial_rates: { MAIN: '', ASSISTANT: '', SUBMITTER: '' },
   });
   const [deactivateTarget, setDeactivateTarget] = useState(null);
@@ -34,6 +37,9 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
       const query = isDirector && showInactive ? '?include_inactive=true' : '';
       const payload = await apiFetch(`${API}/api/piece-rates/rates${query}`);
       setRows(payload.data || []);
+      if (Array.isArray(payload.departments)) {
+        setDepartments(payload.departments);
+      }
     } catch (error) {
       addToast(error.message || 'Lỗi tải bảng giá khoán', 'error');
     } finally {
@@ -44,24 +50,19 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeVietnamese(search.trim());
     if (!q) return rows;
     return rows.filter(r =>
-      (r.name || '').toLowerCase().includes(q) ||
-      (r.code || '').toLowerCase().includes(q) ||
-      (r.department_name || '').toLowerCase().includes(q)
+      normalizeVietnamese(r.name || '').includes(q) ||
+      normalizeVietnamese(r.code || '').includes(q) ||
+      normalizeVietnamese(r.department_name || '').includes(q)
     );
   }, [rows, search]);
-
-  const getItemRoles = (item) => {
-    const roles = new Set([...Object.keys(item.rates || {}), ...Object.keys(item.pending || {})]);
-    return ['MAIN', 'ASSISTANT', 'SUBMITTER'].filter(r => roles.has(r) || roles.size === 0);
-  };
 
   const openEdit = (item) => {
     setEditing(item);
     const initialForm = {};
-    getItemRoles(item).forEach(role => {
+    PIECE_RATE_ROLES.forEach(role => {
       initialForm[role] = String(item.pending?.[role]?.amount ?? item.rates?.[role]?.amount ?? '');
     });
     setForm(initialForm);
@@ -69,7 +70,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
 
   const openCreateItem = () => {
     setItemForm({
-      code: '', name: '', default_unit: '', output_definition: '',
+      code: '', name: '', default_unit: '', output_definition: '', department_id: '',
       initial_rates: { MAIN: '', ASSISTANT: '', SUBMITTER: '' },
     });
     setItemEditor({ mode: 'create', item: null });
@@ -81,6 +82,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
       name: item.name || '',
       default_unit: item.unit || 'job',
       output_definition: item.output_definition || '',
+      department_id: item.department_id || '',
       initial_rates: { MAIN: '', ASSISTANT: '', SUBMITTER: '' },
     });
     setItemEditor({ mode: 'edit', item });
@@ -103,6 +105,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
           name: itemForm.name,
           default_unit: itemForm.default_unit,
           output_definition: itemForm.output_definition || null,
+          department_id: itemForm.department_id || null,
           initial_rates,
         };
         endpoint = `${API}/api/piece-rates/items`;
@@ -110,9 +113,18 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
       } else {
         const original = itemEditor.item;
         body = {};
+        const cleanCode = itemForm.code ? itemForm.code.trim().toUpperCase() : '';
+        if (cleanCode && cleanCode !== (original.code || '')) body.code = cleanCode;
         if (itemForm.name !== (original.name || '')) body.name = itemForm.name;
+        const cleanUnit = itemForm.default_unit ? itemForm.default_unit.trim() : '';
+        if (cleanUnit && cleanUnit !== (original.unit || original.default_unit || '')) {
+          body.default_unit = cleanUnit;
+        }
         if (itemForm.output_definition !== (original.output_definition || '')) {
           body.output_definition = itemForm.output_definition || null;
+        }
+        if ((itemForm.department_id || '') !== (original.department_id || '')) {
+          body.department_id = itemForm.department_id || null;
         }
         if (!Object.keys(body).length) {
           addToast('Không có thông tin nào thay đổi', 'info');
@@ -171,7 +183,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
     setSaving(true);
     try {
       let changeCount = 0;
-      for (const role of getItemRoles(editing)) {
+      for (const role of PIECE_RATE_ROLES) {
         const newAmount = form[role];
         if (newAmount === '' || newAmount == null) continue;
         const currentAmount = editing.rates?.[role]?.amount ?? null;
@@ -227,14 +239,20 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
   const giaCell = (role) => (_, row) => {
     const pub = row.rates?.[role]?.amount;
     const pend = row.pending?.[role]?.amount;
-    if (pub == null && pend == null) return <span style={{ color: '#cbd5e1' }}>—</span>;
+    if (pub == null && pend == null) {
+      return (
+        <div className="piece-rate-price-empty">
+          —
+        </div>
+      );
+    }
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-        <strong style={{ color: role === 'MAIN' ? '#10b981' : '#3b82f6', fontSize: '0.95rem' }}>
+      <div className="piece-rate-price-cell">
+        <strong style={{ color: role === 'MAIN' ? '#059669' : role === 'ASSISTANT' ? '#2563eb' : '#7c3aed', fontSize: '0.94rem', fontVariantNumeric: 'tabular-nums' }}>
           {fmt(pub || 0)}
         </strong>
         {pend != null && (
-          <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 700 }}>
+          <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
             → {fmt(pend)} chờ duyệt
           </span>
         )}
@@ -244,75 +262,93 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
 
   const columns = [
     {
-      key: 'name', label: 'Hạng mục khoán', width: 260,
+      key: 'name', label: 'Hạng mục khoán', width: 270, align: 'left',
       render: (v, row) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <strong style={{ color: 'var(--text-primary)', fontSize: '0.92rem' }}>{v}</strong>
-          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.74rem' }}>
-            {row.code || '—'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span className="piece-rate-code-tag">{row.code || '—'}</span>
             {row.is_active === false && (
-              <span style={{ marginLeft: 7, color: '#b45309', fontWeight: 700 }}>Ngừng sử dụng</span>
+              <span className="piece-rate-status-tag piece-rate-status-tag--inactive">Ngừng sử dụng</span>
             )}
-          </span>
+          </div>
         </div>
       ),
     },
-    { key: 'department_name', label: 'Phòng ban', width: 130,
-      render: (v) => <span style={{ fontSize: '0.82rem', color: v ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>{v || 'Chưa gán'}</span> },
-    { key: 'main', label: 'Đơn giá chính', width: 150, align: 'right', render: giaCell('MAIN') },
-    { key: 'assistant', label: 'Phụ đo', width: 150, align: 'right', render: giaCell('ASSISTANT') },
-    { key: 'submitter', label: 'Người nộp', width: 130, align: 'right', render: giaCell('SUBMITTER') },
     {
-      key: 'actions', label: 'Thao tác', width: isDirector ? 260 : 150, align: 'left',
+      key: 'department_name', label: 'Phòng ban', width: 160, align: 'center',
+      render: (v) => v ? (
+        <span className="piece-rate-dept-chip" title={`Phòng ban: ${v}`}>
+          {v}
+        </span>
+      ) : (
+        <span className="piece-rate-dept-chip piece-rate-dept-chip--empty">
+          Chưa gán
+        </span>
+      ),
+    },
+    { key: 'main', label: 'Đơn giá chính', width: 140, align: 'center', render: giaCell('MAIN') },
+    { key: 'assistant', label: 'Phụ đo', width: 125, align: 'center', render: giaCell('ASSISTANT') },
+    { key: 'submitter', label: 'Người nộp', width: 125, align: 'center', render: giaCell('SUBMITTER') },
+    {
+      key: 'actions', label: 'Thao tác', width: isDirector ? 175 : 120, align: 'center',
       render: (_, row) => {
         const coPending = Object.keys(row.pending || {}).length > 0;
         return (
           <div
-            className="piece-rate-pricing__actions"
+            className="piece-rate-pricing__actions piece-rate-actions-cell"
             data-testid={`piece-rate-actions-${row.work_item_id}`}
-            style={{ display: 'flex', gap: 6, justifyContent: 'flex-start', alignItems: 'center' }}
           >
-            {row.is_active !== false && (
-              <button type="button" className="btn btn-sm btn-ghost" title="Sửa đơn giá"
-                onClick={() => openEdit(row)} style={{ padding: '4px 8px' }}>
+            {row.is_active !== false ? (
+              <button type="button" className="btn btn-sm btn-ghost piece-rate-action-btn piece-rate-action-btn--edit-rate" title="Sửa đơn giá"
+                onClick={() => openEdit(row)}>
                 <Pencil size={15} color="#2563eb" />
               </button>
+            ) : (
+              <span className="piece-rate-action-btn piece-rate-action-btn--placeholder" aria-hidden="true" />
             )}
-            <button type="button" className="btn btn-sm btn-ghost" title="Lịch sử giá"
-              onClick={() => openHistory(row)} style={{ padding: '4px 8px' }}>
+            <button type="button" className="btn btn-sm btn-ghost piece-rate-action-btn piece-rate-action-btn--history" title="Lịch sử giá"
+              onClick={() => openHistory(row)}>
               <History size={15} color="#64748b" />
             </button>
             {isDirector && (
               <>
-                <button type="button" className="btn btn-sm btn-ghost" title="Sửa thông tin"
+                <button type="button" className="btn btn-sm btn-ghost piece-rate-action-btn piece-rate-action-btn--edit-meta" title="Sửa thông tin"
                   data-testid={`piece-rate-edit-metadata-${row.work_item_id}`}
-                  onClick={() => openMetadataEditor(row)} style={{ padding: '4px 8px' }}>
+                  onClick={() => openMetadataEditor(row)}>
                   <Pencil size={15} color="#7c3aed" />
                 </button>
                 {row.is_active === false ? (
-                  <button type="button" className="btn btn-sm btn-ghost" title="Khôi phục"
+                  <button type="button" className="btn btn-sm btn-ghost piece-rate-action-btn piece-rate-action-btn--restore" title="Khôi phục"
                     data-testid={`piece-rate-restore-${row.work_item_id}`}
-                    onClick={() => restoreItem(row)} style={{ padding: '4px 8px' }} disabled={saving}>
+                    onClick={() => restoreItem(row)} disabled={saving}>
                     <RotateCcw size={15} color="#059669" />
                   </button>
                 ) : (
-                  <button type="button" className="btn btn-sm btn-ghost" title="Ngừng sử dụng"
+                  <button type="button" className="btn btn-sm btn-ghost piece-rate-action-btn piece-rate-action-btn--archive" title="Ngừng sử dụng"
                     data-testid={`piece-rate-deactivate-${row.work_item_id}`}
-                    onClick={() => setDeactivateTarget(row)} style={{ padding: '4px 8px' }}>
+                    onClick={() => setDeactivateTarget(row)}>
                     <Archive size={15} color="#dc2626" />
                   </button>
                 )}
+                {coPending ? (
+                  <button type="button" className="btn btn-sm piece-rate-action-btn piece-rate-action-btn--publish" title="Duyệt giá mới"
+                    onClick={() => setPublishTarget(row)}>
+                    <CheckCircle2 size={15} />
+                  </button>
+                ) : (
+                  <span className="piece-rate-action-btn piece-rate-action-btn--placeholder" aria-hidden="true" />
+                )}
               </>
             )}
-            {coPending && isDirector && (
-              <button type="button" className="btn btn-sm" title="Duyệt giá mới"
-                onClick={() => setPublishTarget(row)}
-                style={{ padding: '4px 8px', color: '#10b981', border: '1px solid #10b98144' }}>
-                <CheckCircle2 size={15} />
-              </button>
-            )}
-            {coPending && !isDirector && (
-              <span title="Chờ giám đốc duyệt" style={{ color: '#f59e0b' }}><Clock size={15} /></span>
+            {!isDirector && (
+              coPending ? (
+                <span title="Chờ giám đốc duyệt" style={{ color: '#f59e0b', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30 }}>
+                  <Clock size={15} />
+                </span>
+              ) : (
+                <span className="piece-rate-action-btn piece-rate-action-btn--placeholder" aria-hidden="true" />
+              )
             )}
           </div>
         );
@@ -368,7 +404,7 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
                 <input className="form-control" aria-label="Mã hạng mục" value={itemForm.code}
                   onChange={(e) => setItemForm({ ...itemForm, code: e.target.value })}
                   placeholder="Ví dụ: SURVEY_STAKEOUT"
-                  readOnly={itemEditor.mode === 'edit'} spellCheck={false} required />
+                  spellCheck={false} required />
               </FormRow>
               <FormRow label="Tên hạng mục" align="left">
                 <input className="form-control" aria-label="Tên hạng mục" value={itemForm.name}
@@ -380,7 +416,21 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
                   <input className="form-control" aria-label="Đơn vị tính" value={itemForm.default_unit}
                     onChange={(e) => setItemForm({ ...itemForm, default_unit: e.target.value })}
                     placeholder="Ví dụ: hồ sơ, lần, bộ, sản phẩm..." spellCheck={false}
-                    readOnly={itemEditor.mode === 'edit'} aria-readonly={itemEditor.mode === 'edit'} required />
+                    required />
+                </FormRow>
+              </div>
+              <div className="piece-rate-item-form__wide" data-testid="piece-rate-item-form-department">
+                <FormRow label="Phòng ban phụ trách" align="left">
+                  <Select
+                    ariaLabel="Phòng ban phụ trách"
+                    value={itemForm.department_id || ''}
+                    options={[
+                      { value: '', label: '— Chưa gán phòng ban —' },
+                      ...departments.map((d) => ({ value: d.id, label: d.name }))
+                    ]}
+                    onChange={(val) => setItemForm((prev) => ({ ...prev, department_id: val }))}
+                    placeholder="— Chọn phòng ban —"
+                  />
                 </FormRow>
               </div>
             </div>
@@ -428,13 +478,17 @@ export default function PieceRatePricingScreen({ isDirector = false }) {
         {editing && (
           <form onSubmit={submitDraft}>
             <FormGrid cols={1}>
-              {getItemRoles(editing).map(role => (
+              {PIECE_RATE_ROLES.map(role => (
                 <FormRow key={role} label={`${ROLE_LABELS[role]} (VNĐ)`}>
                   <input className="form-control" type="number" min="0" step="1000"
+                    placeholder="Chưa thiết lập"
+                    aria-label={`${ROLE_LABELS[role]} (VNĐ)`}
                     value={form[role] ?? ''} onChange={(e) => setForm({ ...form, [role]: e.target.value })}
                     style={{ height: 42, fontWeight: 700, fontSize: '1.05rem' }} />
-                  {editing.rates?.[role]?.amount != null && (
+                  {editing.rates?.[role]?.amount != null ? (
                     <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Đang áp dụng: {fmt(editing.rates[role].amount)}</span>
+                  ) : (
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Chưa thiết lập đơn giá</span>
                   )}
                 </FormRow>
               ))}

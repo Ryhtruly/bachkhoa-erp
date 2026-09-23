@@ -143,6 +143,17 @@ def test_wiki_endpoint_permissions_enforcement(client, db):
         res_list = client.get("/api/wiki/", headers=headers)
         assert res_list.status_code == 200
 
+        # 1b. Test cached default view
+        res_list_cached = client.get("/api/wiki/", headers=headers)
+        assert res_list_cached.status_code == 200
+        assert res_list_cached.json()["status"] == "success"
+
+        # 1c. Test search query filter with empty result short-circuit
+        res_search_empty = client.get("/api/wiki/?search=NON_EXISTENT_DOC_XYZ", headers=headers)
+        assert res_search_empty.status_code == 200
+        assert res_search_empty.json()["data"] == []
+        assert res_search_empty.json()["meta"]["total_items"] == 0
+
         # 2. POST /api/wiki/upload should be FORBIDDEN (403)
         res_upload = client.post(
             "/api/wiki/upload",

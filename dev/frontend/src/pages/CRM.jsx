@@ -16,7 +16,6 @@ import {
   MapPin,
   Maximize2,
   MessageCircle,
-  HelpCircle,
   Sparkles,
   Settings,
   UserCircle,
@@ -26,6 +25,7 @@ import {
 import { StatsGrid, StatCard, FilterBar, Modal } from '../components/ui';
 import AvatarImage from '../components/AvatarImage';
 import { apiFetch } from '../lib/api';
+import { normalizeVietnamese } from '../lib/vietnamese';
 import { useToast } from '../contexts/ToastContext';
 import './crm.css';
 
@@ -238,18 +238,13 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   }, [leads]);
 
   const handleStatusChange = async (lead, newStatus) => {
-    // Nếu lead chưa có người phụ trách, tự động nhận trước khi chuyển trạng thái
-    if (!lead.assigned_to) {
+    // Nếu lead chưa có người phụ trách và không phải manager, sale cần nhận trước khi chuyển trạng thái
+    if (!lead.assigned_to && !managerView) {
       try {
         await apiFetch(`/api/crm/leads/${lead.id}/claim`, { method: 'POST' });
         lead.assigned_to = user?.id;
         lead.assigned_to_name = user?.username || 'Bạn';
-        addToast(
-          managerView
-            ? 'Đã tự động gán bạn phụ trách lead này'
-            : 'Đã tự động nhận lead này vào danh sách phụ trách',
-          'success'
-        );
+        addToast('Đã tự động nhận lead này vào danh sách phụ trách', 'success');
       } catch (err) {
         addToast(err?.message || 'Vui lòng nhận lead trước khi chuyển trạng thái', 'error');
         return;
@@ -278,12 +273,33 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
   };
 
   const submitStatusChange = async (leadId, newStatus, extraData = {}) => {
+    setDraggingLeadId(null);
+    setDragOverCol(null);
+    // Optimistic update: move the lead card instantly in local state
+    const targetLead = leads.find(l => l.id === leadId);
+    const oldStatus = targetLead?.status;
+    const oldAssignedTo = targetLead?.assigned_to;
+    const oldAssignedToName = targetLead?.assigned_to_name;
+
+    if (oldStatus && oldStatus !== newStatus) {
+      setLeads(prev => prev.map(l => {
+        if (l.id !== leadId) return l;
+        return {
+          ...l,
+          status: newStatus,
+          assigned_to: l.assigned_to || user?.id,
+          assigned_to_name: l.assigned_to_name || (user?.username || 'Bạn')
+        };
+      }));
+    }
+
     try {
       const res = await apiFetch(`/api/crm/leads/${leadId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_status: newStatus, ...extraData })
       });
+      // Sync with server data in background (silent)
       fetchData(true);
       setClosingLead(null);
       if (res?.data?.contract_id) {
@@ -293,6 +309,18 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
       }
     } catch (err) {
       console.error(err);
+      // Revert optimistic update on failure
+      if (oldStatus) {
+        setLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return {
+            ...l,
+            status: oldStatus,
+            assigned_to: oldAssignedTo,
+            assigned_to_name: oldAssignedToName
+          };
+        }));
+      }
       addToast(err?.message || 'Có lỗi xảy ra khi cập nhật trạng thái', 'error');
     }
   };
@@ -357,8 +385,9 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
 
   const handleDrop = async (e, targetCol) => {
     e.preventDefault();
-    setDragOverCol(null);
     const leadId = e.dataTransfer.getData('text/plain') || draggingLeadId;
+    setDragOverCol(null);
+    setDraggingLeadId(null);
     if (!leadId) return;
 
     const lead = leads.find(l => l.id === leadId);
@@ -367,18 +396,22 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
     await handleStatusChange(lead, targetCol);
   };
 
-  const filteredLeads = leads.filter(l => {
-    const matchSearch = (l.customer_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (l.phone || '').includes(searchTerm) ||
-      (l.requirements || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (l.assigned_to_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredLeads = useMemo(() => {
+    const q = normalizeVietnamese(searchTerm);
+    return leads.filter(l => {
+      const matchSearch = !q ||
+        normalizeVietnamese(l.customer_name).includes(q) ||
+        (l.phone || '').includes(searchTerm.trim()) ||
+        normalizeVietnamese(l.requirements).includes(q) ||
+        normalizeVietnamese(l.assigned_to_name).includes(q);
 
-    const matchSource = filterSource === 'All' || l.source === filterSource;
-    const matchSale = !managerView || filterSale === 'All' ||
-      (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
+      const matchSource = filterSource === 'All' || l.source === filterSource;
+      const matchSale = !managerView || filterSale === 'All' ||
+        (filterSale === 'Unassigned' ? !l.assigned_to : l.assigned_to === filterSale);
 
-    return matchSearch && matchSource && matchSale;
-  });
+      return matchSearch && matchSource && matchSale;
+    });
+  }, [leads, searchTerm, filterSource, filterSale, managerView]);
 
   return (
     <section className="tab-pane active crm-container" id="tab-crm">
@@ -638,7 +671,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
 
                         {/* Thanh thao tác nhanh: Gọi điện + Chat Zalo */}
                         {lead.phone && (
-                          <div className="lead-actions-bar">
+                          <div className="lead-actions-bar" onDragStart={(e) => e.stopPropagation()}>
                             <a
                               href={`tel:${lead.phone}`}
                               className="lead-action-btn lead-action-btn--phone"
@@ -661,7 +694,7 @@ export default function CRM({ user, isDirector = false, employeeMode = false }) 
                         )}
 
                         {/* Hộp chọn di chuyển cột */}
-                        <div className="lead-move-footer">
+                        <div className="lead-move-footer" onDragStart={(e) => e.stopPropagation()}>
                           {!lead.assigned_to && lead.status !== 'Chốt' && (
                             <button
                               type="button"

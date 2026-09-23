@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, FileCheck2, FolderOpen, Search, X } from 'lucide-react'
+import { normalizeVietnamese } from '../../lib/vietnamese'
 
 import './checklistCabinetTree.css'
 
@@ -27,18 +28,18 @@ export default function ChecklistCabinetTree({ groups = [], currentNodeCode, onO
     return next
   })
 
-  const normalizedQuery = query.trim().toLowerCase()
+  const normalizedQuery = normalizeVietnamese(query.trim())
 
   const filteredGroups = useMemo(() => {
     if (!normalizedQuery) return groups
     return groups.map(group => {
-      const nodeMatch = (group.node_code || '').toLowerCase().includes(normalizedQuery)
-        || (group.node_name || '').toLowerCase().includes(normalizedQuery)
+      const nodeMatch = normalizeVietnamese(group.node_code || '').includes(normalizedQuery)
+        || normalizeVietnamese(group.node_name || '').includes(normalizedQuery)
       const matchingDocs = (group.documents || []).filter(doc => {
         if (nodeMatch) return true
-        const docNameMatch = (doc.name || '').toLowerCase().includes(normalizedQuery)
-        const sourceMatch = (doc.source_label || '').toLowerCase().includes(normalizedQuery)
-        const fileMatch = (doc.files || []).some(f => (f.file_name || f.name || '').toLowerCase().includes(normalizedQuery))
+        const docNameMatch = normalizeVietnamese(doc.name || '').includes(normalizedQuery)
+        const sourceMatch = normalizeVietnamese(doc.source_label || '').includes(normalizedQuery)
+        const fileMatch = (doc.files || []).some(f => normalizeVietnamese(f.file_name || f.name || '').includes(normalizedQuery))
         return docNameMatch || sourceMatch || fileMatch
       })
       if (nodeMatch || matchingDocs.length > 0) {

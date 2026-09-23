@@ -33,32 +33,45 @@ def _redact_redis_url(url: str) -> str:
     return url
 
 
+_last_connect_fail: float = 0.0
+_CONNECT_RETRY_INTERVAL: float = 30.0
+
+
 def get_redis_client() -> Optional[redis.Redis]:
     """Trả về Redis client singleton; trả về None nếu không kết nối được."""
-    global _client
-    if _client is None:
+    global _client, _last_connect_fail
+    if _client is not None:
+        return _client
+
+    now = time.time()
+    if now - _last_connect_fail < _CONNECT_RETRY_INTERVAL:
+        return None
+
+    try:
+        candidate = redis.Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=0.5,
+            socket_timeout=1.0,
+            health_check_interval=30,
+        )
+        # Ping nhẹ để kiểm tra liveness
+        candidate.ping()
+        _client = candidate
+        return _client
+    except Exception as exc:
+        _last_connect_fail = now
+        redacted_url = _redact_redis_url(REDIS_URL)
+        err_msg = str(exc)
         try:
-            _client = redis.Redis.from_url(
-                REDIS_URL,
-                decode_responses=True,
-                socket_connect_timeout=0.5,
-                socket_timeout=1.0,
-                health_check_interval=30,
-            )
-            # Ping nhẹ để kiểm tra liveness
-            _client.ping()
-        except Exception as exc:
-            redacted_url = _redact_redis_url(REDIS_URL)
-            err_msg = str(exc)
-            try:
-                parsed = urllib.parse.urlsplit(REDIS_URL)
-                if parsed.password:
-                    err_msg = err_msg.replace(parsed.password, "***")
-            except Exception:
-                pass
-            logger.warning("Không kết nối được tới Redis (%s): %s", redacted_url, err_msg)
-            _client = None
-    return _client
+            parsed = urllib.parse.urlsplit(REDIS_URL)
+            if parsed.password:
+                err_msg = err_msg.replace(parsed.password, "***")
+        except Exception:
+            pass
+        logger.warning("Không kết nối được tới Redis (%s): %s", redacted_url, err_msg)
+        _client = None
+        return None
 
 _fallback_store: dict[str, tuple[float, str]] = {}
 _fallback_lock = threading.Lock()

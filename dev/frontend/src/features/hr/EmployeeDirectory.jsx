@@ -19,6 +19,7 @@ import {
   getAccountRoleLabel,
   isRoleMismatchedWithDepartment,
 } from './accountRoles';
+import { normalizeVietnamese } from '../../lib/vietnamese';
 import './humanResources.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -151,7 +152,7 @@ const formatDate = (value) => value
 const fmt = (n) => new Intl.NumberFormat('vi-VN').format(Number(n) || 0) + '₫';
 
 function Avatar({ name, avatarUrl, size = 40 }) {
-  return <AvatarImage className="hr-avatar" src={avatarUrl} name={name} style={{ width: size, height: size, objectFit: 'cover', fontSize: size * 0.4 }} />;
+  return <AvatarImage className="hr-avatar" src={avatarUrl} name={name} loading="lazy" style={{ width: size, height: size, objectFit: 'cover', fontSize: size * 0.4 }} />;
 }
 
 function Field({ label, value }) {
@@ -336,7 +337,10 @@ function CreateAccountModal({ employee, departments = [], onClose, onCreated }) 
   );
 }
 
-export default function EmployeeDirectory() {
+export default function EmployeeDirectory({
+  initialDepartmentFilter = 'All',
+  onDepartmentFilterChange,
+}) {
   const { addToast } = useToast();
   const printDocumentRef = useRef(null);
   const [employees, setEmployees] = useState([]);
@@ -344,7 +348,14 @@ export default function EmployeeDirectory() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('All');
+  const [departmentFilter, setDepartmentFilter] = useState(initialDepartmentFilter || 'All');
+  const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'inactive' | 'all'
+
+  useEffect(() => {
+    if (initialDepartmentFilter) {
+      setDepartmentFilter(initialDepartmentFilter);
+    }
+  }, [initialDepartmentFilter]);
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState('view'); // 'view' | 'edit' | 'create'
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -367,15 +378,20 @@ export default function EmployeeDirectory() {
     }
   };
 
+  const loadDepartments = useCallback(async () => {
+    try {
+      const departmentData = await apiFetch('/api/finance/employees/departments');
+      setDepartments(Array.isArray(departmentData) ? departmentData : []);
+    } catch {
+      // Fail-safe if departments cannot be loaded
+    }
+  }, []);
+
   const loadEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const [employeeData, departmentData] = await Promise.all([
-        apiFetch('/api/finance/employees'),
-        apiFetch('/api/finance/employees/departments'),
-      ]);
+      const employeeData = await apiFetch('/api/finance/employees');
       setEmployees(Array.isArray(employeeData) ? employeeData : []);
-      setDepartments(Array.isArray(departmentData) ? departmentData : []);
     } catch (error) {
       addToast(error.message || 'Không thể tải dữ liệu nhân sự', 'error');
     } finally {
@@ -384,8 +400,9 @@ export default function EmployeeDirectory() {
   }, [addToast]);
 
   useEffect(() => {
+    loadDepartments();
     loadEmployees();
-  }, [loadEmployees]);
+  }, [loadDepartments, loadEmployees]);
 
   const selectedEmployee = useMemo(
     () => employees.find((employee) => employee.id === selectedId) || null,
@@ -623,14 +640,43 @@ export default function EmployeeDirectory() {
     }
   };
 
-  const filteredEmployees = employees.filter((employee) => {
-    const keyword = search.trim().toLocaleLowerCase('vi');
-    const searchable = [employee.id, employee.full_name, employee.department, employee.job_title]
-      .filter(Boolean).join(' ').toLocaleLowerCase('vi');
-    const matchesSearch = !keyword || searchable.includes(keyword);
-    const matchesDepartment = departmentFilter === 'All' || employee.department_id === departmentFilter;
-    return matchesSearch && matchesDepartment;
-  });
+  const statusCounts = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+    for (const emp of employees) {
+      if (departmentFilter === 'All' || emp.department_id === departmentFilter) {
+        if (emp.is_active !== false) {
+          active += 1;
+        } else {
+          inactive += 1;
+        }
+      }
+    }
+    return { active, inactive, all: active + inactive };
+  }, [employees, departmentFilter]);
+
+  const filteredEmployees = useMemo(() => {
+    const keyword = normalizeVietnamese(search);
+    return employees.filter((employee) => {
+      const matchesDepartment = departmentFilter === 'All' || employee.department_id === departmentFilter;
+      if (!matchesDepartment) return false;
+
+      const isActive = employee.is_active !== false;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && isActive) ||
+        (statusFilter === 'inactive' && !isActive);
+      if (!matchesStatus) return false;
+
+      if (!keyword) return true;
+      const searchable = normalizeVietnamese(
+        [employee.id, employee.full_name, employee.department, employee.job_title, employee.email, employee.phone]
+          .filter(Boolean)
+          .join(' ')
+      );
+      return searchable.includes(keyword);
+    });
+  }, [employees, search, departmentFilter, statusFilter]);
 
   const hasSelection = mode === 'create' || Boolean(selectedEmployee);
 
@@ -647,12 +693,15 @@ export default function EmployeeDirectory() {
           </div>
           <CustomSelect
             value={departmentFilter}
-            onChange={(val) => setDepartmentFilter(val)}
+            onChange={(val) => {
+              setDepartmentFilter(val);
+              onDepartmentFilterChange?.(val);
+            }}
             options={[
               { value: 'All', label: 'Tất cả phòng ban' },
               ...departments.map((department) => ({
                 value: department.id,
-                label: department.name,
+                label: `${department.name}${department.is_active === false ? ' (Tạm ngừng)' : ''}`,
               })),
             ]}
             placeholder="Tất cả phòng ban"
@@ -666,6 +715,35 @@ export default function EmployeeDirectory() {
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Tìm kiếm..."
             />
+          </div>
+          <div className="hr-list__status-filters" role="tablist" aria-label="Lọc theo trạng thái làm việc">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === 'active'}
+              className={`hr-list__status-btn${statusFilter === 'active' ? ' is-active' : ''}`}
+              onClick={() => setStatusFilter('active')}
+            >
+              Đang làm <span className="hr-list__status-count">{statusCounts.active}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === 'inactive'}
+              className={`hr-list__status-btn${statusFilter === 'inactive' ? ' is-active' : ''}`}
+              onClick={() => setStatusFilter('inactive')}
+            >
+              Đã nghỉ <span className="hr-list__status-count">{statusCounts.inactive}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === 'all'}
+              className={`hr-list__status-btn${statusFilter === 'all' ? ' is-active' : ''}`}
+              onClick={() => setStatusFilter('all')}
+            >
+              Tất cả <span className="hr-list__status-count">{statusCounts.all}</span>
+            </button>
           </div>
         </div>
 
@@ -835,7 +913,8 @@ export default function EmployeeDirectory() {
                         { value: '', label: '— Chưa phân phòng —' },
                         ...departments.map((department) => ({
                           value: department.id,
-                          label: department.name,
+                          label: `${department.name}${department.is_active === false ? ' (Tạm ngừng)' : ''}`,
+                          disabled: mode === 'create' && department.is_active === false,
                         })),
                       ]}
                       placeholder="— Chưa phân phòng —"

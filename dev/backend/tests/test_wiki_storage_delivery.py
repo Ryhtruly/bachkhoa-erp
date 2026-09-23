@@ -281,3 +281,94 @@ def test_unauthorized_evidence_upload_neither_writes_nor_deletes_storage(monkeyp
     assert response.status_code == 403
     assert writes == []
     assert deletes == []
+
+
+def test_upload_document_streams_file_without_ram_buffering(monkeypatch):
+    from src.core.auth import get_current_user
+    writes = []
+    enqueued_jobs = []
+
+    class MockDb:
+        def query(self, *_args):
+            class Q:
+                def filter(self, *_a):
+                    return self
+                def first(self):
+                    return None
+                def all(self):
+                    return []
+            return Q()
+        def add(self, *_args):
+            pass
+        def commit(self):
+            pass
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(routes_wiki, "ensure_bucket", lambda: None)
+    monkeypatch.setattr(routes_wiki, "upload_file", lambda f_obj, obj_name: writes.append((f_obj, obj_name)))
+    monkeypatch.setattr(routes_wiki, "enqueue_indexing_job", lambda f_bytes, fname, doc_id, object_name: enqueued_jobs.append((f_bytes, fname, doc_id, object_name)) or True)
+    monkeypatch.setattr(routes_wiki, "consume_rate_limit", lambda *_args, **_kwargs: (True, 0))
+    monkeypatch.setattr(routes_wiki, "can_enqueue_indexing_job", lambda: True)
+    monkeypatch.setattr(routes_wiki, "invalidate_cache", lambda *_args: None)
+
+    app = FastAPI()
+    app.include_router(routes_wiki.router)
+    app.dependency_overrides[get_db] = lambda: MockDb()
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="admin-1", is_active=True, username="admin")
+
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/wiki/upload",
+            data={"id": "W-TEST-01", "title": "Tài liệu thử nghiệm", "category": "Quy trình ISO"},
+            files={"file": ("test_doc.pdf", b"%PDF-1.4 sample content", "application/pdf")},
+        )
+
+    assert res.status_code == 200
+    assert len(writes) == 1
+    f_obj, obj_name = writes[0]
+    assert obj_name == "wiki/W-TEST-01/test_doc.pdf"
+    assert hasattr(f_obj, "read")
+    assert len(enqueued_jobs) == 1
+    f_bytes, fname, doc_id, job_obj_name = enqueued_jobs[0]
+    assert f_bytes is None
+    assert doc_id == "W-TEST-01"
+    assert job_obj_name == "wiki/W-TEST-01/test_doc.pdf"
+
+
+def test_upload_document_rejects_oversized_file(monkeypatch):
+    from src.core.auth import get_current_user
+
+    class MockDb:
+        def query(self, *_args):
+            class Q:
+                def filter(self, *_a):
+                    return self
+                def first(self):
+                    return None
+                def all(self):
+                    return []
+            return Q()
+
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(routes_wiki, "consume_rate_limit", lambda *_args, **_kwargs: (True, 0))
+    monkeypatch.setattr(routes_wiki, "can_enqueue_indexing_job", lambda: True)
+
+    app = FastAPI()
+    app.include_router(routes_wiki.router)
+    app.dependency_overrides[get_db] = lambda: MockDb()
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="admin-1", is_active=True, username="admin")
+
+    oversized_bytes = b"small_payload_simulating_large_file"
+    with TestClient(app) as client:
+        monkeypatch.setattr(routes_wiki, "MAX_WIKI_UPLOAD_BYTES", 10)
+        res = client.post(
+            "/api/wiki/upload",
+            data={"id": "W-OVERSIZE", "title": "Too big", "category": "ISO"},
+            files={"file": ("big.pdf", oversized_bytes, "application/pdf")},
+        )
+
+    assert res.status_code == 413
+    assert "vượt quá 25MB" in res.json().get("detail", "")
+

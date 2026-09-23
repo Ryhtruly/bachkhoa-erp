@@ -1,4 +1,4 @@
-from src.db.models import WorkItem, WorkItemRate
+from src.db.models import WorkItem, WorkItemRate, Department
 
 
 def test_director_creates_work_item_with_initial_rates(client, admin_headers, db):
@@ -47,11 +47,11 @@ def test_catalog_mutations_require_director_permission(client, unprivileged_user
     assert delete_response.status_code == 403
 
 
-def test_metadata_patch_keeps_code_immutable(client, admin_headers):
+def test_metadata_patch_allows_updating_code_and_unit(client, admin_headers):
     created = client.post(
         "/api/piece-rates/items",
         headers=admin_headers,
-        json={"code": "IMMUTABLE_CODE", "name": "Tên cũ"},
+        json={"code": "MUTABLE_CODE", "name": "Tên cũ", "default_unit": "hồ sơ"},
     )
     assert created.status_code == 201, created.text
     work_item_id = created.json()["data"]["work_item_id"]
@@ -59,27 +59,15 @@ def test_metadata_patch_keeps_code_immutable(client, admin_headers):
     response = client.patch(
         f"/api/piece-rates/items/{work_item_id}",
         headers=admin_headers,
-        json={"name": "Tên mới"},
+        json={"name": "Tên mới", "code": "NEW_CODE_OK", "default_unit": "bộ"},
     )
 
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["name"] == "Tên mới"
-    assert data["code"] == "IMMUTABLE_CODE"
-
-    tampered = client.patch(
-        f"/api/piece-rates/items/{work_item_id}",
-        headers=admin_headers,
-        json={"code": "SHOULD_NOT_CHANGE"},
-    )
-    assert tampered.status_code == 422
-
-    unit_tampered = client.patch(
-        f"/api/piece-rates/items/{work_item_id}",
-        headers=admin_headers,
-        json={"default_unit": "hồ sơ"},
-    )
-    assert unit_tampered.status_code == 422
+    assert data["code"] == "NEW_CODE_OK"
+    assert data["default_unit"] == "bộ"
+    assert data["unit"] == "bộ"
 
 
 def test_deactivation_is_soft_and_keeps_rate_history(client, admin_headers, db):
@@ -167,3 +155,152 @@ def test_direct_rate_update_creates_new_version_without_overwriting_old(client, 
     assert [float(rate.amount) for rate in versions] == [1_000_000, 1_250_000]
     assert any(rate.status == "archived" for rate in versions)
     assert any(rate.status == "published" for rate in versions)
+
+
+def test_director_creates_and_patches_work_item_with_department(client, admin_headers, db):
+    dept = db.query(Department).filter(Department.is_active == True).first()
+    if not dept:
+        dept = Department(code="TEST_DEPT", name="Phòng Thử Nghiệm", is_active=True)
+        db.add(dept)
+        db.commit()
+        db.refresh(dept)
+
+    # 1. Create with department
+    response = client.post(
+        "/api/piece-rates/items",
+        headers=admin_headers,
+        json={
+            "code": "DEPT_TEST_ITEM",
+            "name": "Hạng mục gán phòng ban",
+            "department_id": dept.id,
+        },
+    )
+    assert response.status_code == 201, response.text
+    data = response.json()["data"]
+    assert data["department_id"] == dept.id
+    assert data["department_name"] == dept.name
+    work_item_id = data["work_item_id"]
+
+    # 2. Verify list_piece_rates returns department and departments catalog
+    list_res = client.get("/api/piece-rates/rates", headers=admin_headers)
+    assert list_res.status_code == 200
+    list_json = list_res.json()
+    assert "departments" in list_json
+    assert any(d["id"] == dept.id for d in list_json["departments"])
+    matched_item = next(i for i in list_json["data"] if i["work_item_id"] == work_item_id)
+    assert matched_item["department_id"] == dept.id
+    assert matched_item["department_name"] == dept.name
+
+    # 3. Patch department to None
+    patch_res = client.patch(
+        f"/api/piece-rates/items/{work_item_id}",
+        headers=admin_headers,
+        json={"department_id": None},
+    )
+    assert patch_res.status_code == 200, patch_res.text
+    assert patch_res.json()["data"]["department_id"] is None
+    assert patch_res.json()["data"]["department_name"] is None
+
+    # 4. Patch back to department
+    patch_back = client.patch(
+        f"/api/piece-rates/items/{work_item_id}",
+        headers=admin_headers,
+        json={"department_id": dept.id},
+    )
+    assert patch_back.status_code == 200
+    assert patch_back.json()["data"]["department_id"] == dept.id
+
+    # 5. Invalid department raises 422
+    invalid_create = client.post(
+        "/api/piece-rates/items",
+        headers=admin_headers,
+        json={
+            "code": "INVALID_DEPT_ITEM",
+            "name": "Hạng mục phòng ban sai",
+            "department_id": "non-existent-dept-id",
+        },
+    )
+    assert invalid_create.status_code == 422
+
+    invalid_patch = client.patch(
+        f"/api/piece-rates/items/{work_item_id}",
+        headers=admin_headers,
+        json={"department_id": "non-existent-dept-id"},
+    )
+    assert invalid_patch.status_code == 422
+
+
+def test_list_piece_rate_departments_endpoint(client, admin_headers, db):
+    response = client.get("/api/piece-rates/departments", headers=admin_headers)
+    assert response.status_code == 200
+    departments = response.json()
+    assert isinstance(departments, list)
+    expected_count = (
+        db.query(Department)
+        .filter(Department.is_active == True, Department.code.notin_(["ADMIN", "ACCOUNTING"]))
+        .count()
+    )
+    assert len(departments) == expected_count
+    assert all(d["code"] not in {"ADMIN", "ACCOUNTING"} for d in departments)
+
+
+def test_director_can_update_work_item_code_and_unit(client, admin_headers, db):
+    # 1. Create two work items
+    res1 = client.post(
+        "/api/piece-rates/items",
+        headers=admin_headers,
+        json={"code": "CODE_EDIT_1", "name": "Mục 1", "default_unit": "hồ sơ"},
+    )
+    assert res1.status_code == 201
+    wid1 = res1.json()["data"]["work_item_id"]
+
+    res2 = client.post(
+        "/api/piece-rates/items",
+        headers=admin_headers,
+        json={"code": "CODE_EDIT_2", "name": "Mục 2", "default_unit": "bộ"},
+    )
+    assert res2.status_code == 201
+    wid2 = res2.json()["data"]["work_item_id"]
+
+    # 2. Update code and unit of item 1 successfully
+    patch_res = client.patch(
+        f"/api/piece-rates/items/{wid1}",
+        headers=admin_headers,
+        json={"code": "CODE_EDIT_UPDATED", "default_unit": "lần"},
+    )
+    assert patch_res.status_code == 200, patch_res.text
+    data = patch_res.json()["data"]
+    assert data["code"] == "CODE_EDIT_UPDATED"
+    assert data["default_unit"] == "lần"
+    assert data["unit"] == "lần"
+
+    # DB verified
+    item1 = db.get(WorkItem, wid1)
+    assert item1.code == "CODE_EDIT_UPDATED"
+    assert item1.default_unit == "lần"
+
+    # 3. Duplicate code returns 409
+    dup_res = client.patch(
+        f"/api/piece-rates/items/{wid1}",
+        headers=admin_headers,
+        json={"code": "CODE_EDIT_2"},
+    )
+    assert dup_res.status_code == 409
+    assert "đã tồn tại" in dup_res.text
+
+    # 4. Invalid code regex returns 422
+    invalid_code = client.patch(
+        f"/api/piece-rates/items/{wid1}",
+        headers=admin_headers,
+        json={"code": "invalid-code"},
+    )
+    assert invalid_code.status_code == 422
+
+    # 5. Blank unit returns 422
+    blank_unit = client.patch(
+        f"/api/piece-rates/items/{wid1}",
+        headers=admin_headers,
+        json={"default_unit": "   "},
+    )
+    assert blank_unit.status_code == 422
+

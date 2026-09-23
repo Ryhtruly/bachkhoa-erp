@@ -5,6 +5,7 @@ No authentication required — publicly accessible for prospects and external fo
 
 import uuid
 import datetime
+import html
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
@@ -15,7 +16,7 @@ from src.db.database import get_db
 from src.db.models.crm import Customer, CustomerIntakeSubmission, LeadPipeline
 from src.db.models.auth import Notification, User, Role, UserRole
 from src.services import telegram_service
-from src.core.redis_utils import consume_rate_limit
+from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json
 
 router = APIRouter(prefix="/api/intake", tags=["12. Public Customer Intake"])
 
@@ -46,6 +47,11 @@ def _normalize_phone(raw_phone: str) -> str:
 @router.get("/services")
 def get_intake_service_options(db: Session = Depends(get_db)):
     """Trả về danh mục Gói dịch vụ & Hạng mục công khai để hiển thị trên form cho khách chọn."""
+    cache_key = "bachkhoa:intake:services"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         rows = db.execute(
             text("""
@@ -74,9 +80,10 @@ def get_intake_service_options(db: Session = Depends(get_db)):
                     "name": r["task_type_name"],
                 })
 
-        return {"status": "success", "data": list(packages_map.values())}
+        result = {"status": "success", "data": list(packages_map.values())}
+        set_cached_json(cache_key, result, ttl_seconds=900)
+        return result
     except Exception as exc:
-        # Fallback danh mục chuẩn nếu có lỗi kết nối tạm thời
         return {
             "status": "success",
             "data": [
@@ -249,17 +256,25 @@ def submit_lead_intake(
 
     # 6. Bắn tin nhắn Telegram cảnh báo khẩn nếu có cấu hình
     try:
+        safe_customer_name = html.escape(customer_name)
+        safe_phone = html.escape(phone)
+        safe_service_type = html.escape(data.service_type or 'Chưa chọn')
+        safe_scale_info = html.escape(data.scale_info or 'Theo hiện trạng')
+        safe_address = html.escape(data.target_property_address or cust.address or 'Chưa cung cấp')
+        safe_notes = html.escape(data.notes or 'Không có')
+        safe_source = html.escape(data.source or 'Web Form')
+
         tele_msg = (
             f"🔔 <b>YÊU CẦU DỊCH VỤ MỚI TỪ WEB/ZALO!</b>\n"
-            f"👤 <b>Khách hàng:</b> {customer_name}\n"
-            f"📞 <b>SĐT:</b> {phone}\n"
-            f"📌 <b>Dịch vụ:</b> {data.service_type or 'Chưa chọn'}\n"
-            f"📐 <b>Quy mô / Diện tích:</b> {data.scale_info or 'Theo hiện trạng'}\n"
-            f"📍 <b>Địa chỉ BĐS:</b> {data.target_property_address or cust.address or 'Chưa cung cấp'}\n"
-            f"📝 <b>Ghi chú:</b> {data.notes or 'Không có'}\n"
-            f"🌐 <b>Nguồn:</b> {data.source or 'Web Form'}"
+            f"👤 <b>Khách hàng:</b> {safe_customer_name}\n"
+            f"📞 <b>SĐT:</b> {safe_phone}\n"
+            f"📌 <b>Dịch vụ:</b> {safe_service_type}\n"
+            f"📐 <b>Quy mô / Diện tích:</b> {safe_scale_info}\n"
+            f"📍 <b>Địa chỉ BĐS:</b> {safe_address}\n"
+            f"📝 <b>Ghi chú:</b> {safe_notes}\n"
+            f"🌐 <b>Nguồn:</b> {safe_source}"
         )
-        telegram_service.send_telegram_message(tele_msg)
+        telegram_service.send_telegram_message(tele_msg, parse_mode="HTML")
     except Exception:
         pass
 

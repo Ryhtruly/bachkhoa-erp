@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Ban, BriefcaseBusiness, CheckCircle2, ChevronRight, Clock, Info, LifeBuoy, MapPin, Plus, Rocket, RotateCcw, Star, Users, Zap } from 'lucide-react'
 
-import AvatarImage from '../../components/AvatarImage'
 import CompletedItemsModal from './CompletedItemsModal'
 import EmployeeItemWorkspace from './EmployeeItemWorkspace'
 import EmployeeWorkspaceCalendar from './EmployeeWorkspaceCalendar'

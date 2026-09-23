@@ -62,6 +62,7 @@ import AvatarImage from '../AvatarImage';
 import { registerUnsavedChangesGuard } from '../../lib/unsavedChangesGuard';
 import { getGraphFingerprint } from './workflowDirty';
 import { isPrivateObjectKey, openPrivateObject } from '../../lib/privateStorage';
+import { normalizeVietnamese } from '../../lib/vietnamese';
 import {
   DEFAULT_WORKFLOW_LABELS,
   WORKFLOW_NODE_STATUS_LABELS,
@@ -212,12 +213,7 @@ const HARD_COPY_CUSTOMER_DOCUMENT_NAME_KEYS = new Set([
   'cccd cmnd cua chu su dung dat',
 ]);
 
-const boDauTiengViet = value => String(value || '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .replace(/đ/g, 'd')
-  .replace(/Đ/g, 'D')
-  .toLowerCase();
+const boDauTiengViet = normalizeVietnamese;
 
 const outputDocumentSourceKey = template => {
   const raw = boDauTiengViet(

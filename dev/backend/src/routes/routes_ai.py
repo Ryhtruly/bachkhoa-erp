@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Literal
@@ -36,7 +37,7 @@ async def analyze_planning(
         raise HTTPException(status_code=413, detail="Tệp quy hoạch không được vượt quá 15MB.")
 
     try:
-        result = ai_vision_engine.analyze_planning_document(file.filename)
+        result = await asyncio.to_thread(ai_vision_engine.analyze_planning_document, file.filename)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

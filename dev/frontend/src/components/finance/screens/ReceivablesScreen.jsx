@@ -6,6 +6,7 @@ import { FinanceScreenHeader, SummaryStrip } from '../SharedFinanceUI';
 import { API } from '../financeConstants';
 import { DollarSign, Printer, FileSpreadsheet, Loader2, AlertTriangle, FileText, CheckCircle2, RotateCcw } from 'lucide-react';
 import { apiFetch, downloadFile } from '../../../lib/api';
+import { normalizeVietnamese } from '../../../lib/vietnamese';
 import FinancePrintReport from '../print/FinancePrintReport';
 import { printElement } from '../print/printDocument';
 import financeReportPrintStyles from '../print/financeReport.print.css?inline';
@@ -68,10 +69,10 @@ export default function ReceivablesScreen({ user, isDirector: isDirectorProp }) 
   const filteredData = useMemo(() => {
     return data.filter(r => {
       // 1. Tìm kiếm theo Mã HĐ hoặc Tên khách hàng
-      const q = search.trim().toLowerCase();
+      const q = normalizeVietnamese(search.trim());
       const matchSearch = !q ||
-        (r.contract_id || '').toLowerCase().includes(q) ||
-        (r.customer_name || r.customer || '').toLowerCase().includes(q);
+        normalizeVietnamese(r.contract_id || '').includes(q) ||
+        normalizeVietnamese(r.customer_name || r.customer || '').includes(q);
       if (!matchSearch) return false;
 
       // 2. Lọc theo trạng thái công nợ

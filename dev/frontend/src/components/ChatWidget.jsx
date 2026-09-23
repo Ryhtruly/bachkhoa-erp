@@ -40,7 +40,7 @@ const readStoredPosition = () => {
       return clampPosition(parsed, { width: CHAT_BUTTON_SIZE, height: CHAT_BUTTON_SIZE });
     }
   } catch (error) {
-    console.error('Failed to parse chat position');
+    console.error('Failed to parse chat position', error);
   }
   return fallback;
 };

@@ -8,14 +8,14 @@ class WikiDocument(Base):
     __tablename__ = "wiki_documents"
     id = Column(String, primary_key=True) # e.g. ISO-001
     title = Column(String, nullable=False)
-    category = Column(String, nullable=False)
+    category = Column(String, nullable=False, index=True)
     link = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     version = Column(String(20), nullable=True)
     effective_date = Column(Date, nullable=True)
     author_id = Column(String, ForeignKey("users.id"), nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), default=get_utc_now)
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, index=True)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
 
 
