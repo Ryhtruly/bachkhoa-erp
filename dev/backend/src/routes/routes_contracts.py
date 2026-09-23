@@ -2048,6 +2048,20 @@ def review_checklist_evidence(
         )
         db.execute(
             text("""
+                update public.checklist_result_document_types t
+                set status = 'draft',
+                    reviewed_by = null,
+                    reviewed_at = null,
+                    updated_at = now()
+                from public.task_node_checklist_results r
+                where r.id = t.checklist_result_id
+                  and r.task_node_id = :task_node_id
+                  and t.status in ('approved', 'rejected')
+            """),
+            {"task_node_id": checklist["task_node_id"]},
+        )
+        db.execute(
+            text("""
                 insert into public.task_node_events
                     (task_node_id, event_type, actor_user_id, payload, created_at)
                 values (:task_node_id, 'NODE_REVIEW_COMPLETED', :user_id,

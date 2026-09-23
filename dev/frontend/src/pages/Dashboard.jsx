@@ -8,6 +8,15 @@ import { getTimeBasedGreeting } from '../lib/greeting';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
+function formatDossierCode(code) {
+  if (!code) return '—';
+  const str = String(code).trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str)) {
+    return `HS-${str.slice(0, 8).toUpperCase()}`;
+  }
+  return str;
+}
+
 export default function Dashboard({ user }) {
   const [greeting, setGreeting] = useState(() => getTimeBasedGreeting());
 
@@ -74,15 +83,15 @@ export default function Dashboard({ user }) {
     return value;
   };
 
-  const sortedBarData = [...chartData.barData].sort((a, b) => 
+  const sortedBarData = [...(chartData?.barData || [])].sort((a, b) => 
     barSort === 'value' ? b.revenue - a.revenue : a.service.localeCompare(b.service)
   );
 
-  const sortedStatusData = [...chartData.pieStatusData].sort((a, b) => 
+  const sortedStatusData = [...(chartData?.pieStatusData || [])].sort((a, b) => 
     statusSort === 'value' ? b.value - a.value : a.name.localeCompare(b.name)
   );
 
-  const sortedExpenseData = [...chartData.pieExpenseData].sort((a, b) => 
+  const sortedExpenseData = [...(chartData?.pieExpenseData || [])].sort((a, b) => 
     expenseSort === 'value' ? b.value - a.value : a.name.localeCompare(b.name)
   );
 
@@ -328,7 +337,7 @@ export default function Dashboard({ user }) {
               ) : (
                 recentTasks.map((hs, i) => (
                   <tr key={i}>
-                    <td><strong>{hs.id}</strong></td>
+                    <td><strong>{formatDossierCode(hs.contract_code || hs.id)}</strong></td>
                     <td>{hs.customer_name}</td>
                     <td>{hs.service_type}</td>
                     <td>{hs.area}</td>

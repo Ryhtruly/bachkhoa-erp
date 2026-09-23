@@ -5757,6 +5757,20 @@ def review_task_node_acceptance(
         )
         db.execute(
             text("""
+                update public.checklist_result_document_types t
+                set status = 'draft',
+                    reviewed_by = null,
+                    reviewed_at = null,
+                    updated_at = now()
+                from public.task_node_checklist_results r
+                where r.id = t.checklist_result_id
+                  and r.task_node_id = :task_node_id
+                  and t.status in ('approved', 'rejected')
+            """),
+            {"task_node_id": task_node_id},
+        )
+        db.execute(
+            text("""
                 update public.task_node_acceptances
                 set status = 'rework_required', reviewer_user_id = :actor_id, reviewed_at = now(),
                     review_note = :note
@@ -6483,6 +6497,20 @@ def cascade_rollback(
             where r.id = l.checklist_result_id
               and r.task_node_id = any(:ids)
               and l.review_status <> 'pending_review'
+        """),
+        {"ids": node_ids},
+    )
+    db.execute(
+        text("""
+            update public.checklist_result_document_types t
+            set status = 'draft',
+                reviewed_by = null,
+                reviewed_at = null,
+                updated_at = now()
+            from public.task_node_checklist_results r
+            where r.id = t.checklist_result_id
+              and r.task_node_id = any(:ids)
+              and t.status in ('approved', 'rejected')
         """),
         {"ids": node_ids},
     )

@@ -431,7 +431,8 @@ class CascadeRollbackTests(unittest.TestCase):
             # Hạ phán quyết TỪNG TỜ về chờ duyệt. Thiếu bước này thì bước bị kéo
             # về sửa vẫn mang đủ giấy 'approved' của vòng trước, và cổng đóng
             # bước cho qua ngay — bản vẽ sai đi thẳng qua vòng hai.
-            MagicMock(),   # reset phán quyết giấy
+            MagicMock(),   # reset phán quyết giấy (links)
+            MagicMock(),   # reset trạng thái loại giấy runtime (types)
             MagicMock(),   # notifications
             _scalar("WI-1"),
         ]

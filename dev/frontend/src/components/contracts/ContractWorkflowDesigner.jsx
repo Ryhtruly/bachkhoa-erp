@@ -1405,20 +1405,21 @@ export default function ContractWorkflowDesigner({
   // cho mỗi LẦN BẤM (nonce), không ghi đè lựa chọn thủ công sau đó của người dùng.
   const consumedTargetRef = useRef(null);
   useEffect(() => {
-    if (!targetTaskNodeId && !targetNodeKey) return;
+    if (!targetTaskNodeId && !targetNodeKey && !(targetType === 'node_review' && targetId)) return;
     const targetNode = nodes.find(node => (
       (targetTaskNodeId && node.data?.taskNodeId === targetTaskNodeId)
       || (targetNodeKey && node.id === targetNodeKey)
+      || (targetType === 'node_review' && targetId && node.data?.pendingAcceptanceId === targetId)
     ));
     if (!targetNode) return;
-    const targetToken = `${targetNonce ?? ''}:${targetTaskNodeId || targetNodeKey}`;
+    const targetToken = `${targetNonce ?? ''}:${targetTaskNodeId || targetNodeKey || targetId}`;
     if (consumedTargetRef.current === targetToken) return;
     consumedTargetRef.current = targetToken;
     setSelectedNodeId(targetNode.id);
     // Checklist đã gộp vào tab Node nên mọi đường dẫn tới đều về 'node'. Giữ
     // nhánh cũ trỏ 'checklist' sẽ rơi vào tab không tồn tại → panel trắng.
     setInspectorTab('node');
-  }, [targetNodeKey, targetTaskNodeId, targetType, targetNonce, nodes]);
+  }, [targetNodeKey, targetTaskNodeId, targetType, targetId, targetNonce, nodes]);
 
   // Highlight & scroll tới checklist hoặc loại giấy tờ khi điều hướng từ thông báo
   const [highlightedChecklistId, setHighlightedChecklistId] = useState(null);
@@ -1457,6 +1458,19 @@ export default function ContractWorkflowDesigner({
       clearTimeout(clearTimer);
     };
   }, [targetChecklistResultId, targetDocumentTypeId, targetId, targetType, targetNonce]);
+
+  useEffect(() => {
+    if (targetType === 'node_review' && targetId) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById(`node-review-${targetId}`)
+          || document.querySelector('.workflow-evidence-review');
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 280);
+      return () => clearTimeout(timer);
+    }
+  }, [targetId, targetNonce, targetType, selectedNodeId]);
 
   const getNodeReviewEligibility = useCallback((node) => {
     if (!node?.data) return { canApprove: false, reason: 'Không có dữ liệu Node' };
@@ -2906,18 +2920,25 @@ export default function ContractWorkflowDesigner({
 
     const hasPendingChecklistWork = hasPendingDocTypes || hasPendingPaperless;
     const hasConfiguredDocumentTypes = checklistItems.some(item => (item.runtime?.document_types || []).length > 0);
+    const allConfiguredTypesApproved = hasConfiguredDocumentTypes && checklistItems.every(item => {
+      const types = item.runtime?.document_types || [];
+      return types.length > 0 && types.every(t => t.status === 'approved' && ((t.files || []).length > 0 || (t.file_count || 0) > 0));
+    });
 
     // Với Node có checklist đang chờ duyệt (loại giấy hoặc checklist thuần), Giám đốc duyệt trực tiếp
     // từng mục. Khi mục cuối cùng đạt, backend tự động hoàn tất Node và mở bước kế tiếp.
     // Do đó KHÔNG sinh mục 'Nghiệm thu Node' thừa thãi trong Chờ duyệt khi đang có việc checklist cần làm.
+    // Do đó KHÔNG sinh mục 'Nghiệm thu Node' thừa thãi trong Chờ duyệt khi mọi loại giấy đã đạt và không cần rẽ nhánh.
     // Chỉ thêm 'Nghiệm thu Node' khi:
     // 1. Không còn việc checklist nào đang chờ
     // 2. VÀ (Node không dùng loại giấy runtime, HOẶC cần chọn kết quả rẽ nhánh, HOẶC duyệt chấp nhận thiếu)
+    // 2. VÀ (Chưa đạt toàn bộ loại giấy runtime, HOẶC cần chọn kết quả rẽ nhánh, HOẶC duyệt chấp nhận thiếu)
     if (
       canReviewNode
       && node.data.pendingAcceptanceId
       && !hasPendingChecklistWork
       && (!hasConfiguredDocumentTypes || requiresOutcome || hasMissing)
+      && (!allConfiguredTypesApproved || requiresOutcome || hasMissing)
     ) {
       pending.unshift({
         id: `node:${node.data.pendingAcceptanceId}`,
@@ -4173,15 +4194,24 @@ title="Lưu quy trình hiện tại thành mẫu"
                 (selectedNode.data.checklist || []).length === 0
                 || Object.keys(selectedNode.data.transitions || {}).length > 1
                 || (selectedNode.data.pendingMissing || []).length > 0
+                || !(selectedNode.data.checklist || []).some(item => {
+                  const docTypes = item.runtime?.document_types || [];
+                  if (docTypes.length > 0) return docTypes.some(dt => dt.status === 'pending_review');
+                  return ['pending_approval', 'late_pending_approval'].includes(item.runtime?.status);
+                })
               ) && (() => {
                 const eligibility = getNodeReviewEligibility(selectedNode);
                 const hasMissing = (selectedNode.data.pendingMissing || []).length > 0;
                 const transitionKeys = Object.keys(selectedNode.data.transitions || {});
-                const requiresOutcome = transitionKeys.length > 0;
+                const requiresOutcome = transitionKeys.length > 1;
                 const canApprove = eligibility.canApprove && (!requiresOutcome || Boolean(reviewOutcome));
 
                 return (
-                  <div className="workflow-evidence-review" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed' }}>
+                  <div
+                    className="workflow-evidence-review"
+                    id={`node-review-${selectedNode.data.pendingAcceptanceId}`}
+                    style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed' }}
+                  >
                     <span style={{ fontWeight: 650, color: '#9a3412', display: 'flex', alignItems: 'center', gap: 6 }}>
                       <CircleDashed size={14} /> Nhân viên đã nộp nghiệm thu Node — chờ Giám đốc duyệt
                     </span>
@@ -4236,7 +4266,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                         onClick={() => reviewNodeAcceptance(
                           selectedNode.data.pendingAcceptanceId,
                           'accepted',
-                          reviewOutcome || null,
+                          reviewOutcome || (transitionKeys.length === 1 ? transitionKeys[0] : null),
                           hasMissing,
                         )}
                       >
@@ -4267,6 +4297,19 @@ title="Lưu quy trình hiện tại thành mẫu"
                   {startNode === selectedNode.id ? 'Node bắt đầu' : 'Đặt làm node bắt đầu'}
                 </button>
               </div>
+              {structureEditable && (
+                <div className="wf-node-panel__foot">
+                  <button
+                    type="button"
+                    disabled={!structureEditable}
+                    className={`workflow-start-node-dashed-btn${startNode === selectedNode.id ? ' is-active' : ''}`}
+                    onClick={() => setStartNode(selectedNode.id)}
+                  >
+                    <CheckCircle2 size={15} />
+                    {startNode === selectedNode.id ? 'Node bắt đầu' : 'Đặt làm node bắt đầu'}
+                  </button>
+                </div>
+              )}
             </div>
           ) : inspectorTab === 'assignment' ? (
             <div className="workflow-inspector__content workflow-assignment-panel">
@@ -4619,7 +4662,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                         const eligibility = getNodeReviewEligibility(targetNode);
                         const hasMissing = (item.pendingMissing || []).length > 0;
                         const transitionKeys = Object.keys(item.transitions || {});
-                        const requiresOutcome = transitionKeys.length > 0;
+                        const requiresOutcome = transitionKeys.length > 1;
                         const canApprove = eligibility.canApprove && (!requiresOutcome || Boolean(reviewOutcome));
 
                         return (
@@ -4684,7 +4727,7 @@ title="Lưu quy trình hiện tại thành mẫu"
                                 onClick={() => reviewNodeAcceptance(
                                   item.pendingAcceptanceId,
                                   'accepted',
-                                  reviewOutcome || null,
+                                  reviewOutcome || (transitionKeys.length === 1 ? transitionKeys[0] : null),
                                   hasMissing,
                                 )}
                               >

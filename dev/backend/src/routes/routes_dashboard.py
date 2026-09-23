@@ -76,7 +76,9 @@ def get_dashboard(
         debt = total_val - total_collected
 
         recent_tasks = [dict(row) for row in db.execute(text("""
-            select sl.id,
+            select coalesce(c.id, sl.id) as id,
+                   c.id as contract_code,
+                   sl.id as service_line_id,
                    coalesce(tt.name, sl.service_type, '') as service_type,
                    coalesce(wi.status, 'not_started') as status,
                    coalesce(cu.full_name, '') as customer_name,

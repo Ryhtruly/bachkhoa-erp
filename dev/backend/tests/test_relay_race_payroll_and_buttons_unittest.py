@@ -101,8 +101,8 @@ class RelayRacePayrollAndButtonsQATests(unittest.TestCase):
         item_id = _id("WI")
         actual_id = self.db.execute(
             text("""
-                insert into public.work_items (id, code, name, default_unit, is_active)
-                values (:id, :c, :n, 'Gói', true)
+                insert into public.work_items (id, code, name, default_unit, is_active, created_at, updated_at)
+                values (:id, :c, :n, 'Gói', true, now(), now())
                 on conflict (code) do update set name = excluded.name
                 returning id
             """),
@@ -113,9 +113,9 @@ class RelayRacePayrollAndButtonsQATests(unittest.TestCase):
         self.db.execute(
             text("""
                 insert into public.work_item_rates
-                    (id, work_item_id, role_code, amount, status, effective_from, approved_at, approved_by)
+                    (id, work_item_id, role_code, amount, status, effective_from, approved_at, approved_by, approval_source, created_at)
                 values
-                    (:id, :wid, 'MAIN', :amount, 'published', current_date, now(), :actor_id)
+                    (:id, :wid, 'MAIN', :amount, 'published', current_date, now(), :actor_id, 'manual', now())
             """),
             {"id": rate_id, "wid": item_id, "amount": amount, "actor_id": self.director_user_id},
         )

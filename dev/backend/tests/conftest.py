@@ -666,9 +666,9 @@ def _ensure_runtime_tables_and_columns(connection):
             status VARCHAR DEFAULT 'open',
             claimed_by_employee_id VARCHAR,
             claimed_at {ts_type},
+            expires_at {ts_type},
             cancelled_at {ts_type},
             cancel_reason TEXT,
-            expires_at {ts_type},
             created_at {ts_now},
             updated_at {ts_now}
         );
@@ -762,7 +762,7 @@ def _ensure_runtime_tables_and_columns(connection):
         f"""
         CREATE TABLE IF NOT EXISTS {p}survey_records (
             id VARCHAR PRIMARY KEY {id_default},
-            task_node_id VARCHAR,
+            task_node_id VARCHAR UNIQUE,
             service_line_id VARCHAR,
             contract_id VARCHAR,
             dossier_name VARCHAR,
@@ -797,9 +797,9 @@ def _ensure_runtime_tables_and_columns(connection):
             submitted_agency VARCHAR,
             is_first_submission BOOLEAN DEFAULT {bool_true},
             previous_submission_id VARCHAR,
-            submit_seq INTEGER DEFAULT 1,
-            submit_reason TEXT,
             created_by VARCHAR,
+            submit_reason TEXT,
+            submit_seq INTEGER DEFAULT 1,
             note TEXT,
             created_at {ts_now},
             updated_at {ts_now}
@@ -809,7 +809,7 @@ def _ensure_runtime_tables_and_columns(connection):
         CREATE TABLE IF NOT EXISTS {p}legal_dossiers (
             id VARCHAR PRIMARY KEY {id_default},
             contract_id VARCHAR,
-            service_line_id VARCHAR,
+            service_line_id VARCHAR UNIQUE,
             task_node_id VARCHAR,
             status VARCHAR,
             sub_status VARCHAR,
@@ -1127,13 +1127,18 @@ def _ensure_runtime_tables_and_columns(connection):
             f"ALTER TABLE {p}task_node_acceptances ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}task_node_events ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}task_node_help_requests ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}task_node_help_requests ADD COLUMN IF NOT EXISTS expires_at {ts_type}",
             f"ALTER TABLE {p}checklist_result_document_types ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}checklist_result_document_type_files ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}checklist_result_document_links ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}handover_debt_requests ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}workflow_rollback_requests ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}survey_records ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}survey_records ADD COLUMN IF NOT EXISTS created_by VARCHAR",
             f"ALTER TABLE {p}legal_submissions ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}legal_submissions ADD COLUMN IF NOT EXISTS created_by VARCHAR",
+            f"ALTER TABLE {p}legal_submissions ADD COLUMN IF NOT EXISTS submit_reason TEXT",
+            f"ALTER TABLE {p}legal_submissions ADD COLUMN IF NOT EXISTS submit_seq INTEGER DEFAULT 1",
             f"ALTER TABLE {p}legal_dossiers ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
             f"ALTER TABLE {p}legal_dossiers ADD COLUMN IF NOT EXISTS assigned_employee_id VARCHAR",
             f"ALTER TABLE {p}legal_dossiers ADD COLUMN IF NOT EXISTS assigned_at {ts_type}",
@@ -1143,7 +1148,25 @@ def _ensure_runtime_tables_and_columns(connection):
             f"ALTER TABLE {p}legal_dossiers ADD COLUMN IF NOT EXISTS total_pending_seconds NUMERIC",
             f"ALTER TABLE {p}legal_dossiers ADD COLUMN IF NOT EXISTS pending_since {ts_type}",
             f"ALTER TABLE {p}legal_dossiers ADD COLUMN IF NOT EXISTS created_by VARCHAR",
+            f"ALTER TABLE {p}legal_dossier_events ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}legal_dossier_events ALTER COLUMN created_at SET DEFAULT now()",
             f"ALTER TABLE {p}work_pay_entitlements ALTER COLUMN id SET DEFAULT gen_random_uuid()::text",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS checklist_result_id VARCHAR",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS checklist_assignment_id VARCHAR",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS acceptance_id VARCHAR",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS work_item_rate_id VARCHAR",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS approved_by VARCHAR",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS approved_at {ts_type}",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS voided_by VARCHAR",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS voided_at {ts_type}",
+            f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS void_reason TEXT",
+            f"ALTER TABLE {p}work_items ALTER COLUMN created_at SET DEFAULT now()",
+            f"ALTER TABLE {p}work_items ALTER COLUMN updated_at SET DEFAULT now()",
+            f"ALTER TABLE {p}work_items ALTER COLUMN default_unit SET DEFAULT 'job'",
+            f"ALTER TABLE {p}work_items ALTER COLUMN is_active SET DEFAULT true",
+            f"ALTER TABLE {p}work_item_rates ALTER COLUMN status SET DEFAULT 'draft'",
+            f"ALTER TABLE {p}work_item_rates ALTER COLUMN approval_source SET DEFAULT 'manual'",
+            f"ALTER TABLE {p}work_item_rates ALTER COLUMN created_at SET DEFAULT now()",
             f"ALTER TABLE {p}workflow_nodes ALTER COLUMN allow_pause SET DEFAULT false",
             f"ALTER TABLE {p}workflow_nodes ALTER COLUMN allow_gov_tracking SET DEFAULT false",
             f"ALTER TABLE {p}users ALTER COLUMN is_active SET DEFAULT true",
@@ -1279,6 +1302,28 @@ def _ensure_runtime_tables_and_columns(connection):
                 CREATE INDEX IF NOT EXISTS idx_task_node_assignments_active_lookup
                 ON {p}task_node_assignments (task_node_id, role_code, employee_id)
                 WHERE assignment_status IN ('proposed', 'assigned', 'accepted');
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS survey_records_task_node_id_key
+                ON {p}survey_records (task_node_id);
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS survey_records_one_per_service_line
+                ON {p}survey_records (service_line_id)
+                WHERE (service_line_id IS NOT NULL);
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS legal_submissions_one_per_service_line_seq
+                ON {p}legal_submissions (service_line_id, submit_seq)
+                WHERE (service_line_id IS NOT NULL);
+            """))
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS legal_dossiers_service_line_id_key
+                ON {p}legal_dossiers (service_line_id);
+            """))
+            connection.execute(text(f"""
+                CREATE INDEX IF NOT EXISTS idx_legal_dossier_events_dossier
+                ON {p}legal_dossier_events (dossier_id, created_at);
             """))
             connection.execute(text(f"""
                 ALTER TABLE {p}work_pay_entitlements DROP CONSTRAINT IF EXISTS work_pay_entitlements_replaced_check;
