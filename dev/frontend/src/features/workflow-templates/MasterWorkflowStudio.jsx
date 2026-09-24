@@ -2008,7 +2008,10 @@ export default function MasterWorkflowStudio() {
                           item.compensation?.work_item_id ||
                           workItems.find((w) => w.name === item.compensation?.work_item_name)?.id
                         const currentWi = workItems.find((w) => w.id === currentWiId)
-                        const rates = currentWi?.rates || []
+                        const ROLE_ORDER = { MAIN: 0, ASSISTANT: 1, SUBMITTER: 2 }
+                        const rates = [...(currentWi?.rates || [])].sort(
+                          (a, b) => (ROLE_ORDER[a.role_code] ?? 9) - (ROLE_ORDER[b.role_code] ?? 9)
+                        )
                         const shortRoleLabel = (code) =>
                           ({ MAIN: 'Chính', ASSISTANT: 'Phụ', SUBMITTER: 'Nộp' }[code] || code)
                         return (
@@ -2016,23 +2019,25 @@ export default function MasterWorkflowStudio() {
                             <span className="wcl-prop__label"><Banknote size={13} /> Lương khoán</span>
                             <div className="wcl-prop__field wcl-rate-summary">
                               {rates.length > 0 ? (
-                                <>
-                                  {rates.map((r) => (
-                                    <span key={r.id || r.role_code} className={`wcl-rr${Number(r.amount) > 0 ? '' : ' is-zero'}`}>
-                                      {shortRoleLabel(r.role_code)}:{' '}
-                                      <strong>{Number(r.amount || 0).toLocaleString('vi-VN')}đ</strong>
-                                    </span>
-                                  ))}
-                                  {Number(rates.find((r) => r.role_code === 'ASSISTANT')?.amount || 0) > 0 ? (
-                                    <span className="mws-auto-role-badge" title="Tự động mở suất thợ phụ theo định mức lương khoán">
-                                      ⚡ Có thợ phụ (Tự động mở suất theo bảng lương)
-                                    </span>
-                                  ) : (
-                                    <span className="mws-auto-role-badge mws-auto-role-badge--single" title="Chỉ 1 người làm chính">
-                                      👤 1 người làm chính
-                                    </span>
-                                  )}
-                                </>
+                                rates.map((r) => {
+                                  const amount = Number(r.amount || 0)
+                                  return (
+                                    <div
+                                      key={r.id || r.role_code}
+                                      className={`wcl-rate-line${amount > 0 ? '' : ' is-zero'}`}
+                                      title={
+                                        r.role_code === 'ASSISTANT' && amount > 0
+                                          ? 'Có thợ phụ: tự động mở suất theo bảng lương khoán'
+                                          : undefined
+                                      }
+                                    >
+                                      <span className="wcl-rate-line__role">{shortRoleLabel(r.role_code)}</span>
+                                      <span className="wcl-rate-line__amount">
+                                        {amount > 0 ? `${amount.toLocaleString('vi-VN')}đ` : '—'}
+                                      </span>
+                                    </div>
+                                  )
+                                })
                               ) : (
                                 <span className="wcl-rate-empty">Chưa thiết lập định mức</span>
                               )}
