@@ -839,6 +839,18 @@ def _ensure_runtime_tables_and_columns(connection):
         );
         """,
         f"""
+        CREATE TABLE IF NOT EXISTS {p}customer_loyalty_tiers (
+            id VARCHAR PRIMARY KEY {id_default},
+            tier_name VARCHAR NOT NULL,
+            min_spend NUMERIC(15,2) NOT NULL DEFAULT 0,
+            discount_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
+            description TEXT,
+            is_active BOOLEAN DEFAULT {bool_true},
+            created_at {ts_now},
+            updated_at {ts_now}
+        );
+        """,
+        f"""
         CREATE TABLE IF NOT EXISTS {p}work_pay_entitlements (
             id VARCHAR PRIMARY KEY {id_default},
             workflow_instance_id VARCHAR,
@@ -1070,6 +1082,31 @@ def _ensure_runtime_tables_and_columns(connection):
         f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS bank_branch VARCHAR(255)" if is_pg else "ALTER TABLE employees ADD COLUMN bank_branch VARCHAR(255)",
         f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS tax_code VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN tax_code VARCHAR(50)",
         f"ALTER TABLE {p}employees ADD COLUMN IF NOT EXISTS social_insurance_no VARCHAR(50)" if is_pg else "ALTER TABLE employees ADD COLUMN social_insurance_no VARCHAR(50)",
+        f"ALTER TABLE {p}task_node_help_requests ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ" if is_pg else "ALTER TABLE task_node_help_requests ADD COLUMN expires_at DATETIME",
+        f"ALTER TABLE {p}survey_records ADD COLUMN IF NOT EXISTS created_by VARCHAR" if is_pg else "ALTER TABLE survey_records ADD COLUMN created_by VARCHAR",
+        f"ALTER TABLE {p}legal_submissions ADD COLUMN IF NOT EXISTS submit_seq INTEGER DEFAULT 1" if is_pg else "ALTER TABLE legal_submissions ADD COLUMN submit_seq INTEGER DEFAULT 1",
+        f"ALTER TABLE {p}legal_submissions ADD COLUMN IF NOT EXISTS submit_reason TEXT" if is_pg else "ALTER TABLE legal_submissions ADD COLUMN submit_reason TEXT",
+        f"ALTER TABLE {p}legal_submissions ADD COLUMN IF NOT EXISTS created_by VARCHAR" if is_pg else "ALTER TABLE legal_submissions ADD COLUMN created_by VARCHAR",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS commission_rate_snapshot NUMERIC" if is_pg else "ALTER TABLE contracts ADD COLUMN commission_rate_snapshot NUMERIC",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS commission_locked_at TIMESTAMPTZ" if is_pg else "ALTER TABLE contracts ADD COLUMN commission_locked_at DATETIME",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS loyalty_tier_id VARCHAR" if is_pg else "ALTER TABLE contracts ADD COLUMN loyalty_tier_id VARCHAR",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS loyalty_tier_name VARCHAR" if is_pg else "ALTER TABLE contracts ADD COLUMN loyalty_tier_name VARCHAR",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS loyalty_discount_percent NUMERIC" if is_pg else "ALTER TABLE contracts ADD COLUMN loyalty_discount_percent NUMERIC",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS loyalty_discount_amount NUMERIC" if is_pg else "ALTER TABLE contracts ADD COLUMN loyalty_discount_amount NUMERIC",
+        f"ALTER TABLE {p}contracts ADD COLUMN IF NOT EXISTS original_value NUMERIC" if is_pg else "ALTER TABLE contracts ADD COLUMN original_value NUMERIC",
+        f"ALTER TABLE {p}work_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE work_items ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        f"ALTER TABLE {p}work_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE work_items ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        f"ALTER TABLE {p}work_item_rates ADD COLUMN IF NOT EXISTS approval_source VARCHAR DEFAULT 'manual'" if is_pg else "ALTER TABLE work_item_rates ADD COLUMN approval_source VARCHAR DEFAULT 'manual'",
+        f"ALTER TABLE {p}work_item_rates ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now()" if is_pg else "ALTER TABLE work_item_rates ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS checklist_result_id VARCHAR" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN checklist_result_id VARCHAR",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS checklist_assignment_id VARCHAR" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN checklist_assignment_id VARCHAR",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS acceptance_id VARCHAR" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN acceptance_id VARCHAR",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS work_item_rate_id VARCHAR" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN work_item_rate_id VARCHAR",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS approved_by VARCHAR" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN approved_by VARCHAR",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN approved_at DATETIME",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS voided_by VARCHAR" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN voided_by VARCHAR",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN voided_at DATETIME",
+        f"ALTER TABLE {p}work_pay_entitlements ADD COLUMN IF NOT EXISTS void_reason TEXT" if is_pg else "ALTER TABLE work_pay_entitlements ADD COLUMN void_reason TEXT",
     ]
     if is_pg:
         alter_statements.extend([
@@ -1199,6 +1236,25 @@ def _ensure_runtime_tables_and_columns(connection):
             CREATE UNIQUE INDEX IF NOT EXISTS uq_slot_creation_request_document
             ON {p}document_slot_creation_request_documents (request_id, document_id);
         """))
+        connection.execute(text(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_survey_records_task_node_id
+            ON {p}survey_records (task_node_id);
+        """))
+        connection.execute(text(f"""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_legal_dossiers_service_line_id
+            ON {p}legal_dossiers (service_line_id);
+        """))
+        if is_pg:
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_legal_submissions_service_line_submit_seq
+                ON {p}legal_submissions (service_line_id, submit_seq)
+                WHERE (service_line_id IS NOT NULL);
+            """))
+        else:
+            connection.execute(text(f"""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_legal_submissions_service_line_submit_seq
+                ON {p}legal_submissions (service_line_id, submit_seq);
+            """))
     except Exception:
         if is_pg:
             try:

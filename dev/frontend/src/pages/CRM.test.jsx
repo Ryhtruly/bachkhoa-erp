@@ -118,10 +118,10 @@ describe('CRM Component — Sales and Director views', () => {
 
     // Lead names render
     expect(await screen.findByText('Nguyễn Văn Khách 1')).toBeInTheDocument();
-    expect(screen.getByText('Trần Thị Khách 2')).toBeInTheDocument();
+    expect(await screen.findByText('Trần Thị Khách 2')).toBeInTheDocument();
 
     // Unassigned card displays claim button
-    expect(screen.getByRole('button', { name: /nhận lead này/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /nhận lead này/i })).toBeInTheDocument();
   });
 
   it('allows Sales staff to claim an unassigned lead', async () => {
@@ -226,7 +226,7 @@ describe('CRM Component — Sales and Director views', () => {
     expect(screen.queryByText('Khách Tiếp Cận Sale Khác')).not.toBeInTheDocument();
 
     // In 'Báo giá': user's own quotation lead is visible
-    expect(screen.getByText('Khách Báo Giá Của Tôi')).toBeInTheDocument();
+    expect(await screen.findByText('Khách Báo Giá Của Tôi')).toBeInTheDocument();
     // In 'Báo giá': another sale's quotation is NOT visible
     expect(screen.queryByText('Khách Báo Giá Sale Khác')).not.toBeInTheDocument();
     // In 'Báo giá': unassigned lead in quote stage is NOT visible

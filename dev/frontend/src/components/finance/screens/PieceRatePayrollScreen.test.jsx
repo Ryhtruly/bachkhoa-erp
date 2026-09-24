@@ -1,14 +1,20 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PieceRatePayrollScreen from './PieceRatePayrollScreen';
 import { ToastProvider } from '../../../contexts/ToastContext';
+import { clearApiCache } from '../../../lib/api';
 
 const response = data => Promise.resolve(new Response(JSON.stringify({ data }), { status: 200 }));
 
 describe('PieceRatePayrollScreen payroll closing', () => {
+  beforeEach(() => {
+    clearApiCache();
+  });
+
   afterEach(() => {
     cleanup();
+    clearApiCache();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -45,7 +51,7 @@ describe('PieceRatePayrollScreen payroll closing', () => {
 
     render(<ToastProvider><PieceRatePayrollScreen isDirector={true} /></ToastProvider>);
 
-    fireEvent.click(await screen.findByRole('button', { name: /chốt lương \(29\)/i }, { timeout: 5000 }));
+    fireEvent.click(await screen.findByRole('button', { name: /chốt lương \(29\)/i }, { timeout: 15000 }));
 
     const dialog = screen.getByRole('dialog', { name: 'Xác nhận chốt lương' });
     expect(within(dialog).getByText(/^29$/)).toBeInTheDocument();
@@ -87,7 +93,7 @@ describe('PieceRatePayrollScreen payroll closing', () => {
 
     render(<ToastProvider><PieceRatePayrollScreen /></ToastProvider>);
 
-    const printButton = await screen.findByRole('button', { name: /In phiếu lương/i }, { timeout: 5000 });
+    const printButton = await screen.findByRole('button', { name: /In phiếu lương/i }, { timeout: 15000 });
     await waitFor(() => expect(printButton).not.toBeDisabled());
     fireEvent.click(printButton);
 

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomerDirectory from './CustomerDirectory';
+import { clearApiCache } from '../lib/api';
 
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ addToast: vi.fn() }),
@@ -21,6 +22,7 @@ const mockCustomers = Array.from({ length: 25 }, (_, i) => ({
 }));
 
 beforeEach(() => {
+  clearApiCache();
   vi.spyOn(global, 'fetch').mockImplementation((input) => {
     const url = String(input);
     if (url.includes('/api/customers/loyalty-tiers')) {
@@ -56,6 +58,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  clearApiCache();
   vi.restoreAllMocks();
 });
 
@@ -103,17 +106,15 @@ describe('CustomerDirectory with toolbar Loyalty button and pagination', () => {
     // Click to open modal
     fireEvent.click(loyaltyBtn);
 
-    // Modal dialog should open
+    // Modal dialog should open and load tiers
     await waitFor(() => {
       expect(screen.getByText('Thiết lập ưu đãi khách hàng')).toBeDefined();
       expect(screen.getByText('Bậc ưu đãi (2)')).toBeDefined();
+      expect(screen.getByText('Bạc')).toBeDefined();
+      expect(screen.getByText('Vàng')).toBeDefined();
+      expect(screen.getAllByText(/Giảm 5%/).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/Giảm 10%/).length).toBeGreaterThanOrEqual(1);
     });
-
-    // Tiers table should be displayed inside modal
-    expect(screen.getByText('Bạc')).toBeDefined();
-    expect(screen.getByText('Vàng')).toBeDefined();
-    expect(screen.getAllByText(/Giảm 5%/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/Giảm 10%/).length).toBeGreaterThanOrEqual(1);
 
     // Close modal
     const closeBtns = screen.getAllByRole('button', { name: /Đóng/i });
