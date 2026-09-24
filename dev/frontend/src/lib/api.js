@@ -6,9 +6,27 @@ const AUTH_SESSION_HINT_KEY = 'bachkhoa_auth_session_hint';
 let accessToken = null;
 let refreshInFlight = null;
 
+// FastAPI trả lỗi validate (422) dạng mảng [{loc, msg, type}], ghép thành chuỗi đọc được
+// thay vì để hiện "[object Object]".
+export function formatErrorDetail(detail) {
+  if (detail == null || typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        const field = Array.isArray(item?.loc) ? item.loc.filter((part) => part !== 'body').join('.') : '';
+        const msg = item?.msg || JSON.stringify(item);
+        return field ? `${field}: ${msg}` : msg;
+      })
+      .join('; ');
+  }
+  if (typeof detail === 'object') return detail.message || detail.msg || JSON.stringify(detail);
+  return String(detail);
+}
+
 export class ApiError extends Error {
   constructor(status, message) {
-    super(message);
+    super(formatErrorDetail(message));
     this.name = 'ApiError';
     this.status = status;
   }
