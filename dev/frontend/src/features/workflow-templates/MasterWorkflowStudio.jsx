@@ -2008,7 +2008,10 @@ export default function MasterWorkflowStudio() {
                           item.compensation?.work_item_id ||
                           workItems.find((w) => w.name === item.compensation?.work_item_name)?.id
                         const currentWi = workItems.find((w) => w.id === currentWiId)
-                        const rates = currentWi?.rates || []
+                        const ROLE_ORDER = { MAIN: 0, ASSISTANT: 1, SUBMITTER: 2 }
+                        const rates = [...(currentWi?.rates || [])].sort(
+                          (a, b) => (ROLE_ORDER[a.role_code] ?? 9) - (ROLE_ORDER[b.role_code] ?? 9)
+                        )
                         const shortRoleLabel = (code) =>
                           ({ MAIN: 'Chính', ASSISTANT: 'Phụ', SUBMITTER: 'Nộp' }[code] || code)
                         return (
@@ -2024,12 +2027,12 @@ export default function MasterWorkflowStudio() {
                                     </span>
                                   ))}
                                   {Number(rates.find((r) => r.role_code === 'ASSISTANT')?.amount || 0) > 0 ? (
-                                    <span className="mws-auto-role-badge" title="Tự động mở suất thợ phụ theo định mức lương khoán">
-                                      ⚡ Có thợ phụ (Tự động mở suất theo bảng lương)
+                                    <span className="mws-auto-role-badge" title="Tự động mở suất thợ phụ theo bảng lương khoán">
+                                      ⚡ Có thợ phụ
                                     </span>
                                   ) : (
                                     <span className="mws-auto-role-badge mws-auto-role-badge--single" title="Chỉ 1 người làm chính">
-                                      👤 1 người làm chính
+                                      👤 1 người
                                     </span>
                                   )}
                                 </>
