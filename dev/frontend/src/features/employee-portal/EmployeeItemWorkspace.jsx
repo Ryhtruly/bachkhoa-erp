@@ -735,14 +735,6 @@ export default function EmployeeItemWorkspace({
 
           {/* ── CỘT PHẢI ────────────────────────────────────────────── */}
           <div className="eiw-col eiw-col--right">
-            <div className="eiw-band eiw-band--task">
-              <span>Nhiệm vụ</span>
-              <span className={`eiw-state is-${task.status}`}>
-                {paused
-                  ? PAUSE_LABEL[task.pause_reason_type] || 'Đang tạm dừng'
-                  : NODE_STATE_LABEL[task.status] || task.status}
-              </span>
-            </div>
             <div className="eiw-right-card">
               {/* Header Tabs: Checklist, Kho giấy tờ khách, Hoạt động */}
               <div className="eiw-right-tabs" role="tablist">
@@ -777,18 +769,19 @@ export default function EmployeeItemWorkspace({
                 </button>
               </div>
 
-            {/* ── Ô NGHIỆP VỤ — thứ DUY NHẤT đổi theo bước ── */}
-            <div className={rightColTab === 'source_docs' ? 'is-tab-focused' : ''}>
-              <NodeBusinessSlot
-                task={task}
-                item={item}
-                addToast={addToast}
-                onRefresh={onRefresh}
-                busy={busy}
-                onPause={() => setPauseOpen(true)}
-                onResume={handleResume}
-              />
-            </div>
+              <div className="eiw-right-card__body">
+                {/* ── Ô NGHIỆP VỤ — thứ DUY NHẤT đổi theo bước ── */}
+                <div className={`eiw-slot-wrap ${rightColTab !== 'source_docs' ? 'is-collapsed-slot' : ''}`}>
+                  <NodeBusinessSlot
+                    task={task}
+                    item={item}
+                    addToast={addToast}
+                    onRefresh={onRefresh}
+                    busy={busy}
+                    onPause={() => setPauseOpen(true)}
+                    onResume={handleResume}
+                  />
+                </div>
 
             <div className="eiw-band eiw-band--task" style={{ display: 'none' }}>
               <span>Nhiệm vụ</span>
@@ -889,6 +882,8 @@ export default function EmployeeItemWorkspace({
                 ))}
               </div>
             )}
+              </div>
+            </div>
 
             {/* Chân trang hành động */}
             <footer className="eiw-foot" data-testid="node-action-footer">
@@ -937,7 +932,6 @@ export default function EmployeeItemWorkspace({
                 </div>
               </div>
             </footer>
-            </div>
           </div>
         </div>
       )}
