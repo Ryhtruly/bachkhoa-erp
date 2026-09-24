@@ -521,34 +521,37 @@
 }
 
 /* ── Lương khoán readout trong Checklist Inspector ── */
-/* Một dòng gọn như readout bên quy trình hợp đồng; giữ padding ngang 10px của
-   .wcl-prop__field để chữ không dính vào cột nhãn. */
+/* Bảng nhỏ 2 cột: vai trò bên trái, số tiền căn phải thẳng hàng. Giữ padding
+   ngang 10px của .wcl-prop__field để thẳng với các hàng Công việc / Duyệt. */
 .mws-inspector .wcl-rate-summary {
   display: flex;
-  align-items: center;
-  gap: 4px 12px;
-  flex-wrap: wrap;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text-secondary, #475569);
-  padding: 6px 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 7px 10px;
 }
 
-.mws-inspector .wcl-rate-summary .wcl-rr {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12.5px;
-  white-space: nowrap;
-  color: var(--text-secondary, #475569);
+.mws-inspector .wcl-rate-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
 }
 
-.mws-inspector .wcl-rate-summary .wcl-rr strong {
-  color: #059669;
+.mws-inspector .wcl-rate-line__role {
+  font-size: 12px;
+  color: var(--text-tertiary, #94a3b8);
+}
+
+.mws-inspector .wcl-rate-line__amount {
+  font-size: 13px;
   font-weight: 700;
+  color: #059669;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.mws-inspector .wcl-rate-summary .wcl-rr.is-zero strong {
+.mws-inspector .wcl-rate-line.is-zero .wcl-rate-line__amount {
   color: var(--text-tertiary, #94a3b8);
   font-weight: 500;
 }
@@ -684,27 +687,6 @@
 
 .mws-capability-link:hover {
   color: var(--orange-700, #c2410c);
-}
-
-/* ── Zero-Config Role Auto-Derivation Badge ── */
-.mws-auto-role-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 650;
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-  white-space: nowrap;
-}
-
-.mws-auto-role-badge--single {
-  background: #f8fafc;
-  color: #475569;
-  border: 1px solid #e2e8f0;
 }
 
 /* ── Source Filter Tabs in Output Documents Modal ── */

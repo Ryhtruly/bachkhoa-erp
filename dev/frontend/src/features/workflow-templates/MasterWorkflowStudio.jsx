@@ -2019,23 +2019,25 @@ export default function MasterWorkflowStudio() {
                             <span className="wcl-prop__label"><Banknote size={13} /> Lương khoán</span>
                             <div className="wcl-prop__field wcl-rate-summary">
                               {rates.length > 0 ? (
-                                <>
-                                  {rates.map((r) => (
-                                    <span key={r.id || r.role_code} className={`wcl-rr${Number(r.amount) > 0 ? '' : ' is-zero'}`}>
-                                      {shortRoleLabel(r.role_code)}:{' '}
-                                      <strong>{Number(r.amount || 0).toLocaleString('vi-VN')}đ</strong>
-                                    </span>
-                                  ))}
-                                  {Number(rates.find((r) => r.role_code === 'ASSISTANT')?.amount || 0) > 0 ? (
-                                    <span className="mws-auto-role-badge" title="Tự động mở suất thợ phụ theo bảng lương khoán">
-                                      ⚡ Có thợ phụ
-                                    </span>
-                                  ) : (
-                                    <span className="mws-auto-role-badge mws-auto-role-badge--single" title="Chỉ 1 người làm chính">
-                                      👤 1 người
-                                    </span>
-                                  )}
-                                </>
+                                rates.map((r) => {
+                                  const amount = Number(r.amount || 0)
+                                  return (
+                                    <div
+                                      key={r.id || r.role_code}
+                                      className={`wcl-rate-line${amount > 0 ? '' : ' is-zero'}`}
+                                      title={
+                                        r.role_code === 'ASSISTANT' && amount > 0
+                                          ? 'Có thợ phụ: tự động mở suất theo bảng lương khoán'
+                                          : undefined
+                                      }
+                                    >
+                                      <span className="wcl-rate-line__role">{shortRoleLabel(r.role_code)}</span>
+                                      <span className="wcl-rate-line__amount">
+                                        {amount > 0 ? `${amount.toLocaleString('vi-VN')}đ` : '—'}
+                                      </span>
+                                    </div>
+                                  )
+                                })
                               ) : (
                                 <span className="wcl-rate-empty">Chưa thiết lập định mức</span>
                               )}
