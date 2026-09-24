@@ -220,26 +220,12 @@ export default function EmployeeHandoverModal({
                   </div>
                 </div>
               </label>
-            <label className={`handover-card ${mode === 'reassign' ? 'is-selected' : ''}`}>
-              <input
-                type="radio"
-                name="handover_mode"
-                value="reassign"
-                checked={mode === 'reassign'}
-                onChange={() => setMode('reassign')}
-                className="handover-card__input"
-              />
-              <span className="handover-card__icon">
-                <UserCheck size={16} />
-              </span>
-              <span className="handover-card__title">Chuyển giao cho nhân sự khác</span>
-            </label>
 
               {mode === 'reassign' && (
-                <div className="handover-assignee-pane">
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
+                <div className="handover-assignee-section">
+                  <label className="handover-field-label">
                     Chọn nhân sự tiếp nhận: <span style={{ color: 'var(--red-500)' }}>*</span>
-                  </div>
+                  </label>
                   <CustomSelect
                     value={toEmployeeId}
                     onChange={setToEmployeeId}
@@ -249,24 +235,14 @@ export default function EmployeeHandoverModal({
                     searchPlaceholder="Gõ tên nhân sự..."
                   />
                   {activeLeads.length > 0 && (
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        cursor: 'pointer',
-                        marginTop: 10,
-                        fontSize: 12.5,
-                        color: 'var(--text-secondary)',
-                      }}
-                    >
+                    <label className="handover-crm-checkbox">
                       <input
                         type="checkbox"
                         checked={handoverCrm}
                         onChange={(e) => setHandoverCrm(e.target.checked)}
                         style={{ accentColor: 'var(--orange-500)' }}
                       />
-                      Bàn giao cả {activeLeads.length} cơ hội / khách hàng CRM cho người nhận mới
+                      <span>Bàn giao cả khách hàng CRM ({activeLeads.length})</span>
                     </label>
                   )}
                 </div>
@@ -274,8 +250,8 @@ export default function EmployeeHandoverModal({
             </div>
 
             {/* Mode 2: Task Pool */}
-            <label className={`handover-card ${mode === 'pool' ? 'is-selected' : ''}`}>
-              <div className="handover-card__head">
+            <div className={`handover-card ${mode === 'pool' ? 'is-selected' : ''}`}>
+              <label className="handover-card__head">
                 <input
                   type="radio"
                   name="handover_mode"
@@ -293,24 +269,12 @@ export default function EmployeeHandoverModal({
                     Nhả lại các bước Hợp đồng lên Bể việc để các nhân viên đủ năng lực tự vào nhận làm thay.
                   </div>
                 </div>
-              </div>
-              <input
-                type="radio"
-                name="handover_mode"
-                value="pool"
-                checked={mode === 'pool'}
-                onChange={() => setMode('pool')}
-                className="handover-card__input"
-              />
-              <span className="handover-card__icon">
-                <Layers size={16} />
-              </span>
-              <span className="handover-card__title">Giải phóng về Bể việc chung (Task Pool)</span>
-            </label>
+              </label>
+            </div>
 
             {/* Mode 3: Keep & reassign later */}
-            <label className={`handover-card ${mode === 'keep' ? 'is-selected' : ''}`}>
-              <div className="handover-card__head">
+            <div className={`handover-card ${mode === 'keep' ? 'is-selected' : ''}`}>
+              <label className="handover-card__head">
                 <input
                   type="radio"
                   name="handover_mode"
@@ -328,49 +292,9 @@ export default function EmployeeHandoverModal({
                     Công việc vẫn tạm gắn với nhân sự này, Giám đốc/Trưởng phòng sẽ phân bổ tay lại sau.
                   </div>
                 </div>
-              </div>
-              <input
-                type="radio"
-                name="handover_mode"
-                value="keep"
-                checked={mode === 'keep'}
-                onChange={() => setMode('keep')}
-                className="handover-card__input"
-              />
-              <span className="handover-card__icon">
-                <Clock size={16} />
-              </span>
-              <span className="handover-card__title">Giữ nguyên, phân công sau</span>
-            </label>
-          </div>
-
-          {/* Form chọn người nhận mở bung thoáng đãng, KHÔNG hộp chồng hộp */}
-          {mode === 'reassign' && (
-            <div className="handover-assignee-section">
-              <label className="handover-field-label">
-                Nhân sự tiếp nhận <span style={{ color: 'var(--red-500)' }}>*</span>
               </label>
-              <CustomSelect
-                value={toEmployeeId}
-                onChange={setToEmployeeId}
-                options={candidateOptions}
-                placeholder="— Chọn nhân sự thay thế —"
-                searchable
-                searchPlaceholder="Gõ tên nhân sự..."
-              />
-              {activeLeads.length > 0 && (
-                <label className="handover-crm-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={handoverCrm}
-                    onChange={(e) => setHandoverCrm(e.target.checked)}
-                    style={{ accentColor: 'var(--orange-500)' }}
-                  />
-                  <span>Bàn giao cả khách hàng CRM ({activeLeads.length})</span>
-                </label>
-              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Lock Account Option */}

@@ -259,6 +259,7 @@
   transition: all 0.15s ease;
   user-select: none;
   overflow: hidden;
+  overflow: visible;
 }
 
 .handover-card__head {
@@ -268,6 +269,7 @@
   padding: 12px 14px;
   width: 100%;
   cursor: pointer;
+  margin: 0;
 }
 
 .handover-card:hover {
@@ -278,11 +280,13 @@
 .handover-card.is-selected {
   border-color: var(--orange-500, #ea580c);
   background: rgba(234, 88, 12, 0.035);
+  background: rgba(234, 88, 12, 0.02);
   box-shadow: 0 1px 4px rgba(234, 88, 12, 0.08);
 }
 
 [data-theme='dark'] .handover-card.is-selected {
   background: rgba(234, 88, 12, 0.12);
+  background: rgba(234, 88, 12, 0.1);
   border-color: var(--orange-500, #ea580c);
 }
 
@@ -338,15 +342,21 @@
 }
 
 /* Vùng chọn nhân sự thay thế: Mở bung phẳng, tinh tế, không hộp lồng hộp */
+/* Vùng chọn nhân sự thay thế: Mở bung phẳng, tích hợp liền mạch, KHÔNG hộp chồng hộp */
 .handover-assignee-section {
   margin-top: 10px;
   padding: 14px 16px;
   border-radius: 10px;
   background: rgba(234, 88, 12, 0.03);
   border: 1px solid rgba(234, 88, 12, 0.2);
+  padding: 10px 14px 14px 44px;
+  border-top: 1px solid rgba(234, 88, 12, 0.15);
   display: flex;
   flex-direction: column;
   gap: 10px;
+  gap: 8px;
+  background: transparent;
+  box-sizing: border-box;
 }
 
 /* Hộp chọn nhân sự: Nằm gọn gàng, đối xứng tuyệt đối (Full Width) trong thẻ */
@@ -357,12 +367,16 @@
   border-top: 1px solid #fed7aa;
   background: rgba(255, 255, 255, 0.85);
   box-sizing: border-box;
+[data-theme='dark'] .handover-assignee-section {
+  border-top-color: rgba(234, 88, 12, 0.25);
 }
 
 .handover-field-label {
   font-size: 0.825rem;
   font-weight: 600;
   color: var(--text-secondary, #475569);
+  text-transform: none !important;
+  letter-spacing: normal !important;
 }
 
 [data-theme='dark'] .handover-assignee-pane {
