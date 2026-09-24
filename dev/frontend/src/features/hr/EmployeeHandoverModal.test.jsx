@@ -126,5 +126,26 @@ describe('EmployeeHandoverModal', () => {
     expect(onSuccess).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('excludes director from candidate options in reassign mode', () => {
+    const employeesWithDirector = [
+      ...mockEmployees,
+      { id: 'emp-dir', full_name: 'Nguyễn Văn Giám Đốc', department_name: 'Ban Giám đốc', job_title: 'Giám đốc điều hành', is_active: true },
+    ];
+
+    render(
+      <ToastProvider>
+        <EmployeeHandoverModal
+          isOpen={true}
+          onClose={vi.fn()}
+          employee={mockEmployee}
+          workload={mockWorkload}
+          employees={employeesWithDirector}
+        />
+      </ToastProvider>
+    );
+
+    expect(screen.queryByText(/Nguyễn Văn Giám Đốc/i)).toBeNull();
+  });
 });
 

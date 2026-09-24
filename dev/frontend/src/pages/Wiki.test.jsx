@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Wiki from './Wiki'
@@ -218,4 +218,122 @@ describe('Wiki private documents', () => {
       expect(downloadBlobSpy).toHaveBeenCalledWith(expect.any(Blob), 'Hướng dẫn sử dụng.docx')
     })
   })
+
+  it('shows Edit and Delete buttons for director and opens Edit modal to update document', async () => {
+    let putCalledWith = null
+    global.fetch = vi.fn(async (url, options) => {
+      if (String(url).startsWith('/api/wiki/?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: 'BK-DOC01',
+                title: 'Tài liệu kỹ thuật',
+                category: 'Tài liệu đào tạo',
+                version: '1.0',
+                description: 'Mô tả ban đầu',
+                link: 'wiki/BK-DOC01/doc.pdf',
+                size_bytes: 1024,
+                created_at: '2026-03-01T10:00:00Z',
+              },
+            ],
+            meta: { total_pages: 1 },
+          }),
+        }
+      }
+      if (options?.method === 'PUT' && String(url).includes('/api/wiki/BK-DOC01')) {
+        putCalledWith = { url, options }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ message: 'Cập nhật thành công' }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+    setAccessToken('wiki-access-token')
+
+    render(<Wiki user={{ is_director: true, role_name: 'admin' }} isDirector={true} />)
+
+    const editBtn = await screen.findByRole('button', { name: /Sửa tài liệu/i })
+    const deleteBtn = screen.getByRole('button', { name: /Xóa tài liệu/i })
+    expect(editBtn).toBeInTheDocument()
+    expect(deleteBtn).toBeInTheDocument()
+
+    // Open Edit modal
+    fireEvent.click(editBtn)
+    expect(await screen.findByText(/Chỉnh Sửa Tài Liệu/i)).toBeInTheDocument()
+
+    // Change title
+    const titleInput = screen.getByDisplayValue('Tài liệu kỹ thuật')
+    fireEvent.change(titleInput, { target: { value: 'Tài liệu kỹ thuật v2' } })
+
+    // Submit edit form
+    const saveBtn = screen.getByRole('button', { name: /Lưu Thay Đổi/i })
+    fireEvent.click(saveBtn)
+
+    await waitFor(() => {
+      expect(putCalledWith).not.toBeNull()
+      expect(putCalledWith.url).toBe('/api/wiki/BK-DOC01')
+      expect(putCalledWith.options.headers.Authorization).toBe('Bearer wiki-access-token')
+      expect(addToast).toHaveBeenCalledWith('Cập nhật tài liệu thành công!', 'success')
+    })
+  })
+
+  it('opens Delete confirmation modal and calls delete endpoint', async () => {
+    let deleteCalledWith = null
+    global.fetch = vi.fn(async (url, options) => {
+      if (String(url).startsWith('/api/wiki/?')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              {
+                id: 'BK-DEL01',
+                title: 'Tài liệu cũ',
+                category: 'Tài liệu đào tạo',
+                version: '1.0',
+                link: 'wiki/BK-DEL01/del.pdf',
+              },
+            ],
+            meta: { total_pages: 1 },
+          }),
+        }
+      }
+      if (options?.method === 'DELETE' && String(url).includes('/api/wiki/BK-DEL01')) {
+        deleteCalledWith = { url, options }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ message: 'Đã xóa tài liệu' }),
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({}) }
+    })
+    setAccessToken('wiki-access-token')
+
+    render(<Wiki user={{ is_director: true, role_name: 'admin' }} isDirector={true} />)
+
+    const deleteBtn = await screen.findByRole('button', { name: /Xóa tài liệu/i })
+    fireEvent.click(deleteBtn)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/Xác Nhận Xóa Tài Liệu/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Thao tác này sẽ gỡ bỏ tài liệu khỏi hệ thống/i)).toBeInTheDocument()
+
+    const confirmDeleteBtn = within(dialog).getByRole('button', { name: /Xóa Tài Liệu/i })
+    fireEvent.click(confirmDeleteBtn)
+
+    await waitFor(() => {
+      expect(deleteCalledWith).not.toBeNull()
+      expect(deleteCalledWith.url).toBe('/api/wiki/BK-DEL01')
+      expect(deleteCalledWith.options.headers.Authorization).toBe('Bearer wiki-access-token')
+      expect(addToast).toHaveBeenCalledWith('Đã xóa tài liệu thành công!', 'success')
+    })
+  })
 })
+
+

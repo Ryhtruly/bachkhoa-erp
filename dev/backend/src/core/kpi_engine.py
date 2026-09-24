@@ -52,9 +52,18 @@ def calculate_employee_kpi(db: Session, month: str) -> list[dict]:
                coalesce(c.avg_time, 0) as avg_time,
                coalesce(r.rejections, 0) as rejections
         from public.employees e
+        left join public.departments d on d.id = e.department_id
         left join completed c on c.employee_id = e.id
         left join rejected r on r.employee_id = e.id
         where coalesce(e.is_active, true)
+          and coalesce(d.code, '') not in ('ADMIN', 'BGD', 'DIRECTOR')
+          and lower(coalesce(d.name, '')) not like '%giám đốc%'
+          and lower(coalesce(d.name, '')) not like '%giam doc%'
+          and lower(coalesce(e.department, '')) not like '%giám đốc%'
+          and lower(coalesce(e.department, '')) not like '%giam doc%'
+          and lower(coalesce(e.job_title, '')) not like '%giám đốc%'
+          and lower(coalesce(e.job_title, '')) not like '%giam doc%'
+          and lower(coalesce(e.job_title, '')) not like '%director%'
         order by e.full_name
     """), {"period_start": period_start}).mappings().all()
 

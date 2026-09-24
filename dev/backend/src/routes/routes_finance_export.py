@@ -5,6 +5,7 @@ from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import not_, or_
 from sqlalchemy.orm import Session
 
 from src.db.database import get_db
@@ -281,15 +282,26 @@ def export_department_summary_excel(
         elif department_id == "dept_general":
             dept_name = "Khoi_Van_Phong"
 
-        # Lấy danh sách nhân viên trong phòng ban
+        # Lấy danh sách nhân viên trong phòng ban (loại trừ Giám đốc)
+        is_not_director = not_(
+            or_(
+                Employee.job_title.ilike("%giám đốc%"),
+                Employee.job_title.ilike("%giam doc%"),
+                Employee.job_title.ilike("%director%"),
+                Employee.department.ilike("%giám đốc%"),
+                Employee.department.ilike("%giam doc%"),
+            )
+        )
         if department_id and department_id != "dept_general":
             employees = db.query(Employee).filter(
                 Employee.department_id == department_id,
-                Employee.is_active == True
+                Employee.is_active == True,
+                is_not_director
             ).order_by(Employee.full_name.asc()).all()
         else:
             employees = db.query(Employee).filter(
-                Employee.is_active == True
+                Employee.is_active == True,
+                is_not_director
             ).order_by(Employee.full_name.asc()).all()
 
         period_info = FinanceRepository.get_payroll_date_range(db, year_val, month_val)

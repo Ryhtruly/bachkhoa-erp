@@ -31,10 +31,26 @@ def get_payroll_options(
     if cached is not None:
         return cached
 
+    EXCLUDED_PAYROLL_OPTIONS_DEPT_CODES = {"ADMIN", "BGD", "DIRECTOR"}
     departments = db.query(Department).all()
     dept_map = {cast(str, d.id): d for d in departments}
     employees = db.query(Employee).filter(Employee.is_active == True).order_by(Employee.full_name.asc()).all()
     
+    def _is_director_emp(emp: Employee, d_map: Dict[str, Any]) -> bool:
+        title = (cast(Optional[str], emp.job_title) or "").lower()
+        if any(k in title for k in ("giám đốc", "giam doc", "director")):
+            return True
+        emp_dept = (cast(Optional[str], emp.department) or "").lower()
+        if any(k in emp_dept for k in ("giám đốc", "giam doc", "director", "ban giám đốc")):
+            return True
+        if emp.department_id and str(emp.department_id) in d_map:
+            d = d_map[str(emp.department_id)]
+            d_code = (cast(Optional[str], d.code) or "").upper()
+            d_name = (cast(Optional[str], d.name) or "").lower()
+            if d_code in EXCLUDED_PAYROLL_OPTIONS_DEPT_CODES or any(k in d_name for k in ("giám đốc", "giam doc", "director")):
+                return True
+        return False
+
     dept_employees: Dict[str, List[Dict[str, Any]]] = {}
     for d in departments:
         dept_id = cast(str, d.id)
@@ -43,6 +59,8 @@ def get_payroll_options(
     dept_employees["dept_general"] = []
     
     for emp in employees:
+        if _is_director_emp(emp, dept_map):
+            continue
         d_id = cast(Optional[str], emp.department_id)
         emp_department = cast(Optional[str], emp.department)
         if not d_id or d_id not in dept_map:
@@ -76,6 +94,10 @@ def get_payroll_options(
     dept_list = []
     for d in departments:
         dept_id = cast(str, d.id)
+        d_code = (cast(Optional[str], d.code) or "").upper()
+        d_name = (cast(Optional[str], d.name) or "").lower()
+        if d_code in EXCLUDED_PAYROLL_OPTIONS_DEPT_CODES or any(k in d_name for k in ("giám đốc", "giam doc", "director")):
+            continue
         emps = dept_employees.get(dept_id, [])
         if emps:
             dept_list.append({

@@ -742,11 +742,20 @@ class FinanceRepository:
                    coalesce(p.tasks_completed, 0) as tasks_completed,
                    coalesce(c.sales_commission, 0) as sales_commission
             from public.employees e
+            left join public.departments d on d.id = e.department_id
             left join base b on b.employee_id = e.id
             left join piece p on p.employee_id = e.id
             left join adjustments a on a.employee_id = e.id
             left join commission c on c.user_id = e.user_id
             where coalesce(e.is_active, true)
+              and coalesce(d.code, '') not in ('ADMIN', 'BGD', 'DIRECTOR')
+              and lower(coalesce(d.name, '')) not like '%giám đốc%'
+              and lower(coalesce(d.name, '')) not like '%giam doc%'
+              and lower(coalesce(e.department, '')) not like '%giám đốc%'
+              and lower(coalesce(e.department, '')) not like '%giam doc%'
+              and lower(coalesce(e.job_title, '')) not like '%giám đốc%'
+              and lower(coalesce(e.job_title, '')) not like '%giam doc%'
+              and lower(coalesce(e.job_title, '')) not like '%director%'
             order by e.full_name
         """), {"period_month": period_month}).mappings().all()
         return [{

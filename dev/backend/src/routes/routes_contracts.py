@@ -1321,6 +1321,14 @@ def get_contract_workspace(
                 from public.employees e
                 left join public.departments d on d.id = e.department_id
                 where coalesce(e.is_active, true)
+                  and coalesce(d.code, '') not in ('ADMIN', 'BGD', 'DIRECTOR')
+                  and lower(coalesce(d.name, '')) not like '%giám đốc%'
+                  and lower(coalesce(d.name, '')) not like '%giam doc%'
+                  and lower(coalesce(e.department, '')) not like '%giám đốc%'
+                  and lower(coalesce(e.department, '')) not like '%giam doc%'
+                  and lower(coalesce(e.job_title, '')) not like '%giám đốc%'
+                  and lower(coalesce(e.job_title, '')) not like '%giam doc%'
+                  and lower(coalesce(e.job_title, '')) not like '%director%'
                 order by coalesce(d.display_order, 999), e.full_name, e.id
                 """
             )
