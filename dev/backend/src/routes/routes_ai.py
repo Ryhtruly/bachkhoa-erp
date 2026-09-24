@@ -1,4 +1,5 @@
 import asyncio
+import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Request, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Literal
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 from src.db.database import get_db
 from src.db.models import SystemSetting
 from src.core import ai_vision_engine
-from src.core.chatbot_engine import ask_chatbot
+from src.core.chatbot_engine import ask_chatbot, resolve_chatbot_llm
 from src.services.wiki_rag_service import search_chunks as wiki_search
 from src.core.auth import require_authenticated_user, check_user_permission, User
 from src.core.redis_utils import consume_rate_limit
@@ -78,14 +79,10 @@ async def chat_with_bot(
         
         sheet_id = config.get("chatbot_kb_sheet_id", "")
         service_account_json = config.get("google_sheets_service_account", "")
-        provider = config.get("chatbot_llm_provider", "deepseek")
-        
-        if provider == "gemini":
-            api_key = config.get("chatbot_llm_api_key", "")
-            if not api_key:
-                api_key = config.get("gemini_api_key", "")
-        else:
-            api_key = config.get("chatbot_llm_api_key", "")
+        env_gemini_key = os.getenv("GEMINI_API_KEY", "")
+        if env_gemini_key == "your_gemini_api_key":
+            env_gemini_key = ""
+        provider, api_key, model = resolve_chatbot_llm(config, env_gemini_key)
 
         # Search wiki documents relevant to the latest user message
         wiki_context = None
@@ -106,6 +103,7 @@ async def chat_with_bot(
             provider=provider,
             api_key=api_key,
             wiki_context=wiki_context,
+            model=model,
         )
         
         if reply_text == "[UNSAFE_TRANSFER]":
