@@ -33,10 +33,25 @@ export default function EmployeeHandoverModal({
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Filter available candidate employees to receive handover
+  // Filter available candidate employees to receive handover (excluding current employee & Director profiles)
   const candidateOptions = useMemo(() => {
     return employees
-      .filter((emp) => emp.id !== employee?.id && emp.is_active !== false)
+      .filter((emp) => {
+        if (emp.id === employee?.id || emp.is_active === false) return false;
+        const dept = (emp.department_name || emp.department || '').toLowerCase();
+        const title = (emp.job_title || '').toLowerCase();
+        if (
+          dept.includes('giám đốc') ||
+          dept.includes('giam doc') ||
+          dept.includes('director') ||
+          title.includes('giám đốc') ||
+          title.includes('giam doc') ||
+          title.includes('director')
+        ) {
+          return false;
+        }
+        return true;
+      })
       .map((emp) => ({
         value: emp.id,
         label: `${emp.full_name}${emp.department_name ? ` (${emp.department_name})` : ''}`,

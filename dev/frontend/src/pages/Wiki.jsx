@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle, Download } from 'lucide-react';
+import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle, Download, Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow, CustomSelect, FilePreviewModal } from '../components/ui';
 import { apiFetch, getAccessToken } from '../lib/api';
@@ -32,6 +32,16 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Edit & Delete modal states
+  const [editModalDoc, setEditModalDoc] = useState(null);
+  const [editFormData, setEditFormData] = useState({ title: '', category: 'Quy trình ISO', description: '' });
+  const [editFile, setEditFile] = useState(null);
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+
+  const [deletingDoc, setDeletingDoc] = useState(null);
+  const [deletingDocId, setDeletingDocId] = useState(null);
+  const [submittingDelete, setSubmittingDelete] = useState(false);
   
   // Search & Filter & Pagination states
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,6 +131,73 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
       }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const openEditModal = (doc) => {
+    setEditModalDoc(doc);
+    setEditFormData({
+      title: doc.title || '',
+      category: doc.category || 'Quy trình ISO',
+      description: doc.description || '',
+    });
+    setEditFile(null);
+  };
+
+  const handleUpdateWiki = async (e) => {
+    e.preventDefault();
+    if (!editModalDoc) return;
+    setSubmittingEdit(true);
+    try {
+      const data = new FormData();
+      data.append('title', editFormData.title);
+      data.append('category', editFormData.category);
+      if (editFormData.description) {
+        data.append('description', editFormData.description);
+      }
+      if (editFile) {
+        data.append('file', editFile);
+      }
+
+      await apiFetch(`/api/wiki/${encodeURIComponent(editModalDoc.id)}`, {
+        method: 'PUT',
+        body: data,
+      });
+      showMessage('Cập nhật tài liệu thành công!', 'success');
+      setEditModalDoc(null);
+      setEditFile(null);
+      fetchWiki();
+    } catch (error) {
+      if (error?.status === 403) {
+        showMessage('Bạn không có quyền chỉnh sửa tài liệu Wiki.', 'error');
+      } else {
+        showMessage(error?.message || 'Không thể cập nhật tài liệu', 'error');
+      }
+    } finally {
+      setSubmittingEdit(false);
+    }
+  };
+
+  const handleDeleteWiki = async () => {
+    if (!deletingDoc) return;
+    setDeletingDocId(deletingDoc.id);
+    setSubmittingDelete(true);
+    try {
+      await apiFetch(`/api/wiki/${encodeURIComponent(deletingDoc.id)}`, {
+        method: 'DELETE',
+      });
+      showMessage('Đã xóa tài liệu thành công!', 'success');
+      setDeletingDoc(null);
+      fetchWiki();
+    } catch (error) {
+      if (error?.status === 403) {
+        showMessage('Bạn không có quyền xóa tài liệu Wiki.', 'error');
+      } else {
+        showMessage(error?.message || 'Không thể xóa tài liệu', 'error');
+      }
+    } finally {
+      setSubmittingDelete(false);
+      setDeletingDocId(null);
     }
   };
 
@@ -238,7 +315,7 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
               <th>Mã Tài Liệu</th>
               <th>Tên Tài Liệu / Quy Trình</th>
               <th>Phân Loại</th>
-              <th style={{ textAlign: 'center' }}>Hành Động</th>
+              <th style={{ textAlign: 'center', width: canUpload ? '160px' : '95px' }}>Hành Động</th>
             </tr>
           </thead>
           <tbody>
@@ -266,26 +343,54 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                       <button
                         type="button"
                         onClick={() => handleOpenDocument(doc)}
                         disabled={openingDocId === doc.id}
                         className="btn btn-secondary btn-sm"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        title="Mở file"
+                        aria-label="Mở file"
+                        style={{ width: '32px', height: '32px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       >
-                        <FileText size={14} /> {openingDocId === doc.id ? 'Đang mở…' : 'Mở file'}
+                        {openingDocId === doc.id ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDownloadDocument(doc)}
                         disabled={downloadingDocId === doc.id}
                         className="btn btn-secondary btn-sm"
-                        title="Tải tệp về máy tính"
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        title="Tải về"
+                        aria-label="Tải về"
+                        style={{ width: '32px', height: '32px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                       >
-                        <Download size={14} /> {downloadingDocId === doc.id ? 'Đang tải…' : 'Tải về'}
+                        {downloadingDocId === doc.id ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                       </button>
+                      {canUpload && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(doc)}
+                            className="btn btn-secondary btn-sm"
+                            title="Sửa tài liệu"
+                            aria-label="Sửa tài liệu"
+                            style={{ width: '32px', height: '32px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingDoc(doc)}
+                            disabled={deletingDocId === doc.id}
+                            className="btn btn-secondary btn-sm"
+                            title="Xóa tài liệu"
+                            aria-label="Xóa tài liệu"
+                            style={{ width: '32px', height: '32px', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--red-500, #ef4444)' }}
+                          >
+                            {deletingDocId === doc.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -442,6 +547,178 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
           </div>
         </form>
       </Modal>
+      )}
+
+      {canUpload && editModalDoc && (
+        <Modal
+          open={Boolean(editModalDoc)}
+          onClose={() => { if (!submittingEdit) setEditModalDoc(null); }}
+          title="Chỉnh Sửa Tài Liệu"
+          size="md"
+        >
+          <form onSubmit={handleUpdateWiki} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <FormRow label="MÃ TÀI LIỆU">
+              <input
+                type="text"
+                className="form-control"
+                value={editModalDoc.id}
+                disabled
+                style={{ fontFamily: 'var(--font-mono)', opacity: 0.7, background: 'rgba(0,0,0,0.03)' }}
+              />
+            </FormRow>
+
+            <FormRow label="TÊN QUY TRÌNH / TÀI LIỆU" required>
+              <input
+                type="text"
+                className="form-control"
+                required
+                placeholder="Ví dụ: Quy trình đo đạc bản đồ địa chính..."
+                value={editFormData.title}
+                onChange={e => setEditFormData({ ...editFormData, title: e.target.value })}
+              />
+            </FormRow>
+
+            <FormRow label="PHÂN LOẠI TÀI LIỆU" required>
+              <CustomSelect
+                value={editFormData.category}
+                onChange={val => setEditFormData({ ...editFormData, category: val })}
+                options={categories.filter(c => c !== 'Tất cả')}
+                placeholder="Chọn phân loại"
+                aria-label="Phân loại tài liệu"
+              />
+            </FormRow>
+
+            <FormRow label="MÔ TẢ (TÙY CHỌN)">
+              <textarea
+                className="form-control"
+                rows={3}
+                placeholder="Nhập ghi chú hoặc mô tả ngắn về tài liệu..."
+                value={editFormData.description}
+                onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+              />
+            </FormRow>
+
+            <FormRow label="TỆP ĐÍNH KÈM">
+              <div style={{
+                border: '2px dashed #cbd5e1',
+                borderRadius: '10px',
+                padding: '16px',
+                textAlign: 'center',
+                background: '#f8fafc',
+                position: 'relative',
+                cursor: 'pointer',
+                transition: 'border-color 0.2s',
+              }}>
+                <input
+                  type="file"
+                  onChange={e => setEditFile(e.target.files[0] || null)}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: 'pointer'
+                  }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                  <FileUp size={24} color="#64748b" />
+                  {editFile ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 600, fontSize: '0.88rem' }}>
+                      <CheckCircle size={16} /> Thay bằng: {editFile.name} ({(editFile.size / 1024).toFixed(1)} KB)
+                    </div>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#334155' }}>
+                        Tệp hiện tại: {editModalDoc.file_name || editModalDoc.link || 'Có sẵn'}
+                      </span>
+                      <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                        Nhấp hoặc kéo thả nếu muốn tải tệp mới thay thế (để trống nếu giữ nguyên)
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </FormRow>
+
+            <div style={{
+              marginTop: '8px',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              borderTop: '1px solid #e2e8f0',
+              paddingTop: '16px'
+            }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setEditModalDoc(null)}
+                disabled={submittingEdit}
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={submittingEdit}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                <Pencil size={16} /> {submittingEdit ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {canUpload && deletingDoc && (
+        <Modal
+          open={Boolean(deletingDoc)}
+          onClose={() => { if (!submittingDelete) setDeletingDoc(null); }}
+          title="Xác Nhận Xóa Tài Liệu"
+          size="sm"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.5, color: 'var(--text-primary)' }}>
+              Bạn có chắc chắn muốn xóa tài liệu <strong style={{ color: 'var(--orange-500)' }}>{deletingDoc.title}</strong> (Mã: <code>{deletingDoc.id}</code>)?
+            </p>
+            <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+              Thao tác này sẽ gỡ bỏ tài liệu khỏi hệ thống và tri thức tìm kiếm.
+            </p>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '12px',
+              borderTop: '1px solid var(--border-subtle, #e2e8f0)',
+              paddingTop: '16px'
+            }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setDeletingDoc(null)}
+                disabled={submittingDelete}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleDeleteWiki}
+                disabled={submittingDelete}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#ef4444', color: '#fff' }}
+              >
+                {submittingDelete ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} /> Xóa Tài Liệu
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <FilePreviewModal

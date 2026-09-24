@@ -372,3 +372,131 @@ def test_upload_document_rejects_oversized_file(monkeypatch):
     assert res.status_code == 413
     assert "vượt quá 25MB" in res.json().get("detail", "")
 
+
+def test_update_document_success(monkeypatch):
+    from src.core.auth import get_current_user
+
+    doc = SimpleNamespace(
+        id="W-EDIT-01",
+        title="Old Title",
+        category="Quy trình ISO",
+        link="wiki/W-EDIT-01/old.pdf",
+        description="Old desc",
+        version="1.0",
+        is_active=True,
+    )
+
+    class MockDb:
+        def query(self, *_args):
+            class Q:
+                def filter(self, *_a):
+                    return self
+                def first(self):
+                    return doc
+            return Q()
+        def add(self, *_args):
+            pass
+        def commit(self):
+            pass
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(routes_wiki, "invalidate_cache", lambda *_args: None)
+
+    app = FastAPI()
+    app.include_router(routes_wiki.router)
+    app.dependency_overrides[get_db] = lambda: MockDb()
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="admin-1", is_active=True, username="admin")
+
+    with TestClient(app) as client:
+        res = client.put(
+            "/api/wiki/W-EDIT-01",
+            data={
+                "title": "New Title",
+                "category": "Tài liệu đào tạo",
+                "description": "Updated desc",
+                "version": "2.0",
+            },
+        )
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "success"
+    assert doc.title == "New Title"
+    assert doc.category == "Tài liệu đào tạo"
+    assert doc.description == "Updated desc"
+
+
+def test_delete_document_success(monkeypatch):
+    from src.core.auth import get_current_user
+
+    doc = SimpleNamespace(
+        id="W-DEL-01",
+        title="To be deleted",
+        link="wiki/W-DEL-01/file.pdf",
+        is_active=True,
+    )
+    deleted_storage = []
+    deleted_chunks = []
+
+    class MockDb:
+        def query(self, *_args):
+            class Q:
+                def filter(self, *_a):
+                    return self
+                def first(self):
+                    return doc
+            return Q()
+        def add(self, *_args):
+            pass
+        def commit(self):
+            pass
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(routes_wiki, "delete_file", lambda obj: deleted_storage.append(obj))
+    monkeypatch.setattr(routes_wiki, "delete_document_chunks", lambda doc_id, _db: deleted_chunks.append(doc_id))
+    monkeypatch.setattr(routes_wiki, "invalidate_cache", lambda *_args: None)
+
+    app = FastAPI()
+    app.include_router(routes_wiki.router)
+    app.dependency_overrides[get_db] = lambda: MockDb()
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="admin-1", is_active=True, username="admin")
+
+    with TestClient(app) as client:
+        res = client.delete("/api/wiki/W-DEL-01")
+
+    assert res.status_code == 200
+    assert res.json()["status"] == "success"
+    assert doc.is_active is False
+    assert deleted_storage == ["wiki/W-DEL-01/file.pdf"]
+    assert deleted_chunks == ["W-DEL-01"]
+
+
+def test_update_and_delete_return_404_when_document_missing(monkeypatch):
+    from src.core.auth import get_current_user
+
+    class MockDb:
+        def query(self, *_args):
+            class Q:
+                def filter(self, *_a):
+                    return self
+                def first(self):
+                    return None
+            return Q()
+
+    monkeypatch.setattr("src.core.auth.check_user_permission", lambda *_args, **_kwargs: True)
+
+    app = FastAPI()
+    app.include_router(routes_wiki.router)
+    app.dependency_overrides[get_db] = lambda: MockDb()
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id="admin-1", is_active=True, username="admin")
+
+    with TestClient(app) as client:
+        res_put = client.put("/api/wiki/NON_EXISTENT", data={"title": "A", "category": "B"})
+        res_del = client.delete("/api/wiki/NON_EXISTENT")
+
+    assert res_put.status_code == 404
+    assert res_del.status_code == 404
+

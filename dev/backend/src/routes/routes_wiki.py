@@ -3,6 +3,7 @@ import math
 import mimetypes
 import os
 import re
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Form, File, UploadFile, BackgroundTasks
@@ -261,5 +262,123 @@ def download_document(
         )
     except Exception as exc:
         raise HTTPException(status_code=404, detail="File không tồn tại trên object storage.") from exc
+
+
+logger = logging.getLogger(__name__)
+
+
+@router.put("/{doc_id}")
+async def update_document(
+    doc_id: str,
+    title: str = Form(...),
+    category: str = Form(...),
+    description: Optional[str] = Form(None),
+    version: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "update"))
+):
+    doc = db.query(WikiDocument).filter(WikiDocument.id == doc_id, WikiDocument.is_active == True).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Tài liệu không tồn tại hoặc đã bị xóa.")
+
+    try:
+        doc.title = title
+        doc.category = category
+        if description is not None:
+            doc.description = description
+        if version is not None:
+            doc.version = version
+
+        # If a new file is uploaded, replace the existing one
+        if file and file.filename:
+            try:
+                file.file.seek(0, io.SEEK_END)
+                file_size = file.file.tell()
+                file.file.seek(0)
+            except (AttributeError, io.UnsupportedOperation):
+                file_size = getattr(file, "size", None) or 0
+
+            if file_size > MAX_WIKI_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="File Wiki không được vượt quá 25MB.")
+
+            safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.filename or "document")
+            safe_name = re.sub(r'_+', '_', safe_name).strip('_')
+            object_name = f"wiki/{doc_id}/{safe_name}"
+
+            old_link = doc.link
+            ensure_bucket()
+            upload_file(file.file, object_name)
+            doc.link = object_name
+
+            if old_link and old_link != object_name:
+                try:
+                    delete_file(old_link)
+                except Exception:
+                    pass
+
+            try:
+                delete_document_chunks(doc_id, db)
+            except Exception:
+                pass
+
+            if can_enqueue_indexing_job():
+                enqueue_indexing_job(None, file.filename or safe_name, doc_id, object_name=object_name)
+
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="UPDATE",
+            object_type="WikiDocument",
+            payload_json={"id": doc_id, "title": title, "category": category}
+        ))
+        db.commit()
+
+        invalidate_cache("bachkhoa:wiki:*")
+        return {"status": "success", "message": "Cập nhật tài liệu thành công"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{doc_id}")
+def delete_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "delete"))
+):
+    doc = db.query(WikiDocument).filter(WikiDocument.id == doc_id, WikiDocument.is_active == True).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Tài liệu không tồn tại hoặc đã bị xóa.")
+
+    try:
+        # Soft delete
+        doc.is_active = False
+
+        try:
+            delete_document_chunks(doc_id, db)
+        except Exception as e:
+            logger.warning("Failed to delete wiki chunks for %s: %s", doc_id, e)
+
+        if doc.link:
+            try:
+                delete_file(doc.link)
+            except Exception as e:
+                logger.warning("Failed to delete storage file %s: %s", doc.link, e)
+
+        db.add(AuditLog(
+            actor_id=user.id,
+            action="DELETE",
+            object_type="WikiDocument",
+            payload_json={"id": doc_id, "title": doc.title}
+        ))
+        db.commit()
+
+        invalidate_cache("bachkhoa:wiki:*")
+        return {"status": "success", "message": "Xóa tài liệu thành công"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
