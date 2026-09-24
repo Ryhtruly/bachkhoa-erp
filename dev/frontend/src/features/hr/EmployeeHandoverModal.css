@@ -367,6 +367,8 @@
   border-top: 1px solid #fed7aa;
   background: rgba(255, 255, 255, 0.85);
   box-sizing: border-box;
+}
+
 [data-theme='dark'] .handover-assignee-section {
   border-top-color: rgba(234, 88, 12, 0.25);
 }

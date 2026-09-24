@@ -4192,6 +4192,7 @@
   background: color-mix(in srgb, var(--danger-500, #ef4444) 8%, transparent);
 }
 
+
 /* ===== Task 6 · Workspace Bàn làm việc nhân viên chuẩn Ảnh 2 ===== */
 .eiw-workspace {
   display: flex;
@@ -4699,6 +4700,7 @@
   font-size: 18px;
   font-weight: 800;
 }
+
 /* ── CỘT PHẢI (CHUẨN ẢNH 2): CARD TRẮNG ĐƠN NHẤT + FOOTER SPANNING ── */
 .eiw-workspace .eiw-col--right {
   display: contents;
@@ -5579,7 +5581,6 @@
   color: #334155;
   font-size: 11.5px;
 }
-
 
 .eiw-document-type__file-main {
   display: grid;
