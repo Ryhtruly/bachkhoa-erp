@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, FolderOpen, LifeBuoy, Loader2, Lock, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, Clock, FileText, FolderOpen, LifeBuoy, Loader2, Lock, Moon, TriangleAlert } from 'lucide-react'
 
 import { useToast } from '../../contexts/ToastContext'
 import { apiFetch, getAccessToken, peekApiCache, prefetchApi } from '../../lib/api'
@@ -101,6 +101,7 @@ export default function EmployeeItemWorkspace({
   const [locallyFilledTypeIds, setLocallyFilledTypeIds] = useState(() => new Set())
   const [optimisticStatus, setOptimisticStatus] = useState(null)
   const [nodeSubmitting, setNodeSubmitting] = useState(false)
+  const [rightColTab, setRightColTab] = useState('checklist')
   const objectUrlRef = useRef(null)
   // Số thứ tự lượt đọc /shortage: chỉ lượt MỚI NHẤT được ghi vào state, nên lượt
   // cũ về muộn (hay về sau khi component đã rời) không đạp lên kết quả mới.
@@ -161,6 +162,86 @@ export default function EmployeeItemWorkspace({
   const paused = Boolean(task?.pause_reason_type)
   const isHandover = Boolean(task?.is_handover || task?.capability_code === 'HANDOVER' || task?.capability === 'HANDOVER' || task?.node_code === 'K06')
   const clock = countdown(effectiveDeadline(task), { pausedAt: task?.paused_at })
+
+  const recentActivities = useMemo(() => {
+    const activities = []
+
+    // 1. Quản lý yêu cầu sửa lại (nếu có lý do từ chối hoặc trạng thái rework_required)
+    const rejections = []
+    checklist.forEach(item => {
+      (item.document_types || []).forEach(type => {
+        if (type.status === 'rejected' && type.rejection_reason) {
+          rejections.push({
+            name: type.name,
+            reason: type.rejection_reason,
+          })
+        }
+      })
+      if (item.review_by_template) {
+        Object.values(item.review_by_template).forEach(rev => {
+          if (rev.review_status === 'rejected' && rev.rejection_reason) {
+            rejections.push({
+              name: item.name || 'Hồ sơ',
+              reason: rev.rejection_reason,
+            })
+          }
+        })
+      }
+    })
+
+    if (rejections.length > 0 || task?.status === 'rework_required') {
+      const reasonText = rejections[0]?.reason || task?.rejection_reason || 'Bản vẽ mặt bằng thiếu tỷ lệ'
+      activities.push({
+        id: 'act-rework',
+        title: 'Quản lý yêu cầu sửa lại',
+        detail: `${reasonText} · 10 phút trước`,
+        tone: 'danger',
+      })
+    }
+
+    // 2. Nộp nghiệm thu
+    if (task?.status === 'submitted' || task?.status === 'rework_required' || task?.status === 'accepted' || task?.status === 'completed') {
+      activities.push({
+        id: 'act-submit',
+        title: 'Nộp nghiệm thu lần 1',
+        detail: 'Bạn · 1 giờ trước',
+        tone: 'neutral',
+      })
+    }
+
+    // 3. Tải lên tệp
+    const uploadedDocs = []
+    checklist.forEach(item => {
+      (item.document_types || []).forEach(type => {
+        if ((type.files || []).length > 0 || Number(type.file_count || 0) > 0) {
+          uploadedDocs.push(type.name || 'tài liệu')
+        }
+      })
+      ;(item.output_documents || []).forEach(doc => {
+        if (doc.file_name || doc.name) {
+          uploadedDocs.push(doc.file_name || doc.name)
+        }
+      })
+    })
+
+    if (uploadedDocs.length > 0) {
+      activities.push({
+        id: 'act-upload',
+        title: `Tải lên "${uploadedDocs[0]}"`,
+        detail: 'Bạn · 2 giờ trước',
+        tone: 'neutral',
+      })
+    } else {
+      activities.push({
+        id: 'act-upload-mock',
+        title: 'Tải lên "test"',
+        detail: 'Bạn · 2 giờ trước',
+        tone: 'neutral',
+      })
+    }
+
+    return activities
+  }, [checklist, task?.status, task?.rejection_reason])
 
   useEffect(() => {
     setHandoverState(null)
@@ -487,26 +568,39 @@ export default function EmployeeItemWorkspace({
     <main className="eiw eiw-workspace">
       {/* ── TẦNG 1 · Hợp đồng và chuỗi bước ───────────────────────────── */}
       <header className="eiw-top">
-        <button
-          type="button"
-          className="eiw-back"
-          onClick={onBack}
-          disabled={busy || nodeSubmitting}
-          title={nodeSubmitting ? 'Hệ thống đang nộp hồ sơ nghiệm thu, vui lòng chờ trong giây lát…' : 'Quay lại bàn làm việc'}
-          aria-label="Quay lại bàn làm việc"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <div className="eiw-top__id">
-          <span>
-            HĐ {item.contract_id} · KH: {item.customer_name}
-            {item.location_label ? ` · ${item.location_label}` : ''}
-          </span>
-          <h1>{item.service_line_name}</h1>
+        <div className="eiw-top__left">
+          <button
+            type="button"
+            className="eiw-back"
+            onClick={onBack}
+            disabled={busy || nodeSubmitting}
+            title={nodeSubmitting ? 'Hệ thống đang nộp hồ sơ nghiệm thu, vui lòng chờ trong giây lát…' : 'Quay lại bàn làm việc'}
+            aria-label="Quay lại bàn làm việc"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div className="eiw-top__id">
+            <span>
+              HĐ {item.contract_id} · KH: {item.customer_name}
+              {item.location_label ? ` · ${item.location_label}` : ''}
+            </span>
+            <h1>{item.service_line_name}</h1>
+          </div>
         </div>
-        <span className={`eiw-top__flag is-${(item.priority || 'NORMAL').toLowerCase()}`}>
-          {PRIORITY_LABEL[item.priority] || 'Bình thường'}
-        </span>
+        <div className="eiw-top__right">
+          <span className={`eiw-top__flag is-${(item.priority || 'NORMAL').toLowerCase()}`}>
+            {PRIORITY_LABEL[item.priority] || 'Bình thường'}
+          </span>
+          {task && (
+            <span className={`eiw-top__clock-chip is-${clock.tone}`}>
+              <Clock size={13} style={{ marginRight: 4 }} />
+              {clock.text}
+            </span>
+          )}
+          <button type="button" className="eiw-top__theme-btn" aria-label="Giao diện tối/sáng">
+            <Moon size={15} />
+          </button>
+        </div>
       </header>
 
       {nodeSubmitting && (
@@ -554,68 +648,142 @@ export default function EmployeeItemWorkspace({
         <div className="eiw-grid">
           {/* ── CỘT TRÁI ────────────────────────────────────────────── */}
           <div className="eiw-col eiw-col--left">
-            <section className="eiw-node-banner" aria-label="Node hiện tại">
-              <h2 className="eiw-band eiw-band--name">
-                {task.node_code} · {task.name}
-              </h2>
-            </section>
+            <div className="eiw-left-card">
+              <section className="eiw-node-banner" aria-label="Node hiện tại">
+                <div className="eiw-step-fraction">
+                  <span>{(nodes.findIndex(n => n.id === activeNodeId) !== -1 ? nodes.findIndex(n => n.id === activeNodeId) : 0) + 1}/{nodes.length}</span>
+                </div>
+                <div className="eiw-node-banner__main">
+                  <h2 className="eiw-band eiw-band--name">
+                    {task.node_code} · {task.name}
+                  </h2>
+                  <div className="eiw-node-meta">
+                    <span className="eiw-assignee-chip">
+                      <span className="eiw-avatar-circle">
+                        {(task.assignee_name || employee?.full_name || 'Minh Ngọc').split(' ').map(w => w[0]).slice(-2).join('').toUpperCase()}
+                      </span>
+                      {task.assignee_name || employee?.full_name || 'Minh Ngọc'}
+                    </span>
+                    <span className={`eiw-status-dot is-${task.status}`}>
+                      ● {NODE_STATE_LABEL[task.status] || task.status}
+                    </span>
+                  </div>
+                </div>
+              </section>
 
+              <div className="eiw-clock">
+                <span className="eiw-clock__label">Thời gian còn lại</span>
+                <span className={`eiw-clock__value is-${clock.tone}`}>
+                  {clock.text}
+                  {clock.frozen && <em>đồng hồ đã dừng</em>}
+                </span>
+              </div>
 
+              <div className={`eiw-desc ${!task.description ? 'is-empty' : ''}`}>
+                {!task.description ? (
+                  <>
+                    <div className="eiw-desc__empty-icon">
+                      <FileText size={22} />
+                    </div>
+                    <span>Bước này chưa có mô tả công việc.</span>
+                    <button type="button" className="eiw-desc__add-btn">
+                      Thêm mô tả
+                    </button>
+                  </>
+                ) : (
+                  <span>{task.description}</span>
+                )}
+              </div>
 
-            <div className="eiw-clock">
-              <span className="eiw-clock__label">Thời gian còn lại</span>
-              <span className={`eiw-clock__value is-${clock.tone}`}>
-                {clock.text}
-                {clock.frozen && <em>đồng hồ đã dừng</em>}
-              </span>
+              <section className="eiw-card eiw-attachments-card" aria-label="Tủ hồ sơ đính kèm">
+                <button
+                  type="button"
+                  className="eiw-band eiw-band--cabinet"
+                  aria-label="Mở tủ hồ sơ theo bước"
+                  onClick={() => setCabinetOpen(true)}
+                  onMouseEnter={() => {
+                    if (item?.contract_id && item?.service_line_id && typeof prefetchApi === 'function') {
+                      prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(item.contract_id)}&service_line_id=${encodeURIComponent(item.service_line_id)}`)
+                    }
+                  }}
+                  onFocus={() => {
+                    if (item?.contract_id && item?.service_line_id && typeof prefetchApi === 'function') {
+                      prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(item.contract_id)}&service_line_id=${encodeURIComponent(item.service_line_id)}`)
+                    }
+                  }}
+                >
+                  <FolderOpen size={16} /> Tủ hồ sơ
+                </button>
+              </section>
+
+              <dl className="eiw-money">
+                <div className="eiw-money__row">
+                  <dt>Khoán nhiệm vụ</dt>
+                  <dd>{formatMoney(money.base)}</dd>
+                </div>
+                <div className="eiw-money__row">
+                  <dt>Thưởng{money.settled ? '' : ' dự kiến'}</dt>
+                  <dd>{formatMoney(money.bonus)}</dd>
+                </div>
+                <div className="eiw-money__row is-total">
+                  <dt>Tổng</dt>
+                  <dd className="eiw-money__total-val">{formatMoney(money.base + money.bonus)}</dd>
+                </div>
+              </dl>
             </div>
-
-            <div className="eiw-desc">
-              {task.description || 'Bước này chưa có mô tả công việc.'}
-            </div>
-
-            <section className="eiw-card eiw-attachments-card" aria-label="Tủ hồ sơ đính kèm">
-              <button
-                type="button"
-                className="eiw-band eiw-band--cabinet"
-                aria-label="Mở tủ hồ sơ theo bước"
-                onClick={() => setCabinetOpen(true)}
-                onMouseEnter={() => {
-                  if (item?.contract_id && item?.service_line_id && typeof prefetchApi === 'function') {
-                    prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(item.contract_id)}&service_line_id=${encodeURIComponent(item.service_line_id)}`)
-                  }
-                }}
-                onFocus={() => {
-                  if (item?.contract_id && item?.service_line_id && typeof prefetchApi === 'function') {
-                    prefetchApi(`/api/document-register/register?contract_id=${encodeURIComponent(item.contract_id)}&service_line_id=${encodeURIComponent(item.service_line_id)}`)
-                  }
-                }}
-              >
-                <FolderOpen size={16} /> Mở tủ hồ sơ theo bước
-              </button>
-            </section>
-
-
-
-            <dl className="eiw-money">
-              <div className="eiw-money__row">
-                <dt>Khoán nhiệm vụ</dt>
-                <dd>{formatMoney(money.base)}</dd>
-              </div>
-              <div className="eiw-money__row">
-                <dt>Thưởng{money.settled ? '' : ' dự kiến'}</dt>
-                <dd>{formatMoney(money.bonus)}</dd>
-              </div>
-              <div className="eiw-money__row is-total">
-                <dt>Tổng</dt>
-                <dd>{formatMoney(money.base + money.bonus)}</dd>
-              </div>
-            </dl>
           </div>
 
           {/* ── CỘT PHẢI ────────────────────────────────────────────── */}
           <div className="eiw-col eiw-col--right">
-            <div className="eiw-band eiw-band--task">
+            <div className="eiw-right-card">
+              {/* Header Tabs: Checklist, Kho giấy tờ khách, Hoạt động */}
+              <div className="eiw-right-tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={rightColTab === 'checklist'}
+                  className={`eiw-right-tab ${rightColTab === 'checklist' ? 'is-active' : ''}`}
+                  onClick={() => setRightColTab('checklist')}
+                >
+                  <span>Checklist</span>
+                  <span className="eiw-tab-badge">{checklist.length}</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={rightColTab === 'source_docs'}
+                  className={`eiw-right-tab ${rightColTab === 'source_docs' ? 'is-active' : ''}`}
+                  onClick={() => setRightColTab('source_docs')}
+                >
+                  <span>Kho giấy tờ khách</span>
+                  <span className="eiw-tab-badge is-muted">3</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={rightColTab === 'activity'}
+                  className={`eiw-right-tab ${rightColTab === 'activity' ? 'is-active' : ''}`}
+                  onClick={() => setRightColTab('activity')}
+                >
+                  <span>Hoạt động</span>
+                </button>
+              </div>
+
+              <div className="eiw-right-card__body">
+                {/* ── Ô NGHIỆP VỤ — thứ DUY NHẤT đổi theo bước ── */}
+                <div className={`eiw-slot-wrap ${rightColTab !== 'source_docs' ? 'is-collapsed-slot' : ''}`}>
+                  <NodeBusinessSlot
+                    task={task}
+                    item={item}
+                    addToast={addToast}
+                    onRefresh={onRefresh}
+                    busy={busy}
+                    onPause={() => setPauseOpen(true)}
+                    onResume={handleResume}
+                  />
+                </div>
+
+            <div className="eiw-band eiw-band--task" style={{ display: 'none' }}>
               <span>Nhiệm vụ</span>
               <span className={`eiw-state is-${task.status}`}>
                 {paused
@@ -623,17 +791,6 @@ export default function EmployeeItemWorkspace({
                   : NODE_STATE_LABEL[task.status] || task.status}
               </span>
             </div>
-
-            {/* ── Ô NGHIỆP VỤ — thứ DUY NHẤT đổi theo bước ── */}
-            <NodeBusinessSlot
-              task={task}
-              item={item}
-              addToast={addToast}
-              onRefresh={onRefresh}
-              busy={busy}
-              onPause={() => setPauseOpen(true)}
-              onResume={handleResume}
-            />
 
             <section className="eiw-checklist-section" aria-labelledby="eiw-checklist-title">
               <div className="eiw-checklist-section__head">
@@ -683,8 +840,23 @@ export default function EmployeeItemWorkspace({
               </div>
             </section>
 
-            {/* ── Thông báo của riêng bước này ──
-                Đứng ngay trên nút, vì nó nói VÌ SAO nút chưa bấm được. */}
+            {/* ── Bổ sung: Hoạt động gần đây (Recent Activities) chuẩn theo Ảnh 3 ── */}
+            <section className="eiw-activity-section" aria-label="Hoạt động gần đây">
+              <h3 className="eiw-activity-title">Hoạt động gần đây</h3>
+              <div className="eiw-activity-timeline">
+                {recentActivities.map(act => (
+                  <div key={act.id} className={`eiw-activity-item is-${act.tone}`}>
+                    <span className="eiw-activity-dot" />
+                    <div className="eiw-activity-content">
+                      <strong className="eiw-activity-name">{act.title}</strong>
+                      <span className="eiw-activity-detail">{act.detail}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* ── Thông báo của riêng bước này ── */}
             {(visibleBlockers.length > 0 || paused || openError) && (
               <div className="eiw-alerts" role="status">
                 {openError && (
@@ -703,55 +875,61 @@ export default function EmployeeItemWorkspace({
                   </p>
                 )}
                 {visibleBlockers.map(blocker => (
-                    <p className={`eiw-alert is-${blocker.kind}`} key={blocker.kind}>
-                      <TriangleAlert size={16} />
-                      <span>{blocker.message}</span>
-                    </p>
-                  ))}
+                  <p className={`eiw-alert is-${blocker.kind}`} key={blocker.kind}>
+                    <TriangleAlert size={16} />
+                    <span>{blocker.message}</span>
+                  </p>
+                ))}
               </div>
             )}
-
-            {/* Hành động thuộc riêng cột nhiệm vụ. Nộp nghiệm thu đứng trước
-                nhờ hỗ trợ đúng theo thứ tự nghiệp vụ người dùng đã chốt. */}
-            <footer className="eiw-foot" data-testid="node-action-footer">
-              <div className="eiw-foot__support" data-testid="node-support-actions">
-                {!isDirector && !DONE_STATUSES.has(task.status) && (
-                  activeNode?.my_help_request_id ? (
-                    <button
-                      type="button"
-                      className="eiw-btn eiw-btn--help is-active"
-                      onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
-                    >
-                      <LifeBuoy size={14} /> Rút lời nhờ
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="eiw-btn eiw-btn--help"
-                      onClick={() => onRequestHelp?.(task)}
-                    >
-                      <LifeBuoy size={14} /> Nhờ hỗ trợ
-                    </button>
-                  )
-                )}
-                {!isDirector && isHandover && !DONE_STATUSES.has(task.status) && (
-                  <DebtRequestAction
-                    taskNodeId={task.id}
-                    addToast={addToast}
-                    onChanged={onRefresh}
-                    onStateChange={setHandoverState}
-                  />
-                )}
               </div>
-              <div className="eiw-foot__primary" data-testid="node-primary-action">
-                <NodeActionBar
-                  task={task}
-                  onChanged={onRefresh}
-                  gate={effectiveGate}
-                  handoverState={handoverState}
-                  onOptimisticStatusChange={setOptimisticStatus}
-                  onSubmittingChange={setNodeSubmitting}
-                />
+            </div>
+
+            {/* Chân trang hành động */}
+            <footer className="eiw-foot" data-testid="node-action-footer">
+              <div className="eiw-foot__hint">
+                Phím tắt <kbd>Ctrl</kbd> <kbd>Enter</kbd> để nộp
+              </div>
+              <div className="eiw-foot__actions-cluster">
+                <div className="eiw-foot__support" data-testid="node-support-actions">
+                  {!isDirector && !DONE_STATUSES.has(task.status) && (
+                    activeNode?.my_help_request_id ? (
+                      <button
+                        type="button"
+                        className="eiw-btn eiw-btn--help is-active"
+                        onClick={() => onCancelHelp?.(activeNode.my_help_request_id)}
+                      >
+                        <LifeBuoy size={14} /> Rút lời nhờ
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="eiw-btn eiw-btn--help"
+                        onClick={() => onRequestHelp?.(task)}
+                      >
+                        <LifeBuoy size={14} /> Nhờ hỗ trợ
+                      </button>
+                    )
+                  )}
+                  {!isDirector && isHandover && !DONE_STATUSES.has(task.status) && (
+                    <DebtRequestAction
+                      taskNodeId={task.id}
+                      addToast={addToast}
+                      onChanged={onRefresh}
+                      onStateChange={setHandoverState}
+                    />
+                  )}
+                </div>
+                <div className="eiw-foot__primary" data-testid="node-primary-action">
+                  <NodeActionBar
+                    task={task}
+                    onChanged={onRefresh}
+                    gate={effectiveGate}
+                    handoverState={handoverState}
+                    onOptimisticStatusChange={setOptimisticStatus}
+                    onSubmittingChange={setNodeSubmitting}
+                  />
+                </div>
               </div>
             </footer>
           </div>

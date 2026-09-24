@@ -106,7 +106,7 @@ export default function NodeChain({
               </div>
             </button>
             {index < nodes.length - 1 && (
-              <span className="eiw-chain__arrow" aria-hidden="true">
+              <span className={`eiw-chain__arrow ${done ? 'is-done' : ''}`} aria-hidden="true">
                 <ChevronRight size={16} />
               </span>
             )}
