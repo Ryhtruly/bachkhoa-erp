@@ -964,6 +964,201 @@
 }
 
 /* ==========================================================================
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ew-history__item {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+}
+.ew-history__item.is-open {
+  border-color: #10b981;
+}
+
+.ew-history__head {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.ew-history__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ew-history__title strong {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+.ew-history__title span {
+  font-size: 11.5px;
+  color: var(--text-secondary, #64748b);
+}
+
+.ew-history__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.ew-history__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+
+.ew-history__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+}
+.ew-history__state.is-done {
+  color: #059669;
+}
+
+.ew-history__chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.ew-history__step {
+  min-width: 32px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #f1f5f9;
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  border: 1px solid transparent;
+}
+.ew-history__step.is-done {
+  background: #ecfdf5;
+  color: #047857;
+}
+.ew-history__step.is-active {
+  background: #fff7ed;
+  color: #c2410c;
+}
+.ew-history__step.is-rework {
+  background: #fef3c7;
+  color: #b45309;
+}
+.ew-history__step.is-mine {
+  border-color: currentColor;
+}
+
+.ew-history__detail {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ew-history__node h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+.ew-history__code {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ew-history__checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ew-history__checklist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-secondary, #64748b);
+}
+.ew-history__checklist li.is-done {
+  color: #047857;
+}
+.ew-history__checklist li.is-rework {
+  color: #b45309;
+}
+.ew-history__checklist li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ew-history__checklist li em {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.ew-history__empty {
+  margin: 0;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+@media (max-width: 640px) {
+  .ew-history__head {
+    flex-direction: column;
+  }
+  .ew-history__meta {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .ew {
+    align-items: stretch;
+    min-width: 0;
+    width: 100%;
+  }
+  .ew-tabs {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
    Màn làm việc của MỘT bước, phía nhân viên — bốn tầng.
 
    Khung dựng như một bảng viền liền: các dải màu chạy hết chiều ngang cột, và
@@ -1089,29 +1284,9 @@
   gap: 14px;
   padding: 12px 16px;
   margin-bottom: 14px;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
-  margin-bottom: 16px;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
   background: #f8fafc;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-.eiw-top__left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-.eiw-top__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: auto;
-  flex-shrink: 0;
 }
 .eiw-back {
   display: grid;
@@ -1121,8 +1296,6 @@
   flex: none;
   border: 1px solid #cbd5e1;
   border-radius: 9999px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
   background: #ffffff;
   color: #334155;
   cursor: pointer;
@@ -1131,9 +1304,6 @@
 .eiw-back:hover {
   background: #f1f5f9;
   border-color: #94a3b8;
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #0f172a;
 }
 .eiw-top__id {
   display: flex;
@@ -1144,18 +1314,14 @@
 .eiw-top__id span {
   font-size: 12px;
   font-weight: 600;
-  font-size: 12.5px;
-  font-weight: 500;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  letter-spacing: normal;
 }
 .eiw-top__id h1 {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  font-weight: 800;
   color: #0f172a;
 }
 .eiw-top__flag {
@@ -1163,8 +1329,6 @@
   flex: none;
   padding: 5px 14px;
   border: 1px solid #cbd5e1;
-  padding: 4px 14px;
-  border: 1px solid #e2e8f0;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 600;
@@ -1181,62 +1345,17 @@
   color: #e11d48;
   background: #fff1f2;
 }
-.eiw-top__clock-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 12px;
-  border-radius: 9999px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.eiw-top__clock-chip.is-overdue,
-.eiw-top__clock-chip.is-danger {
-  background: #fff1f2;
-  border: 1px solid #fecdd3;
-  color: #e11d48;
-}
-.eiw-top__clock-chip.is-warning {
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  color: #b45309;
-}
-.eiw-top__clock-chip.is-safe {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #16a34a;
-}
-.eiw-top__theme-btn {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9999px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.eiw-top__theme-btn:hover {
-  background: #f8fafc;
-  color: #0f172a;
-}
 
 /* ── Dải quy trình (NodeChain / Stepper) ─────────────────────────────────── */
-/* ── Dải quy trình liên tục (Continuous Rail Stepper chuẩn Ảnh 3) ──────────── */
 .eiw-chain {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  padding: 12px 24px;
   margin-bottom: 20px;
   border: 1px solid #e2e8f0;
   border-radius: 16px;
   background: #f8fafc;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -1245,7 +1364,6 @@
 }
 .eiw-chain::-webkit-scrollbar {
   height: 5px;
-  height: 4px;
 }
 .eiw-chain::-webkit-scrollbar-track {
   background: transparent;
@@ -1264,12 +1382,9 @@
   flex: 1 0 auto;
   min-width: 170px;
   max-width: 260px;
-  flex: 1 1 auto;
-  min-width: max-content;
 }
 .eiw-step {
   display: flex;
-  display: inline-flex;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -1282,21 +1397,11 @@
   background: #ffffff;
   color: #475569;
   cursor: default;
-  gap: 8px;
-  border: none;
-  background: transparent;
-  padding: 2px 6px;
-  border-radius: 9999px;
-  color: #334155;
-  cursor: pointer;
   text-align: left;
   transition: all 0.15s ease;
 }
 .eiw-step:not(:disabled) {
   cursor: pointer;
-}
-.eiw-step:disabled {
-  cursor: default;
 }
 .eiw-step:not(:disabled):hover {
   border-color: #cbd5e1;
@@ -1312,13 +1417,9 @@
   color: #475569;
 }
 .eiw-step.is-current {
-  border: 1.5px solid #ea580c;
-  border-radius: 9999px;
-  padding: 3px 14px 3px 4px;
   background: #ffffff;
   border: 2px solid #10b981;
   box-shadow: 0 1px 3px 0 rgba(16, 185, 129, 0.15);
-  box-shadow: 0 1px 4px rgba(234, 88, 12, 0.12);
 }
 .eiw-step.is-idle {
   opacity: 0.65;
@@ -1365,61 +1466,39 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  width: 22px;
-  height: 22px;
   flex: 0 0 auto;
   border-radius: 9999px;
   font-size: 12px;
-  font-size: 11px;
   font-weight: 700;
   background: #f1f5f9;
   color: #475569;
   border: 1px solid #e2e8f0;
-  color: #64748b;
-  border: 1px solid #cbd5e1;
 }
 .eiw-step.is-current .eiw-step__circle {
   background: #10b981;
-  background: #ea580c;
   color: #ffffff;
   border-color: #10b981;
-  border-color: #ea580c;
 }
 .eiw-step.is-done .eiw-step__circle {
   background: #10b981;
-  background: #16a34a;
   color: #ffffff;
   border-color: #10b981;
-  border-color: #16a34a;
-}
-.eiw-step__tick {
-  color: #ffffff;
 }
 .eiw-step__info {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  align-items: center;
   min-width: 0;
   flex: 1 1 auto;
 }
-/* Giữ statusLabel trong DOM cho test/screen readers nhưng ẩn giao diện thanh mảnh */
 .eiw-step__state {
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #94a3b8;
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   line-height: 1.2;
-  border: 0;
 }
 .eiw-step.is-current .eiw-step__state {
   color: #047857;
@@ -1437,52 +1516,28 @@
   font-size: 13px;
   font-weight: 700;
   color: #1e293b;
-  font-weight: 600;
-  color: #334155;
   flex: 0 0 auto;
-}
-.eiw-step.is-current .eiw-step__code {
-  font-weight: 700;
-  color: #0f172a;
 }
 .eiw-step__pulse {
   display: inline-block;
   width: 7px;
   height: 7px;
-  width: 6px;
-  height: 6px;
   border-radius: 9999px;
   background: #10b981;
-  background: #ea580c;
   animation: eiw-pulse 1.4s ease-in-out infinite;
   flex: 0 0 auto;
 }
-/* Tên bước chỉ hiển thị khi node đang active (current) theo đúng Ảnh 3 */
 .eiw-step__name {
   font-size: 12px;
   font-weight: 500;
   color: #475569;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 13px;
-  font-weight: 700;
-  color: #0f172a;
   white-space: nowrap;
   min-width: 0;
   flex: 1 1 auto;
-  display: none;
 }
-.eiw-step.is-current .eiw-step__name {
-  display: inline;
-}
-/* Mũi tên đổi thành đường ray thanh mảnh (connector line) */
 .eiw-chain__arrow {
-  flex: 1 1 0;
-  min-width: 24px;
-  height: 2.5px;
-  background: #e2e8f0;
-  margin: 0 12px;
-  border-radius: 9999px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1491,12 +1546,6 @@
   width: 16px;
   height: 16px;
   padding: 0;
-}
-.eiw-chain__arrow.is-done {
-  background: #16a34a;
-}
-.eiw-chain__arrow svg {
-  display: none;
 }
 
 /* ── Node Banner (TÊN NODE HIỆN TẠI) ─────────────────────────────────────── */
@@ -1567,7 +1616,6 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
-  gap: 20px;
   align-items: stretch;
   border: none;
   background: transparent;
@@ -1584,387 +1632,6 @@
 }
 .eiw-col--right {
   min-height: 100%;
-}
-
-/* ── THẺ CỘT TRÁI (Chuẩn Ảnh 3) ─────────────────────────────────────────── */
-.eiw-left-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-  height: 100%;
-}
-
-.eiw-node-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  border: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-  margin-bottom: 0 !important;
-  box-shadow: none !important;
-}
-
-.eiw-step-fraction {
-  width: 44px;
-  height: 44px;
-  border-radius: 9999px;
-  border: 2.5px solid #ea580c;
-  display: grid;
-  place-items: center;
-  font-size: 13.5px;
-  font-weight: 800;
-  color: #ea580c;
-  flex: 0 0 auto;
-}
-
-.eiw-node-banner__main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.eiw-node-banner__main .eiw-band--name {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  text-align: left;
-  justify-content: flex-start;
-  font-size: 16px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.35;
-}
-
-.eiw-node-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-}
-
-.eiw-assignee-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  color: #334155;
-}
-
-.eiw-avatar-circle {
-  width: 20px;
-  height: 20px;
-  border-radius: 9999px;
-  background: #e0f2fe;
-  color: #0284c7;
-  display: grid;
-  place-items: center;
-  font-size: 9.5px;
-  font-weight: 700;
-}
-
-.eiw-status-dot {
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-}
-.eiw-status-dot.is-rework_required {
-  color: #dc2626;
-}
-.eiw-status-dot.is-in_progress,
-.eiw-status-dot.is-ready {
-  color: #ea580c;
-}
-.eiw-status-dot.is-completed,
-.eiw-status-dot.is-accepted {
-  color: #16a34a;
-}
-.eiw-status-dot.is-submitted {
-  color: #2563eb;
-}
-
-.eiw-left-card .eiw-clock {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: #fffaf0;
-  border: 1px solid #fed7aa;
-  border-radius: 10px;
-  font-size: 12px;
-  box-shadow: none;
-}
-
-.eiw-left-card .eiw-desc {
-  flex: 1;
-  min-height: 180px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  color: #64748b;
-  font-size: 13px;
-  padding: 20px;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  gap: 8px;
-}
-
-.eiw-desc__empty-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 9999px;
-  background: #f1f5f9;
-  display: grid;
-  place-items: center;
-  color: #94a3b8;
-  margin-bottom: 2px;
-}
-
-.eiw-desc__add-btn {
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 0;
-}
-.eiw-desc__add-btn:hover {
-  text-decoration: underline;
-}
-
-.eiw-attachments-card {
-  border: none !important;
-  background: transparent !important;
-  padding: 0 !important;
-  box-shadow: none !important;
-  margin: 0 !important;
-}
-
-.eiw-band--cabinet {
-  width: 100%;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1.5px solid #2563eb;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #2563eb;
-  font-weight: 600;
-  font-size: 13.5px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: none;
-}
-.eiw-band--cabinet:hover {
-  background: #eff6ff;
-}
-
-.eiw-left-card .eiw-money {
-  margin: 14px 0 0 0;
-  padding-top: 14px;
-  border-top: 1px dashed #e2e8f0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.eiw-money__total-val {
-  color: #ea580c !important;
-  font-size: 20px !important;
-  font-weight: 800 !important;
-}
-
-/* ── THẺ CỘT PHẢI (Chuẩn Ảnh 3) ─────────────────────────────────────────── */
-.eiw-right-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 22px;
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-}
-
-.eiw-right-tabs {
-  display: flex;
-  gap: 24px;
-  border-bottom: 1.5px solid #f1f5f9;
-  margin-bottom: 16px;
-}
-
-.eiw-right-tab {
-  padding: 6px 2px 10px;
-  background: transparent;
-  border: none;
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  position: relative;
-  transition: all 0.15s ease;
-}
-.eiw-right-tab:hover {
-  color: #0f172a;
-}
-.eiw-right-tab.is-active {
-  color: #ea580c;
-  font-weight: 700;
-}
-.eiw-right-tab.is-active::after {
-  content: '';
-  position: absolute;
-  bottom: -1.5px;
-  left: 0;
-  right: 0;
-  height: 2.5px;
-  background: #ea580c;
-  border-radius: 99px;
-}
-
-.eiw-tab-badge {
-  padding: 1px 7px;
-  border-radius: 99px;
-  font-size: 11px;
-  font-weight: 700;
-  background: #ffedd5;
-  color: #ea580c;
-}
-.eiw-tab-badge.is-muted {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-/* ── Hoạt động gần đây (Recent Activities) ────────────────────────────────── */
-.eiw-activity-section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
-}
-.eiw-activity-title {
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 14px 0;
-}
-.eiw-activity-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  position: relative;
-  padding-left: 18px;
-}
-.eiw-activity-timeline::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 6px;
-  bottom: 6px;
-  width: 1.5px;
-  background: #e2e8f0;
-}
-.eiw-activity-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.eiw-activity-dot {
-  position: absolute;
-  left: -18px;
-  top: 4px;
-  width: 9px;
-  height: 9px;
-  border-radius: 9999px;
-  background: #94a3b8;
-}
-.eiw-activity-item.is-danger .eiw-activity-dot {
-  background: #dc2626;
-}
-.eiw-activity-item.is-neutral .eiw-activity-dot {
-  background: #94a3b8;
-}
-.eiw-activity-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #1e293b;
-}
-.eiw-activity-detail {
-  font-size: 12px;
-  color: #64748b;
-}
-
-/* ── Chân trang & Phím tắt ───────────────────────────────────────────────── */
-.eiw-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 20px;
-  margin-top: auto;
-  border-top: 1px solid #f1f5f9;
-  gap: 12px;
-}
-.eiw-foot__hint {
-  font-size: 12.5px;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.eiw-foot__hint kbd {
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  font-size: 11px;
-  font-weight: 600;
-  color: #475569;
-  font-family: inherit;
-}
-.eiw-foot__actions-cluster {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-left: auto;
-}
-.eiw-btn--help {
-  padding: 9px 18px;
-  border-radius: 10px;
-  border: 1.5px solid #ea580c;
-  background: #ffffff;
-  color: #ea580c;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.15s ease;
-}
-.eiw-btn--help:hover {
-  background: #fff7ed;
-}
-.eiw-foot__primary button {
-  background: #ea580c !important;
-  border-radius: 10px !important;
-  color: #ffffff !important;
-  font-weight: 600 !important;
 }
 
 .eiw-source-docs {
@@ -4192,22 +3859,23 @@
   background: color-mix(in srgb, var(--danger-500, #ef4444) 8%, transparent);
 }
 
-
-/* ===== Task 6 · Workspace Bàn làm việc nhân viên chuẩn Ảnh 2 ===== */
+/* ===== Task 6 · Workspace loại giấy runtime — Chuẩn Bách Khoa ERP ===== */
 .eiw-workspace {
   display: flex;
   flex-direction: column;
   width: 100%;
   max-width: 100%;
   margin: 0;
-  min-height: calc(100vh - var(--header-h, 56px) - 24px);
-  padding: 16px 20px 24px;
-  overflow-y: auto;
+  min-height: calc(100vh - var(--header-h, 56px) - var(--shell-gap, 0px) * 2 - 4px);
+  height: calc(100dvh - var(--header-h, 56px) - var(--shell-gap, 0px) * 2 - 4px);
+  max-height: calc(100dvh - var(--header-h, 56px) - var(--shell-gap, 0px) * 2 - 4px);
+  padding: 12px 16px;
+  overflow: hidden;
   border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 12px;
+  border-radius: 0;
   box-shadow: none;
   box-sizing: border-box;
-  background: var(--bg-default, #f8fafc);
+  background: var(--bg-card, #ffffff);
 }
 
 .eiw-workspace > .eiw-top,
@@ -4216,805 +3884,394 @@
 }
 
 .eiw-workspace .eiw-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 18px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  padding: 8px 12px;
 }
 
-.eiw-workspace .eiw-top__left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.eiw-workspace .eiw-back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  color: #475569;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.eiw-workspace .eiw-back:hover {
-  background: #f8fafc;
-  color: #0f172a;
-}
-
-.eiw-workspace .eiw-top__id {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.eiw-workspace .eiw-top__id span {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: #64748b;
-}
-
-.eiw-workspace .eiw-top__id h1 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.eiw-workspace .eiw-top__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.eiw-workspace .eiw-top__flag {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.eiw-workspace .eiw-top__clock-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: #fef2f2;
-  color: #ef4444;
-}
-
-.eiw-workspace .eiw-top__theme-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #ffffff;
-  color: #475569;
-  cursor: pointer;
-}
-
-/* Continuous Node Rail (Chuỗi bước tuyến tính chuẩn Ảnh 2) */
 .eiw-workspace .eiw-chain {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 52px;
-  padding: 10px 18px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  margin-block: 4px 14px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-  overflow-x: auto;
-}
-
-.eiw-workspace .eiw-chain__cell {
-  display: inline-flex;
-  align-items: center;
-  flex: 1 1 auto;
-}
-
-.eiw-workspace .eiw-chain__cell:last-child {
-  flex: 0 0 auto;
+  min-height: 72px;
+  margin-block: 6px 10px;
+  padding: 8px 10px;
 }
 
 .eiw-workspace .eiw-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
+  min-height: 52px;
+  padding: 6px 10px;
 }
 
-.eiw-workspace .eiw-step:disabled {
-  cursor: default;
-}
-
-/* Ẩn nhãn trạng thái dài dòng khỏi thanh rail nhưng giữ cho accessibility & vitest */
-.eiw-workspace .eiw-step__state {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.eiw-workspace .eiw-step__circle {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-/* Node đã xong: Vòng tròn xanh lá có tick trắng */
-.eiw-workspace .eiw-step.is-done .eiw-step__circle {
-  background: #22c55e;
-  color: #ffffff;
-}
-
-.eiw-workspace .eiw-step.is-done .eiw-step__code {
-  font-weight: 600;
-  color: #334155;
-  font-size: 13px;
-}
-
-.eiw-workspace .eiw-step.is-done .eiw-step__name {
-  display: none;
-}
-
-/* Node đang thao tác: Viền cam con nhộng bo tròn */
-.eiw-workspace .eiw-step.is-current {
-  background: #ffffff;
-  border: 1px solid #ea580c;
-  padding: 3px 14px 3px 3px;
-  border-radius: 999px;
-  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.12);
-}
-
-.eiw-workspace .eiw-step.is-current .eiw-step__circle {
-  background: #ea580c;
-  color: #ffffff;
-  width: 22px;
-  height: 22px;
-}
-
-.eiw-workspace .eiw-step.is-current .eiw-step__code {
-  font-weight: 700;
-  color: #0f172a;
-  font-size: 13px;
-}
-
-.eiw-workspace .eiw-step.is-current .eiw-step__name {
-  display: inline-block;
-  font-weight: 700;
-  color: #0f172a;
-  font-size: 13px;
-  margin-left: 4px;
-}
-
-/* Node tương lai / chưa tới */
-.eiw-workspace .eiw-step.is-idle .eiw-step__circle,
-.eiw-workspace .eiw-step.is-open .eiw-step__circle {
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  color: #64748b;
-}
-
-.eiw-workspace .eiw-step.is-idle .eiw-step__code,
-.eiw-workspace .eiw-step.is-open .eiw-step__code {
-  font-weight: 500;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.eiw-workspace .eiw-step.is-idle .eiw-step__name,
-.eiw-workspace .eiw-step.is-open .eiw-step__name {
-  display: none;
-}
-
-/* Thanh gạch nối giữa các bước */
-.eiw-workspace .eiw-chain__arrow {
-  display: inline-flex;
-  align-items: center;
-  flex: 1 1 auto;
-  min-width: 24px;
-  height: 3px;
-  background: #e2e8f0;
-  margin: 0 12px;
-  border-radius: 2px;
-}
-
-.eiw-workspace .eiw-chain__arrow svg {
-  display: none;
-}
-
-.eiw-workspace .eiw-chain__arrow.is-done {
-  background: #22c55e;
-}
-
-/* ── LƯỚI KHÔNG GIAN BÀN LÀM VIỆC ── */
 .eiw-workspace .eiw-grid {
   flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
-  align-items: stretch;
-  overflow: visible;
-  margin-bottom: 8px;
+  overflow: hidden;
 }
 
-/* ── CỘT TRÁI (CHUẨN ẢNH 2): CARD TRẮNG ĐƠN NHẤT ── */
+/* ── CỘT TRÁI: THÔNG TIN, TIẾN ĐỘ, TỦ HỒ SƠ & BẢNG TIỀN NEO ĐÁY ── */
 .eiw-workspace .eiw-col--left {
-  grid-column: 1 / 2;
-  grid-row: 1 / 2;
-  display: flex;
-  flex-direction: column;
-  overflow: visible;
-}
-
-.eiw-workspace .eiw-left-card {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 20px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  box-sizing: border-box;
+  min-height: 0;
+  gap: 10px;
+  overflow: hidden;
 }
 
 .eiw-workspace .eiw-node-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.eiw-workspace .eiw-step-fraction {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 2px solid #ea580c;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13.5px;
-  font-weight: 800;
-  color: #0f172a;
-  flex-shrink: 0;
-}
-
-.eiw-workspace .eiw-node-banner__main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .eiw-workspace .eiw-band--name {
   margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  font-size: 16px;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.eiw-workspace .eiw-node-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.eiw-workspace .eiw-assignee-chip {
-  display: inline-flex;
+.eiw-workspace .eiw-clock {
+  flex: 0 0 auto;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #334155;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
 }
 
-.eiw-workspace .eiw-avatar-circle {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #dbeafe;
-  color: #1d4ed8;
-  font-size: 10px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.eiw-workspace .eiw-clock__label {
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #92400e;
 }
 
-.eiw-workspace .eiw-status-dot {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 600;
-  background: #fef2f2;
-  color: #dc2626;
+.eiw-workspace .eiw-clock__value {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #b45309;
 }
 
-/* Đồng hồ thời gian ẩn khỏi thẻ trái (đã có ở header) nhưng giữ DOM cho test */
-.eiw-workspace .eiw-left-card .eiw-clock {
-  display: none;
-}
-
-/* Vùng mô tả rỗng */
 .eiw-workspace .eiw-desc {
   flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  min-height: 180px;
-  padding: 24px 16px;
-  border: none;
-  background: transparent;
-  color: #64748b;
+  min-height: 60px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   font-size: 13.5px;
+  line-height: 1.55;
+  color: #334155;
+  overflow-y: auto;
 }
 
-.eiw-workspace .eiw-desc__empty-icon {
-  color: #94a3b8;
-  margin-bottom: 8px;
-}
-
-.eiw-workspace .eiw-desc__add-btn {
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 6px;
-}
-
-.eiw-workspace .eiw-desc__add-btn:hover {
-  text-decoration: underline;
-}
-
-/* Nút Tủ hồ sơ full-width */
 .eiw-workspace .eiw-attachments-card {
-  border: none;
-  background: transparent;
-  padding: 0;
-  margin-bottom: 16px;
+  flex: 0 0 auto;
 }
 
 .eiw-workspace .eiw-band--cabinet {
   width: 100%;
-  height: 42px;
-  border-radius: 8px;
-  border: 1px solid #bfdbfe;
-  background: #ffffff;
-  color: #2563eb;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  min-height: 40px;
+  padding: 9px 16px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1.5px solid #3b82f6;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.06);
   transition: all 0.15s ease;
-  box-shadow: none;
 }
 
 .eiw-workspace .eiw-band--cabinet:hover {
   background: #eff6ff;
-  border-color: #93c5fd;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.15);
+  transform: translateY(-1px);
 }
 
-/* Thẻ tài chính (Hình 2): Neo sát mép đáy cột trái */
+/* Thẻ tài chính (Hình 2): Neo sát mép đáy cột trái, triệt tiêu hoàn toàn khoảng hở */
 .eiw-workspace .eiw-money {
+  flex: 0 0 auto;
   margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
-  background: transparent;
-  border-left: none;
-  border-right: none;
-  border-bottom: none;
-  box-shadow: none;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+  background: linear-gradient(180deg, #fffdfa 0%, #fffbeb 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.eiw-workspace .eiw-money dt::before {
+  display: none !important;
+}
+
+.eiw-workspace .eiw-money dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 550;
+  background: transparent;
+  width: auto;
+  padding: 0;
+}
+
+.eiw-workspace .eiw-money dd {
+  margin: 0;
+  padding: 0;
+  color: #0f172a;
+  font-size: 14.5px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .eiw-workspace .eiw-money .eiw-money__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.eiw-workspace .eiw-money dt {
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.eiw-workspace .eiw-money dd {
-  color: #0f172a;
-  font-size: 13.5px;
-  font-weight: 700;
-  margin: 0;
+  gap: 8px;
 }
 
 .eiw-workspace .eiw-money .is-total {
   padding-top: 8px;
-  border-top: 1px dashed #e2e8f0;
-  margin-top: 4px;
+  margin-top: 2px;
+  border-top: 1px dashed #fcd34d;
 }
 
 .eiw-workspace .eiw-money .is-total dt {
   color: #0f172a;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.eiw-workspace .eiw-money .is-total dd {
-  color: #ea580c;
-  font-size: 18px;
+  font-size: 13.5px;
   font-weight: 800;
 }
 
-/* ── CỘT PHẢI (CHUẨN ẢNH 2): CARD TRẮNG ĐƠN NHẤT + FOOTER SPANNING ── */
-.eiw-workspace .eiw-col--right {
-  display: contents;
+.eiw-workspace .eiw-money .is-total dd {
+  color: #b45309;
+  font-size: 18px;
+  font-weight: 850;
 }
 
-.eiw-workspace .eiw-right-card {
-  grid-column: 2 / 3;
-  grid-row: 1 / 2;
+/* ── CỘT PHẢI: NHIỆM VỤ, CHECKLIST DÃN FULL ĐỘ CAO & NÚT HÀNH ĐỘNG NEO ĐÁY ── */
+.eiw-workspace .eiw-col--right {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.eiw-workspace .eiw-band--task {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 9px 14px;
+  border-radius: 10px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-/* Tabs: Checklist, Kho giấy tờ khách, Hoạt động */
-.eiw-workspace .eiw-right-tabs {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 0 20px;
-  border-bottom: 1px solid #f1f5f9;
-  background: #ffffff;
-}
-
-.eiw-workspace .eiw-right-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 4px;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  font-weight: 600;
-  color: #64748b;
-  cursor: pointer;
-  position: relative;
-  transition: color 0.15s ease;
-}
-
-.eiw-workspace .eiw-right-tab:hover {
-  color: #0f172a;
-}
-
-.eiw-workspace .eiw-right-tab.is-active {
-  color: #ea580c;
+  color: #475569;
+  font-size: 12px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.eiw-workspace .eiw-right-tab.is-active::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #ea580c;
-  border-radius: 2px;
-}
-
-.eiw-workspace .eiw-tab-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  background: #ffedd5;
-  color: #ea580c;
-}
-
-.eiw-workspace .eiw-tab-badge.is-muted {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-/* Thân card bên phải */
-.eiw-workspace .eiw-right-card__body {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 20px;
+.eiw-workspace .eiw-slotbody {
+  flex: 0 0 auto;
+  max-height: 140px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
   overflow-y: auto;
-  background: #ffffff;
 }
 
-.eiw-workspace .is-collapsed-slot {
-  display: none !important;
-}
-
-/* Checklist Section */
 .eiw-workspace .eiw-checklist-section {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .eiw-workspace .eiw-checklist-section__head {
-  display: none;
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #f97342, #ea580c);
+  color: #ffffff;
+}
+
+.eiw-workspace .eiw-checklist-section__head h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 750;
+  color: #ffffff;
+}
+
+.eiw-workspace .eiw-checklist-section__head em {
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.9;
 }
 
 .eiw-workspace .eiw-checklist-section__body {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  background: transparent;
-  padding: 0;
-  overflow: visible;
+  overflow-y: auto;
+  background: #f8fafc;
+  padding: 10px;
+  gap: 8px;
+  scrollbar-color: #f97342 #fff7ed;
+  scrollbar-width: thin;
+}
+
+.eiw-workspace .eiw-checklist-section__body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.eiw-workspace .eiw-checklist-section__body::-webkit-scrollbar-thumb {
+  background: #f97342;
+  border-radius: 999px;
+}
+
+.eiw-workspace .eiw-checklist-section__body::-webkit-scrollbar-track {
+  background: #fff7ed;
+}
+
+.eiw-workspace .eiw-checklist-section__body > .eiw-docs {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 100%;
 }
 
 .eiw-workspace .eiw-checklist-item-card {
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   width: 100%;
-  border-radius: 10px !important;
+  border-radius: 8px !important;
   border: 1px solid #e2e8f0 !important;
   background: #ffffff !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
   overflow: hidden;
 }
 
 .eiw-workspace .eiw-checklist-item-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: #f8fafc;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.eiw-workspace .eiw-checklist-item-head__left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.eiw-workspace .eiw-checklist-item-head__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.eiw-workspace .eiw-checklist-add-doc-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  color: #2563eb;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.15s ease;
-}
-
-.eiw-workspace .eiw-checklist-add-doc-btn:hover {
-  background: #eff6ff;
-}
-
-.eiw-workspace .eiw-checklist-collapse-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.eiw-workspace .eiw-checklist-collapse-btn:hover {
-  background: #e2e8f0;
-  color: #0f172a;
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  background: #f0f7ff;
+  border-bottom: 1px solid #dbeafe;
 }
 
 .eiw-workspace .eiw-docs__scroll {
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: 6px;
+}
+
+.eiw-workspace .eiw-doc {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
-}
-
-/* Hoạt động gần đây (Recent Activities - Chuẩn Ảnh 2) */
-.eiw-workspace .eiw-activity-section {
-  margin-top: 8px;
-  padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.eiw-workspace .eiw-activity-title {
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #475569;
-}
-
-.eiw-workspace .eiw-activity-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.eiw-workspace .eiw-activity-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 12.5px;
-}
-
-.eiw-workspace .eiw-activity-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
-  background: #94a3b8;
-}
-
-.eiw-workspace .eiw-activity-item.is-danger .eiw-activity-dot,
-.eiw-workspace .eiw-activity-item.is-red .eiw-activity-dot {
-  background: #ef4444;
-}
-
-.eiw-workspace .eiw-activity-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.eiw-workspace .eiw-activity-name {
-  font-size: 13px;
-  font-weight: 650;
-  color: #0f172a;
-}
-
-.eiw-workspace .eiw-activity-detail {
-  font-size: 12px;
-  color: #64748b;
 }
 
 .eiw-workspace .eiw-alerts {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
+  flex: 0 0 auto;
 }
 
-/* ── CHÂN TRANG HÀNH ĐỘNG NEO ĐÁY FULL-WIDTH (CHUẨN ẢNH 2) ── */
+/* Chân trang hành động: Neo sát đáy tuyệt đối, thẳng hàng với thẻ tài chính bên trái */
+/* Chân trang hành động: Cụm nút hỗ trợ & nộp nghiệm thu nằm sát cạnh nhau ở góc phải, cứng cáp vuông, màu trắng cam chủ đạo */
 .eiw-workspace .eiw-foot {
-  grid-column: 1 / -1;
-  grid-row: 2 / 3;
-  position: sticky;
-  bottom: 8px;
-  z-index: 50;
-  margin-top: 12px;
-  padding: 10px 20px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 8px 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0 0;
   display: flex !important;
   align-items: center !important;
-  justify-content: space-between !important;
-  gap: 16px !important;
-  box-sizing: border-box;
-}
-
-.eiw-workspace .eiw-foot__hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.eiw-workspace .eiw-foot__hint kbd {
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #334155;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
-}
-
-.eiw-workspace .eiw-foot__actions-cluster {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex-wrap: nowrap;
 }
 
 .eiw-workspace .eiw-foot__support,
 .eiw-workspace .eiw-foot__primary {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   gap: 8px;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.eiw-workspace .eiw-foot__primary {
+  justify-content: flex-end;
+  margin-left: auto;
+  justify-content: flex-end !important;
+  margin-left: 0 !important;
+}
+
+.eiw-workspace .eiw-foot__primary > .employee-workspace-task-modal__gate {
+  align-items: flex-end;
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 4px !important;
+}
+
+.eiw-workspace .eiw-gate__lock-reason {
+  font-size: 11px;
+  color: #c2410c;
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 600;
+  max-width: 320px;
+  text-align: right;
+  line-height: 1.35;
 }
 
 .eiw-workspace .eiw-foot .eiw-btn--help {
@@ -5023,60 +4280,129 @@
   justify-content: center;
   gap: 6px;
   height: 38px;
-  padding: 0 16px;
-  border: 1.5px solid #ea580c;
+  min-height: 38px;
+  padding: 8px 16px;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
+  padding: 0 16px;
+  border: 1px solid #ea580c;
+  border-radius: 4px;
   background: #ffffff;
+  color: #334155;
   color: #ea580c;
   font-size: 13px;
+  font-weight: 650;
   font-weight: 700;
+  letter-spacing: 0.01em;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .eiw-workspace .eiw-foot .eiw-btn--help:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
   background: #fff7ed;
   border-color: #c2410c;
   color: #c2410c;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.15);
+}
+
+.eiw-workspace .eiw-foot .eiw-btn--help:active:not(:disabled) {
+  background: #ffedd5;
+  transform: translateY(1px);
 }
 
 .eiw-workspace .eiw-foot .eiw-btn--help.is-active {
   border-color: #dc2626;
   color: #dc2626;
+  background: #ffffff;
 }
 
-.eiw-workspace .eiw-foot .btn,
-.eiw-workspace .eiw-foot .btn-primary,
-.eiw-workspace .eiw-foot__primary button {
+.eiw-workspace .eiw-foot .eiw-btn--help.is-active:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.eiw-workspace .eiw-foot .eiw-btn--debt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 38px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #fb923c;
+  border-radius: 8px;
+  padding: 0 14px;
+  border: 1px solid #fdba74;
+  border-radius: 4px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.eiw-workspace .eiw-foot .eiw-btn--debt:disabled {
+  border-color: #fed7aa;
+  color: #9a3412;
+  cursor: wait;
+  opacity: .72;
+}
+
+.eiw-workspace .eiw-foot .eiw-btn--debt.is-disabled,
+.eiw-workspace .eiw-foot .eiw-btn--debt.is-disabled:disabled {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+  opacity: .7;
+}
+
+.eiw-workspace .eiw-foot__primary .btn,
+.eiw-workspace .eiw-foot__primary .btn-primary {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   gap: 6px !important;
   height: 38px !important;
-  padding: 0 20px !important;
-  border: 1px solid #ea580c !important;
-  border-radius: 8px !important;
+  min-height: 38px !important;
+  padding: 0 18px !important;
+  border: 1px solid #c2410c !important;
+  border-radius: 4px !important;
   background: #ea580c !important;
   color: #ffffff !important;
   font-size: 13px !important;
   font-weight: 700 !important;
+  letter-spacing: 0.01em !important;
   cursor: pointer !important;
-  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.25) !important;
+  box-shadow: 0 1px 3px rgba(234, 88, 12, 0.25), 0 1px 2px rgba(0, 0, 0, 0.05) !important;
   transition: all 0.15s ease !important;
   white-space: nowrap !important;
 }
 
-.eiw-workspace .eiw-foot .btn:hover:not(:disabled),
-.eiw-workspace .eiw-foot .btn-primary:hover:not(:disabled),
-.eiw-workspace .eiw-foot__primary button:hover:not(:disabled) {
+.eiw-workspace .eiw-foot__primary .btn:hover:not(:disabled),
+.eiw-workspace .eiw-foot__primary .btn-primary:hover:not(:disabled) {
   background: #c2410c !important;
   border-color: #9a3412 !important;
+  box-shadow: 0 2px 5px rgba(194, 65, 12, 0.3) !important;
 }
 
-.eiw-workspace .eiw-foot .btn:disabled,
-.eiw-workspace .eiw-foot .btn-primary:disabled,
-.eiw-workspace .eiw-foot__primary button:disabled {
+.eiw-workspace .eiw-foot__primary .btn:active:not(:disabled),
+.eiw-workspace .eiw-foot__primary .btn-primary:active:not(:disabled) {
+  background: #9a3412 !important;
+  transform: translateY(1px) !important;
+}
+
+.eiw-workspace .eiw-foot__primary .btn:disabled,
+.eiw-workspace .eiw-foot__primary .btn-primary:disabled {
   background: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
   color: #94a3b8 !important;
@@ -5582,6 +4908,7 @@
   font-size: 11.5px;
 }
 
+
 .eiw-document-type__file-main {
   display: grid;
   min-width: 0;
@@ -5664,20 +4991,6 @@
     display: flex;
     height: auto;
     overflow: visible;
-    grid-column: 1 / -1;
-    grid-row: auto;
-  }
-
-  .eiw-workspace .eiw-right-card {
-    grid-column: 1 / -1;
-    grid-row: auto;
-  }
-
-  .eiw-workspace .eiw-foot {
-    grid-column: 1 / -1;
-    grid-row: auto;
-    position: sticky;
-    bottom: 8px;
   }
 
   .eiw-workspace .eiw-checklist-section__body {
