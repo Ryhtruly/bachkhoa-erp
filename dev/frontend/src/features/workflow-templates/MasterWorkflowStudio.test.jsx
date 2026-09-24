@@ -640,6 +640,16 @@ describe('MasterWorkflowStudio — Thiết kế quy trình mẫu theo Combo', ()
         })
       )
     })
+    // Payload phải khớp WorkflowTemplateCloneIn ở backend (service_package_id / task_type_id)
+    const cloneCall = apiFetch.mock.calls.find(([p, o]) => p.includes('/clone') && o?.method === 'POST')
+    const payload = JSON.parse(cloneCall[1].body)
+    expect(payload).toMatchObject({
+      service_package_id: 'sp_002',
+      name: 'Quy trình Cấp đổi sổ chuẩn - Nhân bản',
+    })
+    expect(payload.task_type_id).toBeTruthy()
+    expect(payload).not.toHaveProperty('target_service_package_id')
+    expect(payload).not.toHaveProperty('target_task_type_id')
   })
 
   it('MasterWorkflowStudio cấm nối quá 1 đường mỗi đầu và chặn kéo sai quy tắc tuần tự', async () => {

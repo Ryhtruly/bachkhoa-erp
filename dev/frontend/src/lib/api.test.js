@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ApiError,
   apiFetch,
   clearAccessToken,
   clearApiCache,
   downloadFile,
+  formatErrorDetail,
   getCacheTTL,
   getAccessToken,
   peekApiCache,
@@ -335,5 +337,21 @@ describe('downloadFile with File System Access API & fallback', () => {
     expect(mockCreateObjectURL).toHaveBeenCalled();
     expect(mockRevokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/123');
     expect(result).toBe('default.xlsx');
+  });
+});
+
+describe('formatErrorDetail', () => {
+  it('ghép lỗi validate dạng mảng của FastAPI thành chuỗi đọc được', () => {
+    const detail = [
+      { loc: ['body', 'service_package_id'], msg: 'Field required', type: 'missing' },
+      { loc: ['body', 'task_type_id'], msg: 'Field required', type: 'missing' },
+    ];
+    expect(formatErrorDetail(detail)).toBe('service_package_id: Field required; task_type_id: Field required');
+    expect(new ApiError(422, detail).message).not.toContain('[object Object]');
+  });
+
+  it('giữ nguyên chuỗi lỗi thường', () => {
+    expect(formatErrorDetail('Không tìm thấy')).toBe('Không tìm thấy');
+    expect(new ApiError(404, 'Không tìm thấy').message).toBe('Không tìm thấy');
   });
 });

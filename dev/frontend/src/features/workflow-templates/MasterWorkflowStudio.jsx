@@ -1218,8 +1218,8 @@ export default function MasterWorkflowStudio() {
       const res = await apiFetch(`/api/contracts/workflow/templates/${selectedTemplateId}/clone`, {
         method: 'POST',
         body: JSON.stringify({
-          target_service_package_id: cloneTargetPackageId,
-          target_task_type_id: cloneTargetTaskTypeId,
+          service_package_id: cloneTargetPackageId,
+          task_type_id: cloneTargetTaskTypeId,
           name: cloneTemplateName.trim(),
           description: cloneDescription.trim() || null,
           is_default: Boolean(cloneIsDefault),
@@ -2527,6 +2527,7 @@ export default function MasterWorkflowStudio() {
               rows={2}
               value={cloneDescription}
               onChange={(e) => setCloneDescription(e.target.value)}
+              maxLength={1000}
               placeholder="Ghi chú sử dụng..."
             />
           </div>
