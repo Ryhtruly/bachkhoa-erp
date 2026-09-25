@@ -219,7 +219,7 @@ export const HELP_SECTIONS = [
         table: {
           head: ['Bước', 'Ai làm', 'Việc', 'Hệ thống tự làm'],
           rows: [
-            ['1. Gửi form', 'Bot', 'Bot tự gửi mã QR / đường dẫn form cho khách', '—'],
+            ['1. Gửi form', 'Sale', 'Gửi mã QR hoặc đường dẫn form cho khách qua Zalo', '—'],
             ['2. Điền form', 'Khách', 'Quét QR, chọn dịch vụ, nhập thửa đất & SĐT, bấm Gửi', 'Tạo lead ở cột **Tiếp cận**, báo chuông + Telegram'],
             ['3. Nhận lead', 'Sale', 'Bấm **Nhận lead này**', 'Khoá lead cho người bấm trước, kiểm tra giới hạn tải'],
             ['4. Tư vấn', 'Sale', 'Chuyển **Báo giá → Đàm phán**', 'Cộng điểm tải theo cột'],
@@ -229,15 +229,15 @@ export const HELP_SECTIONS = [
         },
       },
 
-      { p: '**Bước 1 — Bot gửi form cho khách.** Sale **không** gửi form: khách nhắn hỏi thì **bot tự gửi mã QR / đường dẫn form**. Mã QR cho bot được tạo sẵn một lần ở CRM → **Mã QR Form**:' },
+      { p: '**Bước 1 — Sale gửi form cho khách.** Chỉ **Sale** gửi form (không có bot tự gửi). Ở CRM bấm **Mã QR Form**:' },
       { image: { src: '/help/sale-qr.png', caption: 'Tạo mã QR mở sẵn đúng dịch vụ khách cần.' } },
       {
         steps: [
           'Chọn **Gói dịch vụ** [1] và **Hạng mục** [2] (không bắt buộc) — khách quét mã [3] sẽ vào thẳng form của dịch vụ đó, không phải tự chọn.',
-          'Bấm **Sao chép** [4] lấy đường dẫn hoặc **Tải Ảnh QR** [5] để cài vào kịch bản của bot (và in lên danh thiếp, tờ rơi, bảng hiệu nếu cần).',
+          'Bấm **Sao chép** [4] lấy đường dẫn dán vào tin nhắn Zalo gửi khách, hoặc **Tải Ảnh QR** [5] gửi ảnh cho khách quét (in lên danh thiếp, tờ rơi nếu cần).',
         ],
       },
-      { tip: 'Mỗi dịch vụ nên có một mã QR riêng (Đo hiện trạng, Cắm mốc, Cấp đổi sổ…) để bot gửi đúng mã theo câu khách hỏi.' },
+      { tip: 'Khách hỏi dịch vụ nào thì gửi đúng mã QR / đường dẫn của dịch vụ đó (Đo hiện trạng, Cắm mốc, Cấp đổi sổ…) để khách khỏi phải tự chọn. Nút **Copy Link Form Zalo** trên thanh CRM lấy nhanh đường dẫn chung.' },
 
       { p: '**Bước 2 — Khách mở form và điền.** Không cần tài khoản, dùng tốt trên điện thoại:' },
       { image: { src: '/help/sale-form-1.png', caption: 'Khách chọn nhóm dịch vụ và hạng mục.' } },
@@ -316,7 +316,7 @@ export const HELP_SECTIONS = [
           '**Tạo Lead Mới** [1] — thêm khách gọi điện / nhắn tin trực tiếp (không qua form).',
           '**Nhận lead này** [2] — giữ lead chưa có người phụ trách.',
           'Ô **Chuyển** [3] trên mỗi thẻ — đổi cột (hoặc kéo thả thẻ). Chuyển sang **Chốt** mở hộp chốt deal.',
-          '**Mã QR Form** [4] và **Copy Link Form Zalo** [5] — lấy mã QR / đường dẫn form để cài cho bot gửi khách. **Xem Form** mở thử trang khách thấy.',
+          '**Mã QR Form** [4] và **Copy Link Form Zalo** [5] — lấy mã QR / đường dẫn form để Sale gửi khách qua Zalo. **Xem Form** mở thử trang khách thấy.',
           '**Bộ lọc** theo nguồn khách và sale phụ trách; **Thiết lập CRM** (Giám đốc) chỉnh hoa hồng và giới hạn tải.',
         ],
       },
