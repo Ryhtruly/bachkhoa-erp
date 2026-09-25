@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { existsSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import HelpCenter, { isSectionVisible } from './HelpCenter'
@@ -16,6 +17,12 @@ describe('helpContent', () => {
       expect(HELP_GROUPS).toContain(section.group)
       expect(section.blocks.length).toBeGreaterThan(0)
     }
+  })
+
+  it('mọi ảnh minh hoạ đều có file trong public/help', () => {
+    const images = HELP_SECTIONS.flatMap((section) => section.blocks.filter((block) => block.image).map((block) => block.image.src))
+    expect(images.length).toBeGreaterThan(0)
+    for (const src of images) expect(existsSync(`public${src}`), src).toBe(true)
   })
 })
 

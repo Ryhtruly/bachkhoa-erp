@@ -11,7 +11,8 @@
 //   directorOnly — chỉ Giám đốc / admin
 //   blocks       — nội dung: { p } đoạn văn · { steps: [] } các bước · { list: [] } gạch đầu dòng
 //                  · { tip } mẹo · { warn } lưu ý · { table: { head: [], rows: [[]] } }
-//   Trong chuỗi, **đậm** được in đậm.
+//                  · { image: { src: '/help/x.png', caption } } ảnh chụp (scripts/help-screenshots)
+//   Trong chuỗi, **đậm** được in đậm; [1] là số tròn khớp với số khoanh trên ảnh.
 
 export const HELP_GROUPS = [
   'Bắt đầu',
@@ -98,26 +99,25 @@ export const HELP_SECTIONS = [
     audience: 'employee',
     tabs: ['employee-dashboard'],
     blocks: [
-      { p: 'Mục **Lịch trình** là bàn làm việc hằng ngày: việc bạn đang giữ, lịch theo tuần, tiến độ và thành tích hôm nay, và **Bể việc** — nơi các bước công việc chờ người nhận.' },
-      { p: '**Tải của bạn** cho biết bạn đang giữ bao nhiêu hạng mục trên mức tối đa (ví dụ 1 / 3). Khi đủ tải, phải hoàn thành một hạng mục mới nhận thêm được.' },
-      {
-        table: {
-          head: ['Loại thẻ trong Bể việc', 'Ý nghĩa', 'Nút'],
-          rows: [
-            ['Hạng mục mới', 'Trọn chuỗi bước của một hạng mục, kèm tổng khoán dự kiến', '**Nhận trọn**'],
-            ['Slot thợ phụ', 'Đi cùng thợ chính ra hiện trường, khoán cố định. Suất đóng ngay khi thợ chính bấm **Bắt đầu đo** — nhận sớm mới còn', '**Nhận làm phụ**'],
-            ['Cần hỗ trợ', 'Đồng nghiệp nhờ làm thay một bước. Khoán là đề xuất, Giám đốc chốt khi duyệt', '**Nhận làm hộ**'],
-          ],
-        },
-      },
+      { p: 'Mục **Lịch trình** là bàn làm việc hằng ngày của bạn: thanh tải, lịch tuần, các hạng mục đang giữ và **Bể việc** — nơi các việc chờ người nhận.' },
+      { image: { src: '/help/be-viec-tai.png', caption: '[1] Thanh **Tải của bạn**: đang giữ bao nhiêu hạng mục trên mức tối đa.' } },
+      { p: 'Khi thanh tải đầy, bạn phải hoàn thành một hạng mục thì mới nhận thêm được.' },
+      { image: { src: '/help/be-viec-be.png', caption: 'Bể việc của phòng — mỗi thẻ là một hạng mục kèm tổng khoán dự kiến.' } },
       {
         steps: [
-          'Mở **Lịch trình**, kéo xuống **Bể việc**; dùng các nhóm lọc để xem theo loại việc.',
-          'Bấm **Chi tiết** để xem địa chỉ, các bước và mức khoán.',
-          'Bấm nút nhận tương ứng. Việc chuyển lên **Hạng mục bạn đã nhận**.',
+          'Kéo xuống **Bể việc**. Chọn nhóm việc [1]: **Nhận trọn** (trọn chuỗi bước của một hạng mục), **Thợ phụ** (đi cùng thợ chính) hoặc **Hỗ trợ** (đồng nghiệp nhờ làm thay).',
+          'Bấm **Chi tiết** [2] để xem địa chỉ, khách, các bước và mức khoán từng bước.',
+          'Bấm **Nhận trọn** [3] (ở tab Thợ phụ là **Nhận làm phụ**, tab Hỗ trợ là **Nhận làm hộ**). Việc chuyển lên mục **Hạng mục bạn đã nhận**.',
         ],
       },
-      { p: '**Gặp sự cố không làm tiếp được** (ốm, hỏng máy…): mở bước đang làm → **Nhờ hỗ trợ**. Bước được đưa lên Bể việc dạng “Cần hỗ trợ”. Trong lúc chưa ai nhận, bạn vẫn chịu trách nhiệm bước đó; đổi ý thì bấm **Rút lời nhờ** để tự làm tiếp.' },
+      { tip: 'Suất **thợ phụ** đóng ngay khi thợ chính bấm **Bắt đầu đo** — muốn đi phụ thì nhận sớm. Việc **Hỗ trợ** có khoán đề xuất; Giám đốc chốt số cuối khi duyệt.' },
+      { image: { src: '/help/be-viec-hang-muc.png', caption: 'Hạng mục bạn đã nhận: bước hiện tại, tiến độ và khoán đã đạt / tổng khoán.' } },
+      {
+        list: [
+          '**Mở ra làm** [1] — vào màn làm việc của bước hiện tại (xem mục “Thực hiện bước & nộp nghiệm thu”).',
+          '**Nhờ hỗ trợ** [2] — khi gặp sự cố không tự làm tiếp được (ốm, hỏng máy…). Bước được đưa lên Bể việc dạng “Hỗ trợ”. Trong lúc chưa ai nhận, bạn vẫn chịu trách nhiệm; đổi ý thì bấm **Rút lại lời nhờ**.',
+        ],
+      },
     ],
   },
   {
@@ -127,19 +127,20 @@ export const HELP_SECTIONS = [
     audience: 'employee',
     tabs: ['employee-dashboard'],
     blocks: [
-      { p: 'Mỗi hợp đồng chạy theo các **bước (node)** như K01 Tiếp nhận, K02 Đo hiện trường, K03 Chuẩn hoá kỹ thuật… Mỗi bước có **danh sách checklist** — những việc phải làm và minh chứng phải nộp.' },
+      { p: 'Mỗi hợp đồng chạy theo các **bước** (K01 Tiếp nhận, K02 Đo hiện trường, K03 Chuẩn hoá kỹ thuật…). Mỗi bước có **danh sách checklist** — việc phải làm và minh chứng phải nộp. Bấm **Mở ra làm** ở hạng mục đã nhận để vào màn dưới đây.' },
+      { image: { src: '/help/lam-buoc.png', caption: 'Màn làm việc của một bước.' } },
       {
         steps: [
-          'Mở hạng mục đã nhận → chọn bước hiện tại. Trạng thái bước hiện ở đầu thẻ: **Sẵn sàng làm**, **Đang làm**, **Chờ tới lượt**, **Cần sửa**.',
-          'Bấm **Bắt đầu làm** (bước đo hiện trường: **Bắt đầu đo hiện trường**). Chỉ sau khi bắt đầu mới nộp được minh chứng; đồng hồ **Thời gian còn lại** bắt đầu chạy.',
-          'Với từng mục checklist: tải tệp minh chứng (ảnh, PDF, bản vẽ…), ghi chú nếu cần.',
-          'Nộp nghiệm thu. Nếu quá hạn, hệ thống bắt buộc nhập **Lý do nộp trễ**.',
-          'Chờ Giám đốc duyệt. Mục đã duyệt chuyển **Đã duyệt**; bị trả về thì chuyển **Bị từ chối** kèm lý do — sửa và nộp lại.',
+          'Dải bước [1] cho biết bước nào **đã hoàn thành**, bước nào **đang xử lý** và bước nào **chưa tới**. Bước của người khác hiện để xem nhưng không bấm được.',
+          'Bấm **Bắt đầu làm** [2] (bước đo: **Bắt đầu đo hiện trường**). Chỉ sau khi bắt đầu mới nộp được minh chứng; ô **Thời gian còn lại** đếm ngược tới hạn.',
+          'Với từng mục checklist, bấm **Chọn file minh chứng** [3] để tải ảnh / PDF / bản vẽ. Mục ghi **Bắt buộc** thì không được bỏ trống.',
+          'Cần giấy tờ khách gửi hoặc tài liệu của bước trước? Bấm **Mở tủ hồ sơ theo bước** [4] (hoặc mở **Kho giấy tờ khách gửi** phía trên checklist).',
+          'Đủ minh chứng thì nộp nghiệm thu. Nếu quá hạn, hệ thống bắt buộc ghi **Lý do nộp trễ**.',
         ],
       },
-      { tip: 'Hồ sơ gắn nhãn **ưu tiên** có **thưởng dự kiến** khi hoàn thành đúng hạn.' },
-      { p: '**Tủ hồ sơ đính kèm** (nút **Mở tủ hồ sơ theo bước**) chứa giấy tờ của hạng mục, kể cả **Tài liệu kế thừa** từ các bước trước — không cần xin lại đồng nghiệp.' },
-      { p: '**Phát sinh loại giấy tờ mới** chưa có trong checklist (ví dụ ảnh mốc ranh phát sinh): dùng **Đề xuất loại tài liệu phát sinh** — điền tên, lý do, số lượng, nguồn, đính kèm tệp rồi **Gửi duyệt**. Trong lúc chờ Giám đốc duyệt thì không sửa được đề xuất.' },
+      { p: 'Sau khi nộp: mục chuyển **Chờ duyệt**. Giám đốc duyệt thì thành **Đã duyệt** và khoán được cộng vào lương; bị trả về thì thành **Bị từ chối** kèm lý do — sửa rồi nộp lại.' },
+      { p: 'Ô vàng cuối trang cho biết **Khoán nhiệm vụ**, **Thưởng dự kiến** (hồ sơ ưu tiên hoàn thành đúng hạn) và **Tổng**. Gặp sự cố thì bấm **Nhờ hỗ trợ** [5].' },
+      { p: '**Phát sinh loại giấy chưa có trong checklist** (ví dụ ảnh mốc ranh phát sinh): dùng **Đề xuất loại tài liệu phát sinh** — điền tên, lý do, số lượng, nguồn, đính kèm tệp rồi **Gửi duyệt**.' },
       { warn: 'Khi đang gửi hồ sơ nghiệm thu, không đóng hay thoát trang cho tới khi hệ thống báo xong.' },
     ],
   },
@@ -172,18 +173,28 @@ export const HELP_SECTIONS = [
     permission: 'crm',
     tabs: ['crm'],
     blocks: [
-      { p: 'CRM hiển thị khách tiềm năng (lead) theo cột trạng thái, ví dụ **Đang Tư Vấn / Báo Giá** → **Chốt Thành Hợp Đồng**. Kéo thả thẻ sang cột khác để chuyển trạng thái.' },
+      { p: 'CRM xếp khách tiềm năng (lead) theo 4 cột: **Tiếp cận → Báo giá → Đàm phán → Chốt**. Bốn ô trên cùng cho biết tổng lead, số đang tư vấn / báo giá, số đã chốt và tỉ lệ chốt.' },
+      { image: { src: '/help/crm-tong-quan.png', caption: 'Màn CRM của Giám đốc. Sale chỉ thấy lead của mình và lead chưa có người nhận.' } },
       {
-        steps: [
-          'Bấm **Tạo Lead Mới**: nhập **Tên khách**, **Số điện thoại Zalo**, **Nguồn khách hàng** (Zalo cá nhân, Hotline, Khách giới thiệu…) và nhu cầu / vị trí / quy mô → **Tạo Mới & Đưa vào Pipeline**.',
-          'Lead chưa có người phụ trách: bấm **Nhận lead này** để đưa vào danh sách của bạn.',
-          'Tư vấn xong, kéo thẻ sang cột chốt → hộp **Xác nhận Chốt Deal & Tạo Hợp Đồng** hiện ra: nhập **giá trị hợp đồng gốc**, quy mô / diện tích / số mốc, MST hoặc CCCD (tuỳ chọn) → **Chốt Deal & Sinh Hợp Đồng Tự Động**.',
+        list: [
+          '**Tạo Lead Mới** [1] — thêm khách vừa gọi / nhắn.',
+          '**Nhận lead này** [2] — lead ở cột Tiếp cận chưa có người phụ trách: ai bấm trước người đó nhận.',
+          'Ô **Chuyển** [3] trên mỗi thẻ — đổi cột (hoặc kéo thả thẻ sang cột khác). Chuyển sang **Chốt** sẽ mở hộp chốt deal và tạo hợp đồng.',
+          '**Mã QR Form** [4] — tải ảnh QR (có thể chọn sẵn gói / hạng mục) để khách quét bằng Zalo hoặc camera và tự điền yêu cầu.',
+          '**Copy Link Form Zalo** [5] — sao chép đường dẫn trang đăng ký để gửi khách qua Zalo. **Xem Form** mở thử trang đó.',
         ],
       },
-      { tip: 'Khách thân thiết được **tự động áp dụng chiết khấu**; hộp chốt deal hiện cả số tiền gốc và giá trị thực tế sau giảm. Quy mô bạn nhập được điền sẵn vào mục “Diện tích/Quy mô” trên hợp đồng Word.' },
-      { p: '**Để khách tự đăng ký**: bấm **Mã QR Form** để tải ảnh QR (chọn sẵn gói / hạng mục nếu muốn) gửi khách quét bằng Zalo hoặc camera; hoặc dùng nút sao chép link trang đăng ký gửi qua Zalo. Phiếu khách gửi tự vào CRM thành lead mới.' },
-      { p: 'Bộ lọc **Nguồn khách hàng** và **Sale phụ trách** ở đầu trang giúp xem theo kênh / theo người.' },
-      { p: '**Thiết lập CRM** (Giám đốc): tỷ lệ **hoa hồng Sale** chung (chỉ áp dụng cho hợp đồng chốt sau khi lưu) và **giới hạn tải Sale** — số lead mở tối đa, điểm tải, ngưỡng cảnh báo.' },
+      { image: { src: '/help/crm-tao-lead.png', caption: 'Hộp Tạo Khách Hàng (Lead) Mới.' } },
+      {
+        steps: [
+          'Nhập **Tên khách hàng** [1] và **Số điện thoại Zalo** [2] (bắt buộc).',
+          'Chọn **Nguồn khách hàng** [3]: Zalo cá nhân, Hotline công ty, Khách giới thiệu…',
+          'Ghi **nhu cầu / vị trí đất / quy mô** [4], ví dụ “Dịch vụ: Đo hiện trạng | Vị trí: Quận 7 | Quy mô: 120m2”.',
+          'Bấm **Tạo Mới & Đưa vào Pipeline** [5]. Thẻ mới xuất hiện ở cột Tiếp cận.',
+        ],
+      },
+      { p: '**Chốt deal**: chuyển thẻ sang cột **Chốt** → hộp **Xác nhận Chốt Deal & Tạo Hợp Đồng** hiện ra: nhập giá trị hợp đồng gốc, quy mô / diện tích / số mốc, MST hoặc CCCD (tuỳ chọn) → **Chốt Deal & Sinh Hợp Đồng Tự Động**. Khách thân thiết được tự trừ chiết khấu; quy mô được điền sẵn vào hợp đồng Word.' },
+      { tip: 'Phiếu khách tự gửi qua QR / link vào thẳng cột Tiếp cận thành lead mới. **Thiết lập CRM** (Giám đốc) chỉnh tỷ lệ hoa hồng Sale và giới hạn số lead mỗi Sale được giữ.' },
     ],
   },
   {
@@ -228,18 +239,41 @@ export const HELP_SECTIONS = [
     permission: 'contract',
     tabs: ['contracts'],
     blocks: [
+      { image: { src: '/help/hop-dong-danh-sach.png', caption: 'Danh sách hợp đồng. Dòng viền đỏ là hợp đồng còn nợ.' } },
       {
-        steps: [
-          'Bấm **Soạn hợp đồng mới**. Chọn khách — khách cũ được **tự điền** thông tin.',
-          'Tải **Hồ sơ khách gửi** (ảnh, PDF, tệp Office nhận qua Zalo); bước K01 sẽ phân loại sau.',
-          'Nhập **Địa chỉ bất động sản** (tỉnh, phường/xã, số nhà).',
-          'Chọn **Gói dịch vụ** và **Hạng mục** — **Giấy tờ cần thu của khách** tự hiện theo hạng mục; chọn **Mẫu hợp đồng**.',
-          'Nhập **Giá trị hợp đồng** — gõ tắt được: `18.5tr`, `500k`, hoặc bấm +1 / +5 / +10 triệu.',
-          'Chọn **Độ ưu tiên**: Bình thường, Ưu tiên cao (x1,2), Gấp (x1,5) và ghi lý do; đặt **Ngày ký**, **Hạn hoàn thành**.',
-          'Thanh cuối cho biết đã điền đủ các trường bắt buộc chưa → lưu.',
+        list: [
+          'Nút **+** [1] — **Soạn hợp đồng mới**.',
+          'Ô tìm kiếm [2] — theo mã hợp đồng, khách hàng, địa điểm; bên cạnh có lọc ngày ký, sắp xếp và **Bộ lọc**.',
+          'Bấm một dòng [3] để xem chi tiết ở khung bên phải: khách, ngày ký, giá trị, gói & hạng mục, **Xem hợp đồng** (bản Word) và **Tủ hồ sơ**.',
+          '**Quy trình** [4] — mở sơ đồ các bước công việc của hợp đồng (xem mục “Quy trình công việc của hợp đồng”).',
+          '**Hủy hợp đồng** [5] — khi khách dừng dự án (xem bảng cuối mục).',
         ],
       },
-      { p: 'Chọn một hợp đồng trong danh sách để xem chi tiết, **Mở tài liệu hợp đồng** (bản Word) hoặc bấm **Quy trình** để mở sơ đồ công việc.' },
+      { p: '**Soạn hợp đồng mới** — form chia 3 phần:' },
+      { image: { src: '/help/hop-dong-soan-1.png', caption: 'Phần 1: khách hàng, hồ sơ khách gửi, địa chỉ, dịch vụ.' } },
+      {
+        steps: [
+          'Chọn **Cá nhân** hoặc **Doanh nghiệp**, nhập **tên khách** [1], số điện thoại, CCCD. Khách cũ được **tự điền** thông tin.',
+          'Bấm **Tài liệu khách gửi** [2] để tải ảnh / PDF / tệp Office nhận qua Zalo — bước K01 sẽ phân loại sau.',
+          'Chọn **Tỉnh / Thành phố** [3] rồi **Phường / Xã** từ danh sách; số nhà, đường không bắt buộc.',
+          'Chọn **Gói dịch vụ** [4] và **Hạng mục**.',
+        ],
+      },
+      { image: { src: '/help/hop-dong-soan-2.png', caption: 'Phần 2: giấy tờ cần thu, Sale, mẫu hợp đồng, giá trị.' } },
+      {
+        steps: [
+          'Chọn cách thu **Giấy tờ của khách** [5]: **Dùng bộ mặc định** theo hạng mục, **Chọn thủ công** từng loại, hoặc **Không yêu cầu giấy tờ**. Hệ thống không chọn sẵn — bắt buộc phải chọn.',
+          'Nhập **Giá trị hợp đồng** [6] — gõ tắt được `18.5tr`, `500k`, hoặc bấm +1 / +5 / +10 triệu; số tiền bằng chữ hiện ngay bên dưới để đối chiếu.',
+        ],
+      },
+      { image: { src: '/help/hop-dong-soan-3.png', caption: 'Phần 3: độ ưu tiên, thời hạn và lưu.' } },
+      {
+        steps: [
+          'Chọn **Độ ưu tiên hồ sơ** [7]: Bình thường, Ưu tiên cao (x1,2) hoặc Gấp (x1,5) và ghi lý do ưu tiên.',
+          'Đặt **Ngày ký** và **Hạn hoàn thành** [8] — ô bên phải tự tính số ngày.',
+          'Góc dưới trái báo **còn thiếu bao nhiêu trường bắt buộc**. Đủ rồi thì bấm **Lưu hợp đồng** [9].',
+        ],
+      },
       {
         table: {
           head: ['Thao tác', 'Khi nào dùng', 'Hệ quả'],

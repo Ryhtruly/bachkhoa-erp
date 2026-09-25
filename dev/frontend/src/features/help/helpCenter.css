@@ -120,6 +120,9 @@
   padding: 10px;
   border-top: 1px dashed var(--help-line);
   font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
   color: var(--help-muted);
   cursor: pointer;
 }
@@ -229,6 +232,50 @@
 [data-theme='dark'] .help-center-modal { --help-soft: rgba(251, 146, 60, 0.12); }
 [data-theme='dark'] .help-callout--tip > strong { color: #34d399; }
 [data-theme='dark'] .help-callout--warn > strong { color: #fbbf24; }
+
+/* Ảnh minh hoạ có khoanh số */
+.help-figure {
+  margin: 4px 0 16px;
+}
+
+.help-figure a {
+  display: block;
+  border: 1px solid var(--help-line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-surface, #f8fafc);
+  cursor: zoom-in;
+}
+
+.help-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.help-figure figcaption {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--help-muted);
+  text-align: center;
+}
+
+.help-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin: 0 2px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--help-accent);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 1px;
+}
 
 /* Màn hình hẹp: mục lục thành dải trên, nội dung bên dưới */
 @media (max-width: 760px) {

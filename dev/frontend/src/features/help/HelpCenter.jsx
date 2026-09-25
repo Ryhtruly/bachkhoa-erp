@@ -5,14 +5,17 @@ import { normalizeVietnamese } from '../../lib/vietnamese';
 import { HELP_GROUPS, HELP_SECTIONS } from './helpContent';
 import './helpCenter.css';
 
-// Chữ **đậm** và `mã` trong nội dung hướng dẫn.
+// Chữ **đậm**, `mã` và [1] — số tròn khớp với số khoanh trên ảnh minh hoạ.
 function renderInline(text) {
   return String(text)
-    .split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+    .split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d{1,2}\])/g)
     .filter(Boolean)
     .map((part, index) => {
       if (part.startsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>;
       if (part.startsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>;
+      if (/^\[\d{1,2}\]$/.test(part)) {
+        return <span className="help-num" key={index} aria-label={`số ${part.slice(1, -1)}`}>{part.slice(1, -1)}</span>;
+      }
       return part;
     });
 }
@@ -24,13 +27,14 @@ function blockText(block) {
   if (block.steps) return block.steps.join(' ');
   if (block.list) return block.list.join(' ');
   if (block.table) return [...block.table.head, ...block.table.rows.flat()].join(' ');
+  if (block.image) return block.image.caption || '';
   return '';
 }
 
 const SEARCH_INDEX = new Map(
   HELP_SECTIONS.map((section) => [
     section.id,
-    normalizeVietnamese(`${section.title} ${section.blocks.map(blockText).join(' ')}`.replace(/[*`]/g, '')),
+    normalizeVietnamese(`${section.title} ${section.blocks.map(blockText).join(' ')}`.replace(/[*`]|\[\d{1,2}\]/g, '')),
   ]),
 );
 
@@ -52,6 +56,16 @@ function HelpBlock({ block }) {
   }
   if (block.list) {
     return <ul className="help-list">{block.list.map((item, index) => <li key={index}>{renderInline(item)}</li>)}</ul>;
+  }
+  if (block.image) {
+    return (
+      <figure className="help-figure">
+        <a href={block.image.src} target="_blank" rel="noreferrer" title="Mở ảnh cỡ lớn">
+          <img src={block.image.src} alt={block.image.alt || block.image.caption || ''} loading="lazy" />
+        </a>
+        {block.image.caption && <figcaption>{renderInline(block.image.caption)}</figcaption>}
+      </figure>
+    );
   }
   if (block.table) {
     return (
