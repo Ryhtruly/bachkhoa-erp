@@ -1,5 +1,7 @@
 """CRM & Sales models: Customer, LeadPipeline, Contract, ZaloInteraction, ServiceLine."""
 
+from sqlalchemy import CheckConstraint, DDL, UniqueConstraint, event
+
 from src.db.models._base import *
 
 
@@ -182,9 +184,75 @@ class ContractTemplate(Base):
     placeholder_schema = Column(JSONB, nullable=False, default=list)
     render_rules = Column(JSONB, nullable=False, default=dict)
     status = Column(String, nullable=False, default="draft")
+    # Upload lifecycle (see supabase/migrations/20260925100000_*): 'pending'
+    # while a reservation awaits its bytes, 'ready' once an object is stored,
+    # 'failed' when a previous attempt needs an explicit retry. The ORM/server
+    # default 'ready' keeps legacy writers that persist a storage key working;
+    # the management service always reserves with an explicit 'pending'.
+    upload_state = Column(String, nullable=False, default="ready", server_default=text("'ready'"))
+    content_sha256 = Column(String(64), nullable=True)
+    content_size = Column(BigInteger, nullable=True)
+    publish_requested = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_by = Column(String, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now)
+
+    __table_args__ = (
+        # The baseline DDL already enforces UNIQUE (code, version); mirror it
+        # here so metadata-created databases (SQLite dev, fresh PG) enforce the
+        # same pair uniqueness.
+        UniqueConstraint("code", "version", name="uq_contract_templates_code_version"),
+        # Mirror of the pre-existing baseline status CHECK.
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')",
+            name="contract_templates_status_check",
+        ),
+        CheckConstraint(
+            "upload_state IN ('pending', 'ready', 'failed')",
+            name="contract_templates_upload_state_check",
+        ),
+        # Only a finished upload may leave draft: published/archived rows must
+        # point at stored bytes.
+        CheckConstraint(
+            "upload_state = 'ready' OR status = 'draft'",
+            name="contract_templates_upload_state_status_check",
+        ),
+        # A 'ready' row must reference a non-blank storage key. trim() is used
+        # instead of btrim() — identical for the default space set, and SQLite
+        # (which runs most of the existing suite) has no btrim function.
+        CheckConstraint(
+            "upload_state <> 'ready' OR nullif(trim(template_storage_key), '') IS NOT NULL",
+            name="contract_templates_ready_requires_key_check",
+        ),
+        # Digest/size travel together: NULL/NULL for rows that predate content
+        # tracking, otherwise a 64-char lowercase hex digest and 1..20 MiB.
+        # The POSIX regex operator is PostgreSQL-only (SQLite cannot even parse
+        # `~`, which would break metadata.create_all for the whole suite), so
+        # this CHECK is emitted on PostgreSQL only; the migration enforces it
+        # on every PG database regardless of how tables were created.
+        CheckConstraint(
+            "((content_sha256 IS NULL AND content_size IS NULL) OR "
+            "(content_sha256 IS NOT NULL AND content_size IS NOT NULL AND "
+            "content_sha256 ~ '^[0-9a-f]{64}$' AND content_size BETWEEN 1 AND 20971520))",
+            name="contract_templates_content_integrity_check",
+            _create_rule=lambda compiler: compiler.dialect.name == "postgresql",
+        ),
+    )
+
+
+# One published version per template code. Registered as a PostgreSQL-only DDL
+# listener (instead of __table_args__) on purpose: on SQLite the partial
+# predicate would be dropped and degrade into a plain UNIQUE(code), forbidding
+# multiple drafts of one code. The migration installs the same index on every
+# PostgreSQL database regardless of how its tables were created.
+event.listen(
+    ContractTemplate.__table__,
+    "after_create",
+    DDL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_templates_published_code "
+        "ON contract_templates (code) WHERE status = 'published'"
+    ).execute_if(dialect="postgresql"),
+)
 
 
 class ContractAppendix(Base):

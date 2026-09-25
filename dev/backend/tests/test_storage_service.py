@@ -1,6 +1,7 @@
 from dataclasses import replace
 import importlib
 from io import BytesIO
+import hashlib
 
 import pytest
 from botocore.exceptions import ClientError
@@ -237,6 +238,91 @@ def test_contract_template_upload_reports_atomic_create_conflict(monkeypatch):
 
     with pytest.raises(FileExistsError, match="contract-templates/HOP_DONG/v1.docx"):
         storage_service.upload_contract_template(BytesIO(b"replacement"), "HOP_DONG/v1.docx")
+
+
+@pytest.mark.parametrize(
+    ("stored_content", "expected_size", "expected_sha256", "result"),
+    [
+        (b"template", 8, hashlib.sha256(b"template").hexdigest(), "matching"),
+        (b"changed", 8, hashlib.sha256(b"template").hexdigest(), "conflict"),
+        (b"template-too-large", 8, hashlib.sha256(b"template").hexdigest(), "conflict"),
+    ],
+)
+def test_contract_template_inspector_checks_primary_object_identity(
+    monkeypatch,
+    stored_content,
+    expected_size,
+    expected_sha256,
+    result,
+):
+    body = BytesIO(stored_content)
+
+    class FakeS3:
+        def get_object(self, **kwargs):
+            assert kwargs == {
+                "Bucket": storage_service.CONTRACT_TEMPLATE_BUCKET,
+                "Key": "contract-templates/HOP_DONG/v1.docx",
+            }
+            return {"Body": body}
+
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+
+    assert (
+        storage_service.inspect_contract_template_upload(
+            "contract-templates/HOP_DONG/v1.docx",
+            expected_sha256,
+            expected_size,
+        )
+        == result
+    )
+    assert body.closed is True
+
+
+def test_contract_template_inspector_reports_missing_without_legacy_read(monkeypatch):
+    calls = []
+
+    class FakeS3:
+        def get_object(self, **kwargs):
+            calls.append(kwargs)
+            raise ClientError(
+                {"Error": {"Code": "NoSuchKey"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                "GetObject",
+            )
+
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+
+    assert (
+        storage_service.inspect_contract_template_upload(
+            "contract-templates/HOP_DONG/v1.docx",
+            "a" * 64,
+            8,
+        )
+        == "missing"
+    )
+    assert calls == [
+        {
+            "Bucket": storage_service.CONTRACT_TEMPLATE_BUCKET,
+            "Key": "contract-templates/HOP_DONG/v1.docx",
+        }
+    ]
+
+
+def test_contract_template_inspector_propagates_transient_errors(monkeypatch):
+    class FakeS3:
+        def get_object(self, **kwargs):
+            raise ClientError(
+                {"Error": {"Code": "SlowDown"}, "ResponseMetadata": {"HTTPStatusCode": 503}},
+                "GetObject",
+            )
+
+    monkeypatch.setattr(storage_service, "_s3", FakeS3())
+
+    with pytest.raises(ClientError):
+        storage_service.inspect_contract_template_upload(
+            "contract-templates/HOP_DONG/v1.docx",
+            "a" * 64,
+            8,
+        )
 
 
 def test_generic_upload_persists_an_object_key_not_a_public_url(monkeypatch):

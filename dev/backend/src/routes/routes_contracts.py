@@ -1,14 +1,14 @@
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 from urllib.parse import quote
 
 from src.files.content_disposition import build_content_disposition_header
 
-from fastapi import APIRouter, File, HTTPException, Depends, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Depends, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,9 @@ from src.core.auth import check_user_permission, require_authenticated_user, req
 from src.db.models import Contract, ContractGeneratedDocument, ContractTemplate, Customer, Employee, LeadPipeline, Receivable, Role, ServiceLine, ServicePackage, TaskType, UserRole
 from src.core import doc_generator
 from src.contracts.services import build_current_contract_document_data
+from src.contracts.template_files import read_template_upload
+from src.contracts.template_service import ContractTemplateService, _version_dto
+from src.dossiers.actor_guard import is_director
 from src.contracts import (
     ContractService,
     ContractCreateSchema,
@@ -74,6 +77,22 @@ MAX_CONTRACT_UPLOAD_BYTES = 25 * 1024 * 1024
 router = APIRouter(tags=["03. Contracts & Workflows"])
 
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+_contract_create_for_templates = require_permission("contract", "create")
+
+
+def require_template_manager(
+    db: Session = Depends(get_db),
+    user: User = Depends(_contract_create_for_templates),
+) -> User:
+    if not is_director(db, user.id):
+        raise HTTPException(403, "Chỉ Giám đốc hoặc Quản trị viên mới có quyền thao tác")
+    return user
+
+
+class ContractTemplateStatusUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["published", "archived"]
 
 
 logger = logging.getLogger(__name__)
@@ -2633,6 +2652,128 @@ def generate_and_save_contract(
         if not (payload.priority_reason or "").strip():
             raise HTTPException(status_code=422, detail="Nâng ưu tiên phải ghi lý do")
     return ContractService.generate_and_save_contract(db, payload, actor_id=user.id)
+
+
+@router.get("/templates/manage")
+def list_template_management(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_template_manager),
+    status: Literal["all", "draft", "published", "archived"] = Query("all"),
+    q: str | None = Query(None),
+):
+    return ContractTemplateService.list_templates(db, status=status, q=q)
+
+
+@router.get("/templates/placeholders")
+def get_template_placeholders(
+    user: User = Depends(require_template_manager),
+):
+    return ContractTemplateService.get_placeholder_catalog()
+
+
+@router.post("/templates/upload", status_code=201)
+def upload_template(
+    file: UploadFile = File(...),
+    code: str = Form(...),
+    name: str = Form(...),
+    description: str | None = Form(None),
+    publish_immediately: bool = Form(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_template_manager),
+):
+    validated = read_template_upload(file)
+    filename = file.filename or f"{code}.docx"
+    result = ContractTemplateService.upload_new_template(
+        db,
+        validated,
+        filename,
+        code,
+        name,
+        description,
+        publish_immediately,
+        actor_id=user.id,
+    )
+    return {
+        "status": "success",
+        "data": _version_dto(result.template, result.template.created_by and getattr(user, "username", None)),
+        "publication_skipped": bool(result.publication_skipped),
+    }
+
+
+@router.post("/templates/{template_id}/versions")
+def create_template_version(
+    template_id: str,
+    file: UploadFile = File(...),
+    name: str | None = Form(None),
+    description: str | None = Form(None),
+    publish_immediately: bool = Form(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_template_manager),
+):
+    validated = read_template_upload(file)
+    result = ContractTemplateService.upgrade_version(
+        db,
+        template_id,
+        validated,
+        file.filename or f"{template_id}.docx",
+        name,
+        description,
+        publish_immediately,
+        actor_id=user.id,
+    )
+    return {
+        "status": "success",
+        "data": _version_dto(result.template, result.template.created_by and getattr(user, "username", None)),
+        "publication_skipped": bool(result.publication_skipped),
+    }
+
+
+@router.post("/templates/{template_id}/retry-upload")
+def retry_template_upload(
+    template_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_template_manager),
+):
+    validated = read_template_upload(file)
+    result = ContractTemplateService.retry_upload(db, template_id, validated)
+    return {
+        "status": "success",
+        "data": _version_dto(result.template, result.template.created_by and getattr(user, "username", None)),
+        "publication_skipped": bool(result.publication_skipped),
+    }
+
+
+@router.post("/templates/{template_id}/status")
+def update_template_status(
+    template_id: str,
+    payload: ContractTemplateStatusUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_template_manager),
+):
+    result = ContractTemplateService.update_status(db, template_id, payload.status)
+    return {
+        "status": "success",
+        "data": _version_dto(result.template, result.template.created_by and getattr(user, "username", None)),
+        "publication_skipped": bool(result.publication_skipped),
+    }
+
+
+@router.get("/templates/{template_id}/download")
+def download_template_docx(
+    template_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_template_manager),
+):
+    content, filename = ContractTemplateService.get_template_bytes(db, template_id)
+    return Response(
+        content=content,
+        media_type=DOCX_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": build_content_disposition_header(filename, disposition="attachment"),
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
 
 
 @router.get("/templates")

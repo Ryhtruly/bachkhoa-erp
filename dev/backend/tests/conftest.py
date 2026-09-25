@@ -1,6 +1,8 @@
 import os
 import sys
 import uuid
+from pathlib import Path
+
 import pytest
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -1376,9 +1378,65 @@ def _ensure_runtime_tables_and_columns(connection):
             except Exception:
                 pass
 
+    _apply_contract_template_management_migration(connection)
+
 
 def _ensure_document_and_helper_tables(connection):
     _ensure_runtime_tables_and_columns(connection)
+
+
+CONTRACT_TEMPLATE_MANAGEMENT_MIGRATION = "20260925100000_contract_template_management.sql"
+
+_applied_contract_template_migrations = set()
+
+
+def _resolve_contract_template_migration():
+    """Locate the template-management migration for the container and checkout layouts."""
+    here = Path(__file__).resolve()
+    candidates = [Path("/app/supabase/migrations") / CONTRACT_TEMPLATE_MANAGEMENT_MIGRATION]
+    seen = {candidates[0]}
+    for base in [here.parent, *here.parents[:6]]:
+        candidate = base / "supabase" / "migrations" / CONTRACT_TEMPLATE_MANAGEMENT_MIGRATION
+        if candidate not in seen:
+            seen.add(candidate)
+            candidates.append(candidate)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError(
+        "contract template migration not found; checked: "
+        + ", ".join(str(c) for c in candidates)
+    )
+
+
+def _apply_contract_template_management_migration(connection):
+    """Apply the template-management migration exactly once per engine on PostgreSQL.
+
+    Runs after the baseline tables exist. The file carries its own
+    BEGIN/COMMIT for deployment runners, so it executes on a dedicated
+    AUTOCOMMIT connection instead of nesting inside the caller's transaction.
+    The migration itself is idempotent (IF NOT EXISTS, pg_constraint guards);
+    the process-level flag only avoids re-running it for every test.
+    """
+    if connection.dialect.name != "postgresql":
+        return
+    key = str(connection.engine.url)
+    if key in _applied_contract_template_migrations:
+        return
+    sql = _resolve_contract_template_migration().read_text(encoding="utf-8")
+    with connection.engine.connect().execution_options(
+        isolation_level="AUTOCOMMIT"
+    ) as conn:
+        # Raw driver cursor: the script is multi-statement and contains
+        # PL/pgSQL %-placeholders, which exec_driver_sql would hand to
+        # psycopg2 as bound parameters and fail.
+        raw = conn.connection.driver_connection
+        cursor = raw.cursor()
+        try:
+            cursor.execute(sql)
+        finally:
+            cursor.close()
+    _applied_contract_template_migrations.add(key)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -1636,6 +1694,13 @@ def finance_clerk_user(db):
 # kiểm tra các câu SQL viết tay trong route còn khớp tên cột hay không. Đây là
 # loại lỗi mà test logic thuần không bao giờ bắt được — migration đổi tên cột,
 # test vẫn xanh, nhưng trang danh sách chết trắng.
+
+@pytest.fixture(scope="function")
+def catalog_sessions():
+    from contract_template_test_support import isolated_template_catalog
+    with isolated_template_catalog() as factory:
+        yield factory
+
 
 @pytest.fixture(scope="session")
 def db_session():

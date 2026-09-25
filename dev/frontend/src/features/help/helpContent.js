@@ -407,6 +407,39 @@ export const HELP_SECTIONS = [
     ],
   },
   {
+    id: 'mau-hop-dong',
+    group: 'Hợp đồng & hồ sơ',
+    title: 'Mẫu hợp đồng — tải lên, xem trước, ban hành',
+    audience: 'management',
+    permission: 'contract',
+    tabs: ['contracts'],
+    blocks: [
+      { p: 'Màn **Mẫu hợp đồng** là nơi Giám đốc quản lý các tệp Word mẫu dùng khi sinh hợp đồng. Mỗi mã mẫu có nhiều phiên bản; chỉ phiên bản **Đang ban hành** được dùng cho hợp đồng mới.' },
+      {
+        steps: [
+          'Mở phân hệ **Hợp Đồng** rồi chọn tab **Mẫu hợp đồng**.',
+          'Bấm **Thêm mẫu mới**, nhập **Mã mẫu**, tên, mô tả và chọn tệp Word `.docx` (tối đa 20 MiB). Có thể bỏ chọn **Ban hành ngay sau khi tải lên** để lưu bản nháp trước.',
+          'Sau khi tải xong, kiểm tra cột **Tải lên** là **Sẵn sàng**. Bấm biểu tượng **Xem trước** để đọc nội dung Word ngay trong cửa sổ xem trước; bấm biểu tượng tải xuống nếu cần lưu tệp về máy.',
+          'Dùng **Tra cứu placeholder** để xem các ký hiệu `{{...}}` có thể đặt trong DOCX. Placeholder trong đoạn văn và bảng được thay tự động khi sinh hợp đồng.',
+        ],
+      },
+      { p: '**Tạo phiên bản mới** — ở đầu mỗi nhóm mẫu, bấm **Nâng cấp từ vN** (hoặc nút + trong dòng phiên bản), chọn tệp DOCX mới rồi tải lên. Tên và mã mẫu được kế thừa nếu để trống.' },
+      {
+        table: {
+          head: ['Nút / trạng thái', 'Cách dùng'],
+          rows: [
+            ['**Ban hành**', 'Đưa bản DOCX sẵn sàng thành phiên bản dùng cho hợp đồng mới.'],
+            ['**Lưu trữ**', 'Ngừng dùng phiên bản đang ban hành; tệp và lịch sử vẫn được giữ lại. Hệ thống không cho lưu trữ phiên bản ban hành cuối cùng.'],
+            ['**Tải lên thất bại**', 'Bấm **Thử tải lại cùng tệp** và chọn lại đúng tệp DOCX. Bản lỗi vẫn giữ mã phiên bản để đối soát.'],
+            ['**Bản nháp**', 'Chưa được dùng cho hợp đồng mới cho tới khi bấm **Ban hành**.'],
+          ],
+        },
+      },
+      { tip: 'Có thể lọc theo trạng thái hoặc tìm theo mã / tên mẫu. Nên xem trước và kiểm tra placeholder trước khi ban hành phiên bản mới.' },
+      { warn: 'Header, Footer và Textbox hiện chưa được thay placeholder tự động. Không lưu thông tin khách hàng thật trong tệp mẫu dùng để kiểm thử.' },
+    ],
+  },
+  {
     id: 'quy-trinh-hd',
     group: 'Hợp đồng & hồ sơ',
     title: 'Quy trình công việc của hợp đồng',

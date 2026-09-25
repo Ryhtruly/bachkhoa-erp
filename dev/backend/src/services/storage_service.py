@@ -1,5 +1,6 @@
 import boto3
 import json
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -314,6 +315,44 @@ def get_contract_template(object_name: str) -> bytes:
         # consolidated. All new writes still target the shared private bucket.
         response = client.get_object(Bucket=legacy_bucket, Key=object_name)
     return response["Body"].read()
+
+
+def inspect_contract_template_upload(
+    key: str,
+    expected_sha256: str,
+    expected_size: int,
+) -> str:
+    """Check whether the immutable primary template object matches its identity."""
+    object_name = _require_prefix(key, (CONTRACT_TEMPLATE_PREFIX,))
+    try:
+        response = _get_client().get_object(
+            Bucket=CONTRACT_TEMPLATE_BUCKET,
+            Key=object_name,
+        )
+    except ClientError as error:
+        error_code = str(error.response.get("Error", {}).get("Code", ""))
+        status_code = error.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if error_code in {"NoSuchKey", "NotFound", "404"} or status_code == 404:
+            return "missing"
+        raise
+
+    body = response["Body"]
+    try:
+        digest = hashlib.sha256()
+        total = 0
+        while total <= expected_size:
+            chunk = body.read(expected_size + 1 - total)
+            if not chunk:
+                break
+            digest.update(chunk)
+            total += len(chunk)
+            if total > expected_size:
+                break
+        if total == expected_size and digest.hexdigest() == expected_sha256:
+            return "matching"
+        return "conflict"
+    finally:
+        body.close()
 
 def upload_contract_document(file_obj, object_name: str, *, metadata: dict[str, str] | None = None) -> str:
     """Store one immutable generated contract DOCX as a dossier document."""

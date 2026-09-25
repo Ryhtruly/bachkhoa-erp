@@ -70,6 +70,17 @@ describe('HelpCenter', () => {
     expect(screen.getAllByText(/Khóa nợ/).length).toBeGreaterThan(0)
   })
 
+  it('có hướng dẫn riêng cho quản lý mẫu hợp đồng', () => {
+    render(<HelpCenter open onClose={() => {}} activeTab="contracts" workspace="management" permissions={{ contract: true }} />)
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Tìm trong hướng dẫn' }), { target: { value: 'mau hop dong' } })
+
+    const item = within(toc()).getByRole('button', { name: 'Mẫu hợp đồng — tải lên, xem trước, ban hành' })
+    fireEvent.click(item)
+
+    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent('Mẫu hợp đồng')
+    expect(screen.getByText('Xem trước')).toBeInTheDocument()
+  })
+
   it('cho xem thêm chức năng của vai trò khác khi cần', () => {
     render(<HelpCenter open onClose={() => {}} activeTab="employee-dashboard" workspace="employee" permissions={{}} />)
     expect(within(toc()).queryByRole('button', { name: 'Quản Lý Timeline' })).toBeNull()
