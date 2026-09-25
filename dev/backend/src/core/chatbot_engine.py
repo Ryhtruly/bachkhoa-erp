@@ -15,6 +15,36 @@ MAX_KB_CHARS = 8000
 
 from src.core.dlp import redact_sensitive_content
 
+# gemini-2.0-flash bị Google tắt từ 01/06/2026 → mọi lượt chat qua Gemini đều lỗi.
+# Model có thể đổi trong Cấu hình (chatbot_llm_model) mà không cần deploy lại.
+DEFAULT_CHAT_MODELS = {"gemini": "gemini-2.5-flash", "deepseek": "deepseek-chat"}
+SUPPORTED_PROVIDERS = tuple(DEFAULT_CHAT_MODELS)
+MAX_REPLY_TOKENS = 2048
+
+
+def resolve_chatbot_llm(config: Dict[str, Any], env_gemini_key: str = "") -> Tuple[str, str, str]:
+    """Chọn (provider, api_key, model) từ system_settings.
+
+    - Provider được chuẩn hoá (strip + lower), nên "Gemini " vẫn là gemini.
+    - Chưa chọn provider: key riêng dạng "AIza…" là Gemini, key riêng khác là
+      DeepSeek; không có key riêng thì dùng Gemini nếu đã có Gemini API Key
+      (đúng như gợi ý "để trống sẽ dùng chung API Key Gemini" ở màn Cấu hình).
+    - Key chatbot để trống + provider gemini → dùng chung Gemini API Key.
+    """
+    provider = str(config.get("chatbot_llm_provider") or "").strip().lower()
+    chatbot_key = str(config.get("chatbot_llm_api_key") or "").strip()
+    gemini_key = str(config.get("gemini_api_key") or "").strip() or (env_gemini_key or "").strip()
+
+    if provider not in SUPPORTED_PROVIDERS:
+        if chatbot_key:
+            provider = "gemini" if chatbot_key.startswith("AIza") else "deepseek"
+        else:
+            provider = "gemini" if gemini_key else "deepseek"
+
+    api_key = chatbot_key or (gemini_key if provider == "gemini" else "")
+    model = str(config.get("chatbot_llm_model") or "").strip() or DEFAULT_CHAT_MODELS[provider]
+    return provider, api_key, model
+
 _redact_sensitive_content = redact_sensitive_content
 
 def get_knowledge_base(sheet_id: str, service_account_json: str) -> str:
@@ -62,6 +92,7 @@ async def ask_chatbot(
     provider: str, 
     api_key: str,
     wiki_context: Optional[List[Dict]] = None,
+    model: Optional[str] = None,
 ) -> Tuple[str, bool, str]:
     """
     history: [{"role": "user", "content": "..."}, ...]
@@ -117,17 +148,23 @@ NHIỆM VỤ CỦA BẠN:
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
                 }
+                chat_model = model or DEFAULT_CHAT_MODELS["gemini"]
                 payload = {
-                    "model": "gemini-2.0-flash",
+                    "model": chat_model,
                     "messages": messages,
                     "temperature": 0.7,
-                    "max_tokens": 300
+                    "max_tokens": MAX_REPLY_TOKENS,
                 }
+                # Gemini 2.5+ là model "thinking": token suy nghĩ tính vào max_tokens,
+                # để mặc định thì câu trả lời có thể bị cắt rỗng → bot luôn "chuyển giao".
+                if chat_model.startswith(("gemini-2.5", "gemini-3")):
+                    payload["reasoning_effort"] = "low"
                 
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code == 401:
                     return "API Key Gemini không hợp lệ.", False, "Invalid API Key"
                 elif resp.status_code != 200:
+                    print(f"[Chatbot] {provider} HTTP {resp.status_code}: {resp.text[:500]}")
                     return f"Lỗi từ máy chủ AI: {resp.text}", False, "AI Error"
                     
                 data = resp.json()
@@ -141,16 +178,17 @@ NHIỆM VỤ CỦA BẠN:
                     "Content-Type": "application/json"
                 }
                 payload = {
-                    "model": "deepseek-chat",
+                    "model": model or DEFAULT_CHAT_MODELS["deepseek"],
                     "messages": messages,
                     "temperature": 0.7,
-                    "max_tokens": 300
+                    "max_tokens": MAX_REPLY_TOKENS,
                 }
                 
                 resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code == 401:
                     return "API Key AI không hợp lệ.", False, "Invalid API Key"
                 elif resp.status_code != 200:
+                    print(f"[Chatbot] {provider} HTTP {resp.status_code}: {resp.text[:500]}")
                     return f"Lỗi từ máy chủ AI: {resp.text}", False, "AI Error"
                     
                 data = resp.json()

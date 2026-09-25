@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Menu, RefreshCw, X } from 'lucide-react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { CircleHelp, Menu, RefreshCw, X } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import HeaderUserMenu from './HeaderUserMenu';
 import { applyTheme, getInitialTheme } from '../lib/theme';
+
+// Nội dung hướng dẫn khá dài — chỉ tải khi người dùng bấm "?" lần đầu.
+const HelpCenter = lazy(() => import('../features/help/HelpCenter'));
 
 export default function TopHeader({
   onLogout,
@@ -10,11 +13,23 @@ export default function TopHeader({
   onNotificationNavigate,
   sidebarOverlayOpen = false,
   onSidebarOverlayToggle = () => {},
+  activeTab,
+  workspace,
+  permissions,
+  isDirector = false,
 }) {
   const [theme, setTheme] = useState(getInitialTheme);
   const [scrolled, setScrolled] = useState(false);
   // Chỉ 1 dropdown mở tại 1 thời điểm — mở cái mới tự đóng cái đang mở.
   const [openDropdown, setOpenDropdown] = useState(null); // 'notifications' | 'user' | null
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpLoaded, setHelpLoaded] = useState(false);
+
+  const openHelp = () => {
+    setOpenDropdown(null);
+    setHelpLoaded(true);
+    setHelpOpen(true);
+  };
 
   useEffect(() => {
     applyTheme(theme);
@@ -60,6 +75,16 @@ export default function TopHeader({
           <RefreshCw size={16} />
         </button>
         <div className="header-actions__cluster">
+          <button
+            type="button"
+            className="btn btn-secondary btn-icon btn-sm top-header__help"
+            onClick={openHelp}
+            title="Hướng dẫn sử dụng"
+            aria-label="Hướng dẫn sử dụng"
+            aria-haspopup="dialog"
+          >
+            <CircleHelp size={17} />
+          </button>
           <button className="btn btn-secondary btn-icon btn-sm" onClick={toggleTheme} title="Đổi giao diện">
             {theme === 'light' ? <span style={{ fontSize: '16px' }}>🌙</span> : <span style={{ fontSize: '16px' }}>☀️</span>}
           </button>
@@ -77,6 +102,18 @@ export default function TopHeader({
           onOpenChange={(next) => setOpenDropdown(next ? 'user' : null)}
         />
       </div>
+      {helpLoaded && (
+        <Suspense fallback={null}>
+          <HelpCenter
+            open={helpOpen}
+            onClose={() => setHelpOpen(false)}
+            activeTab={activeTab}
+            workspace={workspace}
+            permissions={permissions}
+            isDirector={isDirector}
+          />
+        </Suspense>
+      )}
     </header>
   );
 }

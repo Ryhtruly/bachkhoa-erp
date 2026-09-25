@@ -503,6 +503,10 @@ function App() {
           onNotificationNavigate={handleNotificationNavigate}
           sidebarOverlayOpen={sidebarOverlayOpen}
           onSidebarOverlayToggle={() => setSidebarOverlayOpen(current => !current)}
+          activeTab={effectiveTab}
+          workspace={workspace}
+          permissions={permissions}
+          isDirector={isDirector}
         />
         <div className="app-body">
           <Sidebar

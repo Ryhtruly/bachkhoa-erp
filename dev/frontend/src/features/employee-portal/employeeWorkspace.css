@@ -3152,6 +3152,15 @@
   font-weight: 700;
 }
 
+/* Nhãn dùng thẻ <label> nên kế thừa kiểu IN HOA chung của label (index.css):
+   chữ người dùng gõ và dòng mô tả lý do phải giữ nguyên hoa/thường. */
+.eiw-reason,
+.eiw-modal__field textarea,
+.eiw-modal__textarea {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .eiw-modal__field textarea,
 .eiw-modal__textarea {
   font: inherit;

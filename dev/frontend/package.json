@@ -10,7 +10,8 @@
     "e2e:visual": "playwright test e2e/visual-qa.spec.js",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "help:screenshots": "node scripts/help-screenshots/capture.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.21",

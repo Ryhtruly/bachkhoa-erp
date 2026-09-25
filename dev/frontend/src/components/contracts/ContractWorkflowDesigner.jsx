@@ -136,7 +136,7 @@ export const CAPABILITIES = [
   {
     code: 'SURVEY_CAD',
     label: 'Biên tập bản vẽ CAD',
-    desc: 'Xử lý toạ độ GPS, kế thừa số liệu đo',
+    desc: 'Việc nội nghiệp phòng Đo vẽ, file xếp ngăn Chuẩn hoá kỹ thuật',
     icon: Monitor,
     color: '#0d9488',
     suggestDept: 'SURVEY',

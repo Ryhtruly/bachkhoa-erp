@@ -45,7 +45,8 @@ const FIELD_GROUPS = [
       { key: 'stringee_api_key_sid', label: 'Stringee API Key SID (Call Center)', type: 'text', placeholder: 'SK.0.xxx...', hint: 'Tạo tại: developer.stringee.com → API Keys. Stringee hỗ trợ số VN, tích hợp AI.' },
       { key: 'stringee_api_key_secret', label: 'Stringee API Key Secret', type: 'password', placeholder: 'xxx...', hint: 'Lấy cùng lúc với SID', testKey: 'stringee' },
       { key: 'chatbot_kb_sheet_id', label: 'ID Google Sheet (Knowledge Base)', type: 'text', placeholder: '1BxiM...', hint: 'Sheet chứa cơ sở tri thức cho Chatbot nội bộ. Cần nhập JSON Service Account ở Nhóm Xuất File.' },
-      { key: 'chatbot_llm_provider', label: 'Nhà cung cấp Chatbot AI', type: 'text', placeholder: 'gemini hoặc deepseek', hint: 'Gõ "gemini" hoặc "deepseek"' },
+      { key: 'chatbot_llm_provider', label: 'Nhà cung cấp Chatbot AI', type: 'text', placeholder: 'gemini hoặc deepseek', hint: 'Gõ "gemini" hoặc "deepseek". Để trống: tự dùng Gemini nếu đã có Gemini API Key.' },
+      { key: 'chatbot_llm_model', label: 'Model Chatbot (Tùy chọn)', type: 'text', placeholder: 'gemini-2.5-flash', hint: 'Để trống dùng mặc định (gemini-2.5-flash / deepseek-chat). Đổi khi Google ngừng model cũ.' },
       { key: 'chatbot_llm_api_key', label: 'API Key Chatbot (Tùy chọn)', type: 'password', placeholder: 'sk-...', hint: 'Nếu để trống sẽ dùng chung API Key Gemini ở trên.' },
     ]
   },

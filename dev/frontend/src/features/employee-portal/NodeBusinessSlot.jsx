@@ -158,7 +158,7 @@ export default function NodeBusinessSlot({
           <Monitor size={16} />
           <div className="eiw-band__content">
             <strong>Nội nghiệp biên tập bản vẽ CAD & GIS</strong>
-            <span>Kế thừa toạ độ GPS máy đo và hoàn thiện hồ sơ kỹ thuật thửa đất</span>
+            <span>Hoàn thiện bản vẽ và hồ sơ kỹ thuật thửa đất — số liệu đo của bước trước xem trong tủ hồ sơ</span>
           </div>
         </div>
       )}
