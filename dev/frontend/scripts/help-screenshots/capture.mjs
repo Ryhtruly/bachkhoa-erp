@@ -431,6 +431,44 @@ async function rollbackShots() {
   await browser.close()
 }
 
+async function capabilityShots() {
+  console.log('• Năng lực bước')
+  const { browser, page } = await openApp({ user: F.DIRECTOR_USER, routes: [
+    ['/api/catalog/service-packages', F.WF_PACKAGES],
+    ['/api/document-register/workflow-nodes', F.WF_CATALOG_NODES],
+    [/\/api\/contracts\/workflow\/templates/, { data: F.WF_TEMPLATES }],
+  ] })
+  const menu = page.getByRole('button', { name: 'Quy Trình & Mẫu Giấy' })
+  await menu.click()
+  const studioTab = page.getByRole('tab', { name: /Sơ đồ quy trình mẫu/ }).or(page.getByRole('button', { name: /Sơ đồ quy trình mẫu/ })).first()
+  await studioTab.click()
+  const k02 = page.locator('.react-flow__node').filter({ hasText: 'Khảo sát' }).first()
+  await k02.waitFor()
+  await page.waitForTimeout(800)
+  await k02.click()
+  await page.waitForTimeout(600)
+  await annotate(page, [
+    { locator: menu, n: 1 },
+    { locator: studioTab, n: 2 },
+    { locator: page.locator('.workflow-template-select').first(), n: 3 },
+    { locator: k02, n: 4 },
+    { locator: page.locator('.mws-capability-link').first(), n: 5 },
+    { locator: page.getByRole('button', { name: 'Năng lực', exact: true }).first(), n: 6 },
+  ])
+  await shoot(page, 'nang-luc-duong-vao.png')
+  await clearMarks(page)
+
+  await page.getByRole('button', { name: 'Năng lực', exact: true }).first().click()
+  await page.waitForTimeout(600)
+  const grid = page.locator('.mws-capability-grid')
+  await annotate(page, [
+    { locator: page.locator('.mws-capability-card.is-selected'), n: 1 },
+    { locator: k02.getByText(/Khảo sát & Đo thực địa/i), n: 2 },
+  ])
+  await shoot(page, 'nang-luc-chon.png', { x: 500, y: 190, width: 940, height: 470 })
+  await browser.close()
+}
+
 const only = process.argv[2]
 if (!only || only === 'employee') await employeeShots()
 if (!only || only === 'crm') await crmShots()
@@ -438,3 +476,4 @@ if (!only || only === 'contract') await contractShots()
 if (!only || only === 'password') await passwordShots()
 if (!only || only === 'sale') await saleShots()
 if (!only || only === 'rollback') await rollbackShots()
+if (!only || only === 'capability') await capabilityShots()

@@ -74,7 +74,15 @@ function HelpBlock({ block }) {
           <thead><tr>{block.table.head.map((cell, index) => <th key={index}>{cell}</th>)}</tr></thead>
           <tbody>
             {block.table.rows.map((row, rowIndex) => (
-              <tr key={rowIndex}>{row.map((cell, index) => <td key={index}>{renderInline(cell)}</td>)}</tr>
+              <tr key={rowIndex}>
+                {row.map((cell, index) => (
+                  <td key={index}>
+                    {String(cell).split('\n').map((line, lineIndex) => (
+                      <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{renderInline(line)}</React.Fragment>
+                    ))}
+                  </td>
+                ))}
+              </tr>
             ))}
           </tbody>
         </table>
