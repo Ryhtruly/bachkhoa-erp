@@ -2671,7 +2671,7 @@ def get_template_placeholders(
     return ContractTemplateService.get_placeholder_catalog()
 
 
-@router.post("/templates/upload")
+@router.post("/templates/upload", status_code=201)
 def upload_template(
     file: UploadFile = File(...),
     code: str = Form(...),
