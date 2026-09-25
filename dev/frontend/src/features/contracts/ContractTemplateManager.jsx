@@ -867,7 +867,7 @@ export default function ContractTemplateManager({ onClose }) {
                         {cat.items?.map((item) => (
                           <div key={item.placeholder} className="ctm-placeholder-card">
                             <div className="ctm-ph-top">
-                              <code className="ctm-ph-code">{item.placeholder}</code>
+                              <code className="ctm-ph-code">{`{{${item.placeholder}}}`}</code>
                               <button
                                 type="button"
                                 className="ctm-btn ctm-btn-ghost ctm-btn-copy"
