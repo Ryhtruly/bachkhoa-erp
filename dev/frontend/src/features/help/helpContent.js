@@ -58,17 +58,58 @@ export const HELP_SECTIONS = [
   {
     id: 'tai-khoan',
     group: 'Bắt đầu',
-    title: 'Tài khoản, mật khẩu & đăng xuất',
+    title: 'Tài khoản & mật khẩu',
     audience: 'all',
     blocks: [
+      { p: 'Có 4 việc liên quan tới mật khẩu: **kích hoạt tài khoản** lần đầu, **đăng nhập**, **quên mật khẩu** và **đổi mật khẩu**. Mật khẩu tối thiểu 6 ký tự.' },
+
+      { p: '**1. Kích hoạt tài khoản (lần đầu)** — Giám đốc tạo tài khoản cho bạn trong mục Nhân sự, hệ thống gửi **email mời**. Mở email, bấm đường dẫn để vào trang đặt mật khẩu:' },
+      { image: { src: '/help/mat-khau-kich-hoat.png', caption: 'Trang kích hoạt tài khoản mở từ email mời.' } },
       {
         steps: [
-          'Lần đầu: mở email mời từ công ty, bấm đường dẫn để **đặt mật khẩu** rồi đăng nhập bằng tên đăng nhập được cấp.',
-          'Đổi mật khẩu: bấm **ảnh đại diện** ở góc phải → **Đổi mật khẩu**.',
-          'Xem nhanh lương: ảnh đại diện → **Phiếu lương của tôi**.',
-          'Kết thúc phiên: ảnh đại diện → **Đăng xuất**. Nên đăng xuất khi dùng máy chung.',
+          'Kiểm tra đúng **tên đăng nhập** và tên nhân sự của mình [1].',
+          'Nhập **mật khẩu mới** [2] — dòng chữ xanh “Tối thiểu 6 ký tự” hiện khi đạt yêu cầu. Bấm biểu tượng con mắt để xem lại chữ đã gõ.',
+          'Nhập lại ở ô **xác nhận** [3] cho tới khi hiện “Mật khẩu khớp nhau”.',
+          'Bấm **Lưu mật khẩu & Đăng nhập** [4] — hệ thống tự đăng nhập luôn.',
         ],
       },
+      { warn: 'Đường dẫn trong email chỉ dùng được **một lần** và hết hạn sau **48 giờ**. Hết hạn thì nhờ Giám đốc bấm **Gửi lại email mời** trong mục Nhân sự.' },
+
+      { p: '**2. Đăng nhập**' },
+      { image: { src: '/help/mat-khau-dang-nhap.png', caption: 'Màn đăng nhập.' } },
+      {
+        steps: [
+          'Nhập **tên đăng nhập** [1] và **mật khẩu** [2]. Tick **Ghi nhớ** nếu dùng máy riêng.',
+          'Bấm **Truy cập hệ thống** [3].',
+          'Quên mật khẩu thì bấm **Quên mật khẩu?** [4] (xem phần 3).',
+        ],
+      },
+
+      { p: '**3. Quên mật khẩu** — lấy lại bằng mã OTP gửi về email của tài khoản:' },
+      { image: { src: '/help/mat-khau-quen-1.png', caption: 'Bước 1: nhập tài khoản hoặc email.' } },
+      { steps: ['Nhập **tên đăng nhập hoặc email** [1] → bấm **Gửi mã OTP qua Email** [2].'] },
+      { image: { src: '/help/mat-khau-quen-2.png', caption: 'Bước 2: nhập mã OTP trong email.' } },
+      {
+        steps: [
+          'Mở email, lấy **mã OTP 6 số** (hiệu lực **10 phút**) và nhập vào [1] → **Tiếp tục đặt mật khẩu** [2].',
+          'Không thấy email? Xem thư mục Spam, hoặc đợi hết đếm ngược rồi bấm **Gửi lại mã OTP** [3]. Gõ nhầm tài khoản thì bấm **← Đổi email**.',
+        ],
+      },
+      { image: { src: '/help/mat-khau-quen-3.png', caption: 'Bước 3: đặt mật khẩu mới.' } },
+      { steps: ['Nhập **mật khẩu mới** [1], nhập lại [2] → **Cập nhật & Đăng nhập** [3].'] },
+      { tip: 'Tài khoản chưa có email thì không nhận được OTP — nhờ Giám đốc cập nhật email trong hồ sơ nhân sự.' },
+
+      { p: '**4. Đổi mật khẩu** (khi đang đăng nhập)' },
+      { image: { src: '/help/mat-khau-doi-1.png', caption: 'Bấm ảnh đại diện ở góc phải → Đổi mật khẩu.' } },
+      { image: { src: '/help/mat-khau-doi-2.png', caption: 'Hộp Đổi mật khẩu tài khoản.' } },
+      {
+        steps: [
+          'Bấm **ảnh đại diện** ở góc trên bên phải → **Đổi mật khẩu** [1].',
+          'Nhập **mật khẩu hiện tại** [2], **mật khẩu mới** [3] (khác mật khẩu cũ) và **xác nhận** [4].',
+          'Bấm **Đổi mật khẩu** [5].',
+        ],
+      },
+      { p: 'Cũng trong menu ảnh đại diện: **Phiếu lương của tôi** và **Đăng xuất** — nên đăng xuất khi dùng máy chung.' },
       { warn: 'Không chia sẻ tài khoản. Mọi thao tác (duyệt, nộp, thu tiền…) đều được ghi lại theo người thực hiện.' },
     ],
   },
@@ -663,6 +704,7 @@ export const HELP_SECTIONS = [
       { p: '**Không nhận thêm việc được?** Bạn đã đủ tải. Hoàn thành một hạng mục để mở slot.' },
       { p: '**Không bàn giao được hồ sơ?** Khách còn nợ — bước K06 đang **Khóa nợ**. Thu đủ tiền hoặc **Xin duyệt nợ**.' },
       { p: '**Trợ lý AI trả lời “vượt quá khả năng”?** Câu hỏi không có trong tài liệu đã tải lên. Hỏi lại cụ thể hơn, hoặc bổ sung tài liệu vào Wiki.' },
+      { p: '**Quên mật khẩu?** Bấm **Quên mật khẩu?** ở màn đăng nhập để nhận mã OTP qua email (xem mục “Tài khoản & mật khẩu”).' },
       { p: '**Số liệu chưa cập nhật?** Bấm nút **Làm mới** trên thanh trên cùng.' },
       { p: '**Thông báo lỗi khó hiểu?** Chụp màn hình kèm thời điểm, gửi cho quản trị hệ thống.' },
     ],

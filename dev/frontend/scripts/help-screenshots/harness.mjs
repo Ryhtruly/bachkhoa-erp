@@ -5,13 +5,14 @@ import { chromium } from 'playwright'
 export const BASE = process.env.HELP_BASE_URL || 'http://localhost:5199'
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 
-export async function openApp({ user, routes, viewport = { width: 1440, height: 900 }, path = '/app', keepChat = false }) {
+export async function openApp({ user, routes, viewport = { width: 1440, height: 900 }, path = '/app', keepChat = false, loggedIn = true }) {
   const browser = await chromium.launch({ executablePath: CHROME })
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1.5, locale: 'vi-VN' })
-  await context.addInitScript(() => {
-    localStorage.setItem('bachkhoa_auth_session_hint', '1')
+  await context.addInitScript((withSession) => {
+    if (withSession) localStorage.setItem('bachkhoa_auth_session_hint', '1')
+    else localStorage.removeItem('bachkhoa_auth_session_hint')
     localStorage.setItem('bachkhoa_theme', 'light')
-  })
+  }, loggedIn)
   const unmatched = new Set()
   await context.route('**/api/**', async (route) => {
     const req = route.request()

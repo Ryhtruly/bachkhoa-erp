@@ -184,7 +184,102 @@ async function contractShots() {
   await browser.close()
 }
 
+async function passwordShots() {
+  console.log('• Mật khẩu')
+  const authRoutes = [
+    ['/api/auth/forgot-password/request-otp', { email_masked: 'ng***@gmail.com' }],
+    ['/api/auth/forgot-password/verify-otp', { valid: true }],
+    [/\/api\/auth\/invite\/[^/]+$/, { username: 'nva', employee_name: 'Nguyễn Văn An' }],
+  ]
+  // Màn đăng nhập + quên mật khẩu (chưa đăng nhập)
+  let { browser, page } = await openApp({ user: F.DIRECTOR_USER, routes: authRoutes, loggedIn: false, path: '/' })
+  const form = page.locator('form').first()
+  await page.locator('#u').waitFor()
+  await page.locator('#u').fill('nva')
+  await page.locator('#p').fill('matkhau')
+  await page.waitForTimeout(500)
+  await annotate(page, [
+    { locator: page.locator('#u'), n: 1 },
+    { locator: page.locator('#p'), n: 2 },
+    { locator: page.getByRole('button', { name: /Truy cập hệ thống/ }), n: 3 },
+    { locator: page.getByText('Quên mật khẩu?'), n: 4 },
+  ])
+  await shoot(page, 'mat-khau-dang-nhap.png', await regionOf(form, 28, page))
+  await clearMarks(page)
+
+  await page.getByText('Quên mật khẩu?').click()
+  const idInput = page.getByPlaceholder('Ví dụ: admin hoặc user@gmail.com')
+  await idInput.fill('nva')
+  await annotate(page, [
+    { locator: idInput, n: 1 },
+    { locator: page.getByRole('button', { name: /Gửi mã OTP qua Email/ }), n: 2 },
+  ])
+  await shoot(page, 'mat-khau-quen-1.png', await regionOf(page.locator('form').first(), 28, page))
+  await clearMarks(page)
+
+  await page.getByRole('button', { name: /Gửi mã OTP qua Email/ }).click()
+  await page.getByText('Mã OTP (6 chữ số)').waitFor()
+  const otpInput = page.locator('#otp-input')
+  await otpInput.fill('482913')
+  await annotate(page, [
+    { locator: otpInput, n: 1 },
+    { locator: page.getByRole('button', { name: /Tiếp tục đặt mật khẩu/ }), n: 2 },
+    { locator: page.getByRole('button', { name: /Gửi lại/ }), n: 3 },
+  ])
+  await shoot(page, 'mat-khau-quen-2.png', await regionOf(page.locator('form').first(), 28, page))
+  await clearMarks(page)
+
+  await page.getByRole('button', { name: /Tiếp tục đặt mật khẩu/ }).click()
+  await page.getByPlaceholder('Nhập lại mật khẩu mới').waitFor()
+  await page.getByPlaceholder('Tối thiểu 6 ký tự').fill('BachKhoa@2026')
+  await page.getByPlaceholder('Nhập lại mật khẩu mới').fill('BachKhoa@2026')
+  await annotate(page, [
+    { locator: page.getByPlaceholder('Tối thiểu 6 ký tự'), n: 1 },
+    { locator: page.getByPlaceholder('Nhập lại mật khẩu mới'), n: 2 },
+    { locator: page.getByRole('button', { name: /Cập nhật & Đăng nhập/ }), n: 3 },
+  ])
+  await shoot(page, 'mat-khau-quen-3.png', await regionOf(page.locator('form').first(), 28, page))
+  await browser.close()
+
+  // Trang kích hoạt tài khoản từ email mời
+  ;({ browser, page } = await openApp({ user: F.DIRECTOR_USER, routes: authRoutes, loggedIn: false, path: '/set-password?token=demo-invite' }))
+  await page.getByPlaceholder('Nhập mật khẩu mới...').waitFor()
+  await page.getByPlaceholder('Nhập mật khẩu mới...').fill('BachKhoa@2026')
+  await page.getByPlaceholder('Nhập lại mật khẩu mới...').fill('BachKhoa@2026')
+  await page.waitForTimeout(300)
+  await annotate(page, [
+    { locator: page.getByText('TÀI KHOẢN KÍCH HOẠT:').locator('xpath=..'), n: 1 },
+    { locator: page.getByPlaceholder('Nhập mật khẩu mới...'), n: 2 },
+    { locator: page.getByPlaceholder('Nhập lại mật khẩu mới...'), n: 3 },
+    { locator: page.getByRole('button', { name: /LƯU MẬT KHẨU & ĐĂNG NHẬP/ }), n: 4 },
+  ])
+  await shoot(page, 'mat-khau-kich-hoat.png', { x: 1000, y: 56, width: 440, height: 640 })
+  await browser.close()
+
+  // Đổi mật khẩu khi đang đăng nhập
+  ;({ browser, page } = await openApp({ user: F.EMPLOYEE_USER, routes: EMPLOYEE_ROUTES }))
+  await page.getByText('Tải của bạn').waitFor()
+  await page.locator('.header-user-menu__trigger').click()
+  await annotate(page, [{ locator: page.getByRole('menuitem', { name: /Đổi mật khẩu/ }).or(page.getByRole('button', { name: /Đổi mật khẩu/ })), n: 1 }])
+  await shoot(page, 'mat-khau-doi-1.png', { x: 1040, y: 0, width: 400, height: 420 })
+  await clearMarks(page)
+  await page.getByRole('menuitem', { name: /Đổi mật khẩu/ }).or(page.getByRole('button', { name: /Đổi mật khẩu/ })).first().click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByPlaceholder('Nhập mật khẩu đang sử dụng').fill('matkhaucu')
+  await dialog.getByPlaceholder('Tối thiểu 6 ký tự').fill('BachKhoa@2026')
+  await dialog.getByPlaceholder('Nhập lại mật khẩu mới').fill('BachKhoa@2026')
+  await annotate(page, [
+    { locator: dialog.getByPlaceholder('Nhập mật khẩu đang sử dụng'), n: 2 },
+    { locator: dialog.getByPlaceholder('Tối thiểu 6 ký tự'), n: 3 },
+    { locator: dialog.getByPlaceholder('Nhập lại mật khẩu mới'), n: 4 },
+    { locator: dialog.getByRole('button', { name: /^Đổi mật khẩu$/ }), n: 5 },
+  ])
+  await shoot(page, 'mat-khau-doi-2.png', await regionOf(dialog.locator('.modal'), 16, page))
+  await browser.close()
+}
+
 const only = process.argv[2]
 if (!only || only === 'employee') await employeeShots()
 if (!only || only === 'crm') await crmShots()
 if (!only || only === 'contract') await contractShots()
+if (!only || only === 'password') await passwordShots()
