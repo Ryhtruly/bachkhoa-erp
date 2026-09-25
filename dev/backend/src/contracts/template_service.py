@@ -751,34 +751,42 @@ class ContractTemplateService:
         codes = sorted({row.code for row in matched})
         if not codes:
             return []
+        all_versions = (
+            db.query(ContractTemplate)
+            .filter(ContractTemplate.code.in_(codes))
+            .order_by(ContractTemplate.code.asc(), ContractTemplate.version.desc())
+            .all()
+        )
+        versions_by_code: dict[str, list[ContractTemplate]] = {}
+        for version in all_versions:
+            versions_by_code.setdefault(version.code, []).append(version)
+        creator_names: dict[str, str | None] = {}
+        try:
+            ids = sorted({v.created_by for v in all_versions if v.created_by})
+            if ids:
+                user_rows = db.query(User.id, User.username).filter(User.id.in_(ids)).all()
+                employee_rows = (
+                    db.query(Employee.user_id, Employee.full_name)
+                    .filter(Employee.user_id.in_(ids))
+                    .all()
+                )
+                username_by_id = {row.id: row.username for row in user_rows}
+                full_name_by_id = {row.user_id: row.full_name for row in employee_rows}
+                for v in all_versions:
+                    if not v.created_by:
+                        creator_names[v.id] = None
+                        continue
+                    creator_names[v.id] = full_name_by_id.get(v.created_by) or username_by_id.get(v.created_by)
+        except Exception:
+            creator_names = {}
         groups: list = []
         for code in codes:
-            versions = (
-                db.query(ContractTemplate)
-                .filter(ContractTemplate.code == code)
-                .order_by(ContractTemplate.version.desc())
-                .all()
-            )
+            versions = versions_by_code.get(code, [])
             if not versions:
                 continue
             latest_version = max(v.version for v in versions)
             active = next((v for v in versions if v.status == "published"), None)
             display = next((v for v in versions if v.version == latest_version), versions[0])
-            creator_names: dict[str, str | None] = {}
-            try:
-                ids = sorted({v.created_by for v in versions if v.created_by})
-                if ids:
-                    user_rows = db.query(User.id, User.username).filter(User.id.in_(ids)).all()
-                    employee_rows = db.query(Employee.user_id, Employee.full_name).filter(Employee.user_id.in_(ids)).all()
-                    username_by_id = {row.id: row.username for row in user_rows}
-                    full_name_by_id = {row.user_id: row.full_name for row in employee_rows}
-                    for v in versions:
-                        if not v.created_by:
-                            creator_names[v.id] = None
-                            continue
-                        creator_names[v.id] = full_name_by_id.get(v.created_by) or username_by_id.get(v.created_by)
-            except Exception:
-                creator_names = {}
             groups.append(
                 {
                     "code": code,
