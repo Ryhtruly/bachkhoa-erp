@@ -67,7 +67,12 @@ export const CRM_LEADS = [
 ]
 export const CRM_STATS = { total_leads: 5, in_progress: 3, won_leads: 1, win_rate: 20 }
 export const CRM_POLICY = { commission_rate_percent: 5, max_workload_points: 15, warning_workload_ratio: 0.8, max_open_leads: 20, stage_weights: { 'Tiếp cận': 1, 'Báo giá': 2, 'Đàm phán': 3 } }
-export const INTAKE_SERVICES = { status: 'success', data: [{ id: 'sp_001', name: 'Đo Vẽ', services: [{ id: 'tt_001', name: 'Đo hiện trạng vị trí' }, { id: 'tt_002', name: 'Cắm mốc ranh giới' }] }] }
+// Danh mục gói & hạng mục theo bản đang chạy (ảnh chụp form thật của khách).
+export const INTAKE_SERVICES = { status: 'success', data: [
+  { id: 'sp_001', name: 'Đo Vẽ', services: [{ id: 'tt_002', name: 'Cắm mốc' }, { id: 'dv-2', name: 'Cấp đổi – phần đo vẽ' }, { id: 'dv-3', name: 'Cấp sổ lần đầu – phần đo vẽ' }, { id: 'dv-4', name: 'Chuyển mục đích – phần đo vẽ' }, { id: 'dv-5', name: 'Điều chỉnh bản vẽ' }, { id: 'dv-6', name: 'GPS' }, { id: 'tt_003', name: 'Hoàn công – phần đo vẽ' }, { id: 'tt_005', name: 'Hợp thửa – phần đo vẽ' }, { id: 'tt_001', name: 'Kiểm tra hiện trạng' }, { id: 'tt_006', name: 'Tách thửa – phần đo vẽ' }, { id: 'tt_009', name: 'Xác định diện tích' }] },
+  { id: 'sp_002', name: 'Pháp Lý', services: [{ id: 'tt_011', name: 'Cấp đổi sổ' }, { id: 'tt_016', name: 'Sang tên chuyển nhượng' }, { id: 'tt_017', name: 'Tặng cho' }, { id: 'tt_018', name: 'Thừa kế' }] },
+  { id: 'sp_003', name: 'Xin Phép Xây Dựng', services: [{ id: 'tt_020', name: 'Xin phép xây dựng nhà ở' }] },
+] }
 
 const contract = (id, customer, line, total, remaining, status = 'Đang thực hiện', signed = '10/09/2026') => ({
   id, customer_name: customer, total_value: total, remaining_amount: remaining, paid_amount: total - remaining,

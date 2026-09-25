@@ -244,7 +244,7 @@ export const HELP_SECTIONS = [
       { image: { src: '/help/sale-form-2.png', caption: 'Khách nhập thửa đất, quy mô và thông tin liên hệ.' } },
       {
         steps: [
-          'Chọn nhóm dịch vụ [1] và hạng mục [2] (đã chọn sẵn nếu mở từ mã QR theo dịch vụ).',
+          'Chọn nhóm dịch vụ [1] (Đo Vẽ, Pháp Lý, Xin Phép Xây Dựng) rồi bấm chọn **hạng mục muốn tư vấn** [2] — đã chọn sẵn nếu khách mở từ mã QR theo dịch vụ. Danh sách hạng mục lấy từ danh mục **Gói & Hạng mục** trong Quy Trình & Mẫu Giấy: thêm hạng mục mới ở đó là form tự hiện.',
           'Nhập quy mô [3] — ô này tự đổi theo hạng mục: diện tích (đo hiện trạng), số mốc (cắm mốc), số lô (tách thửa)…',
           'Nhập địa chỉ thửa đất [4], họ tên [5], số Zalo [6] rồi bấm **Gửi Yêu Cầu Khảo Sát & Nhận Báo Giá** [7].',
         ],

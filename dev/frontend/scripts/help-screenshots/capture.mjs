@@ -328,16 +328,17 @@ async function saleShots() {
   await browser.close()
 
   // 2-3) Khách mở form bằng QR / link
-  ;({ browser, page } = await openApp({ user: F.DIRECTOR_USER, routes, loggedIn: false, path: '/yeu-cau-dich-vu', viewport: { width: 430, height: 932 } }))
+  ;({ browser, page } = await openApp({ user: F.DIRECTOR_USER, routes, loggedIn: false, path: '/yeu-cau-dich-vu', viewport: { width: 1100, height: 900 } }))
   await page.getByText('Bạn cần hỗ trợ dịch vụ gì?').waitFor()
-  await page.getByPlaceholder(/150 m²/).fill('120 m²')
+  await page.getByRole('button', { name: 'Kiểm tra hiện trạng' }).click()
+  await page.getByPlaceholder(/150 m²|300 m²|m²/).first().fill('120 m²')
   await page.getByPlaceholder(/Thửa 124/).fill('Thửa 56, Tờ 12, P. Tân Phong, Quận 7')
   await page.getByPlaceholder(/Nguyễn Văn An/).fill('Nguyễn Văn Bình')
   await page.getByPlaceholder(/0912345678/).fill('0908765432')
   await page.evaluate(() => window.scrollTo(0, 0))
   await annotate(page, [
     { locator: page.getByText('Đo Vẽ', { exact: true }).locator('xpath=ancestor::button[1]'), n: 1 },
-    { locator: page.getByRole('button', { name: 'Đo hiện trạng vị trí' }), n: 2 },
+    { locator: page.getByText(/Hạng mục chi tiết thuộc gói/i).locator('xpath=..'), n: 2 },
   ])
   await shoot(page, 'sale-form-1.png')
   await clearMarks(page)
@@ -345,7 +346,7 @@ async function saleShots() {
   await page.evaluate(() => window.scrollBy(0, 120))
   await page.waitForTimeout(300)
   await annotate(page, [
-    { locator: page.getByPlaceholder(/150 m²/), n: 3 },
+    { locator: page.getByPlaceholder(/150 m²|300 m²|m²/).first(), n: 3 },
     { locator: page.getByPlaceholder(/Thửa 124/), n: 4 },
     { locator: page.getByPlaceholder(/Nguyễn Văn An/), n: 5 },
     { locator: page.getByPlaceholder(/0912345678/), n: 6 },
