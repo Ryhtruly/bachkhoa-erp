@@ -430,6 +430,7 @@ export const HELP_SECTIONS = [
           ],
         },
       },
+      { p: 'Bảng trên là các bước của **mẫu chuẩn**. Quy trình không bị bó vào K01–K07: có thể thêm bước tự do (N01, N02…), đặt tên, nối nhánh tuỳ ý — việc bước tự động làm gì do **năng lực** quyết định (xem mục “Năng lực bước”).' },
       { p: 'Bấm một node để mở bảng bên phải với 3 tab:' },
       {
         list: [
@@ -644,6 +645,7 @@ export const HELP_SECTIONS = [
     directorOnly: true,
     blocks: [
       { p: '**Năng lực** là “loại việc” của một bước trong quy trình. Chọn đúng năng lực thì khi quy trình chạy tới bước đó, hệ thống **tự tạo hồ sơ, tự mở đúng công cụ và tự chặn / mở cổng** cho nhân viên — không cần ai nhớ làm tay.' },
+      { tip: 'Bước (node) là **tự do**: đặt tên, mã, thứ tự, nối nhánh tuỳ ý. Bấm **Thêm node** trên thanh công cụ sẽ tạo “Bước mới” (mã N01, N02…) với năng lực mặc định **Tác nghiệp tiêu chuẩn**. Bước tự động làm gì **chỉ phụ thuộc năng lực bạn chọn** — mã K01…K07 trong mẫu chuẩn chỉ là nhãn.' },
 
       { p: '**Đường vào**' },
       { image: { src: '/help/nang-luc-duong-vao.png', caption: 'Mở năng lực của một bước trong quy trình mẫu.' } },
@@ -651,7 +653,7 @@ export const HELP_SECTIONS = [
         steps: [
           'Bấm **Quy Trình & Mẫu Giấy** [1] ở thanh điều hướng → tab **Sơ đồ quy trình mẫu (Workflow Studio)** [2].',
           'Chọn gói, hạng mục và **mẫu quy trình** [3] cần sửa.',
-          'Bấm vào **bước (node)** [4] trên sơ đồ — bảng thuộc tính mở bên phải.',
+          'Bấm vào **bước (node)** [4] trên sơ đồ — bảng thuộc tính mở bên phải. Chưa có bước phù hợp thì bấm **Thêm node** để tạo bước mới rồi đặt tên.',
           'Ở tab Node, dòng **Năng lực bước** cho biết năng lực hiện tại; bấm **Đổi năng lực →** [5] hoặc bấm thẳng tab **Năng lực** [6].',
         ],
       },
@@ -668,24 +670,24 @@ export const HELP_SECTIONS = [
       { p: '**7 năng lực và những gì hệ thống tự làm**' },
       {
         table: {
-          head: ['Năng lực', 'Thường dùng cho', 'Bể việc', 'Hệ thống tự động'],
+          head: ['Năng lực', 'Ví dụ trong mẫu chuẩn', 'Bể việc', 'Hệ thống tự động'],
           rows: [
-            ['**Tác nghiệp tiêu chuẩn**', 'K01 Tiếp nhận, K07 Lưu trữ, việc văn phòng', 'Gợi ý phòng Sale/CSKH · 1 người làm chính', 'Không tạo gì thêm: nhân viên làm checklist, nộp minh chứng, Giám đốc duyệt'],
-            ['**Khảo sát & Đo thực địa**', 'K02 Đo hiện trường', 'Phòng Đo vẽ · **Thợ chính + Thợ phụ**', '• Khi bước tới lượt: **tự tạo Sổ Đo Đạc** (1 dòng trong **Hồ Sơ Đo Vẽ** cho cả hạng mục).\n• Hiện nút **Bắt đầu đo hiện trường**: ghi giờ xuất phát đo và **đóng suất thợ phụ** (ai chưa nhận phụ thì không nhận được nữa).'],
-            ['**Biên tập bản vẽ CAD**', 'K03 Chuẩn hoá tài liệu kỹ thuật', 'Phòng Đo vẽ · 1 người', '• **Kế thừa** toạ độ GPS, ảnh, file đo của bước Đo thực địa — mở tủ hồ sơ là có, không phải xin lại thợ đo.'],
-            ['**Soạn thảo hồ sơ pháp lý**', 'K04 Soạn bộ hồ sơ', 'Phòng Pháp lý · 1 người', '• Khi bước tới lượt: **tự mở Hồ sơ pháp lý** (sổ Một cửa) cho hạng mục, hiện trong **Hồ Sơ Pháp Lý**.\n• Kế thừa bản vẽ của bước CAD.'],
-            ['**Nộp hồ sơ & nhập biên nhận**', 'K05a Nộp nội nghiệp', 'Phòng Pháp lý · Người nộp', '• Tạo **ô biên nhận** để lưu số biên nhận + ảnh bằng chứng đã nộp.\n• **Không theo dõi** kết quả cơ quan: đủ checklist là xong bước.\n• Cho phép **Tạm dừng** (chờ cơ quan).'],
-            ['**Theo dõi hồ sơ Một cửa**', 'K05b Nộp & theo dõi một cửa', 'Phòng Pháp lý · Người nộp', '• Gắn vào Hồ sơ pháp lý đã mở ở bước Soạn thảo; hiện **bảng theo dõi cơ quan** (số biên nhận, cơ quan, tình trạng, ngày hẹn trả, tra cứu Cổng DVC).\n• **Bước chỉ hoàn tất khi** có số biên nhận **và** cơ quan trả “Hoàn thành” **và** hồ sơ đã đóng.\n• Cho phép **Tạm dừng** và xin **quay ngược bước**.'],
-            ['**Bàn giao & Quyết toán**', 'K06 Nhận kết quả & bàn giao', 'Gợi ý phòng Sale/CSKH · 1 người', '• Bật **cổng kiểm soát công nợ**: bước **khoá** tới khi khách **trả đủ 100%** hoặc **Giám đốc duyệt nợ**.\n• Nhân viên nhập tiền khách trả (kèm ảnh bill) hoặc **Xin duyệt nợ** ngay trong bước.'],
+            ['**Tác nghiệp tiêu chuẩn**', 'Tiếp nhận, Lưu trữ, việc văn phòng', 'Gợi ý phòng Sale/CSKH · 1 người làm chính', 'Không tạo gì thêm: nhân viên làm checklist, nộp minh chứng, Giám đốc duyệt'],
+            ['**Khảo sát & Đo thực địa**', 'Đo hiện trường, cắm mốc', 'Phòng Đo vẽ · **Thợ chính + Thợ phụ**', '• Khi bước tới lượt: **tự tạo Sổ Đo Đạc** (1 dòng trong **Hồ Sơ Đo Vẽ** cho cả hạng mục).\n• Hiện nút **Bắt đầu đo hiện trường**: ghi giờ xuất phát đo và **đóng suất thợ phụ** (ai chưa nhận phụ thì không nhận được nữa).'],
+            ['**Biên tập bản vẽ CAD**', 'Vẽ CAD, chuẩn hoá tài liệu kỹ thuật', 'Phòng Đo vẽ · 1 người', '• **Kế thừa** toạ độ GPS, ảnh, file đo của bước Đo thực địa — mở tủ hồ sơ là có, không phải xin lại thợ đo.'],
+            ['**Soạn thảo hồ sơ pháp lý**', 'Soạn bộ hồ sơ, rà quy hoạch', 'Phòng Pháp lý · 1 người', '• Khi bước tới lượt: **tự mở Hồ sơ pháp lý** (sổ Một cửa) cho hạng mục, hiện trong **Hồ Sơ Pháp Lý**.\n• Kế thừa bản vẽ của bước CAD.'],
+            ['**Nộp hồ sơ & nhập biên nhận**', 'Nộp hồ sơ chỉ cần giữ biên nhận', 'Phòng Pháp lý · Người nộp', '• Tạo **ô biên nhận** để lưu số biên nhận + ảnh bằng chứng đã nộp.\n• **Không theo dõi** kết quả cơ quan: đủ checklist là xong bước.\n• Cho phép **Tạm dừng** (chờ cơ quan).'],
+            ['**Theo dõi hồ sơ Một cửa**', 'Nộp một cửa & chờ kết quả', 'Phòng Pháp lý · Người nộp', '• Gắn vào Hồ sơ pháp lý đã mở ở bước Soạn thảo; hiện **bảng theo dõi cơ quan** (số biên nhận, cơ quan, tình trạng, ngày hẹn trả, tra cứu Cổng DVC).\n• **Bước chỉ hoàn tất khi** có số biên nhận **và** cơ quan trả “Hoàn thành” **và** hồ sơ đã đóng.\n• Cho phép **Tạm dừng** và xin **quay ngược bước**.'],
+            ['**Bàn giao & Quyết toán**', 'Bàn giao kết quả cho khách', 'Gợi ý phòng Sale/CSKH · 1 người', '• Bật **cổng kiểm soát công nợ**: bước **khoá** tới khi khách **trả đủ 100%** hoặc **Giám đốc duyệt nợ**.\n• Nhân viên nhập tiền khách trả (kèm ảnh bill) hoặc **Xin duyệt nợ** ngay trong bước.'],
           ],
         },
       },
-      { warn: '**Theo dõi hồ sơ Một cửa** chỉ tạo hồ sơ theo dõi cho hạng mục thuộc gói **Pháp Lý** hoặc **Xin Phép Xây Dựng**, và cần có một bước **Soạn thảo hồ sơ pháp lý** đứng trước để mở Hồ sơ pháp lý. Thiếu bước đó thì bước theo dõi không có hồ sơ để gắn. Gói Đo Vẽ chỉ nên dùng **Nộp hồ sơ & nhập biên nhận**.' },
+      { warn: '**Theo dõi hồ sơ Một cửa** chỉ tạo hồ sơ theo dõi cho hạng mục thuộc gói **Pháp Lý** hoặc **Xin Phép Xây Dựng**, và cần có một bước **Soạn thảo hồ sơ pháp lý** đứng trước để mở Hồ sơ pháp lý. Thiếu bước đó thì bước theo dõi không có hồ sơ để gắn. Hạng mục gói Đo Vẽ cần nộp hồ sơ thì dùng **Nộp hồ sơ & nhập biên nhận**.' },
       {
         list: [
           'Mỗi hạng mục chỉ có **một** Sổ Đo Đạc và **một** Hồ sơ pháp lý — lỡ gắn năng lực ở nhiều bước cũng không sinh hồ sơ trùng.',
           'Khi Giám đốc duyệt **quay ngược bước**, dữ liệu của năng lực cũng được đặt lại: thợ đo bấm đo ca mới được, hồ sơ pháp lý mở lại, biên nhận “Hoàn thành” quay về đang theo dõi, cổng bàn giao kiểm tra lại (xem mục “Quay ngược bước”).',
-          'Phòng ban: bước **Đo thực địa / CAD** luôn vào Bể việc phòng Đo vẽ; các bước **pháp lý / nộp cơ quan** luôn vào Bể việc phòng Pháp lý, bất kể chọn phòng nào ở tab Phân công.',
+          'Phòng ban: bước năng lực **Đo thực địa / CAD** luôn vào Bể việc phòng Đo vẽ; bước năng lực **Soạn thảo pháp lý / Nộp hồ sơ / Theo dõi Một cửa** luôn vào Bể việc phòng Pháp lý, bất kể chọn phòng nào ở tab Phân công. Hai năng lực còn lại theo đúng phòng bạn chọn.',
         ],
       },
     ],
