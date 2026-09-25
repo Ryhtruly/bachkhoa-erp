@@ -3,6 +3,7 @@ import { AlertTriangle, FileText, Info, RotateCcw, Send } from 'lucide-react'
 
 import Modal from '../../components/ui/Modal'
 import { apiFetch } from '../../lib/api'
+import { WORKFLOW_NODE_STATUS_LABELS } from '../../components/contracts/workflowLabels'
 
 /**
  * Chọn bước để kéo quy trình quay lại — chỉ mở khi tạm dừng vì SURVEYOR.
@@ -78,7 +79,7 @@ export default function RollbackPickerModal({
                   <h4>{nodeDaChon.node_code} · {nodeDaChon.name}</h4>
                   <dl>
                     <div><dt>Người phụ trách</dt><dd>{nodeDaChon.assignee_name || 'Chưa phân công'}</dd></div>
-                    <div><dt>Trạng thái</dt><dd>{nodeDaChon.status}</dd></div>
+                    <div><dt>Trạng thái</dt><dd>{WORKFLOW_NODE_STATUS_LABELS[nodeDaChon.status] || nodeDaChon.status}</dd></div>
                   </dl>
                   {preview && (
                     <p className="eiw-picker__impact">

@@ -1,7 +1,7 @@
 // Chụp ảnh minh hoạ cho Hướng dẫn sử dụng → public/help/*.png
 //
 // Cách chạy (không cần backend — API được giả lập bằng fixtures.mjs):
-//   npx vite --port 5199 --strictPort &
+//   __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=nhadatbachkhoa.com npx vite --port 5199 --strictPort &
 //   node scripts/help-screenshots/capture.mjs
 //
 // Giao diện đổi thì chạy lại để ảnh luôn khớp với bản đang dùng.
@@ -278,8 +278,162 @@ async function passwordShots() {
   await browser.close()
 }
 
+async function saleShots() {
+  console.log('• Quy trình Sale')
+  const routes = [
+    ...MANAGEMENT_ROUTES,
+    [/\/api\/customers\/loyalty-eligibility$/, F.LOYALTY_ELIGIBLE],
+    ['/api/intake/lead', F.INTAKE_SUCCESS],
+  ]
+  let { browser, page } = await openApp({ user: F.DIRECTOR_USER, routes })
+  await page.getByRole('button', { name: 'CRM Bán Hàng' }).click()
+  await page.getByText('Võ Minh Tâm').waitFor()
+
+  // 1) Tạo mã QR theo đúng dịch vụ
+  await page.getByRole('button', { name: /Mã QR Form/ }).click()
+  const qrDialog = page.getByRole('dialog')
+  await qrDialog.getByText('Tải Ảnh QR').waitFor()
+  const qrSelects = qrDialog.locator('select')
+  await qrSelects.nth(0).selectOption({ label: 'Đo Vẽ' }).catch(() => qrSelects.nth(0).selectOption({ index: 1 }))
+  await page.waitForTimeout(300)
+  await qrSelects.nth(1).selectOption({ index: 1 }).catch(() => {})
+  await page.waitForTimeout(800)
+  await annotate(page, [
+    { locator: qrSelects.nth(0), n: 1 },
+    { locator: qrSelects.nth(1), n: 2 },
+    { locator: qrDialog.locator('img').first(), n: 3 },
+    { locator: qrDialog.getByRole('button', { name: /Sao chép/ }), n: 4 },
+    { locator: qrDialog.getByText(/Tải Ảnh QR/), n: 5 },
+  ])
+  await shoot(page, 'sale-qr.png', await regionOf(qrDialog.locator('.modal'), 16, page))
+  await clearMarks(page)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(400)
+
+  // 4) Chốt deal
+  await page.locator('.lead-card').filter({ hasText: 'Võ Minh Tâm' }).locator('select').selectOption('Chốt')
+  const closeDialog = page.getByRole('dialog')
+  await closeDialog.getByText(/Khách hàng ưu tiên|Tự động áp dụng/).first().waitFor({ timeout: 4000 }).catch(() => {})
+  await closeDialog.getByPlaceholder(/15000000/).fill('18500000')
+  await closeDialog.getByPlaceholder(/mã số thuế hoặc số CCCD/).fill('079090012345')
+  await page.waitForTimeout(400)
+  await annotate(page, [
+    { locator: closeDialog.getByText(/Tự động áp dụng/).first(), n: 1 },
+    { locator: closeDialog.getByPlaceholder(/15000000/), n: 2 },
+    { locator: closeDialog.getByPlaceholder(/250 m2|mốc ranh/), n: 3 },
+    { locator: closeDialog.getByPlaceholder(/mã số thuế hoặc số CCCD/), n: 4 },
+    { locator: closeDialog.getByRole('button', { name: /Chốt Deal & Sinh Hợp Đồng/ }), n: 5 },
+  ])
+  await shoot(page, 'sale-chot.png', await regionOf(closeDialog.locator('.modal'), 16, page))
+  await browser.close()
+
+  // 2-3) Khách mở form bằng QR / link
+  ;({ browser, page } = await openApp({ user: F.DIRECTOR_USER, routes, loggedIn: false, path: '/yeu-cau-dich-vu', viewport: { width: 430, height: 932 } }))
+  await page.getByText('Bạn cần hỗ trợ dịch vụ gì?').waitFor()
+  await page.getByPlaceholder(/150 m²/).fill('120 m²')
+  await page.getByPlaceholder(/Thửa 124/).fill('Thửa 56, Tờ 12, P. Tân Phong, Quận 7')
+  await page.getByPlaceholder(/Nguyễn Văn An/).fill('Nguyễn Văn Bình')
+  await page.getByPlaceholder(/0912345678/).fill('0908765432')
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await annotate(page, [
+    { locator: page.getByText('Đo Vẽ', { exact: true }).locator('xpath=ancestor::button[1]'), n: 1 },
+    { locator: page.getByRole('button', { name: 'Đo hiện trạng vị trí' }), n: 2 },
+  ])
+  await shoot(page, 'sale-form-1.png')
+  await clearMarks(page)
+  await page.getByPlaceholder(/Thửa 124/).scrollIntoViewIfNeeded()
+  await page.evaluate(() => window.scrollBy(0, 120))
+  await page.waitForTimeout(300)
+  await annotate(page, [
+    { locator: page.getByPlaceholder(/150 m²/), n: 3 },
+    { locator: page.getByPlaceholder(/Thửa 124/), n: 4 },
+    { locator: page.getByPlaceholder(/Nguyễn Văn An/), n: 5 },
+    { locator: page.getByPlaceholder(/0912345678/), n: 6 },
+    { locator: page.getByRole('button', { name: /Gửi Yêu Cầu Khảo Sát/ }), n: 7 },
+  ])
+  await shoot(page, 'sale-form-2.png')
+  await clearMarks(page)
+  await page.getByRole('button', { name: /Gửi Yêu Cầu Khảo Sát/ }).click()
+  await page.getByText('Đã Tiếp Nhận Thành Công!').waitFor()
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.waitForTimeout(500)
+  await shoot(page, 'sale-form-xong.png')
+  await browser.close()
+}
+
+async function rollbackShots() {
+  console.log('• Quay ngược bước')
+  const legalRoutes = [
+    ['/api/employee-portal/me', F.LEGAL_ME],
+    ['/api/employee-portal/task-pool', F.LEGAL_POOL],
+    ['/api/employee-portal/daily-summary', F.DAILY_SUMMARY],
+    ['/api/employee-portal/completed-items', { count: 0, items: [] }],
+    [/\/shortage$/, { blockers: [] }],
+    [/\/source-documents$/, { data: [] }],
+    [/\/rollback-preview$/, F.ROLLBACK_PREVIEW],
+    [/\/api\/legal-submissions\/by-task-node\//, { data: null }],
+  ]
+  let { browser, page } = await openApp({ user: F.LEGAL_USER, routes: legalRoutes })
+  await page.getByRole('button', { name: 'Mở ra làm' }).click()
+  const pauseBtn = page.getByRole('button', { name: /Tạm dừng/ }).first()
+  await pauseBtn.waitFor()
+  await page.waitForTimeout(600)
+  await annotate(page, [{ locator: pauseBtn, n: 1 }])
+  await shoot(page, 'quay-lai-1-tam-dung.png', { x: 250, y: 55, width: 1190, height: 845 })
+  await clearMarks(page)
+
+  await pauseBtn.click()
+  const pauseDialog = page.getByRole('dialog')
+  await pauseDialog.getByText('Chờ đo vẽ sửa').click()
+  await pauseDialog.locator('textarea').fill('Một cửa trả hồ sơ vì bản vẽ sai ranh mốc số 4.')
+  await annotate(page, [
+    { locator: pauseDialog.getByText('Chờ đo vẽ sửa').locator('xpath=ancestor::label[1]'), n: 2 },
+    { locator: pauseDialog.locator('textarea'), n: 3 },
+    { locator: pauseDialog.getByRole('button', { name: /Tiếp tục chọn bước/ }), n: 4 },
+  ])
+  await shoot(page, 'quay-lai-2-ly-do.png', await regionOf(pauseDialog.locator('.modal'), 16, page))
+  await clearMarks(page)
+
+  await pauseDialog.getByRole('button', { name: /Tiếp tục chọn bước/ }).click()
+  const picker = page.getByRole('dialog', { name: /Chọn bước để quay lại/ })
+  await picker.waitFor()
+  await picker.getByRole('button', { name: /K03/ }).click()
+  await picker.getByText('sẽ phải làm lại').first().waitFor().catch(() => {})
+  await picker.locator('textarea').fill('Bản vẽ sai ranh mốc số 4 giáp đường, diện tích lệch 2,3 m² so với sổ.')
+  await page.waitForTimeout(500)
+  await annotate(page, [
+    { locator: picker.getByRole('button', { name: /K03/ }), n: 5 },
+    { locator: picker.getByText('sẽ phải làm lại').first().locator('xpath=ancestor::button[1]'), n: 6 },
+    { locator: picker.locator('textarea'), n: 7 },
+    { locator: picker.getByRole('button', { name: /Gửi yêu cầu/ }), n: 8 },
+  ])
+  await shoot(page, 'quay-lai-3-chon-buoc.png', await regionOf(picker.locator('.modal').or(picker).first(), 12, page))
+  await browser.close()
+
+  // Giám đốc duyệt
+  ;({ browser, page } = await openApp({ user: F.DIRECTOR_USER, routes: [
+    ['/api/contracts/workflow/rollback-requests', F.ROLLBACK_REQUESTS],
+    ['/api/document-register/change-requests', { data: [] }],
+    ['/api/slot-requests', { data: [] }],
+  ] }))
+  await page.getByRole('button', { name: 'Hàng Chờ Duyệt' }).click()
+  const card = page.locator('.aq-card.is-rollback')
+  await card.waitFor()
+  await page.waitForTimeout(400)
+  await annotate(page, [
+    { locator: card.locator('.aq-card__target'), n: 1 },
+    { locator: card.locator('blockquote'), n: 2 },
+    { locator: card.getByRole('button', { name: 'Từ chối' }), n: 3 },
+    { locator: card.getByRole('button', { name: /Duyệt & trả về/ }), n: 4 },
+  ])
+  await shoot(page, 'quay-lai-4-duyet.png', await regionOf(card.locator('xpath=..'), 16, page))
+  await browser.close()
+}
+
 const only = process.argv[2]
 if (!only || only === 'employee') await employeeShots()
 if (!only || only === 'crm') await crmShots()
 if (!only || only === 'contract') await contractShots()
 if (!only || only === 'password') await passwordShots()
+if (!only || only === 'sale') await saleShots()
+if (!only || only === 'rollback') await rollbackShots()

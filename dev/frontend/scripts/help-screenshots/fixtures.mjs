@@ -62,7 +62,7 @@ export const CRM_LEADS = [
   { id: 'lead-1', customer_name: 'Nguyễn Văn Khánh', phone: '0901 234 567', source: 'Zalo cá nhân', requirements: 'Dịch vụ: Đo hiện trạng | Vị trí: Củ Chi | Quy mô: 200m2', status: 'Tiếp cận', assigned_to: null, created_at: '2026-09-24 09:10' },
   { id: 'lead-2', customer_name: 'Trần Thị Mai', phone: '0912 345 678', source: 'Hotline công ty', requirements: 'Dịch vụ: Cấp đổi sổ | Quy mô: 1 bộ hồ sơ', status: 'Tiếp cận', assigned_to: 'u-sale', assigned_to_name: 'Phạm Sale', created_at: '2026-09-24 10:30' },
   { id: 'lead-3', customer_name: 'Lê Hoàng Phúc', phone: '0987 111 222', source: 'Khách giới thiệu', requirements: 'Dịch vụ: Cắm mốc | Vị trí: Nhà Bè | Quy mô: 6 mốc', status: 'Báo giá', assigned_to: 'u-sale', assigned_to_name: 'Phạm Sale', created_at: '2026-09-23 15:00' },
-  { id: 'lead-4', customer_name: 'Võ Minh Tâm', phone: '0933 444 555', source: 'Zalo cá nhân', requirements: 'Dịch vụ: Tách thửa | Quy mô: 2 lô', status: 'Đàm phán', assigned_to: 'u-sale', assigned_to_name: 'Phạm Sale', created_at: '2026-09-22 08:45' },
+  { id: 'lead-4', customer_id: 'c-4', customer_name: 'Võ Minh Tâm', phone: '0933 444 555', source: 'Zalo cá nhân', requirements: 'Dịch vụ: Tách thửa | Quy mô: 2 lô', status: 'Đàm phán', assigned_to: 'u-sale', assigned_to_name: 'Phạm Sale', created_at: '2026-09-22 08:45' },
   { id: 'lead-5', customer_name: 'Đặng Thu Hà', phone: '0977 888 999', source: 'Hotline công ty', requirements: 'Dịch vụ: Đo hiện trạng | Quy mô: 150m2', status: 'Chốt', assigned_to: 'u-sale', assigned_to_name: 'Phạm Sale', created_at: '2026-09-20 11:20' },
 ]
 export const CRM_STATS = { total_leads: 5, in_progress: 3, won_leads: 1, win_rate: 20 }
@@ -104,3 +104,60 @@ export const CONTRACT_ROUTES = [
   ['/api/survey-records/wards', [{ code: '26734', name: 'Phường Bến Thành' }, { code: '27010', name: 'Phường Tân Phong' }]],
   ['/api/document-register/checklist-options', CHECKLIST_OPTIONS],
 ]
+
+// ── Luồng khách tự đăng ký & chốt deal ──
+export const INTAKE_SUCCESS = {
+  status: 'success',
+  data: { lead_id: 'LEAD-7F3A21C9', customer_id: 'c-99', customer_name: 'Nguyễn Văn Bình', service_type: 'Đo hiện trạng vị trí', scale_info: '120 m²', message: 'Bách Khoa đã tiếp nhận yêu cầu của quý khách thành công.' },
+}
+export const LOYALTY_ELIGIBLE = {
+  data: { eligible: true, discount_percent: 5, contract_count: 3, tier: { id: 't-1', tier_name: 'Khách thân thiết' } },
+}
+
+// ── Quay ngược bước: pháp lý ở K05b phát hiện bản vẽ sai ranh ──
+export const LEGAL_USER = {
+  id: 'u-legal', username: 'ttb', full_name: 'Trần Thị Bích', role_name: 'legal',
+  default_workspace: 'employee', is_director: false,
+  permissions: { legal_submission: { read: true }, wiki: { read: true } },
+}
+const RB_ITEM = {
+  workflow_instance_id: 'wi-rb', service_line_id: 'sl-rb', service_line_name: 'Tách thửa',
+  contract_id: '017/BK-2026', customer_name: 'Anh Cường', location_label: 'P. Bình An', priority: 'NORMAL',
+  nodes: [
+    { id: 'r1', node_code: 'K01', status: 'accepted', name: 'Tiếp nhận', mine: false, assignee_name: 'Lê Hoàng' },
+    { id: 'r2', node_code: 'K02', status: 'accepted', name: 'Khảo sát & đo hiện trường', mine: false, assignee_name: 'Nguyễn Văn An' },
+    { id: 'r3', node_code: 'K03', status: 'accepted', name: 'Chuẩn hoá tài liệu kỹ thuật', mine: false, assignee_name: 'Phạm Minh' },
+    { id: 'r4', node_code: 'K04', status: 'accepted', name: 'Soạn bộ hồ sơ pháp lý', mine: true, assignee_name: 'Trần Thị Bích' },
+    { id: 'r5', node_code: 'K05b', status: 'in_progress', name: 'Nộp & theo dõi hồ sơ một cửa', mine: true, assignee_name: 'Trần Thị Bích', amount: 150000 },
+  ],
+  current_task_node_id: 'r5', current_node_code: 'K05b', current_node_name: 'Nộp & theo dõi hồ sơ một cửa',
+  current_node_status: 'in_progress', steps_total: 5, steps_done: 4, amount_total: 300000, amount_earned: 150000,
+}
+export const LEGAL_ME = {
+  employee: { full_name: 'Trần Thị Bích', job_title: 'Chuyên viên Pháp lý', department: 'Pháp lý', is_active: true },
+  tasks: [{
+    id: 'r5', node_code: 'K05b', node_key: 'k05b', name: 'Nộp & theo dõi hồ sơ một cửa', allow_pause: true,
+    description: 'Nộp hồ sơ tại bộ phận một cửa, nhập số biên nhận và theo dõi ngày hẹn trả.',
+    status: 'in_progress', deadline_at: new Date(Date.now() + 3 * 86400000).toISOString(), contract_id: '017/BK-2026',
+    checklist: [
+      { id: 'k1', name: 'Nộp hồ sơ tại bộ phận một cửa', is_required: true, require_evidence: true, status: 'pending', evidence_files: [] },
+      { id: 'k2', name: 'Cập nhật mã biên nhận & ngày hẹn', is_required: true, require_evidence: true, status: 'pending', evidence_files: [] },
+    ],
+  }],
+  held_items: [RB_ITEM],
+}
+export const LEGAL_POOL = { department_code: 'LEGAL', items: [], help_items: [], restrictions: { active_in_progress: 0, held_items: 1, wip_limit: 3, wip_locked: false } }
+export const ROLLBACK_PREVIEW = {
+  target_task_node_id: 'r3',
+  nodes: [
+    { task_node_id: 'r3', node_code: 'K03', status: 'accepted', will_reset: true },
+    { task_node_id: 'r4', node_code: 'K04', status: 'accepted', will_reset: true },
+    { task_node_id: 'r5', node_code: 'K05b', status: 'in_progress', will_reset: true },
+  ],
+}
+export const ROLLBACK_REQUESTS = { data: [{
+  id: 'rb-1', service_line_name: 'Tách thửa', contract_id: '017/BK-2026', customer_name: 'Anh Cường',
+  requested_by_name: 'Trần Thị Bích', node_code: 'K03', node_name: 'Chuẩn hoá tài liệu kỹ thuật', affected_count: 3,
+  reason: 'Một cửa trả hồ sơ: bản vẽ sai ranh mốc số 4 giáp đường, diện tích lệch 2,3 m² so với sổ.',
+  created_at: new Date().toISOString(),
+}] }

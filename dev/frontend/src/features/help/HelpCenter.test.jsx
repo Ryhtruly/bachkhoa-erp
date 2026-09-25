@@ -55,7 +55,7 @@ describe('HelpCenter', () => {
 
   it('mở ở tab nào thì hiện ngay hướng dẫn của tab đó', () => {
     render(<HelpCenter open onClose={() => {}} activeTab="crm" workspace="management" permissions={{ crm: true }} />)
-    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent('CRM Bán Hàng')
+    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent('Quy trình Sale')
   })
 
   it('tìm kiếm không dấu lọc mục lục và bấm mục để đọc', () => {

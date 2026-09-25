@@ -207,22 +207,117 @@ export const HELP_SECTIONS = [
 
   // ───────────────────────── Kinh doanh & khách hàng ─────────────────────────
   {
-    id: 'crm',
+    id: 'sale-quy-trinh',
     group: 'Kinh doanh & khách hàng',
-    title: 'CRM Bán Hàng — từ lead đến hợp đồng',
+    title: 'Quy trình Sale: từ mã QR tới hợp đồng',
     audience: 'all',
     permission: 'crm',
     tabs: ['crm'],
     blocks: [
-      { p: 'CRM xếp khách tiềm năng (lead) theo 4 cột: **Tiếp cận → Báo giá → Đàm phán → Chốt**. Bốn ô trên cùng cho biết tổng lead, số đang tư vấn / báo giá, số đã chốt và tỉ lệ chốt.' },
+      { p: 'Toàn bộ đường đi của một khách, từ lúc nhận mã QR tới lúc có hợp đồng và công việc chạy:' },
+      {
+        table: {
+          head: ['Bước', 'Ai làm', 'Việc', 'Hệ thống tự làm'],
+          rows: [
+            ['1. Gửi form', 'Bot / Sale', 'Gửi mã QR hoặc đường dẫn form cho khách', '—'],
+            ['2. Điền form', 'Khách', 'Quét QR, chọn dịch vụ, nhập thửa đất & SĐT, bấm Gửi', 'Tạo lead ở cột **Tiếp cận**, báo chuông + Telegram'],
+            ['3. Nhận lead', 'Sale', 'Bấm **Nhận lead này**', 'Khoá lead cho người bấm trước, kiểm tra giới hạn tải'],
+            ['4. Tư vấn', 'Sale', 'Chuyển **Báo giá → Đàm phán**', 'Cộng điểm tải theo cột'],
+            ['5. Chốt', 'Sale', 'Chuyển sang **Chốt**, nhập giá trị', '**Tự tạo hợp đồng**, file Word, công nợ, sổ giấy tờ'],
+            ['6. Khởi động', 'Giám đốc', 'Mở hợp đồng → **Quy trình** → **Kích hoạt**', 'Các bước K01… lên Bể việc cho nhân viên nhận'],
+          ],
+        },
+      },
+
+      { p: '**Bước 1 — Đưa form tới khách.** Ở CRM bấm **Mã QR Form**:' },
+      { image: { src: '/help/sale-qr.png', caption: 'Tạo mã QR mở sẵn đúng dịch vụ khách cần.' } },
+      {
+        steps: [
+          'Chọn **Gói dịch vụ** [1] và **Hạng mục** [2] (không bắt buộc) — khách quét mã [3] sẽ vào thẳng form của dịch vụ đó, không phải tự chọn.',
+          'Bấm **Sao chép** [4] để lấy đường dẫn dán vào tin nhắn / kịch bản của bot Zalo, hoặc **Tải Ảnh QR** [5] để gửi ảnh, in lên danh thiếp, tờ rơi, bảng hiệu.',
+        ],
+      },
+      { tip: 'Mỗi dịch vụ nên có một mã QR riêng (Đo hiện trạng, Cắm mốc, Cấp đổi sổ…) để bot gửi đúng mã theo câu khách hỏi. Nút **Copy Link Form Zalo** trên thanh CRM lấy nhanh đường dẫn chung.' },
+
+      { p: '**Bước 2 — Khách mở form và điền.** Không cần tài khoản, dùng tốt trên điện thoại:' },
+      { image: { src: '/help/sale-form-1.png', caption: 'Khách chọn nhóm dịch vụ và hạng mục.' } },
+      { image: { src: '/help/sale-form-2.png', caption: 'Khách nhập thửa đất, quy mô và thông tin liên hệ.' } },
+      {
+        steps: [
+          'Chọn nhóm dịch vụ [1] và hạng mục [2] (đã chọn sẵn nếu mở từ mã QR theo dịch vụ).',
+          'Nhập quy mô [3] — ô này tự đổi theo hạng mục: diện tích (đo hiện trạng), số mốc (cắm mốc), số lô (tách thửa)…',
+          'Nhập địa chỉ thửa đất [4], họ tên [5], số Zalo [6] rồi bấm **Gửi Yêu Cầu Khảo Sát & Nhận Báo Giá** [7].',
+        ],
+      },
+      { image: { src: '/help/sale-form-xong.png', caption: 'Khách nhận mã phiếu LEAD-… và nút nhắn Zalo trực tiếp kỹ sư.' } },
+      {
+        list: [
+          'Ngay khi khách bấm Gửi, hệ thống **tìm khách theo số điện thoại** — khách cũ không bị tạo trùng, chỉ bổ sung địa chỉ / email / MST còn thiếu.',
+          'Tạo **lead mới ở cột Tiếp cận** với nhu cầu ghi sẵn dạng “Dịch vụ: … | Quy mô: … | Vị trí BĐS: …”.',
+          'Báo **chuông thông báo** trong ERP và tin **Telegram** nhóm nội bộ để sale gọi lại sớm.',
+          'Chống spam: mỗi mạng chỉ gửi được 5 lần / phút.',
+        ],
+      },
+
+      { p: '**Bước 3 — Sale nhận lead.** Lead mới chưa có người phụ trách hiện cho mọi sale ở cột Tiếp cận. Bấm **Nhận lead này**: ai bấm trước người đó giữ; từ đó chỉ người giữ (và Giám đốc) được đổi trạng thái lead. Sale kéo một lead chưa ai nhận sang cột khác thì hệ thống tự nhận hộ trước.' },
+      {
+        table: {
+          head: ['Giới hạn tải của mỗi Sale', 'Mặc định'],
+          rows: [
+            ['Điểm mỗi lead đang mở', 'Tiếp cận 1 · Báo giá 2 · Đàm phán 3 (lead đã Chốt không tính)'],
+            ['Tổng điểm tối đa', '15 điểm'],
+            ['Số lead mở tối đa', '20 lead'],
+          ],
+        },
+      },
+      { p: 'Vượt một trong hai ngưỡng thì không nhận thêm lead được — chốt hoặc chuyển bớt lead trước. Giám đốc chỉnh các con số này ở **Thiết lập CRM**.' },
+
+      { p: '**Bước 4 — Tư vấn.** Chuyển thẻ qua **Báo giá** rồi **Đàm phán** (ô **Chuyển** trên thẻ hoặc kéo thả). Dùng nút **Chat Zalo** trên thẻ để nhắn khách.' },
+
+      { p: '**Bước 5 — Chốt deal, hợp đồng tự tạo.** Chuyển thẻ sang **Chốt**:' },
+      { image: { src: '/help/sale-chot.png', caption: 'Hộp Xác nhận Chốt Deal & Tạo Hợp Đồng.' } },
+      {
+        steps: [
+          'Khách cũ đủ điều kiện được báo **ưu đãi khách thân thiết** [1] và tự trừ chiết khấu.',
+          'Nhập **Giá trị hợp đồng gốc** [2] (bắt buộc) — bên dưới hiện số tiền sau ưu đãi và hoa hồng sale dự kiến.',
+          'Kiểm tra **Quy mô / Diện tích / Số mốc** [3] (điền sẵn từ lead) và nhập **MST / CCCD** [4] nếu có.',
+          'Bấm **Chốt Deal & Sinh Hợp Đồng Tự Động** [5].',
+        ],
+      },
+      { p: 'Ngay khi bấm, hệ thống **tự làm toàn bộ** những việc sau — không cần soạn tay:' },
+      {
+        list: [
+          'Cấp **mã hợp đồng** theo quy tắc `xxx/BK-năm`, ngày ký là hôm nay, **sale phụ trách** là người đang giữ lead.',
+          'Xác định **hạng mục** từ phần “Dịch vụ: …” của lead (không khớp tên thì dùng hạng mục mặc định — Giám đốc nên kiểm tra lại).',
+          'Sinh **file hợp đồng Word** từ mẫu: tên khách, SĐT, địa chỉ, MST/CCCD, dịch vụ, quy mô, số tiền bằng số và bằng chữ — lưu vào **Tủ hồ sơ**.',
+          'Mở **hạng mục công việc** kèm **sổ giấy tờ** mặc định của hạng mục.',
+          'Ghi **công nợ phải thu** bằng giá trị hợp đồng.',
+          '**Khoá tỷ lệ hoa hồng** tại thời điểm chốt (đổi tỷ lệ sau này không ảnh hưởng hợp đồng đã chốt).',
+          'Đánh dấu phiếu đăng ký gốc của khách là “đã chuyển thành hợp đồng” và báo **Telegram** có hợp đồng mới.',
+        ],
+      },
+
+      { p: '**Bước 6 — Khởi động công việc (Giám đốc).** Hợp đồng mới hiện trong **Hợp Đồng** với trạng thái **Chưa có quy trình**. Giám đốc mở hợp đồng → **Quy trình** → chọn mẫu quy trình → **Kích hoạt**; lúc đó các bước K01, K02… mới lên Bể việc cho nhân viên nhận. Trước khi kích hoạt nên kiểm tra lại hạng mục và file Word.' },
+      { tip: '**Hoa hồng Sale** = tỷ lệ đã khoá lúc chốt × tiền **thực thu** của hợp đồng trong tháng (phiếu thu đã hoàn tất, trừ tiền hoàn cho khách). Khách trả làm nhiều đợt thì hoa hồng về theo từng đợt, xem ở **Phiếu lương của tôi**.' },
+    ],
+  },
+  {
+    id: 'crm',
+    group: 'Kinh doanh & khách hàng',
+    title: 'CRM Bán Hàng — màn hình & thao tác',
+    audience: 'all',
+    permission: 'crm',
+    tabs: ['crm'],
+    blocks: [
+      { p: 'CRM xếp lead theo 4 cột: **Tiếp cận → Báo giá → Đàm phán → Chốt**. Bốn ô trên cùng cho biết tổng lead, số đang tư vấn / báo giá, số đã chốt và tỉ lệ chốt. Luồng đầy đủ xem mục “Quy trình Sale: từ mã QR tới hợp đồng”.' },
       { image: { src: '/help/crm-tong-quan.png', caption: 'Màn CRM của Giám đốc. Sale chỉ thấy lead của mình và lead chưa có người nhận.' } },
       {
         list: [
-          '**Tạo Lead Mới** [1] — thêm khách vừa gọi / nhắn.',
-          '**Nhận lead này** [2] — lead ở cột Tiếp cận chưa có người phụ trách: ai bấm trước người đó nhận.',
-          'Ô **Chuyển** [3] trên mỗi thẻ — đổi cột (hoặc kéo thả thẻ sang cột khác). Chuyển sang **Chốt** sẽ mở hộp chốt deal và tạo hợp đồng.',
-          '**Mã QR Form** [4] — tải ảnh QR (có thể chọn sẵn gói / hạng mục) để khách quét bằng Zalo hoặc camera và tự điền yêu cầu.',
-          '**Copy Link Form Zalo** [5] — sao chép đường dẫn trang đăng ký để gửi khách qua Zalo. **Xem Form** mở thử trang đó.',
+          '**Tạo Lead Mới** [1] — thêm khách gọi điện / nhắn tin trực tiếp (không qua form).',
+          '**Nhận lead này** [2] — giữ lead chưa có người phụ trách.',
+          'Ô **Chuyển** [3] trên mỗi thẻ — đổi cột (hoặc kéo thả thẻ). Chuyển sang **Chốt** mở hộp chốt deal.',
+          '**Mã QR Form** [4] và **Copy Link Form Zalo** [5] — lấy mã QR / đường dẫn gửi khách. **Xem Form** mở thử trang khách thấy.',
+          '**Bộ lọc** theo nguồn khách và sale phụ trách; **Thiết lập CRM** (Giám đốc) chỉnh hoa hồng và giới hạn tải.',
         ],
       },
       { image: { src: '/help/crm-tao-lead.png', caption: 'Hộp Tạo Khách Hàng (Lead) Mới.' } },
@@ -230,12 +325,10 @@ export const HELP_SECTIONS = [
         steps: [
           'Nhập **Tên khách hàng** [1] và **Số điện thoại Zalo** [2] (bắt buộc).',
           'Chọn **Nguồn khách hàng** [3]: Zalo cá nhân, Hotline công ty, Khách giới thiệu…',
-          'Ghi **nhu cầu / vị trí đất / quy mô** [4], ví dụ “Dịch vụ: Đo hiện trạng | Vị trí: Quận 7 | Quy mô: 120m2”.',
+          'Ghi **nhu cầu / vị trí đất / quy mô** [4] theo dạng “Dịch vụ: Đo hiện trạng | Vị trí: Quận 7 | Quy mô: 120m2” — phần “Dịch vụ:” được dùng để chọn hạng mục khi chốt.',
           'Bấm **Tạo Mới & Đưa vào Pipeline** [5]. Thẻ mới xuất hiện ở cột Tiếp cận.',
         ],
       },
-      { p: '**Chốt deal**: chuyển thẻ sang cột **Chốt** → hộp **Xác nhận Chốt Deal & Tạo Hợp Đồng** hiện ra: nhập giá trị hợp đồng gốc, quy mô / diện tích / số mốc, MST hoặc CCCD (tuỳ chọn) → **Chốt Deal & Sinh Hợp Đồng Tự Động**. Khách thân thiết được tự trừ chiết khấu; quy mô được điền sẵn vào hợp đồng Word.' },
-      { tip: 'Phiếu khách tự gửi qua QR / link vào thẳng cột Tiếp cận thành lead mới. **Thiết lập CRM** (Giám đốc) chỉnh tỷ lệ hoa hồng Sale và giới hạn số lead mỗi Sale được giữ.' },
     ],
   },
   {
@@ -255,19 +348,6 @@ export const HELP_SECTIONS = [
           'Nhãn **Ưu đãi** cho biết khách thân thiết; Giám đốc chỉnh ở **Thiết lập ưu đãi khách hàng thân thiết**.',
         ],
       },
-    ],
-  },
-  {
-    id: 'form-khach',
-    group: 'Kinh doanh & khách hàng',
-    title: 'Trang đăng ký dịch vụ cho khách',
-    audience: 'management',
-    permission: 'crm',
-    tabs: ['crm'],
-    blocks: [
-      { p: 'Trang công khai (đường dẫn /yeu-cau-dich-vu) để khách tự điền: chọn nhóm dịch vụ và hạng mục, nhập địa chỉ thửa đất, quy mô (diện tích, số mốc, số thửa tách…), họ tên và số Zalo, rồi **Gửi Yêu Cầu Khảo Sát & Nhận Báo Giá**.' },
-      { p: 'Khách nhận **mã phiếu tiếp nhận** và nút nhắn Zalo trực tiếp kỹ sư. Phiếu vào CRM thành lead để sale gọi lại.' },
-      { tip: 'Ô quy mô thay đổi theo hạng mục khách chọn (cắm mốc hỏi số mốc, tách thửa hỏi số lô…) để báo giá sát hơn.' },
     ],
   },
 
@@ -360,7 +440,64 @@ export const HELP_SECTIONS = [
       },
       { p: '**Duyệt nghiệm thu**: khi nhân viên nộp, node hiện “chờ Giám đốc duyệt”. Xem minh chứng → **Duyệt đạt** hoặc **Từ chối** (ghi lý do). Node có rẽ nhánh thì chọn **Kết quả xử lý** để đi đúng nhánh, ví dụ **Cần làm lại**.' },
       { warn: 'Node đã bắt đầu thì danh sách nghiệm thu bị khoá; bản sửa chỉ được đổi đường chuyển bước hoặc thêm node mới, và chỉ có hiệu lực sau khi Giám đốc bấm **Áp dụng sửa đổi**.' },
+      { p: 'Phát hiện lỗi ở một bước đã nghiệm thu? Xem mục **Quay ngược bước** — nhân viên xin, Giám đốc duyệt, hệ thống kéo các bước liên quan về làm lại.' },
       { p: '**Huỷ phiên vận hành** là thao tác kết thúc vĩnh viễn: node đang mở bị huỷ, node đã hoàn tất và khoán đã nghiệm thu được giữ; phải chọn nhóm lý do và nhập lý do chi tiết.' },
+    ],
+  },
+  {
+    id: 'quay-lai-buoc',
+    group: 'Hợp đồng & hồ sơ',
+    title: 'Quay ngược bước (trả hồ sơ về bước trước)',
+    audience: 'all',
+    blocks: [
+      { p: 'Dùng khi phát hiện lỗi của một bước **đã nghiệm thu xong** — ví dụ chuyên viên pháp lý đang nộp một cửa (K05b) thì cơ quan trả hồ sơ vì **bản vẽ sai ranh**, phải kéo bước vẽ CAD (K03) về sửa.' },
+      { warn: 'Nguyên tắc: **không ai tự lùi bước được**. Nhân viên chỉ **gửi phiếu xin quay lại**; phiếu chưa thay đổi gì cho tới khi **Giám đốc duyệt**. Mỗi hạng mục chỉ có **một phiếu chờ duyệt** tại một thời điểm.' },
+
+      { p: '**Phía nhân viên — gửi phiếu xin quay lại**' },
+      { image: { src: '/help/quay-lai-1-tam-dung.png', caption: 'Bước đang làm (K05b) — dải Tạm dừng.' } },
+      { image: { src: '/help/quay-lai-2-ly-do.png', caption: 'Chọn lý do “Chờ đo vẽ sửa”.' } },
+      { image: { src: '/help/quay-lai-3-chon-buoc.png', caption: 'Chọn bước cần quay về và xem trước các bước bị ảnh hưởng.' } },
+      {
+        steps: [
+          'Ở bước đang làm, bấm **Tạm dừng** [1] (có ở các bước được phép tạm dừng, thường là bước nộp / theo dõi hồ sơ cơ quan).',
+          'Chọn lý do **Chờ đo vẽ sửa** [2], ghi **đang chờ gì** [3] rồi bấm **Tiếp tục chọn bước** [4].',
+          'Chọn **bước cần quay về** [5] — chỉ chọn được các bước **đã chạy** trước bước hiện tại. Khung bên trái cho biết người phụ trách, trạng thái và **gửi đi sẽ kéo bao nhiêu bước** về trạng thái cần sửa; các bước bị kéo theo gắn nhãn **sẽ phải làm lại** [6].',
+          'Ghi rõ **lý do cho Giám đốc** [7] (tối thiểu 5 ký tự: sai ở đâu, cơ quan yêu cầu gì) → **Gửi yêu cầu** [8].',
+        ],
+      },
+      { tip: 'Hai lý do tạm dừng còn lại — **Chờ cơ quan** và **Chờ nội bộ** — chỉ dừng đồng hồ của bước hiện tại (không bị tính trễ vì việc ngoài tầm tay), **không** quay ngược bước nào.' },
+
+      { p: '**Phía Giám đốc — duyệt trong Hàng Chờ Duyệt**' },
+      { image: { src: '/help/quay-lai-4-duyet.png', caption: 'Phiếu xin quay lại trong Hàng Chờ Duyệt.' } },
+      {
+        list: [
+          'Phiếu ghi rõ hợp đồng, khách, người gửi, **bước đích và số bước bị ảnh hưởng** [1] cùng **lý do** [2].',
+          '**Từ chối** [3] — bắt buộc ghi lý do để nhân viên biết; quy trình giữ nguyên.',
+          '**Duyệt & trả về K…** [4] — hệ thống thực hiện quay ngược ngay (bảng dưới). Người gửi nhận thông báo kết quả.',
+        ],
+      },
+
+      { p: '**Hệ thống làm gì khi Giám đốc duyệt** (ví dụ quay về K03 từ K05b):' },
+      {
+        table: {
+          head: ['Nhóm bước', 'Ví dụ', 'Sau khi duyệt'],
+          rows: [
+            ['Các bước **trước** bước đích', 'K01, K02', 'Giữ nguyên “Đã nghiệm thu” — buổi đo hiện trường không phải làm lại'],
+            ['**Bước đích**', 'K03', 'Chuyển **Cần sửa**; có **hạn sửa** riêng = nửa thời hạn chuẩn của bước, tối đa **24 giờ**'],
+            ['Các bước **sau** bước đích', 'K04, K05b', 'Chuyển **Chờ tới lượt** — không ai nộp được trước khi bước đích sửa xong, rồi chạy lại lần lượt'],
+          ],
+        },
+      },
+      {
+        list: [
+          'Checklist của các bước bị kéo về trở lại **chưa nộp**; các tờ đã duyệt phải **duyệt lại**. **File cũ không bị xoá** — vẫn xem được để biết phải sửa gì.',
+          'Lượt nghiệm thu đang chờ duyệt của các bước đó bị huỷ.',
+          'Dữ liệu đặc thù được đặt lại: biên nhận một cửa “Hoàn thành” quay về “Đang chi nhánh”, hồ sơ pháp lý đã đóng được mở lại, thợ đo có thể **Bắt đầu đo** ca mới, bước bàn giao phải kiểm tra lại cổng công nợ.',
+          '**Hạn của cả chuỗi được tính lại** từ đầu.',
+          'Mọi người đang giữ các bước bị trả về nhận thông báo **“Hồ sơ bị trả về, cần làm lại”** kèm lý do — kể cả phòng khác.',
+        ],
+      },
+      { warn: '**Tiền khoán**: khoán đã phát cho các bước bị kéo về **không bị thu hồi** (việc đã làm thật). Nhưng người làm lại phần việc **của chính mình** thì **không được trả khoán thêm lần nữa**.' },
     ],
   },
   {
@@ -467,7 +604,7 @@ export const HELP_SECTIONS = [
     directorOnly: true,
     tabs: ['approvals'],
     blocks: [
-      { p: 'Mọi phiếu cần chữ ký Giám đốc gom về một chỗ để không phiếu nào bị treo, ví dụ đề xuất **loại tài liệu phát sinh** của nhân viên.' },
+      { p: 'Mọi phiếu cần chữ ký Giám đốc gom về một chỗ để không phiếu nào bị treo: **Xin quay lại bước** (xem mục “Quay ngược bước”) và đề xuất **loại tài liệu phát sinh** của nhân viên.' },
       {
         steps: [
           'Mở một phiếu, kiểm tra nội dung và tệp đính kèm.',

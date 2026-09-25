@@ -2,17 +2,27 @@
 // (không cần backend, không lộ dữ liệu thật), rồi khoanh + đánh số các nút cần bấm.
 import { chromium } from 'playwright'
 
-export const BASE = process.env.HELP_BASE_URL || 'http://localhost:5199'
+// Ảnh hiện tên miền thật thay vì localhost: trình duyệt trỏ tên miền này về máy
+// chạy vite (vite cần được phép nhận host này — xem capture.mjs).
+export const PUBLIC_HOST = 'nhadatbachkhoa.com'
+export const DEV_PORT = Number(process.env.HELP_DEV_PORT || 5199)
+export const BASE = process.env.HELP_BASE_URL || `http://${PUBLIC_HOST}`
 const CHROME = process.env.CHROME_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'
 
 export async function openApp({ user, routes, viewport = { width: 1440, height: 900 }, path = '/app', keepChat = false, loggedIn = true }) {
-  const browser = await chromium.launch({ executablePath: CHROME })
+  const browser = await chromium.launch({
+    executablePath: CHROME,
+    args: [`--host-resolver-rules=MAP ${PUBLIC_HOST}:80 127.0.0.1:${DEV_PORT}`],
+  })
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1.5, locale: 'vi-VN' })
   await context.addInitScript((withSession) => {
     if (withSession) localStorage.setItem('bachkhoa_auth_session_hint', '1')
     else localStorage.removeItem('bachkhoa_auth_session_hint')
     localStorage.setItem('bachkhoa_theme', 'light')
   }, loggedIn)
+  // Ảnh QR trên giao diện lấy từ dịch vụ ngoài — trả ảnh QR mẫu cục bộ thay thế.
+  await context.route('https://api.qrserver.com/**', (route) =>
+    route.fulfill({ path: new URL('./sample-qr.png', import.meta.url).pathname, contentType: 'image/png' }))
   const unmatched = new Set()
   await context.route('**/api/**', async (route) => {
     const req = route.request()
