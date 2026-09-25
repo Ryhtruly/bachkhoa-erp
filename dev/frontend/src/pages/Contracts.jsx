@@ -12,6 +12,7 @@ import '../components/contracts/contracts.css';
 import ContractWorkspace from '../components/contracts/ContractWorkspace';
 import ContractFileActions from '../features/contracts/ContractFileActions';
 import DocumentCabinet from '../features/contracts/DocumentCabinet';
+import ContractTemplateManager from '../features/contracts/ContractTemplateManager';
 
 const CONTRACT_GROUPS_PER_PAGE = 15;
 function getContractId(contract) {
@@ -73,6 +74,13 @@ export default function Contracts({ isDirector = false }) {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState('');
   const [contractView, setContractView] = useState('list');
+  const showTemplates = Boolean(isDirector && contractView === 'templates');
+
+  useEffect(() => {
+    if (!isDirector && contractView === 'templates') {
+      setContractView('list');
+    }
+  }, [isDirector, contractView]);
   const [selectedContract, setSelectedContract] = useState(() => {
     if (typeof peekApiCache === 'function') {
       const cached = peekApiCache('/api/contracts/workspace-list?page=1&page_size=15&sort=desc');
@@ -576,15 +584,93 @@ export default function Contracts({ isDirector = false }) {
   ];
 
   return (
-    <section className={`tab-pane active contract-page${contractView === 'list' ? ' contract-page--list' : ''}`} id="tab-hopdong">
-      <div className="contract-master-detail" style={{ display: contractView === 'list' ? 'flex' : 'none' }}>
+    <section className={`tab-pane active contract-page${contractView !== 'workflow' ? ' contract-page--list' : ''}`} id="tab-hopdong">
+      <div className="contract-master-detail" style={{ display: contractView !== 'workflow' ? 'flex' : 'none' }}>
         <header className="contract-pane-title">
-            <div><span>Danh sách hợp đồng</span><strong>{pagination.total_contracts || contracts.length}</strong></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div>
+              <span>{showTemplates ? 'Quản lý mẫu hợp đồng' : 'Danh sách hợp đồng'}</span>
+              {!showTemplates && <strong>{pagination.total_contracts || contracts.length}</strong>}
+            </div>
+            {isDirector && (
+              <div
+                className="contract-view-switcher"
+                role="tablist"
+                aria-label="Chế độ xem hợp đồng"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 4px',
+                  borderRadius: 8,
+                  background: 'var(--bg-deep, rgba(0, 0, 0, 0.05))',
+                  border: '1px solid var(--border-subtle, rgba(0, 0, 0, 0.08))',
+                  marginLeft: 12,
+                }}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  className={`contract-view-tab${!showTemplates ? ' active' : ''}`}
+                  aria-selected={!showTemplates}
+                  onClick={() => switchContractView('list')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 12px',
+                    fontSize: '0.85rem',
+                    fontWeight: !showTemplates ? 700 : 500,
+                    color: !showTemplates ? 'var(--orange-600, #ea580c)' : 'var(--text-secondary, #64748b)',
+                    background: !showTemplates ? 'var(--bg-card, #ffffff)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 6,
+                    boxShadow: !showTemplates ? '0 1px 3px rgba(0, 0, 0, 0.1)' : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Danh sách hợp đồng
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`contract-view-tab${showTemplates ? ' active' : ''}`}
+                  aria-selected={showTemplates}
+                  onClick={() => switchContractView('templates')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 12px',
+                    fontSize: '0.85rem',
+                    fontWeight: showTemplates ? 700 : 500,
+                    color: showTemplates ? 'var(--orange-600, #ea580c)' : 'var(--text-secondary, #64748b)',
+                    background: showTemplates ? 'var(--bg-card, #ffffff)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 6,
+                    boxShadow: showTemplates ? '0 1px 3px rgba(0, 0, 0, 0.1)' : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  Mẫu hợp đồng
+                </button>
+              </div>
+            )}
+          </div>
+          {!showTemplates && (
             <button type="button" className="contract-add-button" onClick={openContractModal} title="Soạn hợp đồng mới">
               <Plus size={20} />
             </button>
-          </header>
+          )}
+        </header>
 
+        {showTemplates ? (
+          <div className="contract-templates-pane" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
+            <ContractTemplateManager onClose={() => switchContractView('list')} />
+          </div>
+        ) : (
           <div className="contract-master-detail__body">
             <section className="contract-master-pane">
               <div className="contract-master-filters">
@@ -764,7 +850,8 @@ export default function Contracts({ isDirector = false }) {
               )}
             </aside>
           </div>
-        </div>
+        )}
+      </div>
 
       {contractView === 'workflow' && (
         <ContractWorkspace
