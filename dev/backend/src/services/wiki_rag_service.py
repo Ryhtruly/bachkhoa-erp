@@ -120,10 +120,15 @@ def extract_text_from_file(file_bytes: bytes, filename: str, deadline: Optional[
         doc = Document(io.BytesIO(file_bytes))
         paragraphs_text = []
         total_chars = 0
-        for p in doc.paragraphs:
+        # Văn bản ISO/quy chế hay đặt nội dung trong bảng: đọc cả các ô bảng.
+        table_rows = (
+            " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+            for table in doc.tables
+            for row in table.rows
+        )
+        for text in [p.text for p in doc.paragraphs] + list(table_rows):
             if deadline is not None and time.time() >= deadline:
                 break
-            text = p.text
             paragraphs_text.append(text)
             total_chars += len(text)
             if total_chars >= MAX_EXTRACTED_CHARS:
@@ -155,17 +160,21 @@ def chunk_text(text: str) -> List[str]:
 # ─── API key ───────────────────────────────────────────────────
 
 def _get_gemini_api_key() -> str:
-    key = os.getenv("GEMINI_API_KEY", "")
-    if not key or key == "your_gemini_api_key":
-        db = SessionLocal()
-        try:
-            from src.db.models import SystemSetting
-            row = db.query(SystemSetting).filter(SystemSetting.key == "gemini_api_key").first()
-            if row and row.value:
-                key = row.value
-        finally:
-            db.close()
-    return key
+    """Key nhập ở Cấu hình trước, biến môi trường sau — cùng thứ tự với chatbot.
+
+    Trước đây biến môi trường được ưu tiên: .env còn key cũ/giá trị mẫu thì mọi
+    lần tạo embedding đều lỗi trong khi chatbot (đọc Cấu hình) vẫn chạy.
+    """
+    db = SessionLocal()
+    try:
+        from src.db.models import SystemSetting
+        row = db.query(SystemSetting).filter(SystemSetting.key == "gemini_api_key").first()
+        if row and (row.value or "").strip():
+            return row.value.strip()
+    finally:
+        db.close()
+    key = os.getenv("GEMINI_API_KEY", "").strip().strip("'\"")
+    return "" if key == "your_gemini_api_key" else key
 
 # ─── Embedding (sync for indexing) ─────────────────────────────
 
@@ -229,27 +238,30 @@ async def aembed_text(text: str, api_key: Optional[str] = None) -> List[float]:
 
 # ─── Indexing ──────────────────────────────────────────────────
 
-def index_document(file_bytes: bytes, filename: str, document_id: str, db: Session):
+SUPPORTED_INDEX_EXTENSIONS = ("pdf", "docx", "txt", "md", "csv", "json", "xml")
+
+
+def index_document(file_bytes: bytes, filename: str, document_id: str, db: Session) -> int:
+    """Chia tài liệu thành đoạn, tạo embedding, lưu WikiChunk. Trả về số đoạn đã lưu.
+
+    Không lưu được đoạn nào thì raise ValueError kèm lý do tiếng Việt: worker ghi
+    lý do đó vào trạng thái job để màn Wiki hiển thị, thay vì im lặng "hoàn tất".
+    """
     start_time = time.time()
     deadline = start_time + MAX_INDEXING_SECONDS
+    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if ext not in SUPPORTED_INDEX_EXTENSIONS:
+        raise ValueError(f"Định dạng .{ext or '?'} chưa hỗ trợ — hãy tải lên PDF hoặc Word (.docx)")
     text_content = extract_text_from_file(file_bytes, filename, deadline=deadline)
-    if not text_content.strip() or time.time() >= deadline:
-        if time.time() >= deadline:
-            print(f"[wiki_rag] Document {document_id} exceeded deadline during text extraction")
-        return
-    chunks = chunk_text(text_content)
-    if not chunks or time.time() >= deadline:
-        if time.time() >= deadline:
-            print(f"[wiki_rag] Document {document_id} exceeded deadline during chunking")
-        return
-    chunks = chunks[:MAX_CHUNKS]
+    if time.time() >= deadline:
+        raise TimeoutError("Quá thời gian đọc nội dung tài liệu")
+    if not text_content.strip():
+        raise ValueError("Không đọc được chữ trong tài liệu (PDF scan/ảnh?) — cần bản có lớp chữ")
+    chunks = chunk_text(text_content)[:MAX_CHUNKS]
     api_key = _get_gemini_api_key()
-    if not api_key or time.time() >= deadline:
-        if not api_key:
-            print("[wiki_rag] No Gemini API key, skipping embedding")
-        else:
-            print(f"[wiki_rag] Document {document_id} exceeded deadline before embedding")
-        return
+    if not api_key:
+        raise ValueError("Chưa có Gemini API Key trong Cấu hình")
+    saved = 0
     for i, chunk in enumerate(chunks):
         if time.time() >= deadline:
             print(f"[wiki_rag] Document {document_id} exceeded time budget ({MAX_INDEXING_SECONDS}s), stopped at chunk {i}")
@@ -264,12 +276,16 @@ def index_document(file_bytes: bytes, filename: str, document_id: str, db: Sessi
                 content=safe_chunk,
                 embedding=embedding,
             ))
+            saved += 1
         except TimeoutError as te:
             print(f"[wiki_rag] Document {document_id} stopped indexing due to time budget: {te}")
+            if not saved:
+                raise
             break
         if i < len(chunks) - 1:
             time.sleep(0.05)
     db.flush()
+    return saved
 
 
 def _update_job_status(document_id: str, status: str, **kwargs) -> dict:
@@ -384,9 +400,9 @@ def _indexing_worker_loop():
                     _update_job_status(document_id, "FAILED", error="Document not committed in DB", failed_at=time.time())
                     continue
 
-                index_document(file_bytes, filename, document_id, db)
+                saved = index_document(file_bytes, filename, document_id, db)
                 db.commit()
-                _update_job_status(document_id, "COMPLETED", completed_at=time.time())
+                _update_job_status(document_id, "COMPLETED", completed_at=time.time(), chunks=saved, error=None)
             except Exception as err:
                 db.rollback()
                 _update_job_status(document_id, "FAILED", error=str(err), failed_at=time.time())
@@ -447,6 +463,37 @@ def _recover_unindexed_documents(batch_size: int = 50):
             print(f"[wiki_rag] Recovery of unindexed documents error: {e}")
     finally:
         db.close()
+
+
+def get_indexing_status(document_ids: List[str], db: Session) -> Dict[str, Dict[str, Any]]:
+    """Trạng thái "AI đã học tài liệu chưa" cho màn Wiki: số đoạn trong DB + job gần nhất."""
+    if not document_ids:
+        return {}
+    from sqlalchemy import func
+    counts = dict(
+        db.query(WikiChunk.document_id, func.count(WikiChunk.id))
+        .filter(WikiChunk.document_id.in_(document_ids))
+        .group_by(WikiChunk.document_id)
+        .all()
+    )
+    result = {}
+    for doc_id in document_ids:
+        job = INDEXING_JOBS.get(doc_id, {})
+        chunks = int(counts.get(doc_id, 0))
+        status = job.get("status")
+        if chunks and status not in ("QUEUED", "PROCESSING"):
+            status = "COMPLETED"
+        result[doc_id] = {
+            "chunks": chunks,
+            "status": status or ("COMPLETED" if chunks else "PENDING"),
+            "error": job.get("error") if status == "FAILED" else None,
+        }
+    return result
+
+
+def reset_indexing_job(document_id: str) -> None:
+    """Cho phép "Học lại": xoá lịch sử lỗi/số lần thử để job được xếp hàng lại."""
+    INDEXING_JOBS.pop(document_id, None)
 
 
 def cancel_indexing_job(document_id: str) -> None:

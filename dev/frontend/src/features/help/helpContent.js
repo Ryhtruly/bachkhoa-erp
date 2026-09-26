@@ -929,7 +929,7 @@ export const HELP_SECTIONS = [
       { p: '**Không nộp được minh chứng?** Phải bấm **Bắt đầu làm** trước. Nếu bước đang “Chờ duyệt” thì chờ Giám đốc xử lý.' },
       { p: '**Không nhận thêm việc được?** Bạn đã đủ tải. Hoàn thành một hạng mục để mở slot.' },
       { p: '**Không bàn giao được hồ sơ?** Khách còn nợ — bước K06 đang **Khóa nợ**. Thu đủ tiền hoặc **Xin duyệt nợ**.' },
-      { p: '**Trợ lý AI trả lời “vượt quá khả năng”?** Câu hỏi không có trong tài liệu đã tải lên. Hỏi lại cụ thể hơn, hoặc bổ sung tài liệu vào Wiki.' },
+      { p: '**Trợ lý AI trả lời “vượt quá khả năng”?** Câu hỏi không có trong tài liệu AI đã học. Ở màn Wiki, dưới tên mỗi tài liệu có dòng **AI đã học (N đoạn)** hoặc **AI chưa học được: lý do** — tài liệu lỗi thì sửa theo lý do (vd. PDF scan cần bản có lớp chữ) rồi bấm **Học lại**.' },
       { p: '**Quên mật khẩu?** Bấm **Quên mật khẩu?** ở màn đăng nhập để nhận mã OTP qua email (xem mục “Tài khoản & mật khẩu”).' },
       { p: '**Số liệu chưa cập nhật?** Bấm nút **Làm mới** trên thanh trên cùng.' },
       { p: '**Thông báo lỗi khó hiểu?** Chụp màn hình kèm thời điểm, gửi cho quản trị hệ thống.' },

@@ -20,6 +20,8 @@ from src.services.wiki_rag_service import (
     enqueue_indexing_job,
     can_enqueue_indexing_job,
     cancel_indexing_job,
+    get_indexing_status,
+    reset_indexing_job,
 )
 from src.core.auth import require_permission, User
 from src.core.redis_utils import consume_rate_limit, get_cached_json, set_cached_json, invalidate_cache
@@ -116,6 +118,37 @@ def list_documents(
         return response_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/index-status")
+def indexing_status(
+    ids: str = Query(..., description="Mã tài liệu, cách nhau bởi dấu phẩy"),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "read"))
+):
+    """Trợ lý AI đã "học" tài liệu nào: số đoạn đã lưu, đang xử lý, hay lỗi gì."""
+    doc_ids = [doc_id.strip() for doc_id in ids.split(",") if doc_id.strip()][:100]
+    return {"status": "success", "data": get_indexing_status(doc_ids, db)}
+
+
+@router.post("/{doc_id}/reindex")
+def reindex_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("wiki", "update"))
+):
+    """Cho AI học lại tài liệu: xoá các đoạn cũ rồi xếp hàng xử lý lại từ file gốc."""
+    doc = db.query(WikiDocument).filter(WikiDocument.id == doc_id, WikiDocument.is_active == True).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Tài liệu không tồn tại hoặc đã bị xóa.")
+    if not doc.link:
+        raise HTTPException(status_code=400, detail="Tài liệu chưa có file gốc để học lại.")
+    delete_document_chunks(doc_id, db)
+    db.commit()
+    reset_indexing_job(doc_id)
+    if not enqueue_indexing_job(None, os.path.basename(doc.link), doc_id, object_name=doc.link):
+        raise HTTPException(status_code=429, detail="Hàng đợi xử lý tài liệu đang bận, vui lòng thử lại sau.")
+    return {"status": "success", "data": get_indexing_status([doc_id], db)[doc_id]}
+
 
 @router.post("/upload")
 async def upload_document(
