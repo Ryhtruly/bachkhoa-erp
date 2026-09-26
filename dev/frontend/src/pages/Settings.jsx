@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Save, CheckCircle, XCircle, Loader, FileText, MessageSquare, Brain, Camera, ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
+import { formatErrorDetail } from '../lib/api';
 
 const API_BASE = `${(typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL || '').replace(/\/+$/, '')}/api`;
 
@@ -82,9 +83,12 @@ function TestButton({ _groupId, fieldKey, settings, onResult }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ service: fieldKey, settings })
       });
-      const data = await res.json();
-      setStatus(data.ok ? 'ok' : 'fail');
-      onResult(data.ok, data.message || '');
+      const data = await res.json().catch(() => ({}));
+      const ok = res.ok && data.ok === true;
+      // Lỗi HTTP (401/403/500…) trả về {detail}, không có {ok, message}: vẫn phải báo rõ lý do.
+      const message = data.message || formatErrorDetail(data.detail) || (res.ok ? '' : `Máy chủ trả lỗi HTTP ${res.status}`);
+      setStatus(ok ? 'ok' : 'fail');
+      onResult(ok, message);
     } catch {
       setStatus('fail');
       onResult(false, 'Lỗi kết nối tới server');
@@ -187,7 +191,7 @@ export default function Settings() {
   const [settings, setSettings] = useState({});
   const [saving, setSaving] = useState(false);
   const [collapsed, setCollapsed] = useState({});
-  const { showToast } = useToast();
+  const { addToast: showToast } = useToast();
 
   useEffect(() => { fetchSettings(); }, []);
 
