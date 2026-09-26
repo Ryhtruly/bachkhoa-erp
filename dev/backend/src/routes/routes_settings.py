@@ -200,7 +200,8 @@ async def test_connection(
     except httpx.TimeoutException:
         return {"ok": False, "message": "Timeout — kiểm tra kết nối mạng"}
     except Exception as e:
-        msg = str(e)
+        # Lỗi mạng của httpx (ConnectError…) có thể có str() rỗng: vẫn phải nêu loại lỗi.
+        msg = str(e) or f"Lỗi kết nối ({e.__class__.__name__})"
         for val in s.values():
             if val and isinstance(val, str) and len(val) > 5:
                 msg = msg.replace(val, "[REDACTED]")
