@@ -334,6 +334,43 @@ describe('Wiki private documents', () => {
       expect(addToast).toHaveBeenCalledWith('Đã xóa tài liệu thành công!', 'success')
     })
   })
+
+  it('shows whether the AI has learned each document and lets a director re-index a failed one', async () => {
+    const statuses = {
+      'ISO-001': { chunks: 0, status: 'FAILED', error: 'Không đọc được chữ trong tài liệu (PDF scan/ảnh?)' },
+      'ISO-002': { chunks: 12, status: 'COMPLETED', error: null },
+    }
+    global.fetch = vi.fn(async (url, init = {}) => {
+      const path = String(url)
+      const json = (body) => ({ ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => body })
+      if (path.startsWith('/api/wiki/?')) {
+        return json({
+          data: [
+            { id: 'ISO-001', title: 'Bộ Quy Tắc Đạo Đức', category: 'Sổ tay nhân sự', link: 'wiki/ISO-001/quy_tac.pdf' },
+            { id: 'ISO-002', title: 'Quy trình tiếp nhận', category: 'Quy trình ISO', link: 'wiki/ISO-002/tiep_nhan.docx' },
+          ],
+          meta: { total_pages: 1 },
+        })
+      }
+      if (path.startsWith('/api/wiki/index-status')) return json({ status: 'success', data: statuses })
+      if (path === '/api/wiki/ISO-001/reindex' && init.method === 'POST') {
+        return json({ status: 'success', data: { chunks: 0, status: 'QUEUED', error: null } })
+      }
+      return json({})
+    })
+
+    render(<Wiki isDirector />)
+
+    expect(await screen.findByText(/AI chưa học được: Không đọc được chữ/)).toBeInTheDocument()
+    expect(screen.getByText('AI đã học (12 đoạn)')).toBeInTheDocument()
+
+    const failedRow = screen.getByText('Bộ Quy Tắc Đạo Đức').closest('tr')
+    fireEvent.click(within(failedRow).getByRole('button', { name: /Học lại/ }))
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith('/api/wiki/ISO-001/reindex', expect.objectContaining({ method: 'POST' }))
+    })
+    expect(await within(failedRow).findByText(/AI đang đọc tài liệu/)).toBeInTheDocument()
+    expect(addToast).toHaveBeenCalledWith('Đã xếp tài liệu vào hàng chờ để AI học lại.', 'success')
+  })
 })
-
-

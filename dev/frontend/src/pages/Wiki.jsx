@@ -1,9 +1,47 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle, Download, Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Book, UploadCloud, Search, Filter, ChevronLeft, ChevronRight, FileText, FileUp, Info, CheckCircle, Download, Eye, Pencil, Trash2, Loader2, Bot, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { Modal, FormRow, CustomSelect, FilePreviewModal } from '../components/ui';
 import { apiFetch, getAccessToken } from '../lib/api';
 import { fetchProtectedDocumentFile, downloadBlob, resolveDocumentFileName } from '../lib/fileSave';
+
+const AI_STATUS_POLL_MS = 5000;
+const AI_STATUS_MAX_POLLS = 36; // ~3 phút: tài liệu dài hoặc đang chờ lượt thử lại
+const isAiStatusPending = (status) => ['QUEUED', 'PROCESSING', 'PENDING'].includes(status?.status);
+
+// Trợ lý AI đã "học" tài liệu chưa — trước đây chỉ nằm trong log server.
+function WikiAiStatus({ status, canReindex, reindexing, onReindex }) {
+  if (!status) return null;
+  const base = { display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', fontWeight: 500 };
+  let body;
+  if (status.status === 'FAILED') {
+    body = (
+      <span style={{ ...base, color: 'var(--red-500, #ef4444)' }} title={status.error || ''}>
+        <AlertTriangle size={13} /> AI chưa học được: {status.error || 'lỗi không rõ'}
+      </span>
+    );
+  } else if (status.chunks > 0 && !isAiStatusPending(status)) {
+    body = <span style={{ ...base, color: 'var(--green-600, #059669)' }}><Bot size={13} /> AI đã học ({status.chunks} đoạn)</span>;
+  } else {
+    body = <span style={{ ...base, color: 'var(--text-tertiary)' }}><Loader2 size={13} className="animate-spin" /> AI đang đọc tài liệu…</span>;
+  }
+  const showReindex = canReindex && (status.status === 'FAILED' || (!isAiStatusPending(status) && status.chunks > 0));
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', marginLeft: '24px', flexWrap: 'wrap' }}>
+      {body}
+      {showReindex && (
+        <button
+          type="button"
+          onClick={onReindex}
+          disabled={reindexing}
+          style={{ ...base, padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-secondary)', cursor: reindexing ? 'wait' : 'pointer' }}
+        >
+          <RefreshCw size={12} className={reindexing ? 'animate-spin' : undefined} /> Học lại
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
   const [currentUser, setCurrentUser] = useState(propUser || null);
@@ -58,6 +96,54 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
   const [selectedFile, setSelectedFile] = useState(null);
 
   const categories = ['Tất cả', 'Quy trình ISO', 'Sổ tay nhân sự', 'Tài liệu đào tạo', 'Quy định khác'];
+
+  const [aiStatus, setAiStatus] = useState({});
+  const [reindexingId, setReindexingId] = useState(null);
+  const [aiStatusPollKey, setAiStatusPollKey] = useState(0);
+
+  const documentIds = documents.map(doc => doc.id).join(',');
+  useEffect(() => {
+    if (!documentIds) {
+      setAiStatus({});
+      return undefined;
+    }
+    let cancelled = false;
+    let timer;
+    let polls = 0;
+    const load = async () => {
+      try {
+        const data = await apiFetch(`/api/wiki/index-status?ids=${encodeURIComponent(documentIds)}`);
+        if (cancelled) return;
+        const next = data.data || {};
+        setAiStatus(next);
+        polls += 1;
+        if (polls < AI_STATUS_MAX_POLLS && Object.values(next).some(isAiStatusPending)) {
+          timer = setTimeout(load, AI_STATUS_POLL_MS);
+        }
+      } catch {
+        // Trạng thái AI chỉ là thông tin phụ: lỗi thì không chặn danh sách tài liệu.
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [documentIds, aiStatusPollKey]);
+
+  const handleReindex = async (doc) => {
+    setReindexingId(doc.id);
+    try {
+      const data = await apiFetch(`/api/wiki/${encodeURIComponent(doc.id)}/reindex`, { method: 'POST' });
+      setAiStatus(prev => ({ ...prev, [doc.id]: data.data }));
+      setAiStatusPollKey(key => key + 1);
+      showMessage('Đã xếp tài liệu vào hàng chờ để AI học lại.', 'success');
+    } catch (error) {
+      showMessage(error.message || 'Không thể cho AI học lại tài liệu.', 'error');
+    } finally {
+      setReindexingId(null);
+    }
+  };
 
   const fetchWiki = useCallback(async () => {
     setLoading(true);
@@ -332,6 +418,12 @@ export default function Wiki({ user: propUser, isDirector: propIsDirector }) {
                       <FileText size={16} color="var(--text-tertiary)" />
                       {doc.title}
                     </div>
+                    <WikiAiStatus
+                      status={aiStatus[doc.id]}
+                      canReindex={canUpload}
+                      reindexing={reindexingId === doc.id}
+                      onReindex={() => handleReindex(doc)}
+                    />
                   </td>
                   <td>
                     <span className="badge" style={{ 
