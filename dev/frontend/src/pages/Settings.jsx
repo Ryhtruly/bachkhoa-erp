@@ -187,7 +187,7 @@ export default function Settings() {
   const [settings, setSettings] = useState({});
   const [saving, setSaving] = useState(false);
   const [collapsed, setCollapsed] = useState({});
-  const { showToast } = useToast();
+  const { addToast: showToast } = useToast();
 
   useEffect(() => { fetchSettings(); }, []);
 
