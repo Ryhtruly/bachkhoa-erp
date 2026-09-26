@@ -913,7 +913,7 @@ export const HELP_SECTIONS = [
       {
         list: [
           '**Trợ lý AI**: chỉ cần nhập **Google Gemini API Key** là trợ lý dùng Gemini. Muốn dùng DeepSeek thì gõ `deepseek` ở ô nhà cung cấp và nhập API key riêng.',
-          '**Model Chatbot** để trống là dùng mặc định. Khi Google ngừng một model, chỉ cần gõ tên model mới vào đây.',
+          '**Model Chatbot** để trống là dùng mặc định. Khi Google ngừng một model, bấm **Tải danh sách model**, chọn model mới trong ô rồi **Lưu nhóm này**. Nếu Google có gợi ý model thay thế, trợ lý tự chuyển sang model đó.',
           'Nút kiểm tra cạnh một số ô giúp thử key trước khi dùng.',
         ],
       },

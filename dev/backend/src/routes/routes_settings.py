@@ -5,7 +5,10 @@ from src.db.models import SystemSetting, AuditLog
 from src.core.auth import require_permission, User
 from pydantic import BaseModel
 from typing import List, Dict, Any
+import os
+import re
 import httpx
+from src.core.chatbot_engine import resolve_chatbot_llm
 
 router = APIRouter(prefix="/api/settings", tags=["11. System & Webhooks"])
 MASKED_SECRET = "********"
@@ -90,6 +93,58 @@ def update_settings(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+def _merged_settings(db: Session, form_settings: Dict[str, Any] | None) -> Dict[str, Any]:
+    """Giá trị đã lưu, đè bằng giá trị đang gõ trên form (bỏ qua ô bí mật còn che)."""
+    s = {row.key: row.value for row in db.query(SystemSetting).all()}
+    for key, value in (form_settings or {}).items():
+        if not (_is_sensitive_key(key) and str(value or "").strip() in {"", MASKED_SECRET}):
+            s[key] = value
+    return s
+
+
+class ModelListRequest(BaseModel):
+    settings: Dict[str, Any] = {}
+
+
+@router.post("/gemini-models")
+async def list_gemini_models(
+    payload: ModelListRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("settings", "update"))
+):
+    """Model chat mà API key Gemini hiện tại được dùng, để chọn ở ô "Model Chatbot"."""
+    s = _merged_settings(db, payload.settings)
+    _, key, _ = resolve_chatbot_llm({**s, "chatbot_llm_provider": "gemini"}, os.getenv("GEMINI_API_KEY", ""))
+    if not key or key == "your_gemini_api_key":
+        raise HTTPException(status_code=400, detail="Chưa nhập Gemini API Key")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                "https://generativelanguage.googleapis.com/v1beta/models",
+                params={"pageSize": 1000},
+                headers={"x-goog-api-key": key},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Không gọi được Google ({exc.__class__.__name__})") from exc
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Google trả lỗi HTTP {r.status_code} - kiểm tra lại API Key")
+
+    models = []
+    for item in r.json().get("models", []):
+        name = str(item.get("name", "")).removeprefix("models/")
+        methods = item.get("supportedGenerationMethods") or []
+        if name.startswith("gemini-") and "generateContent" in methods and "embedding" not in name:
+            models.append({"id": name, "label": item.get("displayName") or name})
+    # Bản mới nhất lên đầu; "flash" (nhanh, rẻ) đứng trước "pro" cùng đời.
+    models.sort(key=lambda m: ("flash" not in m["id"], m["id"]))
+    def version(model_id: str) -> tuple:
+        match = re.match(r"gemini-(\d+)(?:\.(\d+))?", model_id)
+        return (int(match.group(1)), int(match.group(2) or 0)) if match else (0, 0)
+
+    models.sort(key=lambda m: version(m["id"]), reverse=True)
+    return {"models": models}
+
+
 @router.post("/test")
 async def test_connection(
     payload: TestRequest,
@@ -98,11 +153,7 @@ async def test_connection(
 ):
     """Test real API connection for a given service."""
     service = payload.service
-    stored = {row.key: row.value for row in db.query(SystemSetting).all()}
-    s = dict(stored)
-    for key, value in (payload.settings or {}).items():
-        if not (_is_sensitive_key(key) and str(value or "").strip() in {"", MASKED_SECRET}):
-            s[key] = value
+    s = _merged_settings(db, payload.settings)
 
     try:
         async with httpx.AsyncClient(timeout=8) as client:

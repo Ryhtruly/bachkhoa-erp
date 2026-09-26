@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, CheckCircle, XCircle, Loader, FileText, MessageSquare, Brain, Camera, ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { Save, CheckCircle, XCircle, Loader, FileText, MessageSquare, Brain, Camera, ChevronDown, ChevronRight, ExternalLink, Eye, EyeOff, List } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 import { formatErrorDetail } from '../lib/api';
 
@@ -47,7 +47,7 @@ const FIELD_GROUPS = [
       { key: 'stringee_api_key_secret', label: 'Stringee API Key Secret', type: 'password', placeholder: 'xxx...', hint: 'Lấy cùng lúc với SID', testKey: 'stringee' },
       { key: 'chatbot_kb_sheet_id', label: 'ID Google Sheet (Knowledge Base)', type: 'text', placeholder: '1BxiM...', hint: 'Sheet chứa cơ sở tri thức cho Chatbot nội bộ. Cần nhập JSON Service Account ở Nhóm Xuất File.' },
       { key: 'chatbot_llm_provider', label: 'Nhà cung cấp Chatbot AI', type: 'text', placeholder: 'gemini hoặc deepseek', hint: 'Gõ "gemini" hoặc "deepseek". Để trống: tự dùng Gemini nếu đã có Gemini API Key.' },
-      { key: 'chatbot_llm_model', label: 'Model Chatbot (Tùy chọn)', type: 'text', placeholder: 'gemini-2.5-flash', hint: 'Để trống dùng mặc định (gemini-2.5-flash / deepseek-chat). Đổi khi Google ngừng model cũ.' },
+      { key: 'chatbot_llm_model', label: 'Model Chatbot (Tùy chọn)', type: 'text', placeholder: 'gemini-3.8-flash', hint: 'Để trống dùng mặc định (gemini-3.8-flash / deepseek-chat). Khi Google báo model bị ngừng: bấm "Tải danh sách model", chọn model mới rồi lưu nhóm.', modelPicker: true },
       { key: 'chatbot_llm_api_key', label: 'API Key Chatbot (Tùy chọn)', type: 'password', placeholder: 'sk-...', hint: 'Nếu để trống sẽ dùng chung API Key Gemini ở trên.' },
     ]
   },
@@ -120,7 +120,46 @@ function TestButton({ _groupId, fieldKey, settings, onResult }) {
   );
 }
 
-function FieldInput({ field, value, onChange }) {
+// Lấy các model chat mà Gemini API Key (đang gõ hoặc đã lưu) được dùng.
+function ModelListButton({ settings, onLoaded, onError }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleLoad = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/settings/gemini-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(formatErrorDetail(data.detail) || `Máy chủ trả lỗi HTTP ${res.status}`);
+      onLoaded(data.models || []);
+    } catch (error) {
+      onError(error.message || 'Không tải được danh sách model');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleLoad}
+      disabled={loading}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '6px',
+        padding: '5px 12px', fontSize: '0.78rem', borderRadius: '6px',
+        border: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.05)',
+        color: 'var(--text-secondary)', cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+      }}
+    >
+      {loading ? <Loader size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <List size={12} />}
+      {loading ? 'Đang tải...' : 'Tải danh sách model'}
+    </button>
+  );
+}
+
+function FieldInput({ field, value, onChange, options = [] }) {
   const [show, setShow] = useState(false);
 
   if (field.type === 'readonly') {
@@ -162,6 +201,7 @@ function FieldInput({ field, value, onChange }) {
   }
 
   const isPassword = field.type === 'password';
+  const listId = options.length ? `${field.key}-options` : undefined;
   return (
     <div style={{ position: 'relative' }}>
       <input
@@ -169,12 +209,19 @@ function FieldInput({ field, value, onChange }) {
         value={value || ''}
         onChange={e => onChange(field.key, e.target.value)}
         placeholder={field.placeholder}
+        list={listId}
+        aria-label={field.label}
         style={{
           width: '100%', padding: '8px 36px 8px 12px', fontSize: '0.85rem', borderRadius: '6px',
           border: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.03)',
           color: 'var(--text-primary)', boxSizing: 'border-box',
         }}
       />
+      {listId && (
+        <datalist id={listId}>
+          {options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+        </datalist>
+      )}
       {isPassword && (
         <button
           onClick={() => setShow(!show)}
@@ -191,6 +238,7 @@ export default function Settings() {
   const [settings, setSettings] = useState({});
   const [saving, setSaving] = useState(false);
   const [collapsed, setCollapsed] = useState({});
+  const [modelOptions, setModelOptions] = useState([]);
   const { addToast: showToast } = useToast();
 
   useEffect(() => { fetchSettings(); }, []);
@@ -266,6 +314,16 @@ export default function Settings() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
                         <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{field.label}</label>
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {field.modelPicker && (
+                            <ModelListButton
+                              settings={settings}
+                              onLoaded={(models) => {
+                                setModelOptions(models);
+                                showToast(models.length ? `Có ${models.length} model — bấm vào ô để chọn.` : 'Key này chưa được dùng model chat nào.', models.length ? 'success' : 'error');
+                              }}
+                              onError={(message) => showToast(message, 'error')}
+                            />
+                          )}
                           {field.testKey && (
                             <TestButton
                               groupId={group.id}
@@ -276,7 +334,7 @@ export default function Settings() {
                           )}
                         </div>
                       </div>
-                      <FieldInput field={field} value={settings[field.key]} onChange={handleChange} />
+                      <FieldInput field={field} value={settings[field.key]} onChange={handleChange} options={field.modelPicker ? modelOptions : undefined} />
                       {field.hint && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '5px', display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
                           <ExternalLink size={11} style={{ flexShrink: 0, marginTop: '2px' }} />

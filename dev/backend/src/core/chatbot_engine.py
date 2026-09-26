@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import httpx
 from typing import List, Dict, Any, Tuple, Optional
@@ -15,9 +16,18 @@ MAX_KB_CHARS = 8000
 
 from src.core.dlp import redact_sensitive_content
 
-# gemini-2.0-flash bị Google tắt từ 01/06/2026 → mọi lượt chat qua Gemini đều lỗi.
-# Model có thể đổi trong Cấu hình (chatbot_llm_model) mà không cần deploy lại.
-DEFAULT_CHAT_MODELS = {"gemini": "gemini-2.5-flash", "deepseek": "deepseek-chat"}
+# Google ngừng model cũ theo đợt (gemini-2.0-flash tắt 01/06/2026, gemini-2.5-flash
+# khoá với tài khoản mới). Model đổi được trong Cấu hình (chatbot_llm_model) mà
+# không cần deploy lại; khi Google báo model bị ngừng và gợi ý model thay thế,
+# ask_chatbot tự thử lại một lần bằng model đó.
+DEFAULT_CHAT_MODELS = {"gemini": "gemini-3.8-flash", "deepseek": "deepseek-chat"}
+_SUGGESTED_MODEL_RE = re.compile(r"use models/([A-Za-z0-9._-]+)")
+
+
+def suggested_replacement_model(error_text: str) -> Optional[str]:
+    """Model Google gợi ý trong lỗi 404 "no longer available … use models/X"."""
+    match = _SUGGESTED_MODEL_RE.search(error_text or "")
+    return match.group(1).rstrip(".") if match else None
 SUPPORTED_PROVIDERS = tuple(DEFAULT_CHAT_MODELS)
 MAX_REPLY_TOKENS = 2048
 
@@ -149,20 +159,35 @@ NHIỆM VỤ CỦA BẠN:
                     "Content-Type": "application/json"
                 }
                 chat_model = model or DEFAULT_CHAT_MODELS["gemini"]
-                payload = {
-                    "model": chat_model,
-                    "messages": messages,
-                    "temperature": 0.7,
-                    "max_tokens": MAX_REPLY_TOKENS,
-                }
-                # Gemini 2.5+ là model "thinking": token suy nghĩ tính vào max_tokens,
-                # để mặc định thì câu trả lời có thể bị cắt rỗng → bot luôn "chuyển giao".
-                if chat_model.startswith(("gemini-2.5", "gemini-3")):
-                    payload["reasoning_effort"] = "low"
-                
-                resp = await client.post(url, headers=headers, json=payload)
+
+                def gemini_payload(model_name: str) -> dict:
+                    payload = {
+                        "model": model_name,
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": MAX_REPLY_TOKENS,
+                    }
+                    # Gemini 2.5+ là model "thinking": token suy nghĩ tính vào max_tokens,
+                    # để mặc định thì câu trả lời có thể bị cắt rỗng → bot luôn "chuyển giao".
+                    if model_name.startswith("gemini-") and not model_name.startswith(("gemini-1", "gemini-2.0")):
+                        payload["reasoning_effort"] = "low"
+                    return payload
+
+                resp = await client.post(url, headers=headers, json=gemini_payload(chat_model))
+                if resp.status_code == 404:
+                    replacement = suggested_replacement_model(resp.text)
+                    if replacement and replacement != chat_model:
+                        print(f"[Chatbot] Model {chat_model} bị ngừng, thử lại bằng {replacement}")
+                        chat_model = replacement
+                        resp = await client.post(url, headers=headers, json=gemini_payload(chat_model))
                 if resp.status_code == 401:
                     return "API Key Gemini không hợp lệ.", False, "Invalid API Key"
+                elif resp.status_code == 404:
+                    print(f"[Chatbot] {provider} HTTP 404: {resp.text[:500]}")
+                    return (
+                        f'Model "{chat_model}" không còn dùng được. Vào Cấu Hình → "Model Chatbot", '
+                        'bấm "Tải danh sách model" để chọn model khác rồi lưu lại.'
+                    ), False, "Model Not Found"
                 elif resp.status_code != 200:
                     print(f"[Chatbot] {provider} HTTP {resp.status_code}: {resp.text[:500]}")
                     return f"Lỗi từ máy chủ AI: {resp.text}", False, "AI Error"
