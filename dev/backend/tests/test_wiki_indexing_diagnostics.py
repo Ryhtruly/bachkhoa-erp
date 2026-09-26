@@ -76,6 +76,8 @@ def test_indexing_status_reports_chunks_progress_and_errors(monkeypatch):
     counts = [("DOC-OK", 12)]
     db = MagicMock()
     db.query.return_value.filter.return_value.group_by.return_value.all.return_value = counts
+    started = []
+    monkeypatch.setattr(rag, "_ensure_worker_running", lambda: started.append(True))
     monkeypatch.setattr(rag, "INDEXING_JOBS", {
         "DOC-RUN": {"status": "PROCESSING"},
         "DOC-BAD": {"status": "FAILED", "error": "Không đọc được chữ trong tài liệu"},
@@ -87,6 +89,8 @@ def test_indexing_status_reports_chunks_progress_and_errors(monkeypatch):
     assert status["DOC-RUN"]["status"] == "PROCESSING"
     assert status["DOC-BAD"] == {"chunks": 0, "status": "FAILED", "error": "Không đọc được chữ trong tài liệu"}
     assert status["DOC-NEW"]["status"] == "PENDING"
+    # Worker không chạy sau khi khởi động lại thì tài liệu chờ mãi: xem trạng thái phải bật nó.
+    assert started == [True]
 
 
 def test_reset_indexing_job_clears_retry_history(monkeypatch):

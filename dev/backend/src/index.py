@@ -121,6 +121,12 @@ async def lifespan(_app: FastAPI):
         except Exception as exc:
             logger.warning("Initial contract cache warmup failed: %s", exc)
 
+    if not os.getenv("TESTING"):
+        # Worker Wiki trước đây chỉ bật khi có người upload: sau mỗi lần deploy,
+        # tài liệu chưa học nằm chờ mãi. Bật ngay để vòng recovery tự xử lý chúng.
+        from src.services.wiki_rag_service import start_indexing_worker
+        start_indexing_worker()
+
     refresh_task = None
     if CONTRACT_CACHE_REFRESH_SECONDS > 0:
         refresh_task = asyncio.create_task(refresh_contract_cache_loop())

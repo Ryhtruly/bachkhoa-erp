@@ -22,10 +22,15 @@ function WikiAiStatus({ status, canReindex, reindexing, onReindex }) {
     );
   } else if (status.chunks > 0 && !isAiStatusPending(status)) {
     body = <span style={{ ...base, color: 'var(--green-600, #059669)' }}><Bot size={13} /> AI đã học ({status.chunks} đoạn)</span>;
+  } else if (status.status === 'PENDING') {
+    // Chưa vào hàng đợi: worker sẽ nhặt trong vòng 1 phút, hoặc bấm "Học lại" để xếp ngay.
+    body = <span style={{ ...base, color: 'var(--text-tertiary)' }}><Bot size={13} /> AI chưa học tài liệu này — đang chờ lượt</span>;
   } else {
     body = <span style={{ ...base, color: 'var(--text-tertiary)' }}><Loader2 size={13} className="animate-spin" /> AI đang đọc tài liệu…</span>;
   }
-  const showReindex = canReindex && (status.status === 'FAILED' || (!isAiStatusPending(status) && status.chunks > 0));
+  const showReindex = canReindex && (
+    status.status === 'FAILED' || status.status === 'PENDING' || (!isAiStatusPending(status) && status.chunks > 0)
+  );
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px', marginLeft: '24px', flexWrap: 'wrap' }}>
       {body}

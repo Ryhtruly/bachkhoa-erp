@@ -469,6 +469,9 @@ def get_indexing_status(document_ids: List[str], db: Session) -> Dict[str, Dict[
     """Trạng thái "AI đã học tài liệu chưa" cho màn Wiki: số đoạn trong DB + job gần nhất."""
     if not document_ids:
         return {}
+    # Có người đang xem trạng thái mà worker chưa chạy (vd. vừa khởi động lại):
+    # bật lên để tài liệu chờ được xử lý thay vì treo mãi.
+    _ensure_worker_running()
     from sqlalchemy import func
     counts = dict(
         db.query(WikiChunk.document_id, func.count(WikiChunk.id))
@@ -522,6 +525,11 @@ def _ensure_worker_running():
                 _worker_started = True
                 t = threading.Thread(target=_indexing_worker_loop, daemon=True, name="wiki-indexing-worker")
                 t.start()
+
+
+def start_indexing_worker() -> None:
+    """Bật worker (kèm vòng recovery mỗi phút) lúc khởi động app."""
+    _ensure_worker_running()
 
 
 def enqueue_indexing_job(
