@@ -339,6 +339,7 @@ describe('Wiki private documents', () => {
     const statuses = {
       'ISO-001': { chunks: 0, status: 'FAILED', error: 'Không đọc được chữ trong tài liệu (PDF scan/ảnh?)' },
       'ISO-002': { chunks: 12, status: 'COMPLETED', error: null },
+      'ISO-003': { chunks: 0, status: 'PENDING', error: null },
     }
     global.fetch = vi.fn(async (url, init = {}) => {
       const path = String(url)
@@ -348,6 +349,7 @@ describe('Wiki private documents', () => {
           data: [
             { id: 'ISO-001', title: 'Bộ Quy Tắc Đạo Đức', category: 'Sổ tay nhân sự', link: 'wiki/ISO-001/quy_tac.pdf' },
             { id: 'ISO-002', title: 'Quy trình tiếp nhận', category: 'Quy trình ISO', link: 'wiki/ISO-002/tiep_nhan.docx' },
+            { id: 'ISO-003', title: 'Nội quy', category: 'Quy định khác', link: 'wiki/ISO-003/noi_quy.pdf' },
           ],
           meta: { total_pages: 1 },
         })
@@ -363,6 +365,10 @@ describe('Wiki private documents', () => {
 
     expect(await screen.findByText(/AI chưa học được: Không đọc được chữ/)).toBeInTheDocument()
     expect(screen.getByText('AI đã học (12 đoạn)')).toBeInTheDocument()
+    // Chưa vào hàng đợi (vd. backend vừa khởi động lại): không giả vờ "đang đọc", cho bấm Học lại.
+    const pendingRow = screen.getByText('Nội quy').closest('tr')
+    expect(within(pendingRow).getByText(/AI chưa học tài liệu này/)).toBeInTheDocument()
+    expect(within(pendingRow).getByRole('button', { name: /Học lại/ })).toBeInTheDocument()
 
     const failedRow = screen.getByText('Bộ Quy Tắc Đạo Đức').closest('tr')
     fireEvent.click(within(failedRow).getByRole('button', { name: /Học lại/ }))
